@@ -76,6 +76,15 @@ dev_dependencies:
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
+flutter_icons:
+  android: true        # Android-App-Icons generieren
+  ios: true            # iOS-App-Icons generieren
+  image_path: "images/logo3.png"  # Pfad zu deinem Icon-Bild
+  image_path_android: "images/logo3.png"  # Nur für Android
+  image_path_ios: "images/logo3.png"          # Nur für iOS
+  adaptive_icon_background: "#FFFFFF"  # Hintergrundfarbe für adaptive Icons (Android)
+  adaptive_icon_foreground: "images/logo_bw.png"  # Vordergrund für adaptive Icons (Android)
+
 # The following section is specific to Flutter packages.
 flutter:
 
