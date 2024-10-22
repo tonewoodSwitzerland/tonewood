@@ -86,9 +86,9 @@ class LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    double buttonSize = 0.05 * h;
+
     print(kIsWeb);
-    print("width:$w");
+
     return GestureDetector(
       onTap: () => FocusScope.of(context).requestFocus(FocusNode()),
       child: ModalProgressHUD(
