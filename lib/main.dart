@@ -39,7 +39,7 @@ class MyApp extends StatelessWidget {
             debugShowCheckedModeBanner: false,
             translations: LocalString(),
             locale: _getLocaleBasedOnDeviceSettings(context),
-            title: 'Ketterer Holz',
+            title: 'Tonewood Switzerland',
             theme: ThemeData(
               scaffoldBackgroundColor: Colors.white,
               cardColor: Colors.white,
