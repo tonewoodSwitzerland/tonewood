@@ -10,6 +10,92 @@ import 'package:flutter_sizer/flutter_sizer.dart';
 import 'package:universal_io/io.dart';
 
 
+// Responsive Breakpoints
+class ResponsiveBreakpoints {
+  static const double mobile = 600;
+  static const double tablet = 900;
+  static const double desktop = 1200;
+}
+
+// Responsive Layout Helper
+class ResponsiveLayout {
+  static bool isMobile(double width) => width < ResponsiveBreakpoints.mobile;
+  static bool isTablet(double width) => width >= ResponsiveBreakpoints.mobile && width < ResponsiveBreakpoints.desktop;
+  static bool isDesktop(double width) => width >= ResponsiveBreakpoints.desktop;
+
+  static double getContentWidth(double screenWidth) {
+    if (screenWidth <= ResponsiveBreakpoints.mobile) return screenWidth;
+    if (screenWidth <= ResponsiveBreakpoints.tablet) return screenWidth * 0.85;
+    if (screenWidth <= ResponsiveBreakpoints.desktop) return screenWidth * 0.7;
+    return 1200; // Maximum Breite für sehr große Bildschirme
+  }
+
+  static double getLoginWidth(double screenWidth) {
+    if (isMobile(screenWidth)) return screenWidth * 0.9;
+    if (isTablet(screenWidth)) return screenWidth * 0.7;
+    return screenWidth * 0.4;
+  }
+  static double getIconSize(double screenWidth) {
+    if (isMobile(screenWidth)) return 24.0;
+    if (isTablet(screenWidth)) return 28.0;
+    if (isDesktop(screenWidth)) return 32.0;
+    return 24.0; // Standardgröße
+  }
+  static double getLogoSize(double screenWidth) {
+    if (isMobile(screenWidth)) return screenWidth * 0.5;
+    if (isTablet(screenWidth)) return screenWidth * 0.3;
+    return screenWidth * 0.2;
+  }
+}
+// Neue PlatformInfo Klasse
+class PlatformInfo {
+  static bool get isMobilePlatform => kIsWeb ? false : (Platform.isIOS || Platform.isAndroid);
+  static bool get isDesktopPlatform => kIsWeb ? false : (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+  static bool get isWebPlatform => kIsWeb;
+
+  static double getWebFactor(double screenWidth) {
+    if (!isWebPlatform) return 1.0;
+    if (screenWidth > ResponsiveBreakpoints.tablet) return 1.2;
+    if (screenWidth > ResponsiveBreakpoints.mobile) return 1.1;
+    return 1.0;
+  }
+
+  // Angepasste Icon-Größen für verschiedene Plattformen
+  static double getIconSize(double baseSize, double screenWidth) {
+    if (isMobilePlatform) return baseSize;
+    if (isWebPlatform) return baseSize * getWebFactor(screenWidth);
+    return baseSize * 1.2; // Etwas größer für Desktop
+  }
+
+  // Helper-Methode für Bottom Navigation Bar Icons
+  static double getBottomNavIconSize(double screenWidth) {
+    if (isMobilePlatform) return 24.0;
+    if (isWebPlatform && screenWidth > ResponsiveBreakpoints.desktop) return 32.0;
+    if (isWebPlatform && screenWidth > ResponsiveBreakpoints.tablet) return 28.0;
+    return 24.0;
+  }
+}
+// Überarbeitete Konstanten für responsives Design
+class AppSizes {
+  static double w = Adaptive.w(100);
+  static double h = Adaptive.h(100);
+
+  static double getHorizontalPadding(double width) {
+    if (ResponsiveLayout.isMobile(width)) return 20;
+    if (ResponsiveLayout.isTablet(width)) return 40;
+    return 60;
+  }
+
+  static double getVerticalPadding(double width) {
+    if (ResponsiveLayout.isMobile(width)) return 20;
+    if (ResponsiveLayout.isTablet(width)) return 40;
+    return 60;
+  }
+  static double getInputFieldHeight(double height) => height * 0.07;
+  static double getButtonHeight(double height) => height * 0.06;
+}
+
+
 int calculateGridCount(double width) {
   if (width <= 600) {
     return 3;

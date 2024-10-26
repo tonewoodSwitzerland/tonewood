@@ -30,7 +30,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
+  another_brother: ^2.1.8
   auto_size_text: ^3.0.0
   barcode_widget: ^2.0.4
   cloud_firestore: ^5.1.0
@@ -48,6 +48,7 @@ dependencies:
   flutter_staggered_grid_view: ^0.7.0
   flutter_sizer: ^1.0.5
   font_awesome_flutter: ^10.7.0
+  flutter_barcode_scanner: ^2.0.0
   flutter_secure_storage: ^9.0.0
   flutter_launcher_icons: ^0.13.1
   local_auth: ^2.1.8
@@ -79,11 +80,11 @@ dev_dependencies:
 flutter_icons:
   android: true        # Android-App-Icons generieren
   ios: true            # iOS-App-Icons generieren
-  image_path: "images/logo3.png"  # Pfad zu deinem Icon-Bild
-  image_path_android: "images/logo3.png"  # Nur für Android
-  image_path_ios: "images/logo3.png"          # Nur für iOS
+  image_path: "images/tonewood_logo_blaetter_r.png"  # Pfad zu deinem Icon-Bild
+  image_path_android: "images/tonewood_logo_blaetter_r.png"  # Nur für Android
+  image_path_ios: "images/tonewood_logo_blaetter_r.png"          # Nur für iOS
   adaptive_icon_background: "#FFFFFF"  # Hintergrundfarbe für adaptive Icons (Android)
-  adaptive_icon_foreground: "images/logo_bw.png"  # Vordergrund für adaptive Icons (Android)
+  adaptive_icon_foreground: "images/tonewood_logo_blaetter_r.png"  # Vordergrund für adaptive Icons (Android)
 
 # The following section is specific to Flutter packages.
 flutter:

@@ -97803,7 +97803,11 @@ return s.length===0?B.iV:B.b.gX(s)}}
 A.apu.prototype={
 $3(a,b,c){var s=null,r=this.a.a9m(a),q=A.aQT(s,s,B.k,s,s,s,s,s,s,B.A,s,s,s,s,s,s,s,s,s),p=A.aMC(s,s,s,s,s,s,s,s,s,B.A,s,s,s,s,s,s,s,B.H7,s)
 p=A.tt(s,B.k,A.aPZ(B.ai,s,s,B.aj,B.k),B.N3,new A.v5(q),B.k,new A.x_(p),!0)
+<<<<<<< HEAD
 return new A.pY(new A.BL(A.av(["login_screen",new A.apo(),"registration_screen",new A.app(),"forget_screen",new A.apq(),"start_screen",new A.apr()],t.N,t.Ab),"login_screen",new A.aps(),new A.apt(),"Ketterer Holz",p,new A.akP(),r,!1,s),s)},
+=======
+return new A.pY(new A.BL(A.av(["login_screen",new A.apo(),"registration_screen",new A.app(),"forget_screen",new A.apq(),"start_screen",new A.apr()],t.N,t.Ab),"login_screen",new A.aps(),new A.apt(),"Tonewood Switzerland",p,new A.akP(),r,!1,s),s)},
+>>>>>>> 42c5c9d (Update GitHub Pages with new web version)
 $C:"$3",
 $R:3,
 $S:639}

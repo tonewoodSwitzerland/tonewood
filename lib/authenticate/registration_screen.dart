@@ -11,7 +11,6 @@ import '../components/reusable_cart.dart';
 
 class RegistrationScreen extends StatefulWidget {
   static String id = 'registration_screen';
-
   const RegistrationScreen({super.key});
 
   @override
@@ -26,6 +25,7 @@ class RegistrationScreenState extends State<RegistrationScreen> {
   final FocusNode _focusMail = FocusNode();
   final FocusNode _focusPW = FocusNode();
   final FocusNode _focusInvite = FocusNode();
+
   bool _obscureText = true;
   bool showSpinner = false;
   String email = "";
@@ -55,154 +55,40 @@ class RegistrationScreenState extends State<RegistrationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
+    double screenWidth = MediaQuery.of(context).size.width;
+    double screenHeight = MediaQuery.of(context).size.height;
+    double contentWidth = ResponsiveLayout.getLoginWidth(screenWidth);
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).requestFocus(FocusNode()),
       child: ModalProgressHUD(
         inAsyncCall: showSpinner,
-        child: SafeArea(
-          child: Scaffold(
-            backgroundColor: whiteColour,
-            body: Padding(
-              padding: EdgeInsets.fromLTRB(isMobile, 0, isMobile, 0),
-              child: Form(
-                key: _formKey,
-                child: SingleChildScrollView(
+        child: Scaffold(
+          backgroundColor: Colors.white,
+          body: Center(
+            child: SingleChildScrollView(
+              child: Container(
+                width: contentWidth,
+                padding: EdgeInsets.symmetric(
+                  horizontal: AppSizes.getHorizontalPadding(screenWidth),
+                  vertical: AppSizes.getVerticalPadding(screenHeight),
+                ),
+                child: Form(
+                  key: _formKey,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      SizedBox(height: h * 0.05),
-                      Hero(
-                        tag: 'logo',
-                        child: SizedBox(
-
-                          width: _focusMail.hasFocus || _focusPW.hasFocus || _focusInvite.hasFocus
-                              ? w *isHero*mobileFactor
-                              : w * isHero*mobileFactor,
-                          child: Image.asset('images/logo2.png'),
-                        ),
-                      ),
-                      SizedBox(height: h * 0.03),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: TextFormField(
-                          validator: (value) => value!.isEmpty ? 'emptyMail'.tr : null,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: h * 0.02, color: darkerBlackColour),
-                          keyboardType: TextInputType.emailAddress,
-                          onChanged: (value) {
-                            email = value;
-                          },
-                          focusNode: _focusMail,
-                          decoration: kTextFieldDecoration.copyWith(
-                            contentPadding: EdgeInsets.fromLTRB(0, h * 0.01, 0, h * 0.01),
-                            hintText: 'mail'.tr,
-                            hintStyle: const TextStyle(color: darkerBlackColour),
-                            icon: Icon(Icons.mail, size: h * 0.02,color:primaryAppColor),
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: h * 0.03),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: TextFormField(
-                          validator: (value) =>
-                          value!.length < 6 ? 'passwordError'.tr : null,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: h * 0.02, color: darkerBlackColour),
-                          obscureText: _obscureText,
-                          onChanged: (value) {
-                            password = value;
-                          },
-                          focusNode: _focusPW,
-                          decoration: kTextFieldDecoration.copyWith(
-                            contentPadding: EdgeInsets.fromLTRB(0, h * 0.01, 0, h * 0.01),
-                            hintText: 'password'.tr,
-                            hintStyle: const TextStyle(color: darkerBlackColour),
-                            icon: GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _obscureText = !_obscureText;
-                                });
-                              },
-                              child: Icon(Icons.remove_red_eye_outlined, size: h * 0.02,color:primaryAppColor),
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: h * 0.03),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: TextFormField(
-                          validator: (value) => value!.isEmpty ? 'emptyInvite'.tr : null,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: h * 0.02, color: darkerBlackColour),
-                          onChanged: (value) {
-                            invitationCode = value;
-                          },
-                          focusNode: _focusInvite,
-                          decoration: kTextFieldDecoration.copyWith(
-                            contentPadding: EdgeInsets.fromLTRB(0, h * 0.01, 0, h * 0.01),
-                            hintText: 'inviteCode'.tr,
-                            hintStyle: const TextStyle(color: darkerBlackColour),
-                            icon: Icon(Icons.link, size: h * 0.02,color:primaryAppColor),
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: h * 0.03),
-                      ReusableCardTouch(
-                        touched: true,
-                        colour:primaryAppColor,
-                        cardChild: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: <Widget>[
-                            Icon(Icons.app_registration, color: whiteColour, size: h * 0.05),
-                            Padding(
-                              padding: EdgeInsets.all(h * 0.01),
-                              child: Text(
-                                'register'.tr,
-                                style: labelButtons.copyWith(
-                                    fontSize: h * textFactor20, color: whiteColour),
-                              ),
-                            ),
-                          ],
-                        ),
-                        onPress: () async {
-                          setState(() {
-                            showSpinner = true;
-                          });
-                          await register(context);
-                          setState(() {
-                            showSpinner = false;
-                          });
-                        },
-                      ),
-                      SizedBox(height: h * 0.05),
-                      Text(
-                        error,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.red, fontSize: 25),
-                      ),
-                      SizedBox(height: h * 0.05),
-                      SizedBox(height: w * 0.05, child: const Divider(color: Colors.white70)),
-                      Center(
-                        child: GestureDetector(
-                          child: Padding(
-                            padding: const EdgeInsets.all(15.0),
-                            child: Text(
-                              'backLogin'.tr,
-                              style: TextStyle(
-                                  color: Colors.black,
-                                  fontSize: h * 0.015,
-                                  fontWeight: FontWeight.w300),
-                            ),
-                          ),
-                          onTap: () {
-                            Navigator.pushNamed(context, LoginScreen.id);
-                          },
-                        ),
-                      ),
+                    children: [
+                      _buildLogo(screenWidth),
+                      SizedBox(height: screenHeight * 0.04),
+                      _buildRegistrationFields(),
+                      SizedBox(height: screenHeight * 0.03),
+                      _buildRegisterButton(),
+                      if (error.isNotEmpty) ...[
+                        SizedBox(height: screenHeight * 0.02),
+                        _buildErrorText(),
+                      ],
+                      SizedBox(height: screenHeight * 0.03),
+                      _buildBackToLogin(),
                     ],
                   ),
                 ),
@@ -214,13 +100,161 @@ class RegistrationScreenState extends State<RegistrationScreen> {
     );
   }
 
-  Future<void> register(context) async {
+  Widget _buildLogo(double screenWidth) {
+    double logoSize = ResponsiveLayout.getLogoSize(screenWidth);
+    bool isFocused = _focusMail.hasFocus || _focusPW.hasFocus || _focusInvite.hasFocus;
+
+    return Hero(
+      tag: 'logo',
+      child: SizedBox(
+        width: isFocused ? logoSize * 0.8 : logoSize,
+        child: Image.asset(
+          'images/logo2.png',
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRegistrationFields() {
+    return Column(
+      children: [
+        _buildTextField(
+          focusNode: _focusMail,
+          hintText: 'mail'.tr,
+          icon: Icons.mail,
+          onChanged: (value) => email = value,
+          validator: (value) => value!.isEmpty ? 'emptyMail'.tr : null,
+          keyboardType: TextInputType.emailAddress,
+        ),
+        SizedBox(height: AppSizes.h * 0.02),
+        _buildTextField(
+          focusNode: _focusPW,
+          hintText: 'password'.tr,
+          icon: Icons.remove_red_eye_outlined,
+          isPassword: true,
+          onChanged: (value) => password = value,
+          validator: (value) => value!.length < 6 ? 'passwordError'.tr : null,
+        ),
+        SizedBox(height: AppSizes.h * 0.02),
+        _buildTextField(
+          focusNode: _focusInvite,
+          hintText: 'inviteCode'.tr,
+          icon: Icons.link,
+          onChanged: (value) => invitationCode = value,
+          validator: (value) => value!.isEmpty ? 'emptyInvite'.tr : null,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextField({
+    required FocusNode focusNode,
+    required String hintText,
+    required IconData icon,
+    required Function(String) onChanged,
+    required String? Function(String?) validator,
+    bool isPassword = false,
+    TextInputType? keyboardType,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: TextFormField(
+        focusNode: focusNode,
+        obscureText: isPassword ? _obscureText : false,
+        keyboardType: keyboardType,
+        style: TextStyle(
+          fontSize: AppSizes.h * 0.02,
+          color: darkerBlackColour,
+        ),
+        textAlign: TextAlign.center,
+        onChanged: onChanged,
+        validator: validator,
+        decoration: kTextFieldDecoration.copyWith(
+          contentPadding: EdgeInsets.symmetric(vertical: AppSizes.h * 0.01),
+          hintText: hintText,
+          hintStyle: const TextStyle(color: darkerBlackColour),
+          icon: isPassword
+              ? GestureDetector(
+            onTap: () => setState(() => _obscureText = !_obscureText),
+            child: Icon(icon, size: AppSizes.h * 0.03, color: primaryAppColor),
+          )
+              : Icon(icon, size: AppSizes.h * 0.03, color: primaryAppColor),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRegisterButton() {
+    return ReusableCardTouch(
+      touched: true,
+      colour: primaryAppColor,
+      cardChild: Padding(
+        padding: EdgeInsets.symmetric(horizontal: AppSizes.w * 0.02),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.app_registration,
+              color: whiteColour,
+              size: AppSizes.h * 0.03,
+            ),
+            Padding(
+              padding: EdgeInsets.all(AppSizes.h * 0.01),
+              child: Text(
+                'register'.tr,
+                style: labelButtons.copyWith(
+                  fontSize: AppSizes.h * textFactor20,
+                  color: whiteColour,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      onPress: () => _handleRegistration(),
+    );
+  }
+
+  Widget _buildErrorText() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Text(
+        error,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: Colors.red,
+          fontSize: AppSizes.h * 0.02,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackToLogin() {
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(context, LoginScreen.id),
+      child: Padding(
+        padding: const EdgeInsets.all(15.0),
+        child: Text(
+          'backLogin'.tr,
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: AppSizes.h * 0.015,
+            fontWeight: FontWeight.w300,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleRegistration() async {
+    setState(() => showSpinner = true);
+
     if (_formKey.currentState!.validate()) {
       try {
-        // Validate the invitation code
         final inviteDoc = await _db.collection('secrets').doc(invitationCode).get();
 
-        // Check if document exists and has the 'userGroup' field
         if (!inviteDoc.exists || !inviteDoc.data()!.containsKey('userGroup')) {
           setState(() {
             error = 'invalidInvite'.tr;
@@ -229,51 +263,45 @@ class RegistrationScreenState extends State<RegistrationScreen> {
           return;
         }
 
-        // Retrieve user group from the invite document
         int userGroup = inviteDoc.data()!['userGroup'];
-
         dynamic result = await _auth2.registerWithEmailAndPassword(email, password);
+
         if (result == null) {
           setState(() => error = 'validEmail'.tr);
         } else {
-          _db.collection('total').doc('stats').set(
-              {'usersCount': FieldValue.increment(1)}, SetOptions(merge: true)); // Daten für die Gesamtstatistik
-          User? user = _auth3.currentUser;
-          _db.collection('users').doc(user!.uid).set(
-              {
-                'approvedByAdmin': false,
-                'anonymous': false,
-                'name': 'Name',
-                'loginType': "Email",
-                'photoUrl': '',
-                'userGroup': userGroup,
-                'created': 0,
-                'language': "de",
-                'createdAt': FieldValue.serverTimestamp(),
-                'firstLaunch': false
-              },
-              SetOptions(merge: true));
-
-          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => const VerifyScreen()));
+          await _createUserRecord(userGroup);
+          Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const VerifyScreen())
+          );
         }
       } on FirebaseException catch (e) {
-        print(e.code);
-        if (e.code == 'not-found') {
-          setState(() {
-            error = 'invalidInvite'.tr;
-          });
-        } else {
-          setState(() {
-            error = 'registrationError'.tr;
-          });
-        }
-      } finally {
         setState(() {
-          showSpinner = false;
+          error = e.code == 'not-found' ? 'invalidInvite'.tr : 'registrationError'.tr;
         });
       }
     }
+
+    setState(() => showSpinner = false);
   }
 
+  Future<void> _createUserRecord(int userGroup) async {
+    User? user = _auth3.currentUser;
+    await _db.collection('total').doc('stats').set(
+        {'usersCount': FieldValue.increment(1)},
+        SetOptions(merge: true)
+    );
 
+    await _db.collection('users').doc(user!.uid).set({
+      'approvedByAdmin': false,
+      'anonymous': false,
+      'name': 'Name',
+      'loginType': "Email",
+      'photoUrl': '',
+      'userGroup': userGroup,
+      'created': 0,
+      'language': "de",
+      'createdAt': FieldValue.serverTimestamp(),
+      'firstLaunch': false
+    }, SetOptions(merge: true));
+  }
 }

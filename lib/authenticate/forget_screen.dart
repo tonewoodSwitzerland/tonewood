@@ -1,9 +1,6 @@
 import 'package:get/get_utils/src/extensions/internacionalization.dart';
-
 import 'package:flutter/material.dart';
 import 'package:modal_progress_hud_nsn/modal_progress_hud_nsn.dart';
-
-
 import '../components/reusable_cart.dart';
 import '../constants.dart';
 import '../services/auth.dart';
@@ -11,7 +8,6 @@ import 'login_screen.dart';
 
 class ForgetScreen extends StatefulWidget {
   static String id = 'forget_screen';
-
   const ForgetScreen({super.key});
 
   @override
@@ -19,137 +15,66 @@ class ForgetScreen extends StatefulWidget {
 }
 
 class ForgetScreenState extends State<ForgetScreen> {
-  bool isLogin = false;
-  bool showSpinner = false;
-  String email = "";
-  String password = "";
-  String error = '';
   final formKey = GlobalKey<FormState>();
   final AuthService _auth2 = AuthService();
-  final FocusNode _focusMail = FocusNode(); // Fokusvariable für E-Mail
+  final FocusNode _focusMail = FocusNode();
+
+  bool showSpinner = false;
+  String email = "";
+  String error = '';
 
   @override
   void initState() {
     super.initState();
-    _focusMail.addListener(() {
-      setState(() {}); // Aktualisiert den State, wenn der Fokus sich ändert
-    });
-
+    _focusMail.addListener(_onFocusChange);
   }
 
   @override
   void dispose() {
     _focusMail.dispose();
-
     super.dispose();
+  }
+
+  void _onFocusChange() {
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
+    double screenWidth = MediaQuery.of(context).size.width;
+    double screenHeight = MediaQuery.of(context).size.height;
+    double contentWidth = ResponsiveLayout.getLoginWidth(screenWidth);
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).requestFocus(FocusNode()),
       child: ModalProgressHUD(
         inAsyncCall: showSpinner,
-        child: SafeArea(
-          child: Scaffold(
-            backgroundColor: whiteColour,
-            body: Padding(
-              padding: EdgeInsets.fromLTRB(isMobile, 0, isMobile, 0),
-              child: Form(
-                key: formKey,
-                child: SingleChildScrollView(
+        child: Scaffold(
+          backgroundColor: Colors.white,
+          body: Center(
+            child: SingleChildScrollView(
+              child: Container(
+                width: contentWidth,
+                padding: EdgeInsets.symmetric(
+                  horizontal: AppSizes.getHorizontalPadding(screenWidth),
+                  vertical: AppSizes.getVerticalPadding(screenHeight),
+                ),
+                child: Form(
+                  key: formKey,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      SizedBox(height: h * 0.1),
-                      Hero(
-                        tag: 'logo',
-                        child: SizedBox(
-                          width:  _focusMail.hasFocus ? w * isHero*mobileFactor : w * isHero*mobileFactor,
-                          child: Image.asset('images/logo2.png'),
-                        ),
-                      ),
-                      SizedBox(height: w * 0.03),
-                      Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: TextFormField(
-                          validator: (value) => value == "" ? 'emptyMail'.tr : null,
-                          style: TextStyle(
-                            color: darkerBlackColour,
-                            fontSize: h * 0.02,
-                          ),
-                          textAlign: TextAlign.center,
-                          keyboardType: TextInputType.emailAddress,
-                          onTap: () {
-                            setState(() => error = '');
-                          },
-                          onChanged: (value) {
-                            email = value;
-                          },
-                          focusNode: _focusMail,
-                          decoration: kTextFieldDecoration.copyWith(
-                            contentPadding: EdgeInsets.fromLTRB(0, h * 0.01, 0, h * 0.01),
-                            hintText: 'mail'.tr,
-                            hintStyle: const TextStyle(color: Colors.white70),
-                            icon: Icon(Icons.mail, size: h * 0.02,color:primaryAppColor),
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: w * 0.03),
-                      ReusableCardTouch(
-                        touched: true,
-                        colour:primaryAppColor,
-                        cardChild: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: <Widget>[
-                            Icon(Icons.local_attraction, color: whiteColour, size: h * 0.05),
-                            Padding(
-                              padding: EdgeInsets.all(h * 0.01),
-                              child: Text(
-                                'resetPassword'.tr,
-                                style: labelButtons.copyWith(fontSize: h * textFactor20, color: whiteColour),
-                              ),
-                            ),
-                          ],
-                        ),
-                        onPress: () async {
-                          setState(() {
-                            showSpinner = true;
-                            FocusScope.of(context).requestFocus(FocusNode());
-                          });
-                          dynamic result = await _auth2.resetPassword(email);
-                          if (result == null) {
-                            setState(() => error = 'emailUnknown'.tr);
-                          } else {
-                            setState(() => error = 'resetSuccess'.tr);
-                          }
-                          setState(() {
-                            showSpinner = false;
-                          });
-                        },
-                      ),
-                      _focusMail.hasFocus ? SizedBox(height: w * 0) : SizedBox(height: w * 0.1),
-                      Text(
-                        error,
-                        style: TextStyle(color: Colors.red, fontSize: w * 0.03),
-                      ),
-                      _focusMail.hasFocus  ? Container(height: 0) : SizedBox(height: w * 0.05, child: const Divider(color: Colors.white70)),
-                      Center(
-                        child: GestureDetector(
-                          child: Padding(
-                            padding: const EdgeInsets.all(15.0),
-                            child: Text(
-                              'backLogin'.tr,
-                              style: TextStyle(color: Colors.black, fontSize: h * 0.015, fontWeight: FontWeight.w300),
-                            ),
-                          ),
-                          onTap: () {
-                            Navigator.pushNamed(context, LoginScreen.id);
-                          },
-                        ),
-                      ),
+                    children: [
+                      _buildLogo(screenWidth),
+                      SizedBox(height: screenHeight * 0.04),
+                      _buildEmailField(),
+                      SizedBox(height: screenHeight * 0.03),
+                      _buildResetButton(),
+                      if (error.isNotEmpty) ...[
+                        SizedBox(height: screenHeight * 0.02),
+                        _buildErrorText(),
+                      ],
+                      SizedBox(height: screenHeight * 0.04),
+                      _buildBackToLogin(),
                     ],
                   ),
                 ),
@@ -159,5 +84,129 @@ class ForgetScreenState extends State<ForgetScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildLogo(double screenWidth) {
+    double logoSize = ResponsiveLayout.getLogoSize(screenWidth);
+    return Hero(
+      tag: 'logo',
+      child: SizedBox(
+        width: _focusMail.hasFocus ? logoSize * 0.8 : logoSize,
+        child: Image.asset(
+          'images/logo2.png',
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmailField() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: TextFormField(
+        focusNode: _focusMail,
+        validator: (value) => value?.isEmpty ?? true ? 'emptyMail'.tr : null,
+        style: TextStyle(
+          fontSize: AppSizes.h * 0.02,
+          color: darkerBlackColour,
+        ),
+        textAlign: TextAlign.center,
+        keyboardType: TextInputType.emailAddress,
+        onTap: () => setState(() => error = ''),
+        onChanged: (value) => email = value,
+        decoration: kTextFieldDecoration.copyWith(
+          contentPadding: EdgeInsets.symmetric(
+            vertical: AppSizes.h * 0.01,
+          ),
+          hintText: 'mail'.tr,
+          hintStyle: const TextStyle(color: Colors.black54),
+          icon: Icon(
+            Icons.mail,
+            size: AppSizes.h * 0.03,
+            color: primaryAppColor,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResetButton() {
+    return ReusableCardTouch(
+      touched: true,
+      colour: primaryAppColor,
+      cardChild: Padding(
+        padding: EdgeInsets.symmetric(horizontal: AppSizes.w * 0.02),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.local_attraction,
+              color: whiteColour,
+              size: AppSizes.h * 0.03,
+            ),
+            Padding(
+              padding: EdgeInsets.all(AppSizes.h * 0.01),
+              child: Text(
+                'resetPassword'.tr,
+                style: labelButtons.copyWith(
+                  fontSize: AppSizes.h * textFactor20,
+                  color: whiteColour,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      onPress: _handleResetPassword,
+    );
+  }
+
+  Widget _buildErrorText() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Text(
+        error,
+        style: TextStyle(
+          color: Colors.red,
+          fontSize: AppSizes.h * 0.02,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackToLogin() {
+    return GestureDetector(
+      onTap: () => Navigator.pushNamed(context, LoginScreen.id),
+      child: Padding(
+        padding: const EdgeInsets.all(15.0),
+        child: Text(
+          'backLogin'.tr,
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: AppSizes.h * 0.015,
+            fontWeight: FontWeight.w300,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleResetPassword() async {
+    setState(() {
+      showSpinner = true;
+      FocusScope.of(context).requestFocus(FocusNode());
+    });
+
+    if (formKey.currentState?.validate() ?? false) {
+      dynamic result = await _auth2.resetPassword(email);
+      setState(() {
+        error = result == null ? 'emailUnknown'.tr : 'resetSuccess'.tr;
+      });
+    }
+
+    setState(() {
+      showSpinner = false;
+    });
   }
 }

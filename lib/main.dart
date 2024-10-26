@@ -5,7 +5,7 @@ import 'package:tonewood/services/languages.dart';
 
 import 'authenticate/forget_screen.dart';
 import 'authenticate/registration_screen.dart';
-
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_sizer/flutter_sizer.dart';
 import 'package:get/get.dart';
 import '/../constants.dart';
@@ -17,11 +17,13 @@ import 'package:feedback/feedback.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
- // await Firebase.initializeApp();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
+  if (kIsWeb) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } else {
+    await Firebase.initializeApp();
+  }
 
   runApp(
           MyApp());

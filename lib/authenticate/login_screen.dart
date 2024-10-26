@@ -1,10 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:local_auth/local_auth.dart';
 
-import 'package:universal_io/io.dart';
 import 'package:get/get_utils/src/extensions/internacionalization.dart';
 import '../authenticate/registration_screen.dart';
 import '../authenticate/forget_screen.dart';
@@ -14,9 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:modal_progress_hud_nsn/modal_progress_hud_nsn.dart';
 import '../services/auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/auto_size_text.dart';
 import '../components/reusable_cart.dart';
-import 'dart:async';
 
 class LoginScreen extends StatefulWidget {
   static String id = 'login_screen';
@@ -29,33 +23,13 @@ class LoginScreen extends StatefulWidget {
 class LoginScreenState extends State<LoginScreen> {
   final FocusNode _focusMail = FocusNode();
   final FocusNode _focusPW = FocusNode();
-  final _scaffoldKey = GlobalKey<ScaffoldState>();
   final formKey = GlobalKey<FormState>();
   final AuthService _auth2 = AuthService();
-  bool isLogin = false;
   bool showSpinner = false;
   bool _obscureText = true;
   String email = "";
   String password = "";
   String error = '';
-  bool fingerprint = false;
-  final LocalAuthentication auth = LocalAuthentication();
-  final storage = const FlutterSecureStorage();
-  String authorized = 'Not Authorized';
-  bool isAuthenticating = false;
-  bool useTouchId = false;
-  bool userHasTouchId = false;
-
-  Future _checkLogin(context) async {
-    SharedPreferences pref = await SharedPreferences.getInstance();
-    if (pref.getString("userName") != null) {
-      if (pref.getBool("isLogin") == true) {
-        Navigator.pushReplacementNamed(context, StartScreen.id);
-        FocusManager.instance.primaryFocus?.unfocus();
-      }
-      email = pref.getString("userName")!;
-    }
-  }
 
   @override
   void initState() {
@@ -72,201 +46,56 @@ class LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void validateAndSave() {
-    final form = formKey.currentState;
-    if (form!.validate()) {
-    } else {
-      showSpinner = false;
+  Future _checkLogin(context) async {
+    SharedPreferences pref = await SharedPreferences.getInstance();
+    if (pref.getString("userName") != null) {
+      if (pref.getBool("isLogin") == true) {
+        Navigator.pushReplacementNamed(context, StartScreen.id);
+        FocusManager.instance.primaryFocus?.unfocus();
+      }
+      email = pref.getString("userName")!;
     }
   }
 
   void _onFocusChange() {
-    setState(() {}); // Aktualisiert den State, wenn der Fokus sich ändert
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-
-    print(kIsWeb);
+    double screenWidth = MediaQuery.of(context).size.width;
+    double screenHeight = MediaQuery.of(context).size.height;
+    double contentWidth = ResponsiveLayout.getLoginWidth(screenWidth);
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).requestFocus(FocusNode()),
       child: ModalProgressHUD(
         inAsyncCall: showSpinner,
-        child: SafeArea(
-          child: Scaffold(
-            key: _scaffoldKey,
-            backgroundColor: Colors.white,
-            body: Padding(
-              padding: EdgeInsets.symmetric(vertical: 0, horizontal: isMobile),
-              child: Center(
+        child: Scaffold(
+          backgroundColor: Colors.white,
+          body: Center(
+            child: SingleChildScrollView(
+              child: Container(
+                width: contentWidth,
+                padding: EdgeInsets.symmetric(
+                  horizontal: AppSizes.getHorizontalPadding(screenWidth),
+                  vertical: AppSizes.getVerticalPadding(screenHeight),
+                ),
                 child: Form(
                   key: formKey,
-                  child: SingleChildScrollView(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          SizedBox(height: h * 0.05),
-                          Hero(
-                            tag: 'logo',
-                            child: SizedBox(
-                              width: _focusMail.hasFocus || _focusPW.hasFocus
-                                  ?w * isHero*mobileFactor
-                                  : w * isHero*mobileFactor,
-                              child: Image.asset('images/logo2.png', fit: BoxFit.cover),
-                            ),
-                          ),
-                          SizedBox(height: h * 0.05),
-                          AutofillGroup(
-                            child: Column(
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                  child: TextFormField(
-                                    validator: (value) =>
-                                    value!.isEmpty ? 'emptyMail'.tr : null,
-                                    style: TextStyle(
-                                        fontSize: h * 0.02, color: Colors.black),
-                                    textAlign: TextAlign.center,
-                                    keyboardType: TextInputType.emailAddress,
-                                    autofillHints: const [AutofillHints.email],
-                                    onChanged: (value) {
-                                      email = value;
-                                    },
-                                    focusNode: _focusMail,
-                                    decoration: kTextFieldDecoration.copyWith(
-                                      contentPadding:
-                                      EdgeInsets.fromLTRB(0, h * 0.01, 0, h * 0.01),
-                                      hintText: 'mail'.tr,
-                                      hintStyle: const TextStyle(color: Colors.black),
-                                      icon: Icon(Icons.mail, size: h * 0.03,color: primaryAppColor,),
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(height: h * 0.03),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                  child: TextFormField(
-                                    validator: (value) => value!.length < 6
-                                        ? 'passwordError'.tr
-                                        : null,
-                                    obscureText: _obscureText,
-                                    style: TextStyle(
-                                        fontSize: h * 0.02, color: Colors.black),
-                                    textAlign: TextAlign.center,
-                                    autofillHints: const [AutofillHints.password],
-                                    onEditingComplete: () =>
-                                        TextInput.finishAutofillContext(),
-                                    onChanged: (value) {
-                                      password = value;
-                                    },
-                                    focusNode: _focusPW,
-                                    decoration: kTextFieldDecoration.copyWith(
-                                      contentPadding:
-                                      EdgeInsets.fromLTRB(0, h * 0.01, 0, h * 0.01),
-                                      hintText: 'password'.tr,
-                                      hintStyle: const TextStyle(color: Colors.black),
-                                      icon: GestureDetector(
-                                        onTap: () {
-                                          setState(() {
-                                            _obscureText = !_obscureText;
-                                          });
-                                        },
-                                        child: Icon(
-                                          Icons.remove_red_eye_outlined,
-                                          size: h * 0.03,
-                                          color: primaryAppColor,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          SizedBox(height: h * 0.01),
-                          Text(
-                            error,
-                            style: TextStyle(color: Colors.red, fontSize: h * 0.02),
-                          ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                child: ReusableCardTouch(
-                                  touched: true,
-                                  colour: primaryAppColor,
-                                  cardChild: Padding(
-                                    padding: EdgeInsets.fromLTRB(w * 0.01, 0, w * 0.01, 0),
-                                    child: Row(
-                                      children: <Widget>[
-                                        Icon(Icons.login, color: whiteColour, size: h * 0.03),
-                                        Padding(
-                                          padding: EdgeInsets.all(h * 0.01),
-                                          child: Text(
-                                            'loginButton'.tr,
-                                            style: labelButtons.copyWith(
-                                                fontSize: h * textFactor20,
-                                                color: whiteColour),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  onPress: () async {
-                                    setState(() {
-                                      showSpinner = true;
-                                    });
-                                    await login(context);
-                                    setState(() {
-                                      showSpinner = false;
-                                    });
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: h * 0.05),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              GestureDetector(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(15.0),
-                                  child: Text(
-                                    'forget'.tr,
-                                    style: TextStyle(
-                                        color: Colors.black,
-                                        fontSize: h * 0.015,
-                                        fontWeight: FontWeight.w300),
-                                  ),
-                                ),
-                                onTap: () {
-                                  Navigator.pushReplacementNamed(context, ForgetScreen.id);
-                                },
-                              ),
-                              GestureDetector(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(15.0),
-                                  child: Text(
-                                    'register'.tr,
-                                    style: TextStyle(
-                                        color: Colors.black,
-                                        fontSize: h * 0.015,
-                                        fontWeight: FontWeight.w300),
-                                  ),
-                                ),
-                                onTap: () {
-                                  Navigator.pushNamed(context, RegistrationScreen.id);
-                                },
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: h * 0.02),
-                        ],
-                      ),
-                    ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildLogo(screenWidth),
+                      SizedBox(height: screenHeight * 0.04),
+                      _buildLoginFields(),
+                      SizedBox(height: screenHeight * 0.02),
+                      if (error.isNotEmpty) _buildErrorText(),
+                      SizedBox(height: screenHeight * 0.03),
+                      _buildLoginButton(),
+                      SizedBox(height: screenHeight * 0.04),
+                      _buildBottomLinks(),
+                    ],
                   ),
                 ),
               ),
@@ -277,9 +106,155 @@ class LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Future<void> login(context) async {
+  Widget _buildLogo(double screenWidth) {
+    double logoSize = ResponsiveLayout.getLogoSize(screenWidth);
+    bool isFocused = _focusMail.hasFocus || _focusPW.hasFocus;
+
+    return Hero(
+      tag: 'logo',
+      child: SizedBox(
+        width: isFocused ? logoSize * 0.8 : logoSize,
+        child: Image.asset(
+          'images/tonewood_logo.png',
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoginFields() {
+    return Column(
+      children: [
+        _buildTextField(
+          focusNode: _focusMail,
+          hintText: 'mail'.tr,
+          icon: Icons.mail,
+          isPassword: false,
+          onChanged: (value) => email = value,
+          validator: (value) => value!.isEmpty ? 'emptyMail'.tr : null,
+          autofillHints: const [AutofillHints.email],
+        ),
+        SizedBox(height: AppSizes.h * 0.02),
+        _buildTextField(
+          focusNode: _focusPW,
+          hintText: 'password'.tr,
+          icon: Icons.remove_red_eye_outlined,
+          isPassword: true,
+          onChanged: (value) => password = value,
+          validator: (value) => value!.length < 6 ? 'passwordError'.tr : null,
+          autofillHints: const [AutofillHints.password],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextField({
+    required FocusNode focusNode,
+    required String hintText,
+    required IconData icon,
+    required bool isPassword,
+    required Function(String) onChanged,
+    required String? Function(String?) validator,
+    List<String>? autofillHints,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: TextFormField(
+        focusNode: focusNode,
+        obscureText: isPassword ? _obscureText : false,
+        style: TextStyle(fontSize: AppSizes.h * 0.02, color: Colors.black),
+        textAlign: TextAlign.center,
+        autofillHints: autofillHints,
+        onChanged: onChanged,
+        validator: validator,
+        decoration: kTextFieldDecoration.copyWith(
+          hintText: hintText,
+          hintStyle: const TextStyle(color: Colors.black54),
+          icon: isPassword
+              ? GestureDetector(
+            onTap: () => setState(() => _obscureText = !_obscureText),
+            child: Icon(icon, size: AppSizes.h * 0.03, color: primaryAppColor),
+          )
+              : Icon(icon, size: AppSizes.h * 0.03, color: primaryAppColor),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorText() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Text(
+        error,
+        style: TextStyle(
+          color: Colors.red,
+          fontSize: AppSizes.h * 0.02,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoginButton() {
+    return ReusableCardTouch(
+      touched: true,
+      colour: primaryAppColor,
+      cardChild: Padding(
+        padding: EdgeInsets.symmetric(horizontal: AppSizes.w * 0.02),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.login, color: whiteColour, size: AppSizes.h * 0.03),
+            Padding(
+              padding: EdgeInsets.all(AppSizes.h * 0.01),
+              child: Text(
+                'loginButton'.tr,
+                style: labelButtons.copyWith(
+                  fontSize: AppSizes.h * textFactor20,
+                  color: whiteColour,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      onPress: () => _handleLogin(),
+    );
+  }
+
+  Widget _buildBottomLinks() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        _buildLink('forget'.tr, () => Navigator.pushReplacementNamed(context, ForgetScreen.id)),
+        _buildLink('register'.tr, () => Navigator.pushNamed(context, RegistrationScreen.id)),
+      ],
+    );
+  }
+
+  Widget _buildLink(String text, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(15.0),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: AppSizes.h * 0.015,
+            fontWeight: FontWeight.w300,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleLogin() async {
+    setState(() => showSpinner = true);
+
     if (formKey.currentState!.validate()) {
       dynamic result = await _auth2.signInWithEmailAndPassword(email, password);
+
       if (result == null) {
         SharedPreferences pref = await SharedPreferences.getInstance();
         pref.setBool("isLogin", false);
@@ -291,5 +266,7 @@ class LoginScreenState extends State<LoginScreen> {
         Navigator.pushReplacementNamed(context, LoginScreen.id);
       }
     }
+
+    setState(() => showSpinner = false);
   }
 }
