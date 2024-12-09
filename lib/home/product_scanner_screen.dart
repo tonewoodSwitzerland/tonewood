@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../components/product_cart.dart';
 import '../constants.dart';
 
 class ScannerScreen extends StatefulWidget {
@@ -76,7 +77,6 @@ class ScannerScreenState extends State<ScannerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -101,22 +101,20 @@ class ScannerScreenState extends State<ScannerScreen> {
                       ),
                       const SizedBox(height: 16),
                       const Text(
-                        'Tippe hier, um den Scanner zu starten.',
-                        style: TextStyle(fontSize: 16),
+                          'Tippe hier, um den Scanner zu starten.',
+                          style: smallHeadline
                       ),
                     ],
                   ),
                 ),
               )
             else if (isLoading)
-            // Loading indicator
               const Expanded(
                 child: Center(
                   child: CircularProgressIndicator(),
                 ),
               )
             else if (scannedProduct != null)
-              // Product info
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
@@ -125,37 +123,30 @@ class ScannerScreenState extends State<ScannerScreen> {
                       children: [
                         Card(
                           child: Padding(
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(16.0),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: [
-                                    const Icon(Icons.qr_code),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Barcode: $lastScannedBarcode',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                                _buildInfoRow('Artikelnummer', lastScannedBarcode),
+                                _buildInfoRow('Produkt', scannedProduct!['product_name']),
                                 const Divider(),
-                                _buildInfoRow('Produkt', scannedProduct!['product']),
-                                _buildInfoRow('Instrument', scannedProduct!['instrument']),
-                                _buildInfoRow('Bauteil', scannedProduct!['part']),
-                                _buildInfoRow('Holzart', scannedProduct!['wood_type']),
-                                _buildInfoRow('Größe', scannedProduct!['size']),
-                                _buildInfoRow('Qualität', scannedProduct!['quality']),
-                                _buildInfoRow('Bestand', scannedProduct!['quantity']?.toString() ?? '0'),
-                                _buildInfoRow('Preis CHF', '${scannedProduct!['price_CHF']} CHF'),
+                                _buildInfoRow('Instrument', '${scannedProduct!['instrument_name']} (${scannedProduct!['instrument_code']})'),
+                                _buildInfoRow('Bauteil', '${scannedProduct!['part_name']} (${scannedProduct!['part_code']})'),
+                                _buildInfoRow('Holzart', '${scannedProduct!['wood_name']} (${scannedProduct!['wood_code']})'),
+                                _buildInfoRow('Qualität', '${scannedProduct!['quality_name']} (${scannedProduct!['quality_code']})'),
+                                _buildInfoRow('Jahrgang', '20${scannedProduct!['year']}'),
                                 const Divider(),
                                 _buildBooleanRow('Thermobehandelt', scannedProduct!['thermally_treated'] ?? false),
                                 _buildBooleanRow('Haselfichte', scannedProduct!['haselfichte'] ?? false),
                                 _buildBooleanRow('Mondholz', scannedProduct!['moonwood'] ?? false),
                                 _buildBooleanRow('FSC 100%', scannedProduct!['FSC_100'] ?? false),
+                                const Divider(),
+                                _buildInfoRow('Bestand', '${scannedProduct!['quantity']} ${scannedProduct!['unit']}'),
+                                _buildInfoRow('Preis', '${scannedProduct!['price_CHF']} CHF'),
+                                if (scannedProduct!['is_special'] == true) ...[
+                                  const Divider(),
+                                  _buildInfoRow('Spezialprodukt', scannedProduct!['custom_name']),
+                                ],
                               ],
                             ),
                           ),

@@ -1,3 +1,7 @@
+import 'dart:io';
+
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:tonewood/services/firebase_options.dart';
@@ -5,29 +9,63 @@ import 'package:tonewood/services/languages.dart';
 
 import 'authenticate/forget_screen.dart';
 import 'authenticate/registration_screen.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter_sizer/flutter_sizer.dart';
 import 'package:get/get.dart';
 import '/../constants.dart';
 import 'authenticate/login_screen.dart';
 import '/../home/start_screen.dart';
 import 'package:feedback/feedback.dart';
-
-
-
+// Global variable for Functions instance
+// Global variable for Functions instance
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (kIsWeb) {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-  } else {
-    await Firebase.initializeApp();
-  }
+  await Firebase.initializeApp();
+   FirebaseFunctions.instanceFor(region: 'europe-west1');
+  //try {q
 
-  runApp(
-          MyApp());
-}
+    // if (kDebugMode) {
+    //   final functions = FirebaseFunctions.instanceFor(region: 'europe-west1');
+    //   functions.useFunctionsEmulator('192.168.178.40', 5001);
+    // }
+ // } catch (e) {
+  //  print('Initialization error: $e');
+ // }
+
+ //  WidgetsFlutterBinding.ensureInitialized();
+ //   await Firebase.initializeApp();
+ // // await Firebase.initializeApp(
+ //  // options: DefaultFirebaseOptions.currentPlatform,  );
+ //
+ //  // Setze die Region für Cloud Functions
+ //
+ //  FirebaseFunctions.instanceFor(region: 'europe-west1');
+ //
+ //  if (kDebugMode) {
+ //    try {
+ //      FirebaseFunctions.instance.useFunctionsEmulator('localhost', 5001);
+ //      print('Connected to Firebase Functions emulator');
+ //    } catch (e) {
+ //      print('Error connecting to emulator: $e');
+ //    }
+ //  }
+
+
+
+  runApp(           MyApp()); }
+// Future<void> main() async {
+//   WidgetsFlutterBinding.ensureInitialized();
+//   if (kIsWeb) {
+//     await Firebase.initializeApp(
+//       options: DefaultFirebaseOptions.currentPlatform,
+//     );
+//   } else {
+//     await Firebase.initializeApp();
+//   }
+//
+//   runApp(
+//           MyApp());
+// }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});

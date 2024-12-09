@@ -6,6 +6,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../components/reusable_cart.dart';
 
 import '../constants.dart';
+import '../services/create_database_data.dart';
 
 
 
@@ -19,18 +20,19 @@ const AdminForm({super.key,});
 class AdminFormState extends State<AdminForm> {
 
   Future<void> _updateData() async {
+    final uploadService = FirebaseUploadService(); // Instanz erstellen
+    await uploadService.uploadAllMasterData();
 
-
-   QuerySnapshot snapshot2 = await FirebaseFirestore.instance.collection('companies').doc('100').collection('packages').get();
-   snapshot2.docs.forEach((document) async {
-
-      if(document.exists) {
-
-        FirebaseFirestore.instance.collection('companies').doc('100').collection('packages').doc(document.id).set({'Id27': "Nein"}, SetOptions(merge:true));
-
- }
-
- });
+ //   QuerySnapshot snapshot2 = await FirebaseFirestore.instance.collection('companies').doc('100').collection('packages').get();
+ //   snapshot2.docs.forEach((document) async {
+ //
+ //      if(document.exists) {
+ //
+ //        FirebaseFirestore.instance.collection('companies').doc('100').collection('packages').doc(document.id).set({'Id27': "Nein"}, SetOptions(merge:true));
+ //
+ // }
+ //
+ // });
 
   }
 
@@ -62,7 +64,7 @@ class AdminFormState extends State<AdminForm> {
 
                     SizedBox(height: w*0.08),
                     ReusableCardTouch( cardChild: Row(mainAxisAlignment: MainAxisAlignment.center, children: <Widget>[
-                      FaIcon(FontAwesomeIcons.cloudArrowUp, color: lighterBlackColour, size: SizeConfig.blockSizeHorizontal * 6,),
+                      FaIcon(FontAwesomeIcons.cloudArrowUp, color: lighterBlackColour, size: 30,),
                       Padding(padding: const EdgeInsets.all(6), child: Text('Update', style: TextStyle(fontSize:  0.05*w, fontWeight: FontWeight.w400, color: lighterBlackColour,)),)
                     ],),
                       colour: Colors.black12,

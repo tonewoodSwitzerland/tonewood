@@ -7,13 +7,13 @@ import '../constants.dart';
 void showPrinterScreenSettingsDialog(BuildContext context) async {
   bool saveOldData = false;
   // Abrufen der aktuellen Einstellungen aus der Datenbank
-  DocumentSnapshot<Map<String, dynamic>> settingsSnapshot = await FirebaseFirestore.instance.collection('companies').doc('100').get();
-
-  if (settingsSnapshot.exists) {
-    saveOldData = settingsSnapshot.data()?['clearPrinterValuesAfterInput'] ?? false;
-
-  }
-
+  //DocumentSnapshot<Map<String, dynamic>> settingsSnapshot = await FirebaseFirestore.instance.collection('companies').doc('100').get();
+  //
+  // if (settingsSnapshot.exists) {
+  //   saveOldData = settingsSnapshot.data()?['clearPrinterValuesAfterInput'] ?? false;
+  //
+  // }
+  //
 
   showDialog(
     context: context,
@@ -32,14 +32,14 @@ void showPrinterScreenSettingsDialog(BuildContext context) async {
                     child: Column(
                       children: [
                         SwitchListTile(
-                          title: const Text('Daten nach Erstellung löschen', style: smallestHeadline),
+                          title: const Text('Platzhalter', style: smallestHeadline),
                           value: saveOldData,
                           onChanged: (bool value) async {
                             setState(() {
                               saveOldData = value;
                             });
 
-                            await FirebaseFirestore.instance.collection('companies').doc('100').set({'clearPrinterValuesAfterInput': saveOldData}, SetOptions(merge: true));
+                      //      await FirebaseFirestore.instance.collection('companies').doc('100').set({'clearPrinterValuesAfterInput': saveOldData}, SetOptions(merge: true));
                           },
                         ),
 

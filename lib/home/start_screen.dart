@@ -7,6 +7,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:tonewood/home/calculator_screen.dart';
+import 'package:tonewood/general_data_screen/general_data_screen.dart';
+import 'package:tonewood/home/printer_screen.dart';
+import 'package:tonewood/home/sales_history_screen.dart';
+import 'package:tonewood/home/stock_entry_screen.dart';
 
 import '../components/admin_form.dart';
 import '../components/circular_avatar_shadowed.dart';
@@ -19,6 +24,7 @@ import '../home/warehouse_screen.dart';
 import '../home/product_management_screen.dart';
 import '../home/sales_screen.dart';
 import '../home/product_scanner_screen.dart';
+import 'analytics_screen2.dart';
 
 class StartScreen extends StatefulWidget {
   static String id = 'start_screen';
@@ -64,23 +70,28 @@ class StartScreenState extends State<StartScreen> {
 
   List<Widget> _getScreens() {
     final screens = [
-      if (PlatformInfo.isMobilePlatform)
-        ScannerScreen(key: UniqueKey()),
+    //  if (PlatformInfo.isMobilePlatform)
+     //   ScannerScreen(key: UniqueKey()),
       WarehouseScreen(key: UniqueKey()),
       ProductManagementScreen(key: UniqueKey()),
       SalesScreen(key: UniqueKey()),
+    //  GeneralDataScreen(key: UniqueKey()),
+     PrinterScreen(key: UniqueKey()),
+     // SalesHistoryScreen(key: UniqueKey()),
+      AnalyticsScreen(key: UniqueKey()),
+    // StockEntryScreen(key: UniqueKey()),
     ];
     return screens;
   }
 
   List<BottomNavigationBarItem> _getNavigationItems() {
     return [
-      if (PlatformInfo.isMobilePlatform)
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.document_scanner_outlined, color: Colors.black87),
-          activeIcon: Icon(Icons.document_scanner_outlined, color: primaryAppColor),
-          label: "",
-        ),
+      //if (PlatformInfo.isMobilePlatform)
+      //   const BottomNavigationBarItem(
+      //     icon: Icon(Icons.document_scanner_outlined, color: Colors.black87),
+      //     activeIcon: Icon(Icons.document_scanner_outlined, color: primaryAppColor),
+      //     label: "",
+      //   ),
       const BottomNavigationBarItem(
         icon: Icon(Icons.search, color: Colors.black87),
         activeIcon: Icon(Icons.search, color: primaryAppColor),
@@ -94,6 +105,26 @@ class StartScreenState extends State<StartScreen> {
         icon:  FaIcon(FontAwesomeIcons.tree),
         label: "",
       ),
+      // const BottomNavigationBarItem(
+      //   icon:  Icon(Icons.settings, color: Colors.black87),
+      //   label: "",
+      // ),
+      const BottomNavigationBarItem(
+        icon:  Icon(Icons.print, color: Colors.black87),
+        label: "",
+      ),
+      // const BottomNavigationBarItem(
+      //   icon:  Icon(Icons.history, color: Colors.black87),
+      //   label: "",
+      // ),
+      const BottomNavigationBarItem(
+        icon:  Icon(Icons.bar_chart, color: Colors.black87),
+        label: "",
+      ),
+      // const BottomNavigationBarItem(
+      //   icon:  Icon(Icons.print, color: Colors.black87),
+      //   label: "",
+      // ),
     ];
   }
 
@@ -202,6 +233,25 @@ class StartScreenState extends State<StartScreen> {
           children: [
             _buildFeedbackButton(),
             _buildLogo(),
+            Expanded(
+              flex: 2,
+              child: Center(
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.settings,
+                    color: Colors.black87,
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => GeneralDataScreen(key: UniqueKey()),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
             _buildProfileAvatar(photoPic),
           ],
         );
