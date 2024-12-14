@@ -580,6 +580,34 @@ print("sB:$searchBarcode");
     );
   }
 
+  void _navigateToNewProduct(BuildContext context) {
+    if (kIsWeb) {
+      // Für Web: Verwende verzögerte Navigation
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => Scaffold(
+              body: AddProductScreen(
+                editMode: false,
+                isProduction: true,
+              ),
+            ),
+          ),
+        );
+      });
+    } else {
+      // Für mobile Plattformen: Direkte Navigation
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AddProductScreen(
+            editMode: false,
+            isProduction: true,
+          ),
+        ),
+      );
+    }
+  }
   Widget _buildDesktopLayout() {
     return Row(
       children: [
@@ -625,13 +653,13 @@ print("sB:$searchBarcode");
                       onTap: () => setState(() => selectedAction = 'bearbeiten'),
                       isSelected: selectedAction == 'bearbeiten',
                     ),
-                    _buildActionButton(
-                      icon: Icons.add_circle_outline,
-                      title: 'Neues Produkt',
-                      subtitle: 'Produkt erstellen',
-                      onTap: () => setState(() => selectedAction = 'neu'),  // Geändert
-                      isSelected: selectedAction == 'neu',
-                    ),
+                _buildActionButton(
+                  icon: Icons.add_circle_outline,
+                  title: 'Neues Produkt',
+                  subtitle: 'Produkt erstellen',
+                  onTap: () => _navigateToNewProduct(context),
+                  isSelected: selectedAction == 'neu',
+                ),
                     _buildActionButton(
                       icon: Icons.forest,
                       title: 'Einschnitt Rundholz',
@@ -731,7 +759,7 @@ print("sB:$searchBarcode");
         return _buildRundholzPanel();
       default:
         return const Center(
-          child: Text('Bitte wählen Sie eine Aktion aus'),
+          child: Text('Bitte wähle eine Aktion aus'),
         );
     }
   }
@@ -741,8 +769,6 @@ print("sB:$searchBarcode");
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-
-
           const Text(
             'Produktion buchen',
             style: TextStyle(
@@ -750,8 +776,6 @@ print("sB:$searchBarcode");
               fontWeight: FontWeight.bold,
             ),
           ),
-
-
           const SizedBox(height: 24),
           Card(
             child: Padding(
@@ -760,15 +784,34 @@ print("sB:$searchBarcode");
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextFormField(
-                    controller: barcodeController,
-                    decoration: const InputDecoration(
-                      labelText: 'Barcode',
-                      border: OutlineInputBorder(),
-                      helperText: 'Geben Sie den Barcode des Produkts ein',
-                    ),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: barcodeController,
+                          decoration: const InputDecoration(
+                            labelText: 'Barcode',
+                            border: OutlineInputBorder(),
+                            helperText: 'Gib den Barcode des Produkts ein',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Column(
+                        children: [
+                          // IconButton(
+                          //   onPressed: () => _scanBarcode(),
+                          //   icon: const Icon(Icons.qr_code_scanner),
+                          //   tooltip: 'Barcode scannen',
+                          // ),
+                          IconButton(
+                            onPressed: _showProductionSearchDialog,
+                            icon: const Icon(Icons.search),
+                            tooltip: 'Produkte durchsuchen',
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
@@ -783,9 +826,155 @@ print("sB:$searchBarcode");
               ),
             ),
           ),
-
         ],
       ),
+    );
+  }
+
+  void _showProductionSearchDialog() {
+    final searchController = TextEditingController();
+    String searchTerm = '';
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              child: Container(
+                width: 900,
+                height: MediaQuery.of(context).size.height * 0.8,
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Produkte durchsuchen',
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: searchController,
+                      decoration: const InputDecoration(
+                        labelText: 'Suchen',
+                        prefixIcon: Icon(Icons.search),
+                        border: OutlineInputBorder(),
+                        helperText: 'Suche nach Artikelnummer, Produkt, Instrument oder Holzart',
+                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          searchTerm = value.toLowerCase();
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('production')
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return Center(
+                              child: Text('Fehler: ${snapshot.error}'),
+                            );
+                          }
+
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+
+                          final docs = snapshot.data?.docs ?? [];
+                          final filteredDocs = docs.where((doc) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            return doc.id.toLowerCase().contains(searchTerm) ||
+                                (data['product_name']?.toString().toLowerCase() ?? '').contains(searchTerm) ||
+                                (data['instrument_name']?.toString().toLowerCase() ?? '').contains(searchTerm) ||
+                                (data['wood_name']?.toString().toLowerCase() ?? '').contains(searchTerm) ||
+                                (data['quality_name']?.toString().toLowerCase() ?? '').contains(searchTerm);
+                          }).toList();
+
+                          if (filteredDocs.isEmpty) {
+                            return const Center(
+                              child: Text('Keine Produkte gefunden'),
+                            );
+                          }
+
+                          return SingleChildScrollView(
+                            child: DataTable(
+                              showCheckboxColumn: false,  // Entfernt die Checkbox-Spalte
+                              columns: const [
+                                DataColumn(label: Text('Artikelnummer')),
+                                DataColumn(label: Text('Produkt')),
+                                DataColumn(label: Text('Instrument')),
+                                DataColumn(label: Text('Holzart')),
+                                DataColumn(label: Text('Qualität')),
+                                DataColumn(label: Text('')),
+                              ],
+                              rows: filteredDocs.map((doc) {
+                                final data = doc.data() as Map<String, dynamic>;
+                                return DataRow(
+                                  cells: [
+                                    DataCell(Text(doc.id)),
+                                    DataCell(Text(data['product_name'] ?? '')),
+                                    DataCell(Text(data['instrument_name'] ?? '')),
+                                    DataCell(Text(data['wood_name'] ?? '')),
+                                    DataCell(Text(data['quality_name'] ?? '')),
+                                    DataCell(
+                                      IconButton(
+                                        icon: const Icon(Icons.add_circle_outline),
+                                        onPressed: () async {
+                                          try {
+                                            Navigator.pop(context);
+                                            await _checkProductAndShowQuantity(doc.id);
+                                          } catch (e) {
+                                            if (!mounted) return;
+                                            AppToast.show(
+                                              message: 'Fehler beim Laden des Produkts: $e',
+                                              height: h,
+                                            );
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                  onSelectChanged: (selected) async {
+                                    if (selected == true) {
+                                      try {
+                                        Navigator.pop(context);
+                                        await _checkProductAndShowQuantity(doc.id);
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        AppToast.show(
+                                          message: 'Fehler beim Laden des Produkts: $e',
+                                          height: h,
+                                        );
+                                      }
+                                    }
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -815,7 +1004,7 @@ print("sB:$searchBarcode");
                     decoration: const InputDecoration(
                       labelText: 'Barcode',
                       border: OutlineInputBorder(),
-                      helperText: 'Geben Sie den Barcode des zu bearbeitenden Produkts ein',
+                      helperText: 'Gib den Barcode des zu bearbeitenden Produkts ein',
                     ),
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -1067,7 +1256,7 @@ print("sB:$searchBarcode");
         return AlertDialog(
           title: const Text('Löschen bestätigen'),
           content: const Text(
-              'Möchten Sie diesen Rundholz-Eintrag wirklich löschen?'),
+              'Möchtest du diesen Rundholz-Eintrag wirklich löschen?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),

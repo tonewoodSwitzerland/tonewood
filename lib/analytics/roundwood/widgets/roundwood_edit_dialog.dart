@@ -876,7 +876,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
           ],
         ),
         content: Text(
-          'Möchten Sie das Rundholz ${widget.item.internalNumber} wirklich löschen? '
+          'Möchtest du das Rundholz ${widget.item.internalNumber} wirklich löschen? '
               'Diese Aktion kann nicht rückgängig gemacht werden.',
         ),
         actions: [
@@ -943,13 +943,13 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
       try {
         // Validiere Pflichtfelder
         if (editedData['wood_type'] == null) {
-          throw 'Bitte wählen Sie eine Holzart aus';
+          throw 'Bitte wähle eine Holzart aus';
         }
         if (editedData['quality'] == null) {
-          throw 'Bitte wählen Sie eine Qualität aus';
+          throw 'Bitte wähle eine Qualität aus';
         }
         if (editedData['volume'] == null || editedData['volume'] <= 0) {
-          throw 'Bitte geben Sie ein gültiges Volumen ein';
+          throw 'Bitte gib ein gültiges Volumen ein';
         }
 
         // Aktualisiere Zeitstempel
@@ -1007,7 +1007,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
 
       } catch (e) {
         // Zeige Fehlermeldung
-        AppToast.show(message: "Fehler beim Speichern. Bitte überprüfen Sie Ihre Eingaben.", height: h);
+        AppToast.show(message: "Fehler beim Speichern. Bitte überprüfe deine Eingaben.", height: h);
 
       }
     }

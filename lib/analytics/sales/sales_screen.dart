@@ -92,7 +92,9 @@ class SalesScreenState extends State<SalesScreen> with SingleTickerProviderState
     }
   }
   @override
+
   Widget build(BuildContext context) {
+    print("test:${_activeFilter.parts}");
     return Column(
       children: [
         Container(

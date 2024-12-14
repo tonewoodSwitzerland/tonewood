@@ -1,4 +1,3 @@
-import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -795,7 +794,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                           if (quantity <= 0) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('Bitte geben Sie eine gültige Menge ein'),
+                                content: Text('Bitte gib eine gültige Menge ein'),
                                 backgroundColor: Colors.orange,
                               ),
                             );
@@ -1524,7 +1523,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       stream: buildQuery().snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
+          print(snapshot.error);
           return const Center(child: Text('Ein Fehler ist aufgetreten'));
+
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -1766,16 +1767,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     required List<String> selectedValues,
     required Function(List<String>) onChanged,
   }) {
-    String getNameForCode(String code) {
-      try {
-        final doc = options.firstWhere(
-              (doc) => (doc.data() as Map<String, dynamic>)['code'] == code,
-        );
-        return (doc.data() as Map<String, dynamic>)['name'] as String;
-      } catch (e) {
-        return code; // Fallback zum Code falls kein Name gefunden wird
-      }
-    }
+
 
     return Material(
       color: Colors.transparent,
@@ -2051,17 +2043,16 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           OutlinedButton(
-                            child: const Text('Abbrechen'),
                             onPressed: () => Navigator.of(context).pop(),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.grey[700],
                               side: BorderSide(color: Colors.grey[300]!),
                               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             ),
+                            child: const Text('Abbrechen'),
                           ),
                           const SizedBox(width: 12),
                           ElevatedButton(
-                            child: const Text('Anwenden'),
                             onPressed: () {
                               this.setState(() {});
                               Navigator.of(context).pop();
@@ -2071,6 +2062,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                             ),
+                            child: const Text('Anwenden'),
                           ),
                         ],
                       ),

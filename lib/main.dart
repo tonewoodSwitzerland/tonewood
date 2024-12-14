@@ -1,10 +1,10 @@
-import 'dart:io';
 
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:device_info_plus/device_info_plus.dart';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:tonewood/services/firebase_options.dart';
+
 import 'package:tonewood/services/languages.dart';
 
 import 'authenticate/forget_screen.dart';
@@ -20,7 +20,9 @@ import 'package:feedback/feedback.dart';
 // Global variable for Functions instance
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
    FirebaseFunctions.instanceFor(region: 'europe-west1');
   //try {q
 

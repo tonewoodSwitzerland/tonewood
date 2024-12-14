@@ -111,15 +111,15 @@ class StartScreenState extends State<StartScreen> {
       // ),
       const BottomNavigationBarItem(
         icon:  Icon(Icons.print, color: Colors.black87),
-        label: "",
+        label: "Barcodes",
       ),
       // const BottomNavigationBarItem(
       //   icon:  Icon(Icons.history, color: Colors.black87),
       //   label: "",
       // ),
-      const BottomNavigationBarItem(
-        icon:  Icon(Icons.bar_chart, color: Colors.black87),
-        label: "",
+   const BottomNavigationBarItem(
+        icon:  Icon(Icons.analytics_sharp, color: Colors.black87),
+        label: "Analyse",
       ),
       // const BottomNavigationBarItem(
       //   icon:  Icon(Icons.print, color: Colors.black87),
@@ -236,7 +236,20 @@ class StartScreenState extends State<StartScreen> {
             Expanded(
               flex: 2,
               child: Center(
-                child: IconButton(
+                child:
+                    kIsWeb?
+                        GestureDetector(
+
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => GeneralDataScreen(key: UniqueKey()),
+                              ),
+                            );
+                          },
+                            child: Text("Infos",style: smallHeadline,)):
+                IconButton(
                   icon: const Icon(
                     Icons.settings,
                     color: Colors.black87,

@@ -899,7 +899,7 @@ class FairManagementScreenState extends State<FairManagementScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Möchten Sie die folgende Messe wirklich löschen?',
+              'Möchtest du die folgende Messe wirklich löschen?',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.error,
               ),

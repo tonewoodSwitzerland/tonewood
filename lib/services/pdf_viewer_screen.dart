@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:pdf/pdf.dart';
+
 import 'package:share_plus/share_plus.dart';
 import 'dart:io' if (dart.library.html) 'dart:html' as html;
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
@@ -16,8 +16,6 @@ import 'package:cross_file/cross_file.dart';
 import 'dart:typed_data';
 import '../services/download_helper_mobile.dart' if (dart.library.html) '../services/download_helper_web.dart';
 
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
-import 'package:syncfusion_flutter_core/theme.dart';
 
 import 'dart:io';
 

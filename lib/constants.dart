@@ -144,7 +144,7 @@ String barcodeData = '';
 
 const primaryAppColor= Color(0xFF0F4A29);
 const secondaryAppColor= Color(0xFF3E9C37);
-final Color lightGrayColor = Color(0xFFF5F5F5);
+final Color lightGrayColor = const Color(0xFFF5F5F5);
 const textColor= Color.fromRGBO(215,149,76,1);
 const blackColor= Color.fromRGBO(39,38,36,1);
 const double borderRadius=10;

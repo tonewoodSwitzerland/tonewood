@@ -4,13 +4,13 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:firebase_core/firebase_core.dart';
+
 import 'package:tonewood/home/warehouse_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:universal_html/html.dart' as html;
+
 import 'package:path_provider/path_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:http/http.dart' as http;
+
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,8 +21,7 @@ import '../services/cost_center.dart';
 import '../services/customer.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'dart:io' if (dart.library.html) 'dart:html' as html;
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+
 import 'package:intl/intl.dart';
 
 import 'package:cross_file/cross_file.dart';
@@ -34,7 +33,7 @@ import '../services/discount.dart';
 import '../services/download_helper_mobile.dart' if (dart.library.html) '../services/download_helper_web.dart';
 import '../services/fair_management_screen.dart';
 import '../services/fairs.dart';
-import '../services/pdf_viewer_screen.dart';
+
 import 'package:csv/csv.dart';
 class SalesScreen extends StatefulWidget {
 const SalesScreen({Key? key}) : super(key: key);
@@ -59,24 +58,13 @@ Map<String, dynamic>? selectedProduct;
   bool sendCsvToCustomer = false;
   bool sendPdfToOffice = true;
   bool sendCsvToOffice = true;
-  //final officeEmail = 'klemmerro@gmail.com'; // Büro-Email-Adresse
-// Stream für den Warenkorb
+
 Stream<QuerySnapshot> get _basketStream => FirebaseFirestore.instance
     .collection('temporary_basket')
     .orderBy('timestamp', descending: true)
     .snapshots();
 
-// Stream für die Gesamtsumme
-Stream<double> get _totalStream => _basketStream.map((snapshot) {
-return snapshot.docs.fold<double>(
-0.0,
-(sum, doc) {
-final data = doc.data() as Map<String, dynamic>;
-return sum +
-(data['quantity'] as int) * (data['price_per_unit'] as double);
-},
-);
-});
+
 
 @override
 Widget build(BuildContext context) {
@@ -454,36 +442,7 @@ return Scaffold(
       .snapshots()
       .map((snapshot) => snapshot.data() ?? {});
 
-  Future<void> _sendEmailViaFunction({
-    required String to,
-    required String subject,
-    required String html,
-    List<Map<String, dynamic>>? attachments,
-  }) async {
-    try {
-      final functions = FirebaseFunctions.instanceFor(region: 'europe-west1');
-      final callable = functions.httpsCallable('sendEmail');
 
-      final result = await callable.call({
-        'to': to,
-        'subject': subject,
-        'html': html,
-        'attachments': attachments,
-      });
-
-      // Optional: Log the email
-      await functions.httpsCallable('logEmail').call({
-        'to': to,
-        'subject': subject,
-        'success': true,
-        'messageId': result.data['messageId'],
-      });
-
-    } catch (e) {
-      print('Error sending email: $e');
-      rethrow;
-    }
-  }
   // Füge diese Methode zur SalesScreenState-Klasse hinzu
   void _showEmailConfigDialog() {
     showDialog(
@@ -540,7 +499,7 @@ return Scaffold(
                                 Container(
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Column(
@@ -594,7 +553,7 @@ return Scaffold(
                                 Container(
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Column(
@@ -921,63 +880,6 @@ return Scaffold(
     }
   }
 
-  Future<void> _sendFormattedEmail({
-    required String recipient,
-    required String subject,
-    required String body,
-    required String receiptId,
-    Uint8List? attachPdf,
-    Uint8List? attachCsv,
-  }) async {
-    try {
-      final attachments = <XFile>[];
-
-      if (attachPdf != null) {
-        final tempDir = await getTemporaryDirectory();
-        final pdfFile = File('${tempDir.path}/Lieferschein_$receiptId.pdf');
-        await pdfFile.writeAsBytes(attachPdf);
-        attachments.add(XFile(pdfFile.path));
-      }
-
-      if (attachCsv != null) {
-        final tempDir = await getTemporaryDirectory();
-        final csvFile = File('${tempDir.path}/Bestellung_$receiptId.csv');
-        await csvFile.writeAsBytes(attachCsv);
-        attachments.add(XFile(csvFile.path));
-      }
-
-      final emailUri = Uri(
-        scheme: 'mailto',
-        path: recipient,
-        queryParameters: {
-          'subject': subject,
-          'body': body,
-        },
-      );
-
-      if (await canLaunchUrl(emailUri)) {
-        await launchUrl(emailUri);
-      } else {
-        throw 'Konnte Email-Client nicht öffnen';
-      }
-
-      // Lösche temporäre Dateien nach 5 Minuten
-      Future.delayed(const Duration(minutes: 5), () async {
-        for (var attachment in attachments) {
-          final file = File(attachment.path);
-          if (await file.exists()) {
-            await file.delete();
-          }
-        }
-      });
-    } catch (e) {
-      print('Fehler beim Email-Versand: $e');
-      rethrow;
-    }
-  }
-
-
-
 
   Stream<Fair?> get _temporaryFairStream => FirebaseFirestore.instance
       .collection('temporary_fair')
@@ -1169,7 +1071,7 @@ return Scaffold(
                                     leading: CircleAvatar(
                                       backgroundColor: isSelected
                                           ? Theme.of(context).colorScheme.primary
-                                          : Theme.of(context).colorScheme.surfaceVariant,
+                                          : Theme.of(context).colorScheme.surfaceContainerHighest,
                                       child: Icon(
                                         Icons.event,
                                         color: isSelected
@@ -1364,7 +1266,7 @@ return Scaffold(
   // Methode zum Anzeigen des Kostenstellen-Dialogs
   void _showCostCenterSelection() {
     final searchController = TextEditingController();
-    final formKey = GlobalKey<FormState>();
+
 
     showDialog(
       context: context,
@@ -1476,7 +1378,7 @@ return Scaffold(
                                 leading: CircleAvatar(
                                   backgroundColor: isSelected
                                       ? Theme.of(context).colorScheme.primary
-                                      : Theme.of(context).colorScheme.surfaceVariant,
+                                      : Theme.of(context).colorScheme.surfaceContainerHighest,
                                   child: Text(
                                     costCenter.code.substring(0, 2),
                                     style: TextStyle(
@@ -1538,155 +1440,7 @@ return Scaffold(
     );
   }
 
-  // Dialog für neue Kostenstelle
-  void _showNewCostCenterDialog(BuildContext context) {
-    final formKey = GlobalKey<FormState>();
-    final codeController = TextEditingController();
-    final nameController = TextEditingController();
-    final descriptionController = TextEditingController();
 
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 500),
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Neue Kostenstelle',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 24),
-                  TextFormField(
-                    controller: codeController,
-                    decoration: const InputDecoration(
-                      labelText: 'Kostenstellen-Nummer *',
-                      helperText: '5-stellige Nummer',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(5),
-                    ],
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Bitte Nummer eingeben';
-                      }
-                      if (value.length != 5) {
-                        return 'Nummer muss 5-stellig sein';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Name *',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) => value?.isEmpty == true
-                        ? 'Bitte Namen eingeben'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: descriptionController,
-                    decoration: const InputDecoration(
-                      labelText: 'Beschreibung',
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 3,
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Abbrechen'),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () async {
-                          if (formKey.currentState?.validate() == true) {
-                            try {
-                              // Prüfe ob Kostenstelle bereits existiert
-                              final existingDoc = await FirebaseFirestore.instance
-                                  .collection('cost_centers')
-                                  .where('code', isEqualTo: codeController.text)
-                                  .get();
-
-                              if (existingDoc.docs.isNotEmpty) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Kostenstelle existiert bereits'),
-                                      backgroundColor: Colors.red,
-                                    ),
-                                  );
-                                }
-                                return;
-                              }
-
-                              final newCostCenter = CostCenter(
-                                id: '',
-                                code: codeController.text,
-                                name: nameController.text,
-                                description: descriptionController.text,
-                                createdAt: DateTime.now(),
-                              );
-
-                              final docRef = await FirebaseFirestore.instance
-                                  .collection('cost_centers')
-                                  .add(newCostCenter.toMap());
-
-                              await _saveTemporaryCostCenter(
-                                CostCenter.fromMap(newCostCenter.toMap(), docRef.id),
-                              );
-
-                              if (mounted) {
-                                Navigator.pop(context); // Schließe Neuerstellung
-                                Navigator.pop(context); // Schließe Auswahl
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Kostenstelle wurde angelegt'),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              print('Fehler beim Anlegen der Kostenstelle: $e');
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Fehler beim Anlegen: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
-                            }
-                          }
-                        },
-                        child: const Text('Speichern'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   Future<String> _getNextReceiptNumber() async {
     try {
@@ -1809,7 +1563,7 @@ return Scaffold(
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
@@ -1837,7 +1591,7 @@ return Scaffold(
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
@@ -1902,7 +1656,7 @@ return Scaffold(
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
@@ -2068,7 +1822,7 @@ return Scaffold(
         leading: CircleAvatar(
           backgroundColor: isSelected
               ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).colorScheme.surfaceVariant,
+              : Theme.of(context).colorScheme.surfaceContainerHighest,
           child: Text(
             customer.company.substring(0, 1).toUpperCase(),
             style: TextStyle(
@@ -2133,7 +1887,7 @@ controller: barcodeController,
 decoration: const InputDecoration(
 labelText: 'Barcode',
 border: OutlineInputBorder(),
-helperText: 'Geben Sie den Barcode des Produkts ein',
+helperText: 'Gib den Barcode des Produkts ein',
 ),
 keyboardType: TextInputType.number,
 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -2460,7 +2214,7 @@ minimumSize: const Size(double.infinity, 48),
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Column(
@@ -2488,7 +2242,7 @@ minimumSize: const Size(double.infinity, 48),
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Column(
@@ -2553,7 +2307,7 @@ minimumSize: const Size(double.infinity, 48),
                         Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Column(
@@ -2725,14 +2479,6 @@ minimumSize: const Size(double.infinity, 48),
     );
   }
 
-// Optional: Hilfsmethode zum Formatieren der PLZ
-  String _formatZipCode(String value) {
-    if (value.length != 4) return value;
-    return value.replaceAllMapped(
-      RegExp(r'(\d{4})'),
-          (match) => '${match[1]}',
-    );
-  }
 
 
   // Stream für den temporären Kunden
@@ -2776,23 +2522,6 @@ minimumSize: const Size(double.infinity, 48),
     }
   }
 
-  // Methode zum Löschen des temporären Kunden
-  Future<void> _clearTemporaryCustomer() async {
-    try {
-      final tempDocs = await FirebaseFirestore.instance
-          .collection('temporary_customer')
-          .get();
-
-      final batch = FirebaseFirestore.instance.batch();
-      for (var doc in tempDocs.docs) {
-        batch.delete(doc.reference);
-      }
-
-      await batch.commit();
-    } catch (e) {
-      print('Fehler beim Löschen des temporären Kunden: $e');
-    }
-  }
 
 // Mobile Aktionsbuttons
   Widget _buildMobileActions() {
@@ -3374,7 +3103,7 @@ backgroundColor: Colors.red,
       if (costCenterSnapshot.docs.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Bitte wählen Sie eine Kostenstelle aus'),
+            content: Text('Bitte wähle eine Kostenstelle aus'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -3400,7 +3129,7 @@ backgroundColor: Colors.red,
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Bitte wählen Sie einen Kunden aus'),
+              content: Text('Bitte wähle einen Kunden aus'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -3772,59 +3501,6 @@ backgroundColor: Colors.red,
     return Uint8List.fromList(bytes);
   }
 
-// Download-Methode für CSV
-  Future<void> _downloadCsv(String receiptId) async {
-    try {
-      setState(() => isLoading = true);
-
-      // Hole CSV-URL aus Firestore
-      final receiptDoc = await FirebaseFirestore.instance
-          .collection('sales_receipts')
-          .doc(receiptId)
-          .get();
-
-      final csvUrl = receiptDoc.data()?['csv_url'] as String?;
-      if (csvUrl == null) throw 'Keine CSV-Datei gefunden';
-
-      if (kIsWeb) {
-        // Web: Direkter Download über URL
-        final anchor = html.AnchorElement(href: csvUrl)
-          ..setAttribute('download', 'Verkauf_$receiptId.csv')
-          ..click();
-      } else {
-        // Mobile: Speichern in Downloads
-        final response = await http.get(Uri.parse(csvUrl));
-        if (response.statusCode != 200) {
-          throw 'Fehler beim Laden der CSV (Status: ${response.statusCode})';
-        }
-
-        final downloadsDir = await getDownloadsDirectory();
-        final file = File('${downloadsDir?.path}/Verkauf_$receiptId.csv');
-        await file.writeAsBytes(response.bodyBytes);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('CSV gespeichert: ${file.path}'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      print('Error downloading CSV: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Herunterladen: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      setState(() => isLoading = false);
-    }
-  }
 
 // Optional: Hilfsmethode für die Analyse der Messeverkäufe
   Future<Map<String, dynamic>> analyzeFairSales(String fairId) async {
@@ -4226,7 +3902,7 @@ backgroundColor: Colors.red,
                   ...items.map((item) {
                     final quantity = item['quantity'] as num? ?? 0;
                     final pricePerUnit = item['price_per_unit'] as num? ?? 0;
-                    final subtotal = quantity * pricePerUnit;
+
                     final discount = item['discount'] as Map<String, dynamic>?;
                     final discountAmount = item['discount_amount'] as num? ?? 0;
                     final total = item['total'] as num? ?? 0;
@@ -4475,60 +4151,6 @@ backgroundColor: Colors.red,
     );
   }
 
-  // Hilfsmethoden für PDF-Generierung
-  pw.Widget _buildPdfCell(
-      String text, {
-        bool isHeader = false,
-        pw.TextAlign align = pw.TextAlign.left,
-        PdfColor? textColor,
-      }) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.all(5),
-      child: pw.Text(
-        text,
-        style: pw.TextStyle(
-          fontSize: 10,
-          fontWeight: isHeader ? pw.FontWeight.bold : null,
-          color: textColor,
-        ),
-        textAlign: align,
-      ),
-    );
-  }
-
-  pw.Widget _buildPdfTotalRow(
-      String label,
-      double amount, {
-        bool isDiscount = false,
-        bool isBold = false,
-        double fontSize = 12,
-      }) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 2),
-      child: pw.Row(
-        children: [
-          pw.Text(
-            label,
-            style: pw.TextStyle(
-              fontSize: fontSize,
-              fontWeight: isBold ? pw.FontWeight.bold : null,
-            ),
-          ),
-          pw.SizedBox(width: 20),
-          pw.Text(
-            isDiscount
-                ? '- ${amount.toStringAsFixed(2)} CHF'
-                : '${amount.toStringAsFixed(2)} CHF',
-            style: pw.TextStyle(
-              fontSize: fontSize,
-              fontWeight: isBold ? pw.FontWeight.bold : null,
-              color: isDiscount ? PdfColors.red : null,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
 
 
@@ -4708,30 +4330,27 @@ Ihr Team''';
   }
 
   Future<String> saveReceiptLocally(Uint8List pdfBytes, String receiptId) async {
-    String filePath="";
+    String filePath = '';
     try {
       final fileName = 'receipt_$receiptId.pdf';
+      final downloadedPath = await DownloadHelper.downloadFile(pdfBytes, fileName);
 
-      if (kIsWeb) {
-        DownloadHelper.downloadFile(pdfBytes, fileName);
-        if (mounted) {
+      if (mounted) {
+        if (kIsWeb) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('PDF wird heruntergeladen...'),
               backgroundColor: Colors.green,
             ),
           );
-        }
-      } else {
-         filePath = await DownloadHelper.downloadFile(pdfBytes, fileName);
-        if (mounted) {
+        } else if (downloadedPath != null) {
+          filePath = downloadedPath;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Gespeichert unter: $filePath'),
               backgroundColor: Colors.green,
             ),
           );
-
         }
       }
     } catch (e) {
@@ -4746,234 +4365,10 @@ Ihr Team''';
     }
     return filePath;
   }
-
   String? encodeQueryParameters(Map<String, String> params) {
     return params.entries
         .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
         .join('&');
-  }
-
-// Angepasster Dialog für den E-Mail-Versand
-  void _showEmailOptionsDialog(String receiptId, Uint8List pdfBytes, String recipientEmail) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('E-Mail-Versand'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Die E-Mail wird an $recipientEmail gesendet.'),
-            const SizedBox(height: 16),
-            const Text(
-              'Es wird Ihr Standard-E-Mail-Programm geöffnet, '
-                  'in dem Sie die E-Mail noch anpassen können.',
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Abbrechen'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _sendReceiptEmail(receiptId, pdfBytes, recipientEmail);
-            },
-            child: const Text('E-Mail vorbereiten'),
-          ),
-        ],
-      ),
-    );
-  }
-
-
-// Eine Hilfsmethode für das Teilen
-  Future<void> _sharePdf(String filePath, String receiptId) async {
-    try {
-      await Share.shareXFiles(
-        [XFile(filePath)],
-        subject: 'Lieferschein Nr. $receiptId',
-      );
-    } catch (e) {
-      print('Share Error: $e');
-      if (!kIsWeb) {
-        // Fallback für ältere Geräte
-        final result = await Share.share(
-          'Lieferschein Nr. $receiptId',
-          subject: 'Lieferschein',
-        );
-        print('Share Result: $result');
-      }
-    }
-  }
-
-
-// Neue Imports
-
-
-  Future<void> _showReceipt(String receiptId) async {
-    try {
-      if (mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext context) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          },
-        );
-      }
-
-      final receiptDoc = await FirebaseFirestore.instance
-          .collection('sales_receipts')
-          .doc(receiptId)
-          .get();
-
-      final pdfUrl = receiptDoc.data()?['pdf_url'] as String?;
-
-      if (pdfUrl == null) {
-        throw 'PDF-URL nicht gefunden';
-      }
-
-      // Download PDF
-      final response = await http.get(Uri.parse(pdfUrl));
-      if (response.statusCode != 200) {
-        throw 'Fehler beim Laden der PDF (Status: ${response.statusCode})';
-      }
-
-      // Speichere PDF temporär
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/receipt_$receiptId.pdf');
-      await tempFile.writeAsBytes(response.bodyBytes);
-
-      if (mounted) {
-        Navigator.pop(context); // Schließe Ladeindikator
-
-        // Zeige Dialog mit Optionen
-        showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: const Text('Lieferschein anzeigen'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.visibility),
-                    title: const Text('Öffnen'),
-                    subtitle: const Text('Im Standard PDF-Viewer öffnen'),
-                    onTap: () async {
-                      Navigator.pop(context);
-                      try {
-                        final fileUri = Uri.parse('content://${tempFile.path}');
-                        await launchUrl(
-                          fileUri,
-                          mode: LaunchMode.externalApplication,
-                        );
-                      } catch (e) {
-                        print('Error opening PDF: $e');
-                        // Fallback: Öffne URL direkt
-                        final webUri = Uri.parse(pdfUrl);
-                        await launchUrl(
-                          webUri,
-                          mode: LaunchMode.externalApplication,
-                        );
-                      }
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.share),
-                    title: const Text('Teilen'),
-                    subtitle: const Text('Per E-Mail oder andere Apps teilen'),
-                    onTap: () async {
-                      Navigator.pop(context);
-                      try {
-                        await Share.shareXFiles(
-                          [XFile(tempFile.path)],
-                          subject: 'Lieferschein Nr. $receiptId',
-                        );
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Fehler beim Teilen: $e'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      }
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.download),
-                    title: const Text('Speichern'),
-                    subtitle: const Text('Auf dem Gerät speichern'),
-                    onTap: () async {
-                      Navigator.pop(context);
-                      try {
-                        final path = await saveReceiptLocally(
-                          response.bodyBytes,
-                          receiptId,
-                        );
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('PDF gespeichert: $path'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                        }
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Fehler beim Speichern: $e'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      }
-                    },
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Schließen'),
-                ),
-              ],
-            );
-          },
-        );
-      }
-
-      // Optional: Lösche temporäre Datei nach einer Weile
-      Future.delayed(const Duration(minutes: 5), () async {
-        if (await tempFile.exists()) {
-          await tempFile.delete();
-        }
-      });
-
-    } catch (e) {
-      print('PDF Error: $e');
-      if (mounted && Navigator.canPop(context)) {
-        Navigator.pop(context);
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 
 Widget _buildSelectedProductInfo() {
@@ -5039,14 +4434,6 @@ Widget _buildCheckoutButton() {
 }
 
 
-// 2. Neue Methoden für die SalesScreenState Klasse:
-
-// Stream für den MwSt-Satz
-  Stream<double> get _vatRateStream => FirebaseFirestore.instance
-      .collection('settings')
-      .doc('default_vat')
-      .snapshots()
-      .map((snapshot) => snapshot.data()?['rate'] ?? 8.1);
 
 // Neue Zustandsvariablen für die Klasse
   double _vatRate = 8.1;

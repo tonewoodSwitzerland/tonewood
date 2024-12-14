@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,13 +12,13 @@ class AddProductScreen extends StatefulWidget {
   final VoidCallback? onSave;
 
   const AddProductScreen({
-    Key? key,
+    super.key,
     required this.editMode,
     required this.isProduction,
     this.barcode,
     this.productData,
     this.onSave,
-  }) : super(key: key);
+  });
 
   @override
   AddProductScreenState createState() => AddProductScreenState();
@@ -67,15 +67,12 @@ class AddProductScreenState extends State<AddProductScreen> {
   @override
   void initState() {
     super.initState();
-    print('AddProductScreen initState'); // Debug
-    print('editMode: ${widget.editMode}'); // Debug
-    print('barcode: ${widget.barcode}'); // Debug
-    print('productData: ${widget.productData}'); // Debug
+
 
     if (widget.editMode && widget.productData != null) {
       // Zuerst die Dropdown-Daten laden
       _loadDropdownData().then((_) {
-        print('Dropdown data loaded, now loading existing data'); // Debug
+
         _loadExistingData();
       });
     } else {
@@ -87,12 +84,12 @@ class AddProductScreenState extends State<AddProductScreen> {
   Future<void> _checkExistingProduct() async {
     if (!mounted) return;
 
-    void _showExistingProductError(String message) {
+    void showExistingProductError(String message) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
           backgroundColor: Colors.red,
-          duration: Duration(seconds: 5),
+          duration: const Duration(seconds: 5),
           action: SnackBarAction(
             label: 'Verstanden',
             textColor: Colors.white,
@@ -119,7 +116,7 @@ class AddProductScreenState extends State<AddProductScreen> {
             if (existingUnit != null && selectedUnit != null && existingUnit != selectedUnit) {
               isUnitMismatch = true;
               unitMismatchMessage = 'Produkt existiert mit der Einheit "$existingUnit"!';
-              _showExistingProductError(unitMismatchMessage!);
+              showExistingProductError(unitMismatchMessage!);
             } else {
               isUnitMismatch = false;
               unitMismatchMessage = null;
@@ -135,7 +132,7 @@ class AddProductScreenState extends State<AddProductScreen> {
               .get();
 
           if (productionDoc.exists) {
-            _showExistingProductError(
+            showExistingProductError(
                 'Diese Produktions-Artikelnummer existiert bereits: $generatedBarcode'
             );
             setState(() {
@@ -145,7 +142,7 @@ class AddProductScreenState extends State<AddProductScreen> {
           }
         }
       } catch (e) {
-        print('Fehler bei der Produktprüfung: $e');
+
       }
     }
   }
@@ -187,7 +184,7 @@ class AddProductScreenState extends State<AddProductScreen> {
               SnackBar(
                 content: Text('Diese Produktions-Artikelnummer existiert bereits: $potentialBarcode'),
                 backgroundColor: Colors.red,
-                duration: Duration(seconds: 4),
+                duration: const Duration(seconds: 4),
               ),
             );
           }
@@ -202,7 +199,7 @@ class AddProductScreenState extends State<AddProductScreen> {
           });
         }
       } catch (e) {
-        print('Fehler bei der Barcode-Prüfung: $e');
+
         setState(() {
           generatedBarcode = 'FEHLER: Prüfung fehlgeschlagen';
           hasGeneratedBarcodeError = true;
@@ -248,7 +245,7 @@ class AddProductScreenState extends State<AddProductScreen> {
               SnackBar(
                 content: Text(unitMismatchMessage!),
                 backgroundColor: Colors.red,
-                duration: Duration(seconds: 5),
+                duration: const Duration(seconds: 5),
               ),
             );
           } else {
@@ -264,7 +261,7 @@ class AddProductScreenState extends State<AddProductScreen> {
         });
       }
     } catch (e) {
-      print('Fehler bei der Einheitenprüfung: $e');
+
     }
   }
   Future<void> _loadDropdownData() async {
@@ -295,16 +292,16 @@ class AddProductScreenState extends State<AddProductScreen> {
         qualities = qualitiesSnapshot.docs;
       });
     } catch (e) {
-      print('Fehler beim Laden der Daten: $e');
+
     }
   }
   void _loadExistingData() {
     if (widget.productData == null) {
-      print('No product data to load'); // Debug
+
       return;
     }
 
-    print('Loading existing data: ${widget.productData}'); // Debug
+
 
     try {
       setState(() {
@@ -346,44 +343,14 @@ class AddProductScreenState extends State<AddProductScreen> {
       print('Error loading existing data: $e'); // Debug
     }
   }
-  // Modifizierte _updateBarcode Methode
 
 
 
 
-  Future<String> _getNextSequence() async {
-    try {
-      final prefix = '$selectedInstrument$selectedPart.$selectedWoodType$selectedQuality.${selectedYear.toString().substring(2)}';
-
-      final snapshot = await FirebaseFirestore.instance
-          .collection('products')
-          .where('barcode', isGreaterThanOrEqualTo: prefix)
-          .where('barcode', isLessThan: prefix + '\uf8ff')
-          .orderBy('barcode', descending: true)
-          .limit(1)
-          .get();
-
-      if (snapshot.docs.isEmpty) {
-        return '0001';
-      }
-
-      String lastBarcode = snapshot.docs.first.id;
-      String lastSequence = lastBarcode.split('.').last;
-      int nextSequence = int.parse(lastSequence) + 1;
-
-      return nextSequence.toString().padLeft(4, '0');
-    } catch (e) {
-      print('Fehler bei Sequenzgenerierung: $e');
-      return '0001';
-    }
-  }
   @override
   Widget build(BuildContext context) {
-    final currentYear = DateTime.now().year;
-    final years = List<int>.generate(
-      currentYear - 1999,
-          (index) => 2000 + index,
-    );
+
+
 
     return Scaffold(
       appBar: AppBar(
@@ -595,9 +562,9 @@ class AddProductScreenState extends State<AddProductScreen> {
             DropdownButtonFormField<String>(
               decoration: InputDecoration(
                 labelText: 'Einheit',
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
                 errorText: isUnitMismatch ? unitMismatchMessage : null,
-                errorStyle: TextStyle(color: Colors.red),
+                errorStyle: const TextStyle(color: Colors.red),
                 enabledBorder: OutlineInputBorder(
                   borderSide: BorderSide(
                     color: isUnitMismatch ? Colors.red : Colors.grey,
@@ -706,7 +673,7 @@ class AddProductScreenState extends State<AddProductScreen> {
               value: selectedYear,
               items: List<int>.generate(
                 DateTime.now().year - 1999,
-                    (index) => 2000 + index,
+                    (index) => 2000 + index+1,
               ).map((year) => DropdownMenuItem<int>(
                 value: year,
                 child: Text(year.toString()),
@@ -793,7 +760,7 @@ class AddProductScreenState extends State<AddProductScreen> {
       );
       return (doc.data() as Map<String, dynamic>)['name'] as String;
     } catch (e) {
-      print('Fehler beim Abrufen des Namens für Code $code: $e');
+
       return '';
     }
   }
@@ -803,7 +770,7 @@ class AddProductScreenState extends State<AddProductScreen> {
     // Verhindere das Speichern bei Barcode-Fehlern
     if (widget.isProduction && hasGeneratedBarcodeError) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text('Speichern nicht möglich: Ungültige Produktions-Artikelnummer'),
           backgroundColor: Colors.red,
         ),
@@ -815,13 +782,13 @@ class AddProductScreenState extends State<AddProductScreen> {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('Falsche Einheit'),
+          title: const Text('Falsche Einheit'),
           content: Text('Das Produkt existiert bereits mit der Einheit "$existingUnit". '
               'Bitte verwende die gleiche Einheit für dieses Produkt.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Verstanden'),
+              child: const Text('Verstanden'),
             ),
           ],
         ),

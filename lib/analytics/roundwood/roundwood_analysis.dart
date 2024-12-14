@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -383,15 +384,18 @@ class RoundwoodAnalysisState extends State<RoundwoodAnalysis> {
                           sectionsSpace: smoothEdges ? 0 : 1,
                           centerSpaceRadius: 30,
                           pieTouchData: PieTouchData(
+                            enabled: !kIsWeb, // Deaktiviert Touch/Mouse-Interaktion im Web
                             touchCallback: (event, response) {
-                              if (!event.isInterestedForInteractions ||
-                                  response == null ||
-                                  response.touchedSection == null) {
-                                return;
+                              if (!kIsWeb) { // Nur für nicht-Web-Plattformen
+                                if (!event.isInterestedForInteractions ||
+                                    response == null ||
+                                    response.touchedSection == null) {
+                                  return;
+                                }
+                                final touchedIndex = response.touchedSection!.touchedSectionIndex;
+                                final entry = sortedData.entries.elementAt(touchedIndex);
+                                onFilterSelected(entry.key);
                               }
-                              final touchedIndex = response.touchedSection!.touchedSectionIndex;
-                              final entry = sortedData.entries.elementAt(touchedIndex);
-                              onFilterSelected(entry.key);
                             },
                           ),
                         ),

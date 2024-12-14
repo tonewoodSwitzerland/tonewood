@@ -2,7 +2,7 @@ import 'dart:html' as html;
 import 'dart:typed_data';
 
 class DownloadHelper {
-  static void downloadFile(Uint8List bytes, String fileName) {
+  static Future<String?> downloadFile(Uint8List bytes, String fileName) async {
     final blob = html.Blob([bytes]);
     final url = html.Url.createObjectUrlFromBlob(blob);
     final anchor = html.AnchorElement()
@@ -13,5 +13,6 @@ class DownloadHelper {
     anchor.click();
     html.document.body?.children.remove(anchor);
     html.Url.revokeObjectUrl(url);
+    return null; // Web gibt keinen Dateipfad zurück
   }
 }

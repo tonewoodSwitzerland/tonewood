@@ -7,10 +7,10 @@ class GeneralDataScreen extends StatefulWidget {
   const GeneralDataScreen({Key? key}) : super(key: key);
 
   @override
-  _GeneralDataScreenState createState() => _GeneralDataScreenState();
+  GeneralDataScreenState createState() => GeneralDataScreenState();
 }
 
-class _GeneralDataScreenState extends State<GeneralDataScreen> {
+class GeneralDataScreenState extends State<GeneralDataScreen> {
   final TextEditingController _newShortController = TextEditingController();
   final TextEditingController _newItemController = TextEditingController();
   int _currentTabIndex = 0;
@@ -593,7 +593,9 @@ class _GeneralDataScreenState extends State<GeneralDataScreen> {
                     ),
                   ),
                   Expanded(
-                    child: _buildCollectionView(_collections[_currentTabIndex]!),
+                    child: _currentTabIndex == 0
+                        ? _buildExamplesView()
+                        : _buildCollectionView(_collections[_currentTabIndex]!),
                   ),
                 ],
               ),

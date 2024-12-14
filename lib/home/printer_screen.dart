@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:tonewood/home/production_screen.dart';
 import 'dart:math';
@@ -166,7 +167,7 @@ class PrinterScreenState extends State<PrinterScreen> {
   Future<void> _bookOnlineShopItem(int lastShopItem) async {
     if (_onlineShopPrice <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Bitte geben Sie einen gültigen Preis ein'), backgroundColor: Colors.red),
+        SnackBar(content: Text('Bitte gib einen gültigen Preis ein'), backgroundColor: Colors.red),
       );
       return;
     }
@@ -2047,141 +2048,47 @@ class PrinterScreenState extends State<PrinterScreen> {
 
             ],
           ),
-          // if (selectedBarcodeType == BarcodeType.production)
-          //   Padding(
-          //     padding: const EdgeInsets.only(left: 16.0),
-          //     child: Row(
-          //       children: [
-          //         Checkbox(
-          //           value: _includeBatchNumber,
-          //           onChanged: (bool? value) {
-          //             setState(() {
-          //               _includeBatchNumber = value ?? false;
-          //               barcodeData = '';
-          //               productData = null;
-          //             });
-          //           },
-          //           activeColor: primaryAppColor,
-          //         ),
-          //         Text('Barcode inkl. Chargen-Nummer',style: smallestHeadline,),
-          //       ],
-          //     ),
-          //   ),
+
           Padding(
             padding: const EdgeInsets.fromLTRB(8,8,8,0),
             child: Row(
               children: [
                 Expanded(
-                  child: ElevatedButton(
-                    onPressed:_showProductSearchDialog,
-                    child:const Icon(Icons.search),
-
-
-                  ),
+                  child:ElevatedButton(
+                    onPressed: _showProductSearchDialog,
+                    child: kIsWeb
+                        ? const Text('Suchen',style: smallHeadline,)
+                        : const Icon(Icons.search),
+                  )
                 ),
-                const SizedBox(width: 8),
-                Expanded(
+              if(!kIsWeb)  const SizedBox(width: 8),
+                if(!kIsWeb)   Expanded(
                   child: ElevatedButton(
                     onPressed: _startScanner,
-                    child: const Icon(Icons.qr_code_scanner),
+                    child:
+
+
+
+                    const Icon(Icons.qr_code_scanner),
 
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: ElevatedButton(
+                  child:
+                  ElevatedButton(
                     onPressed: () => _showManualInputDialog(),
-                    // onPressed: () {
-                    //   barcodeController.clear();
-                    //   showDialog(
-                    //     context: context,
-                    //     builder: (BuildContext context) {
-                    //       return AlertDialog(
-                    //         title: const Text('Barcode eingeben'),
-                    //         content: Column(
-                    //           mainAxisSize: MainAxisSize.min,
-                    //           children: [
-                    //             TextFormField(
-                    //               controller: barcodeController,
-                    //               decoration: const InputDecoration(
-                    //                 labelText: 'Barcode',
-                    //                 border: OutlineInputBorder(),
-                    //               ),
-                    //               keyboardType: TextInputType.number,
-                    //             //  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    //               autofocus: true,
-                    //             ),
-                    //           ],
-                    //         ),
-                    //         actions: [
-                    //           TextButton(
-                    //             onPressed: () => Navigator.pop(context),
-                    //             child: const Text('Abbrechen'),
-                    //           ),
-                    //           ElevatedButton(
-                    //             onPressed: () async {
-                    //               if (barcodeController.text.isNotEmpty) {
-                    //                 barcodeData = barcodeController.text;
-                    //                 await _fetchProductData(barcodeData);
-                    //                 Navigator.pop(context);
-                    //               }
-                    //             },
-                    //             child: const Text('Suchen'),
-                    //           ),
-                    //         ],
-                    //       );
-                    //     },
-                    //   );
-                    // },
-                    child: const Icon(Icons.keyboard),
+
+                    child: kIsWeb
+                        ? const Text('Manuelle Eingabe',style: smallHeadline,)
+                        : const Icon(Icons.keyboard),
 
                   ),
                 ),
               ],
             ),
           ),
-          // Container(
-          //   margin: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-          //   padding: EdgeInsets.all(8.0),
-          //
-          //   child: Row(
-          //     children: [
-          //       Icon(
-          //         Icons.short_text,  // oder ein anderes passendes Icon
-          //         color: primaryAppColor.withOpacity(0.6),
-          //         size: 24,
-          //       ),
-          //       SizedBox(width: 12),
-          //       Expanded(
-          //         child: Text(
-          //           'Abkürzungen anzeigen',
-          //           style: smallestHeadline,
-          //         ),
-          //       ),
-          //       Transform.scale(
-          //         scale: 0.9,  // Checkbox etwas kleiner machen
-          //         child: Checkbox(
-          //           value: _useShortCodes,
-          //           onChanged: (bool? value) async {
-          //             setState(() {
-          //               _useShortCodes = value ?? false;
-          //             });
-          //             if (barcodeData.isNotEmpty) {
-          //               await _updateShortCodeDisplay();
-          //               setState(() {});
-          //             }
-          //           },
-          //           activeColor: primaryAppColor,
-          //           shape: RoundedRectangleBorder(
-          //             borderRadius: BorderRadius.circular(4),
-          //           ),
-          //         ),
-          //       ),
-          //
-          //     ],
-          //   ),
-          // ),
-          // In der PrinterScreen build-Methode:
+
           AbbreviationSelector(
             selectedTypes: _selectedAbbreviationTypes,
             onTypeToggled: _toggleAbbreviationType,

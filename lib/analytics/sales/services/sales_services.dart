@@ -48,17 +48,12 @@ class SalesService {
     }
 
 
-
-
-    ///TODO check den Filter für Bauteil, das geht auf Null
-
-
-
-
     // Messe-Filter anwenden
     if (filter.selectedFairs != null && filter.selectedFairs!.isNotEmpty) {
       salesQuery = salesQuery.where('fair.id', whereIn: filter.selectedFairs);
     }
+
+
 
     return salesQuery.snapshots().asyncMap((snapshot) async {
 
@@ -80,7 +75,6 @@ class SalesService {
         if (calculations == null) continue;
 
         final total = (calculations['total'] as num?)?.toDouble() ?? 0;
-        final netAmount = (calculations['net_amount'] as num?)?.toDouble() ?? 0;
 
         // Kunden-Informationen
         final customerData = data['customer'] as Map<String, dynamic>?;
@@ -107,11 +101,12 @@ class SalesService {
           final quantity = itemData['quantity'] as num?;
           final itemSubtotal = (itemData['subtotal'] as num?)?.toDouble();
           final woodCode = itemData['wood_code']?.toString();
-          final quality = itemData['quality']?.toString();
-          final part = itemData['part']?.toString();
+          final qualityCode = itemData['quality_code']?.toString();
+          final partCode = itemData['part_code']?.toString();
+          final instrumentCode = itemData['instrument_code']?.toString();
 
           if (productId == null || productName == null ||
-              quantity == null || itemSubtotal == null || woodCode == null) {
+              quantity == null || itemSubtotal == null || woodCode == null|| qualityCode == null|| partCode == null|| instrumentCode == null) {
             continue;
           }
 
@@ -129,13 +124,20 @@ class SalesService {
 
           // Qualitäts-Filter prüfen
           if (filter.qualities != null && filter.qualities!.isNotEmpty) {
-            if (!filter.qualities!.contains(quality)) continue;
+            if (!filter.qualities!.contains(qualityCode)) continue;
             hasMatchingProduct = true;
           }
 
+          // Istrument-Filter prüfen
+          if (filter.instruments != null && filter.instruments!.isNotEmpty) {
+            if (!filter.instruments!.contains(instrumentCode)) continue;
+            hasMatchingProduct = true;
+          }
+
+
           // Bauteil-Filter prüfen
           if (filter.parts != null && filter.parts!.isNotEmpty) {
-            if (!filter.parts!.contains(part)) continue;
+            if (!filter.parts!.contains(partCode)) continue;
             hasMatchingProduct = true;
           }
 

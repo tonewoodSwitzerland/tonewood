@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:flutter/material.dart';
 
 import '../constants.dart';
@@ -6,14 +6,7 @@ import '../constants.dart';
 
 void showPrinterScreenSettingsDialog(BuildContext context) async {
   bool saveOldData = false;
-  // Abrufen der aktuellen Einstellungen aus der Datenbank
-  //DocumentSnapshot<Map<String, dynamic>> settingsSnapshot = await FirebaseFirestore.instance.collection('companies').doc('100').get();
-  //
-  // if (settingsSnapshot.exists) {
-  //   saveOldData = settingsSnapshot.data()?['clearPrinterValuesAfterInput'] ?? false;
-  //
-  // }
-  //
+
 
   showDialog(
     context: context,
@@ -22,8 +15,8 @@ void showPrinterScreenSettingsDialog(BuildContext context) async {
         builder: (BuildContext context, StateSetter setState) {
           return AlertDialog(
             backgroundColor: Colors.white,
-            title: Center(child: const Text('Einstellungen', style: headline4_0)),
-            content: Container(
+            title: const Center(child: Text('Einstellungen', style: headline4_0)),
+            content: SizedBox(
               width: double.maxFinite,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
