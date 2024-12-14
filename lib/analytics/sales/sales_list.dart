@@ -277,7 +277,7 @@ class SalesListState extends State<SalesList> {
     // Produktfilter
     if (widget.filter.selectedProducts != null) {
       final productId = widget.filter.selectedProducts.toString().replaceAll(RegExp(r'[\[\]]'), '');
-      print("DEBUG: Filtering for product ID (cleaned): $productId");
+
 
       // Debug: Prüfe die Struktur eines Verkaufsdokuments
       FirebaseFirestore.instance
@@ -287,14 +287,11 @@ class SalesListState extends State<SalesList> {
           .then((snapshot) {
         if (snapshot.docs.isNotEmpty) {
           final doc = snapshot.docs.first.data();
-          print("DEBUG: Example document items structure:");
-          print(doc['items']);
 
           // Prüfe, wie Produkt-IDs gespeichert sind
           final items = doc['items'] as List<dynamic>;
           for (var item in items) {
-            print("DEBUG: Item product_id field:");
-            print(item['product_id']);
+
           }
         }
       });
@@ -308,25 +305,23 @@ class SalesListState extends State<SalesList> {
 
       // Debug: Teste die Query
       query.get().then((snapshot) {
-        print("DEBUG: Product filter query results: ${snapshot.docs.length}");
+
         if (snapshot.docs.isNotEmpty) {
           final doc = snapshot.docs.first.data();
-          print("DEBUG: First matching document items:");
-          print(doc['items']);
+        ;
         }
       });
     }
 
     // Debug output
-    print("DEBUG: Final query building...");
+
     query.get().then((snapshot) {
-      print("DEBUG: Final query total results: ${snapshot.docs.length}");
+
       if (snapshot.docs.isEmpty) {
-        print("DEBUG: No documents found matching criteria");
+
       } else {
         final firstDoc = snapshot.docs.first.data();
-        print("DEBUG: First result items structure:");
-        print(firstDoc['items']);
+
       }
     });
 

@@ -60,7 +60,7 @@ class ProductionStrings {
   static const String typeSpecial = 'Spezialholz';
 
   // Export Dialog
-  static const String exportTitle = 'Export Format wählen';
+  static const String exportTitle = 'Export';
   static const String exportCancel = 'Abbrechen';
   static const String exportCsv = 'Als CSV exportieren';
   static const String exportCsvSubtitle = 'Tabellarische Daten im CSV-Format';

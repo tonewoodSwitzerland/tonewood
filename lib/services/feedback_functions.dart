@@ -29,12 +29,13 @@ String generateRandomName() {
 
 
     String fileName = '${generateRandomName()}.jpg';
-    print(fileName);
+
     Reference ref = FirebaseStorage.instance.ref().child('$folderName/$fileName');
-    print("gfsadgfds");
+
     UploadTask uploadTask = ref.putData(feedbackScreenshot);
-    print(uploadTask.storage);
-    print("lköjlök");
+
+
+
     var url = await (await uploadTask).ref.getDownloadURL();
     currentPic = url.toString();
 
@@ -111,7 +112,7 @@ Future<void> alertFeedbackFunction2(
   String versionSDK="";
   final FirebaseFirestore db= FirebaseFirestore.instance;
 
-print("heeee");
+
               String url=  await globalUploadFeedback("feedback",feedback.screenshot);
 
 
@@ -137,7 +138,7 @@ print("heeee");
     final allInfo = deviceInfo.data;
     manufacturer=allInfo['browserName'].toString();
   }
-print("yo");
+
   db.collection('feedbacks').doc().set({'versionSKD':versionSDK,'model':model,'manufacturer':manufacturer,'packageName': packageName,'version':version,'buildNumber':buildNumber,'feedbackText':feedback.text,'userID':userID,'name':name,'screenshot':url,'timeStamp':FieldValue.serverTimestamp(),'alreadyChecked':false,'feedbackAnswerSendToUser':false},SetOptions(merge: true));
   db.collection('total').doc('stats').set({'feedbackCounter': FieldValue.increment(1),},SetOptions(merge: true));
 

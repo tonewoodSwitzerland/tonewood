@@ -136,7 +136,7 @@ class SalesOverview extends StatelessWidget {
                                 ),
                               ),
                               Text(
-                                'Nach Umsatz in ${_getFilterTimeRange()}',
+                                'Umsatz: ${_getFilterTimeRange()}',
                                 style: TextStyle(
                                   color: Colors.grey[600],
                                   fontSize: 14,
@@ -466,6 +466,6 @@ class SalesOverview extends StatelessWidget {
           '${DateFormat('dd.MM.yy').format(filter.endDate!)}';
     }
 
-    return 'Gesamter Zeitraum';
+    return 'insgesamt';
   }
 }

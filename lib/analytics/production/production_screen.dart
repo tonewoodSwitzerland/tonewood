@@ -32,6 +32,7 @@ class ProductionScreen extends StatefulWidget {
 }
 
 class ProductionScreenState extends State<ProductionScreen> with SingleTickerProviderStateMixin {
+  bool isQuickFilterActive = false;
   late TabController _tabController;
   ProductionFilter _activeFilter = ProductionFilter(); // You'll need to create this class
   final ProductionService _service = ProductionService(); // Hier wird der Service initialisiert
@@ -114,7 +115,29 @@ class ProductionScreenState extends State<ProductionScreen> with SingleTickerPro
     }
   }
 
+  void _toggleQuickFilter() {
+    setState(() {
+      isQuickFilterActive = !isQuickFilterActive;
 
+      if (isQuickFilterActive) {
+        // Filter setzen mit den gleichen Werten wie im Warehouse Screen
+        _activeFilter = ProductionFilter(
+          instruments: [
+            '10',  // Steelstring Gitarre
+            '11',  // Klassische Gitarre
+            '12',  // Parlor Gitarre
+            '16', // Bouzuki/Mandoline flach
+            '20', // Violine
+            '22', // Cello
+          ],
+          parts: ['10'], // Decke
+        );
+      } else {
+        // Filter zurücksetzen
+        _activeFilter = ProductionFilter();
+      }
+    });
+  }
 
   Future<void> _showExportDialog() async {
     // Hole erst die Daten
@@ -142,7 +165,7 @@ class ProductionScreenState extends State<ProductionScreen> with SingleTickerPro
               ),
             ),
             const SizedBox(width: 12),
-            const Text('Export Format wählen'),
+            const Text('Export'),
           ],
         ),
         content: Column(
@@ -158,8 +181,8 @@ class ProductionScreenState extends State<ProductionScreen> with SingleTickerPro
                 ),
                 child: const Icon(Icons.table_chart, color: Colors.blue),
               ),
-              title: const Text('Als CSV exportieren'),
-              subtitle: const Text('Tabellarische Daten im CSV-Format'),
+              title: const Text('CSV'),
+              subtitle: const Text('Daten im CSV-Format'),
               onTap: () {
                 Navigator.pop(context);
                 _exportCsv();
@@ -329,6 +352,16 @@ class ProductionScreenState extends State<ProductionScreen> with SingleTickerPro
                 margin: const EdgeInsets.only(top: 4.0),
                 child: Row(
                   children: [
+                    IconButton(
+                      icon: Icon(
+                        isQuickFilterActive ? Icons.star : Icons.star_outline,
+                        color: isQuickFilterActive ? const Color(0xFF0F4A29) : null,
+                      ),
+                      onPressed: _toggleQuickFilter,
+                      tooltip: isQuickFilterActive
+                          ? 'Schnellfilter deaktivieren'
+                          : 'Schnellfilter für Decken aktivieren',
+                    ),
                     // Filter Badge
                     Badge(
                       isLabelVisible: _activeFilter.toMap().isNotEmpty,

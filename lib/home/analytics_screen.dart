@@ -1968,7 +1968,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
         ),
         _buildNavItem(
           'analysis',
-          'Auswertung',
+          'Analyse',
           Icons.analytics,
         ),
       ];

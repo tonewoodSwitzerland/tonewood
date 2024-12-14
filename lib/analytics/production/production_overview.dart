@@ -24,8 +24,7 @@ class ProductionOverview extends StatelessWidget {
       builder: (context, totalsSnapshot) {
         try {
           if (totalsSnapshot.hasError) {
-            print('Error in ProductionOverview: ${totalsSnapshot.error}');
-            print('StackTrace: ${totalsSnapshot.stackTrace}');
+
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -89,8 +88,7 @@ class ProductionOverview extends StatelessWidget {
             ),
           );
         } catch (e, stackTrace) {
-          print('Error building ProductionOverview: $e');
-          print('StackTrace: $stackTrace');
+
           return const Center(child: Text('Ein Fehler ist aufgetreten'));
         }
       },
@@ -111,8 +109,7 @@ class ProductionOverview extends StatelessWidget {
         ],
       );
     } catch (e, stackTrace) {
-      print('Error building KPI section: $e');
-      print('StackTrace: $stackTrace');
+
       return const SizedBox.shrink();
     }
   }
@@ -130,8 +127,7 @@ class ProductionOverview extends StatelessWidget {
         ],
       );
     } catch (e, stackTrace) {
-      print('Error building wood type section: $e');
-      print('StackTrace: $stackTrace');
+
       return const SizedBox.shrink();
     }
   }
@@ -149,8 +145,7 @@ class ProductionOverview extends StatelessWidget {
         ],
       );
     } catch (e, stackTrace) {
-      print('Error building wood type section: $e');
-      print('StackTrace: $stackTrace');
+
       return const SizedBox.shrink();
     }
   }
@@ -168,8 +163,7 @@ class ProductionOverview extends StatelessWidget {
         ],
       );
     } catch (e, stackTrace) {
-      print('Error building wood type section: $e');
-      print('StackTrace: $stackTrace');
+
       return const SizedBox.shrink();
     }
   }
@@ -188,8 +182,7 @@ class ProductionOverview extends StatelessWidget {
         ],
       );
     } catch (e, stackTrace) {
-      print('Error building quality section: $e');
-      print('StackTrace: $stackTrace');
+
       return const SizedBox.shrink();
     }
   }
@@ -214,8 +207,7 @@ class ProductionOverview extends StatelessWidget {
         ],
       );
     } catch (e, stackTrace) {
-      print('Error building special and value section: $e');
-      print('StackTrace: $stackTrace');
+
       return const SizedBox.shrink();
     }
   }
@@ -283,7 +275,7 @@ class ProductionOverview extends StatelessWidget {
       future: service.getProductionByInstrument(filter),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          print('Error loading wood type stats: ${snapshot.error}');
+
           return const Text('Fehler beim Laden der Daten');
         }
 
@@ -315,7 +307,7 @@ class ProductionOverview extends StatelessWidget {
               ],
               rows: stats.entries.map((entry) {
                 final quantities = entry.value['quantities'] as Map<String, int>;
-                print('Building row for ${entry.value['name']}: $quantities');
+
                 return DataRow(cells: [
                   DataCell(Text(entry.value['name'] as String)),
                   DataCell(Text(NumberFormat('#,##0').format(quantities['Stk'] ?? 0))),
@@ -339,7 +331,7 @@ class ProductionOverview extends StatelessWidget {
       future: service.getProductionByPart(filter),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          print('Error loading part stats: ${snapshot.error}');
+
           return const Text('Fehler beim Laden der Daten');
         }
 
@@ -371,7 +363,7 @@ class ProductionOverview extends StatelessWidget {
               ],
               rows: stats.entries.map((entry) {
                 final quantities = entry.value['quantities'] as Map<String, int>;
-                print('Building row for ${entry.value['name']}: $quantities');
+
                 return DataRow(cells: [
                   DataCell(Text(entry.value['name'] as String)),
                   DataCell(Text(NumberFormat('#,##0').format(quantities['Stk'] ?? 0))),
@@ -395,7 +387,7 @@ class ProductionOverview extends StatelessWidget {
       future: service.getProductionByWoodType(filter),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          print('Error loading wood type stats: ${snapshot.error}');
+
           return const Text('Fehler beim Laden der Daten');
         }
 
@@ -427,7 +419,7 @@ class ProductionOverview extends StatelessWidget {
               ],
               rows: stats.entries.map((entry) {
                 final quantities = entry.value['quantities'] as Map<String, int>;
-                print('Building row for ${entry.value['name']}: $quantities');
+
                 return DataRow(cells: [
                   DataCell(Text(entry.value['name'] as String)),
                   DataCell(Text(NumberFormat('#,##0').format(quantities['Stk'] ?? 0))),
@@ -452,7 +444,7 @@ class ProductionOverview extends StatelessWidget {
       future: service.getProductionByQuality(filter),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          print('Error loading quality stats: ${snapshot.error}');
+
           return const Text('Fehler beim Laden der Daten');
         }
 
@@ -484,7 +476,7 @@ class ProductionOverview extends StatelessWidget {
               ],
               rows: stats.entries.map((entry) {
                 final quantities = entry.value['quantities'] as Map<String, int>;
-                print('Building row for ${entry.value['name']}: $quantities');
+
                 return DataRow(cells: [
                   DataCell(Text(entry.value['name'] as String)),
                   DataCell(Text(NumberFormat('#,##0').format(quantities['Stk'] ?? 0))),
@@ -523,7 +515,7 @@ class ProductionOverview extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 const Text(
-                  'Spezialholz',
+                  'Spezial',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -575,7 +567,7 @@ class ProductionOverview extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 const Text(
-                  'Gesamtwert',
+                  'Wert',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -589,6 +581,7 @@ class ProductionOverview extends StatelessWidget {
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: Colors.green.shade700,
+                fontSize: 16
               ),
             ),
             const SizedBox(height: 8),

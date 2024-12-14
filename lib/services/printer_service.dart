@@ -56,6 +56,7 @@ class PrinterService {
   }
 
   static Future<bool> initializePrinter() async {
+    print("testljölkjölk");
     try {
       _updateStatus("Lade Drucker-Einstellungen...");
       await loadPrinterSettings();
@@ -83,6 +84,9 @@ class PrinterService {
       return false;
     }
   }
+
+
+
   static Future<bool> _initializeBluetoothPrinter() async {
     try {
       _updateStatus("Prüfe Bluetooth-Berechtigungen...");

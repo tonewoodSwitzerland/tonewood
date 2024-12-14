@@ -4,13 +4,14 @@ class SalesFilter {
   final String? timeRange;
   final double? minAmount;
   final double? maxAmount;
-  final List<String>? selectedFairs;  // Plural und optional
-
+  final List<String>? selectedFairs;
   final List<String>? selectedProducts;
-  final List<String>? woodTypes;    // Neu
-  final List<String>? parts;        // Neu
-  final List<String>? qualities;    // Neu
-  final List<String>? selectedCustomers; // Neu hinzugefügt
+  final List<String>? woodTypes;
+  final List<String>? parts;
+  final List<String>? qualities;
+  final List<String>? selectedCustomers;
+  final List<String>? instruments;  // Neu hinzugefügt
+
   SalesFilter({
     this.startDate,
     this.endDate,
@@ -18,12 +19,12 @@ class SalesFilter {
     this.minAmount,
     this.maxAmount,
     this.selectedFairs,
-
     this.selectedProducts,
     this.woodTypes,
     this.parts,
     this.qualities,
     this.selectedCustomers,
+    this.instruments,  // Neu hinzugefügt
   });
 
   Map<String, dynamic> toMap() {
@@ -40,6 +41,7 @@ class SalesFilter {
     if (parts?.isNotEmpty ?? false) map['parts'] = parts;
     if (qualities?.isNotEmpty ?? false) map['qualities'] = qualities;
     if (selectedCustomers != null) map['selectedCustomer'] = selectedCustomers;
+    if (instruments?.isNotEmpty ?? false) map['instruments'] = instruments;  // Neu hinzugefügt
     return map;
   }
 
@@ -55,6 +57,7 @@ class SalesFilter {
     List<String>? parts,
     List<String>? qualities,
     List<String>? selectedCustomers,
+    List<String>? instruments,  // Neu hinzugefügt
   }) {
     return SalesFilter(
       startDate: startDate ?? this.startDate,
@@ -68,7 +71,7 @@ class SalesFilter {
       parts: parts ?? this.parts,
       qualities: qualities ?? this.qualities,
       selectedCustomers: selectedCustomers ?? this.selectedCustomers,
+      instruments: instruments ?? this.instruments,  // Neu hinzugefügt
     );
-
   }
 }

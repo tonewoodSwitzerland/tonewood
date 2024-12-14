@@ -47,11 +47,12 @@ class SalesService {
       salesQuery = salesQuery.where('customer.id', whereIn: filter.selectedCustomers);
     }
 
-    print("Messe");
-    print(filter.selectedFairs);
 
-    print("Customer");
-    print(filter.selectedCustomers);
+
+
+    ///TODO check den Filter für Bauteil, das geht auf Null
+
+
 
 
     // Messe-Filter anwenden
@@ -61,7 +62,7 @@ class SalesService {
 
     return salesQuery.snapshots().asyncMap((snapshot) async {
 
-      print('Number of documents: ${snapshot.docs.length}');
+
       double totalRevenue = 0;
       Map<String, TopCustomer> customerStats = {};
       Map<String, ProductStats> productStats = {};
@@ -83,7 +84,7 @@ class SalesService {
 
         // Kunden-Informationen
         final customerData = data['customer'] as Map<String, dynamic>?;
-        print(customerData);
+
         if (customerData == null) continue;
 
         final customerId = customerData['id']?.toString();
@@ -91,9 +92,7 @@ class SalesService {
         final lastName = customerData['lastName'] as String? ?? '';
         final company = customerData['company'] as String? ?? '';
         final customerName = company.isNotEmpty ? company : '$firstName $lastName'.trim();
-// DEBUG: Print customer details
-        print('Processing customer: ID=$customerId, Company=$company, Name=$customerName');
-        // Items verarbeiten
+
         final itemsList = data['items'] as List<dynamic>?;
         if (itemsList == null) continue;
 

@@ -107,6 +107,12 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
                               tempFilter.parts?.isNotEmpty ?? false,
                             ),
                             _buildFilterCategory(
+                              Icons.piano,  // Passendes Icon für Instrumente
+                              'Instrument',
+                              _buildInstrumentFilter(),
+                              tempFilter.instruments?.isNotEmpty ?? false,
+                            ),
+                            _buildFilterCategory(
                               Icons.grade,
                               'Qualität',
                               _buildQualityFilter(),
@@ -210,7 +216,9 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
           if (tempFilter.selectedFairs != null)
             _buildFairChips(),
           if (tempFilter.selectedProducts?.isNotEmpty ?? false)
-            _buildProductChips(),  // Geändert zu Plural
+            _buildProductChips(),
+          if (tempFilter.instruments?.isNotEmpty ?? false)
+            ...tempFilter.instruments!.map(_buildInstrumentChip),
           if (tempFilter.selectedCustomers != null)
             _buildCustomerChips(),
         ],
@@ -473,7 +481,28 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
       },
     );
   }
+  Widget _buildInstrumentFilter() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('instruments')
+          .orderBy('name')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const CircularProgressIndicator();
 
+        return _buildMultiSelectDropdown(
+          label: 'Instrument auswählen',
+          options: snapshot.data!.docs,
+          selectedValues: tempFilter.instruments ?? [],
+          onChanged: (newSelection) {
+            setState(() {
+              tempFilter = tempFilter.copyWith(instruments: newSelection);
+            });
+          },
+        );
+      },
+    );
+  }
   Widget _buildPartsFilter() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -613,7 +642,8 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
         (tempFilter.selectedProducts?.isNotEmpty ?? false) ||
         (tempFilter.woodTypes?.isNotEmpty ?? false) ||
         (tempFilter.qualities?.isNotEmpty ?? false) ||
-        (tempFilter.parts?.isNotEmpty ?? false);  // Bauteil-Filter hinzugefügt
+        (tempFilter.parts?.isNotEmpty ?? false) ||
+        (tempFilter.instruments?.isNotEmpty ?? false);
   }
 
   void _resetFilters() {
@@ -664,7 +694,34 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
       ),
     );
   }
-
+  Widget _buildInstrumentChip(String code) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('instruments')
+          .doc(code)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final name = snapshot.hasData && snapshot.data!.data() != null
+            ? (snapshot.data!.data() as Map<String, dynamic>)['name'] ?? code
+            : code;
+        return Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Chip(
+            backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
+            label: Text(name),
+            deleteIcon: const Icon(Icons.close, size: 18),
+            onDeleted: () {
+              setState(() {
+                tempFilter = tempFilter.copyWith(
+                  instruments: tempFilter.instruments?.where((t) => t != code).toList(),
+                );
+              });
+            },
+          ),
+        );
+      },
+    );
+  }
   Widget _buildTimeRangeChip() {
     String timeText = '';
     if (tempFilter.timeRange != null) {
@@ -891,7 +948,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
     );
   }
 
-  Widget _buildProductChips() {  // Plural im Namen
+  Widget _buildProductChips() {
     if (tempFilter.selectedProducts == null || tempFilter.selectedProducts!.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -904,7 +961,8 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
               .doc(productId)
               .snapshots(),
           builder: (context, snapshot) {
-            final name = snapshot.hasData
+            // Füge zusätzliche Null-Checks hinzu
+            final name = snapshot.hasData && snapshot.data != null && snapshot.data!.data() != null
                 ? (snapshot.data!.data() as Map<String, dynamic>)['product_name'] ?? 'Unbekannter Artikel'
                 : 'Lädt...';
 
@@ -940,15 +998,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
         borderRadius: BorderRadius.circular(8),
         color: Colors.white,
       ),
-      child: ExpansionTile(
-        title: Text(
-          selectedValues.isEmpty ? label : '${selectedValues.length} ausgewählt',
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 14,
-          ),
-        ),
-        children: [
+      child:
           Container(
             padding: const EdgeInsets.symmetric(vertical: 8),
             constraints: const BoxConstraints(maxHeight: 250),
@@ -983,8 +1033,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
               }).toList(),
             ),
           ),
-        ],
-      ),
+
     );
   }
 

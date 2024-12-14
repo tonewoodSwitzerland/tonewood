@@ -9,7 +9,7 @@ import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:another_brother/printer_info.dart';
-
+import 'package:another_brother/printer_info.dart' as brother;
 import 'package:another_brother/label_info.dart';
 import 'dart:io';
 import 'dart:typed_data';
@@ -62,6 +62,30 @@ class PrinterScreen extends StatefulWidget {
 }
 
 class PrinterScreenState extends State<PrinterScreen> {
+
+
+  Map<String, bool> _productionFeatures = {
+    'thermo': false,
+    'hasel': false,
+    'mondholz': false,
+    'fsc': false,
+    'year': false,
+  };
+
+// Methode zum Aktualisieren der Features
+  void _updateProductionFeatures(String key, bool value) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      setState(() {
+        _productionFeatures[key] = value;
+      });
+    });
+  }
+  double _onlineShopPrice = 0.0;
+  TextEditingController _priceController = TextEditingController();
+  int lastShopItem=0;
+  bool _onlineShopItem = false;
+  bool _useShortCodes = false;
+  String? _shortCodeDisplay;
   String _activeConnectionType = PrinterConnectionType.none;
   bool _includeBatchNumber = false;
   String? _printerDetails;
@@ -75,18 +99,256 @@ class PrinterScreenState extends State<PrinterScreen> {
   bool _printerSearching = false;
   Color _indicatorColor = Colors.orange;
   String barcodeData = '';
+  static const double DEFAULT_LABEL_WIDTH = 38;
   Map<String, dynamic>? productData;
   pw.Font? _customFont;
   @override
   void initState() {
     super.initState();
-    _checkPrinterStatus();
-    _loadLastSettings();
-    labelTypes = _getBaseLabels();
-    _loadLastSettings().then((_) {_updateLabelTypes();});
 
+    // Label-Settings zuerst laden
+    _loadLabelSettings().then((_) {
+      // Dann erst den Rest
+      _checkPrinterStatus();
+      _loadLastSettings();
+      _loadAbbreviations();
+      _updateLabelTypes();
+      _loadSwitchValue();
+    });
   }
 
+
+  Future<bool> _checkAndUpdateInventory(String productId) async {
+    try {
+      // Extrahiere den Verkaufscode wenn es ein Produktionscode ist
+      String inventoryId = productId;
+      if (selectedBarcodeType == BarcodeType.production) {
+        final parts = productId.split('.');
+        if (parts.length >= 2) {
+          inventoryId = '${parts[0]}.${parts[1]}';  // Nur die ersten beiden Teile für Verkaufscode
+        }
+      }
+      print('Checking inventory for: $inventoryId');
+
+      // Lagerbestand prüfen
+      final inventoryDoc = await FirebaseFirestore.instance
+          .collection('inventory')
+          .doc(inventoryId)  // Hier den extrahierten Code verwenden
+          .get();
+
+      if (!inventoryDoc.exists) {
+        return false;
+      }
+
+      final currentQuantity = inventoryDoc.data()?['quantity'] ?? 0;
+      final currentOnlineQuantity = inventoryDoc.data()?['quantity_online_shop'] ?? 0;
+
+      // Prüfen ob mindestens 1 auf Lager
+      if (currentQuantity < 1) {
+        return false;
+      }
+
+      // Lagerbestand aktualisieren
+      await FirebaseFirestore.instance
+          .collection('inventory')
+          .doc(inventoryId)  // Hier auch den extrahierten Code verwenden
+          .update({
+        'quantity': currentQuantity - 1,
+        'quantity_online_shop': currentOnlineQuantity + 1,
+      });
+
+      return true;
+    } catch (e) {
+      print('Fehler bei Lagerprüfung: $e');
+      return false;
+    }
+  }
+  Future<void> _bookOnlineShopItem(int lastShopItem) async {
+    if (_onlineShopPrice <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Bitte geben Sie einen gültigen Preis ein'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    try {
+      // Zuerst Lagerbestand prüfen und aktualisieren
+      final inventoryUpdateSuccess = await _checkAndUpdateInventory(barcodeData);
+
+      if (!inventoryUpdateSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Nicht genügend Lagerbestand verfügbar'), backgroundColor: Colors.red),
+        );
+        return;
+      }
+
+      // Wenn Lageraktualisierung erfolgreich, dann Shop-Eintrag erstellen
+      String shopId = lastShopItem.toString().padLeft(4, '0');
+      String fullBarcode = '$barcodeData.$shopId';
+
+      await FirebaseFirestore.instance.collection('general_data').doc('counters').set(
+          { 'lastShopifyItem': FieldValue.increment(1)},
+          SetOptions(merge: true)
+      );
+
+      await FirebaseFirestore.instance
+          .collection('onlineshop')
+          .doc(fullBarcode)
+          .set({
+        ...productData!,
+        'sold': false,
+        'created_at': FieldValue.serverTimestamp(),
+        'barcode': fullBarcode,
+        'shop_id': shopId,
+        'price_CHF': _onlineShopPrice,
+      });
+
+      _loadSwitchValue();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Produkt erfolgreich zum Shop hinzugefügt'), backgroundColor: Colors.green),
+      );
+
+    } catch (e) {
+      print('Fehler beim Buchen: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fehler beim Buchen: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+
+
+
+// Neue Methode nur für Label-Settings
+  Future<void> _loadLabelSettings() async {
+    try {
+      final officeDoc = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('office')
+          .get();
+
+      labelTypes = _getBaseLabels();
+
+      if (officeDoc.exists && officeDoc.data()?['defaultLabelWidth'] != null) {
+        double labelWidth = officeDoc.data()!['defaultLabelWidth'].toDouble();
+        setState(() {
+          selectedLabel = labelTypes.firstWhere(
+                (label) => label.width == labelWidth,
+            orElse: () => labelTypes.first,
+          );
+        });
+      } else {
+        // Setze Default-Label wenn keine Einstellung gefunden
+        setState(() {
+          selectedLabel = labelTypes.firstWhere(
+                (label) => label.width == DEFAULT_LABEL_WIDTH,
+            orElse: () => labelTypes.first,
+          );
+        });
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Label-Einstellungen: $e');
+      // Setze Default im Fehlerfall
+      setState(() {
+        selectedLabel = labelTypes.firstWhere(
+              (label) => label.width == DEFAULT_LABEL_WIDTH,
+          orElse: () => labelTypes.first,
+        );
+      });
+    }
+  }
+  Map<String, List<AbbreviationItem>> _abbreviations = {
+    'instruments': [],
+    'wood_types': [],
+    'parts': [],
+    'qualities': [],
+  };
+
+  Map<String, bool> _selectedAbbreviationTypes = {
+    'instruments': true,
+    'wood_types': true,
+    'parts': true,
+    'qualities': true,
+  };
+
+  // Neue Methode zum Umschalten der Abkürzungstypen
+  void _toggleAbbreviationType(String type, bool value) {
+    setState(() {
+      _selectedAbbreviationTypes[type] = value;
+    });
+    _updateShortCodeDisplay(); // Aktualisiere die Anzeige
+  }
+
+// Modifizierte _updateShortCodeDisplay Methode
+  Future<void> _updateShortCodeDisplay() async {
+    if (!_useShortCodes || barcodeData.isEmpty) {
+      setState(() {
+        _shortCodeDisplay = null;
+      });
+      return;
+    }
+
+    try {
+      String code = barcodeData.replaceAll('.', '');
+      List<String> parts = [];
+      for (int i = 0; i < code.length; i += 2) {
+        if (i + 2 <= code.length) {
+          parts.add(code.substring(i, i + 2));
+        }
+      }
+
+      if (parts.length < 4) return;
+
+      List<String> shorts = [];
+      Map<String, String> collectionMap = {
+        'instruments': parts[0],
+        'parts': parts[1],
+        'wood_types': parts[2],
+        'qualities': parts[3],
+      };
+
+      for (var entry in collectionMap.entries) {
+        if (_selectedAbbreviationTypes[entry.key] ?? false) {
+          final items = _abbreviations[entry.key] ?? [];
+          final item = items.firstWhere(
+                (item) => item.code == entry.value,
+            orElse: () => AbbreviationItem(code: '', name: '', short: ''),
+          );
+          if (item.short.isNotEmpty) {
+            shorts.add(item.short);
+          }
+        }
+      }
+
+      setState(() {
+        _shortCodeDisplay = shorts.join('-');
+      });
+    } catch (e) {
+      print('Fehler beim Aktualisieren der Abkürzungen: $e');
+    }
+  }
+// Neue Methode zum Laden der Abkürzungen
+  Future<void> _loadAbbreviations() async {
+    final collections = ['instruments', 'wood_types', 'parts', 'qualities'];
+
+    for (final collection in collections) {
+      try {
+        final snapshot = await FirebaseFirestore.instance
+            .collection(collection)
+            .orderBy('code')
+            .get();
+
+        setState(() {
+          _abbreviations[collection] = snapshot.docs
+              .map((doc) => AbbreviationItem.fromFirestore(doc.data()))
+              .toList();
+        });
+      } catch (e) {
+        print('Fehler beim Laden der Abkürzungen für $collection: $e');
+      }
+    }
+  }
   void showPrinterSettingsDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -122,7 +384,7 @@ class PrinterScreenState extends State<PrinterScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      const Text('Drucker-Einstellungen'),
+                      const Text('Drucker'),
                     ],
                   ),
                   content: Column(
@@ -280,6 +542,14 @@ class PrinterScreenState extends State<PrinterScreen> {
         .set({
       'defaultLabelWidth': width,
     }, SetOptions(merge: true));
+
+    // Aktualisiere den lokalen State
+    setState(() {
+      selectedLabel = labelTypes.firstWhere(
+            (label) => label.width == width,
+        orElse: () => labelTypes.first,
+      );
+    });
   }
   Widget _buildConnectionOption({
     required IconData icon,
@@ -487,8 +757,30 @@ class PrinterScreenState extends State<PrinterScreen> {
       });
     }
   }
-  // Neue Funktion zum Laden der letzten Einstellungen
+
+
+  Future<void> _loadSwitchValue() async {
+    try {
+      DocumentSnapshot snapshot = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('counters')
+          .get();
+
+      if (snapshot.exists) {
+        setState(() {
+          lastShopItem = snapshot['lastShopifyItem']+1;
+
+        });
+      }
+    } catch (e) {
+      print("Fehler beim Laden: $e");
+    }
+  }
+
+
+
   Future<void> _loadLastSettings() async {
+
     try {
       // Lade Drucker-Einstellungen
       final printerDoc = await FirebaseFirestore.instance
@@ -496,13 +788,14 @@ class PrinterScreenState extends State<PrinterScreen> {
           .doc('printer')
           .get();
 
-      // Lade Office-Einstellungen (inkl. Standard-Format)
+      // Lade Office-Einstellungen (inkl. Etikettenbreite)
       final officeDoc = await FirebaseFirestore.instance
           .collection('general_data')
           .doc('office')
           .get();
 
       if (printerDoc.exists || officeDoc.exists) {
+
         setState(() {
           // Lade den Drucker-Typ
           if (printerDoc.data()?['printerModel'] != null) {
@@ -513,16 +806,19 @@ class PrinterScreenState extends State<PrinterScreen> {
             _updateLabelTypes();
           }
 
-          // Lade das Standard-Papierformat aus office
+          // Setze das Label aus dem office Dokument
           if (officeDoc.data()?['defaultLabelWidth'] != null) {
-            double defaultWidth = officeDoc.data()!['defaultLabelWidth'].toDouble();
+
+            print("yoooo");
+
+            double labelWidth = officeDoc.data()!['defaultLabelWidth'].toDouble();
             selectedLabel = labelTypes.firstWhere(
-                  (label) => label.width == defaultWidth,
+                  (label) => label.width == labelWidth,
               orElse: () => labelTypes.first,
             );
           }
 
-          // Rest der Einstellungen wie bisher...
+          // Rest der Einstellungen...
           if (printerDoc.data()?['lastBarcodeType'] != null) {
             selectedBarcodeType = BarcodeType.values.firstWhere(
                   (type) => type.toString() == printerDoc.data()!['lastBarcodeType'],
@@ -530,10 +826,12 @@ class PrinterScreenState extends State<PrinterScreen> {
             );
           }
 
-          if (selectedBarcodeType == BarcodeType.sales && printerDoc.data()?['lastSalesBarcode'] != null) {
+          if (selectedBarcodeType == BarcodeType.sales &&
+              printerDoc.data()?['lastSalesBarcode'] != null) {
             barcodeData = printerDoc.data()!['lastSalesBarcode'];
             _fetchProductData(barcodeData);
-          } else if (selectedBarcodeType == BarcodeType.production && printerDoc.data()?['lastProductionBarcode'] != null) {
+          } else if (selectedBarcodeType == BarcodeType.production &&
+              printerDoc.data()?['lastProductionBarcode'] != null) {
             barcodeData = printerDoc.data()!['lastProductionBarcode'];
             _fetchProductData(barcodeData);
           }
@@ -541,7 +839,7 @@ class PrinterScreenState extends State<PrinterScreen> {
 
         print('Geladene Einstellungen:');
         print('Barcode-Typ: ${selectedBarcodeType}');
-        print('Standard Label-Breite: ${selectedLabel?.width}');
+        print('Aktuelle Etikettenbreite: ${selectedLabel?.width}');
         print('Verkaufs-Barcode: ${printerDoc.data()?['lastSalesBarcode']}');
         print('Produktions-Barcode: ${printerDoc.data()?['lastProductionBarcode']}');
       }
@@ -549,6 +847,7 @@ class PrinterScreenState extends State<PrinterScreen> {
       print('Fehler beim Laden der Einstellungen: $e');
     }
   }
+
 
   // Neue Funktion zum Speichern der aktuellen Einstellungen
   Future<void> _saveCurrentSettings() async {
@@ -622,22 +921,31 @@ class PrinterScreenState extends State<PrinterScreen> {
             .doc(searchBarcode)
             .get();
 
-        setState(() {
-          if (doc.exists) {
+        if (doc.exists) {
+          setState(() {
             barcodeData = doc.id;
             productData = doc.data();
-            _saveCurrentSettings();
-          } else {
+            if (productData?['price_CHF'] != null) {
+              _onlineShopPrice = productData!['price_CHF'].toDouble();
+              _priceController.text = _onlineShopPrice.toString();
+            }
+          });
+          await _saveCurrentSettings();
+          if (_useShortCodes) {
+            await _updateShortCodeDisplay();
+          }
+        } else {
+          setState(() {
             barcodeData = 'Produkt nicht gefunden';
             productData = null;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Produkt nicht gefunden: $searchBarcode'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        });
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Produkt nicht gefunden: $searchBarcode'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       } else {
         await _handleProductionBarcode(barcode);
       }
@@ -885,6 +1193,21 @@ class PrinterScreenState extends State<PrinterScreen> {
         setState(() {
           barcodeData = doc.id;
           productData = doc.data() as Map<String, dynamic>?;
+          // Setze die Features basierend auf dem Barcode
+          if (parts.length >= 3) {
+            final features = parts[2];
+            _productionFeatures = {
+              'thermo': features[0] == '1',
+              'hasel': features[1] == '1',
+              'mondholz': features[2] == '1',
+              'fsc': features[3] == '1',
+              'year': parts.length >= 4,
+            };
+          }
+          if (productData?['price_CHF'] != null) {
+            _onlineShopPrice = productData!['price_CHF'].toDouble();
+            _priceController.text = _onlineShopPrice.toString();
+          }
           _saveCurrentSettings();
         });
       }
@@ -906,14 +1229,22 @@ class PrinterScreenState extends State<PrinterScreen> {
       if (port == Port.BLUETOOTH) {
         if (Platform.isAndroid) {
           Map<Permission, PermissionStatus> statuses = await [
-            Permission.bluetooth,
+
             Permission.bluetoothConnect,
             Permission.bluetoothScan,
+            Permission.location,  // Location hinzufügen
           ].request();
 
-          // Prüfe ob alle Berechtigungen erteilt wurden
           bool allGranted = statuses.values.every((status) => status.isGranted);
           if (!allGranted) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Bluetooth-Berechtigungen werden benötigt'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
             print('Bluetooth-Berechtigungen nicht erteilt');
             return false;
           }
@@ -932,7 +1263,8 @@ class PrinterScreenState extends State<PrinterScreen> {
             _isPrinterOnline = true;
             _indicatorColor = primaryAppColor;
             _activeConnectionType = PrinterConnectionType.bluetooth;
-            _printerDetails = '${printers.first.modelName} (${printers.first.macAddress})';
+           // _printerDetails = '${printers.first.modelName} (${printers.first.macAddress})';
+            _printerDetails = '${printers.first.modelName}';
           });
           return true;
         }
@@ -945,7 +1277,8 @@ class PrinterScreenState extends State<PrinterScreen> {
             _isPrinterOnline = true;
             _indicatorColor = primaryAppColor;
             _activeConnectionType = PrinterConnectionType.wifi;
-            _printerDetails = '${printers.first.modelName} (${printers.first.nodeName})';
+           // _printerDetails = '${printers.first.modelName} (${printers.first.nodeName})';
+            _printerDetails = '${printers.first.modelName}';
           });
           return true;
         }
@@ -1100,67 +1433,166 @@ class PrinterScreenState extends State<PrinterScreen> {
       print('Fehler beim Speichern des Druckernamens: $e');
     }
   }
+
   Future<void> printLabel(BuildContext context) async {
-    if (!_isPrinterOnline || barcodeData.isEmpty || selectedLabel == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Drucker nicht bereit oder kein Barcode ausgewählt'),
-          backgroundColor: Colors.red,
-        ),
-      );
+    print("haaaaaaalo");
+    if (!_isPrinterOnline || barcodeData.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Drucker nicht bereit oder kein Barcode ausgewählt'),
+        backgroundColor: Colors.red,
+      ));
       return;
     }
 
     await PrintStatus.show(context, () async {
-      try {
-        PrinterService.onStatusUpdate = (status) {
-          print(status);
-        };
 
-        var printer = Printer();
-        var printInfo = PrinterInfo();
-        printInfo.printerModel = Model.QL_820NWB;
+        try {
+          PrintStatus.updateStatus("Initialisiere Drucker...");
+
+          // Benutzereinstellung für bevorzugte Verbindung laden
+          bool useBluetoothFirst = await FirebaseFirestore.instance
+              .collection('general_data')
+              .doc('office')
+              .get()
+              .then((doc) => doc.get('bluetoothFirst') ?? true);
+
+          var printer = Printer();
+          var printInfo = PrinterInfo();
+          printInfo.printerModel = Model.QL_820NWB;
+
+
+          print("uBL:$useBluetoothFirst");
+
+          // Erst die bevorzugte Verbindungsart versuchen
+          if (useBluetoothFirst) {
+            printInfo.port = Port.BLUETOOTH;
+            // Versuche Bluetooth
+            List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_820NWB.getName()]);
+            if (bluetoothPrinters.isNotEmpty) {
+              _activeConnectionType = PrinterConnectionType.bluetooth;
+              // Bluetooth-spezifische Konfiguration
+            } else {
+              // Wenn Bluetooth fehlschlägt, versuche WLAN
+              print("bingo");
+              printInfo.port = Port.NET;
+              List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
+              if (netPrinters.isNotEmpty) {
+                _activeConnectionType = PrinterConnectionType.wifi;
+                // WLAN-spezifische Konfiguration
+              }
+            }
+          } else {
+            print("bingo2");
+            // WLAN zuerst versuchen
+            printInfo.port = Port.NET;
+            List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
+            if (netPrinters.isNotEmpty) {
+              _activeConnectionType = PrinterConnectionType.wifi;
+              // WLAN-spezifische Konfiguration
+            } else {
+              // Wenn WLAN fehlschlägt, versuche Bluetooth
+              printInfo.port = Port.BLUETOOTH;
+              List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_820NWB.getName()]);
+              if (bluetoothPrinters.isNotEmpty) {
+                _activeConnectionType = PrinterConnectionType.bluetooth;
+                // Bluetooth-spezifische Konfiguration
+              }
+            }
+          }
         printInfo.printMode = PrintMode.FIT_TO_PAGE;
         printInfo.isAutoCut = true;
-        printInfo.port = Port.NET;
-        printInfo.printQuality = PrintQuality.HIGH_RESOLUTION;
+        printInfo.isCutAtEnd = true;
         printInfo.numberOfCopies = printQuantity;
 
-        print("sl:$selectedLabel");
-        if (selectedLabel != null) {
-          final labelMap = {
-            62: QL1100.W62,
-            54: QL1100.W54,
-            50: QL1100.W50,
-            38: QL1100.W38,
-            29: QL1100.W29,
-          };
 
-          var labelType = labelMap[selectedLabel!.width.toInt()];
-          if (labelType != null) {
-            printInfo.labelNameIndex = QL1100.ordinalFromID(labelType.getId());
+          printInfo.orientation = brother.Orientation.LANDSCAPE; // Dies ist der wichtige Teil!
+
+
+
+
+        if (selectedLabel != null) {
+          var labelId = QL700.W62.getId();  // Zum Debuggen
+          var labelIndex = QL700.ordinalFromID(labelId);  // Zum Debuggen
+          print('Selected Label Width: ${selectedLabel!.width}');
+          print('Label ID: $labelId');
+          print('Label Index: $labelIndex');
+
+          switch(selectedLabel!.width.toInt()) {
+            case 62:
+              printInfo.labelNameIndex = QL700.ordinalFromID(QL700.W62.getId());
+              print('Setting label 62mm: ${printInfo.labelNameIndex}');
+              break;
+            case 54:
+              printInfo.labelNameIndex = QL700.ordinalFromID(QL700.W54.getId());
+              print('Setting label 54mm: ${printInfo.labelNameIndex}');
+              break;
+            case 50:
+              printInfo.labelNameIndex = QL700.ordinalFromID(QL700.W50.getId());
+              print('Setting label 50mm: ${printInfo.labelNameIndex}');
+              break;
+            case 38:
+              printInfo.labelNameIndex = QL700.ordinalFromID(QL700.W38.getId());
+              print('Setting label 38mm: ${printInfo.labelNameIndex}');
+              break;
+            case 29:
+              printInfo.labelNameIndex = QL700.ordinalFromID(QL700.W29.getId());
+              print('Setting label 29mm: ${printInfo.labelNameIndex}');
+              break;
+            default:
+              throw Exception('Ungültige Etikettengröße: ${selectedLabel!.width}mm');
           }
         }
 
-        await printer.setPrinterInfo(printInfo);
 
-        PrinterService.updateStatus("Suche Drucker...");
-        List<NetPrinter> printers = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
-        if (printers.isEmpty) {
-          throw Exception('Drucker nicht gefunden');
+
+
+        PrintStatus.updateStatus("Suche Drucker...");
+        if (_activeConnectionType == PrinterConnectionType.bluetooth) {
+          PrintStatus.updateStatus("Prüfe Bluetooth-Verbindung...");
+          // Kurze Verzögerung einfügen
+          await Future.delayed(const Duration(milliseconds: 1000));
+
+          List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_820NWB.getName()]);
+          if (bluetoothPrinters.isEmpty) {
+            throw Exception('Bluetooth-Drucker nicht gefunden');
+          }
+
+          PrintStatus.updateStatus("Verbinde mit Bluetooth-Drucker...");
+          // Sicherstellen dass der Drucker erreichbar ist
+          printInfo.macAddress = bluetoothPrinters[0].macAddress;
+          bool isConnected = await printer.setPrinterInfo(printInfo);
+          if (!isConnected) {
+            throw Exception('Bluetooth-Verbindung fehlgeschlagen');
+          }
+        } else {
+          print("netPrinterWW");
+          List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
+          if (netPrinters.isEmpty) {
+            throw Exception('Netzwerk-Drucker nicht gefunden');
+          }
+          PrintStatus.updateStatus("Konfiguriere Drucker...");
+          printInfo.ipAddress = netPrinters[0].ipAddress;
+          await printer.setPrinterInfo(printInfo);
         }
 
-        PrinterService.updateStatus("Konfiguriere Drucker...");
-        printInfo.ipAddress = printers[0].ipAddress;
-        await printer.setPrinterInfo(printInfo);
 
-        PrinterService.updateStatus("Generiere PDF...");
-        final pdfFile = await _generatePdfForPrinter();
 
-        PrinterService.updateStatus("Sende Daten an Drucker...");
-        await printer.printPdfFile(pdfFile.path, 1);
 
-        PrinterService.updateStatus("Druckvorgang abgeschlossen");
+
+
+        PrintStatus.updateStatus("Generiere PDF...");
+        final pdfFile = await _generatePdfForPrinter2();
+
+        PrintStatus.updateStatus("Sende Daten an Drucker...");
+        var status = await printer.printPdfFile(pdfFile.path, 1);
+
+        // Prüfe ob es ein echter Fehler ist oder ERROR_NONE
+        if (status.errorCode.getName() != 'ERROR_NONE') {
+          throw status;
+        }
+
+        PrintStatus.updateStatus("Druckvorgang erfolgreich abgeschlossen");
+        await Future.delayed(const Duration(milliseconds: 500));
 
         await FirebaseFirestore.instance.collection('print_logs').add({
           'timestamp': FieldValue.serverTimestamp(),
@@ -1172,148 +1604,85 @@ class PrinterScreenState extends State<PrinterScreen> {
         });
 
       } catch (e) {
-        print('Druckfehler: $e');
+        PrintStatus.updateStatus("Fehler: ${PrinterErrorHelper.getErrorMessage(e)}");
+        await Future.delayed(const Duration(seconds: 1));
         throw e;
       }
     });
   }
-
-  // Future<void> printLabel(BuildContext context) async {
-  //   try {
-  //     if (!_isPrinterOnline) {
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         const SnackBar(
-  //           content: Text('Drucker ist nicht verbunden'),
-  //           backgroundColor: Colors.red,
-  //         ),
-  //       );
-  //       return;
-  //     }
-  //
-  //     final pdfFile = await _generatePdfForPrinter();
-  //
-  //     var printer = Printer();
-  //     var printInfo = PrinterInfo();
-  //     printInfo.printerModel = selectedPrinterModel == PrinterModel.QL1110NWB
-  //         ? Model.QL_1110NWB
-  //         : Model.QL_820NWB;
-  //     printInfo.printMode = PrintMode.FIT_TO_PAGE;
-  //     printInfo.isAutoCut = true;
-  //     printInfo.port = Port.NET;
-  //     printInfo.printQuality = PrintQuality.HIGH_RESOLUTION;
-  //     printInfo.numberOfCopies = printQuantity; // Setze die Anzahl hier
-  //
-  //     if (selectedLabel != null) {
-  //       final labelMap = {
-  //         62: QL1100.W62,
-  //         54: QL1100.W54,
-  //         50: QL1100.W50,
-  //         38: QL1100.W38,
-  //         29: QL1100.W29,
-  //       };
-  //
-  //       var labelType = labelMap[selectedLabel!.width.toInt()];
-  //       if (labelType != null) {
-  //         printInfo.labelNameIndex = QL1100.ordinalFromID(labelType.getId());
-  //       }
-  //     }
-  //
-  //     await printer.setPrinterInfo(printInfo);
-  //     List<NetPrinter> printers = await printer.getNetPrinters([printInfo.printerModel.getName()]);
-  //
-  //     if (printers.isEmpty) {
-  //       throw Exception('Keine Drucker gefunden');
-  //     }
-  //
-  //     printInfo.ipAddress = printers.first.ipAddress;
-  //     await printer.setPrinterInfo(printInfo);
-  //
-  //     try {
-  //       // Ändere den Druckaufruf - drucke nur einmal, aber mit der eingestellten Kopienanzahl
-  //       await printer.printPdfFile(pdfFile.path, 1);
-  //
-  //       // Logging nach erfolgreichem Druck
-  //       await FirebaseFirestore.instance.collection('print_logs').add({
-  //         'timestamp': FieldValue.serverTimestamp(),
-  //         'barcode': barcodeData,
-  //         'quantity': printQuantity,
-  //         'printerModel': selectedPrinterModel.toString(),
-  //         'labelWidth': selectedLabel?.width,
-  //         'labelType': selectedLabel?.id,
-  //         'barcodeType': selectedBarcodeType.toString(),
-  //       });
-  //
-  //       await FirebaseFirestore.instance
-  //           .collection('general_data')
-  //           .doc('printer')
-  //           .set({
-  //         'totalLabelsPrinted': FieldValue.increment(printQuantity),
-  //         'lastPrintTimestamp': FieldValue.serverTimestamp(),
-  //       }, SetOptions(merge: true));
-  //
-  //       if (!mounted) return;
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         SnackBar(
-  //           content: Text('$printQuantity Etikett(en) wurden gedruckt'),
-  //           backgroundColor: Colors.green,
-  //         ),
-  //       );
-  //     } finally {
-  //       await pdfFile.delete().catchError((e) => print('Fehler beim Löschen der temporären PDF: $e'));
-  //     }
-  //   } catch (e) {
-  //     print('Druckfehler: $e');
-  //     if (!mounted) return;
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       SnackBar(
-  //         content: Text('Druckfehler: $e'),
-  //         backgroundColor: Colors.red,
-  //       ),
-  //     );
-  //   }
-  // }
-
-  Future<File> _generatePdfForPrinter() async {
+  Future<File> _generatePdfForPrinter3() async {
     final pdf = pw.Document();
 
-    double pageWidth = selectedLabel?.width.toDouble() ?? PdfPageFormat.a4.width;
-    double pageHeight = 21; // Feste Höhe für Endlos-Etiketten
+    // Feste Dimensionen
+    final labelWidth = 38.0;     // Breite des Labels
+    final boxWidth = 35.0;       // Breite des Kästchens
+    final boxLength = 40.0;      // Länge des Kästchens
+    final spacing = 5.0;         // Abstand zwischen Box und Text
 
-    // Berechne optimale Barcode-Größe basierend auf der Papierbreite
-    double barcodeWidth = pageWidth * 1;
-    double barcodeHeight = pageHeight * 0.5;
-    double fontSize = pageWidth * 0.05; // Dynamische Schriftgröße
+    // Text für das Label (nur Short Code wenn aktiviert)
+    String displayText = _useShortCodes && _shortCodeDisplay != null ? _shortCodeDisplay! : '';
+
+    // Schätzung der Textlänge (ca. 2mm pro Zeichen bei Schriftgröße 14)
+    final double estimatedTextLength = _useShortCodes && _shortCodeDisplay != null ?displayText.length * 6.5:0;
+
+    // Gesamtlänge des Labels berechnen
+    final labelLength = boxLength + spacing + estimatedTextLength;
+
+    final pageFormat = PdfPageFormat(
+      labelLength,  // Breite ist die längere Seite
+      labelWidth,   // Höhe ist die kürzere Seite
+      marginAll: 0,
+    );
 
     pdf.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat(
-          pageWidth,
-          pageHeight,
-          marginAll: 0,
-        ),
+        pageFormat: pageFormat,
         build: (pw.Context context) {
-          return pw.Center(
-            child: pw.Column(
-              mainAxisAlignment: pw.MainAxisAlignment.center,
-              children: [
-                pw.BarcodeWidget(
-                  data: barcodeData,
-                  barcode: pw.Barcode.code128(),
-                  width: barcodeWidth,
-                  height: barcodeHeight,
-                  drawText: false, // Kein automatischer Text unter dem Barcode
+          return pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            mainAxisAlignment: pw.MainAxisAlignment.start,
+            children: [
+              // Box mit Barcode und Text darunter
+              pw.Container(
+                width: boxLength,
+                child: pw.Column(
+                  mainAxisSize: pw.MainAxisSize.min,
+                  children: [
+                    pw.Container(
+                      width: boxLength,
+                      height: boxWidth - 10, // Etwas kleiner für den Text unten
+                      child: pw.BarcodeWidget(
+                        barcode: pw.Barcode.code128(),
+                        data: barcodeData,
+                        drawText: false,
+                      ),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      barcodeData,
+                      style: pw.TextStyle(
+                        fontSize: 8, // Kleinere Schrift für den Code
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
-                pw.SizedBox(height: 2),
-                pw.Text(
-                  barcodeData,
-                  style: pw.TextStyle(
-                    font: _customFont, // Verwende die geladene Schriftart
-                    fontSize: fontSize,
-                    fontWeight: pw.FontWeight.bold,
+              ),
+              // Abstand
+              pw.SizedBox(width: spacing),
+              // Short Code wenn aktiviert
+              if (displayText.isNotEmpty)
+                pw.Container(
+                  alignment: pw.Alignment.centerLeft,
+                  child: pw.Text(
+                    displayText,
+                    style: pw.TextStyle(
+                      fontSize: 12,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
                   ),
                 ),
-              ],
-            ),
+            ],
           );
         },
       ),
@@ -1323,19 +1692,258 @@ class PrinterScreenState extends State<PrinterScreen> {
       final output = await getTemporaryDirectory();
       final file = File("${output.path}/label.pdf");
       await file.writeAsBytes(await pdf.save());
-
-      // Debug-Ausgabe der PDF-Größe
-      print('PDF created: ${await file.length()} bytes');
-      print('PDF path: ${file.path}');
-
       return file;
     } catch (e) {
-      print('Fehler bei der PDF-Erstellung: $e');
+      print('Error creating PDF: $e');
+      rethrow;
+    }
+  }
+  Future<File> _generatePdfForPrinter2() async {
+    final pdf = pw.Document();
+
+    // Barcode mit Shop-ID generieren wenn Online Shop aktiv ist
+    String displayBarcode = barcodeData;
+    if (_onlineShopItem && selectedBarcodeType == BarcodeType.production) {
+      String formattedShopId = lastShopItem.toString().padLeft(4, '0');
+      displayBarcode = '$barcodeData.$formattedShopId';
+    }
+
+
+    final double labelWidth = selectedLabel?.width.toDouble() ?? 38;
+    final double scaleFactor = labelWidth / 38;
+
+    // Basis-Dimensionen
+    final double barcodeHeight = 20.0 * scaleFactor;
+    final double barcodeWidth = 64.0 * scaleFactor;
+    final double spacing = 2 * scaleFactor;
+    final double textSize = 7 * scaleFactor;
+    final double mainCodeSize = 17.0 * scaleFactor;
+    final double featureSize = 11.0 * scaleFactor;
+
+    double totalLength = barcodeWidth + spacing;
+
+    // Hauptabkürzungen für erste Zeile
+    List<String> mainElements = [];
+    // Features für zweite Zeile
+    List<String> featureElements = [];
+
+    if (_useShortCodes) {
+      if (_shortCodeDisplay != null) {
+        mainElements.add(_shortCodeDisplay!);
+      }
+
+      if (selectedBarcodeType == BarcodeType.production) {
+        final parts = barcodeData.split('.');
+        if (parts.length >= 3) {
+          final features = parts[2];
+
+          // Features in zweite Zeile
+          if (features[0] == '1' && _productionFeatures['thermo']!) featureElements.add('Th');
+          if (features[1] == '1' && _productionFeatures['hasel']!) featureElements.add('Ha');
+          if (features[2] == '1' && _productionFeatures['mondholz']!) featureElements.add('Mo');
+          if (features[3] == '1' && _productionFeatures['fsc']!) featureElements.add('Fs');
+          if (parts.length >= 4 && _productionFeatures['year']!) featureElements.add('${parts[3]}');
+        }
+      }
+    }
+
+    // Längenberechnung für beide Zeilen
+    if (mainElements.isNotEmpty || featureElements.isNotEmpty) {
+      double textWidth = 0;
+      // Breite für Hauptzeile
+      for (var element in mainElements) {
+        textWidth += (element.length * mainCodeSize * 0.6) + spacing;
+      }
+      // Breite für Feature-Zeile (mit Kästchen)
+      double featureWidth = 0;
+      for (var element in featureElements) {
+        featureWidth += (element.length * featureSize * 1) + spacing * 2.7; // Extra Platz für Kästchen
+      }
+      totalLength += max(textWidth, featureWidth);
+    }
+
+    final pageFormat = PdfPageFormat(totalLength, labelWidth, marginAll: 0);
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: pageFormat,
+        build: (pw.Context context) {
+          return pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            mainAxisAlignment: pw.MainAxisAlignment.start,
+            children: [
+              if (mainElements.isNotEmpty || featureElements.isNotEmpty) pw.SizedBox(width: 5*spacing),
+              // Barcode-Bereich
+              pw.Container(
+                width: barcodeWidth,
+                child: pw.Column(
+                  mainAxisAlignment: pw.MainAxisAlignment.center,
+                  children: [
+                    pw.BarcodeWidget(
+                      barcode: pw.Barcode.code128(),
+                      data:  displayBarcode,
+                      height: barcodeHeight,
+                      drawText: false,
+                    ),
+                    pw.SizedBox(height: spacing / 2),
+                    pw.Text(
+                      displayBarcode,
+                      style: pw.TextStyle(
+                        fontSize: _onlineShopItem?textSize*0.8:textSize,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              if (mainElements.isNotEmpty || featureElements.isNotEmpty)
+                pw.SizedBox(width: 5*spacing),
+
+              // Zwei Spalten mit Elementen
+              if (mainElements.isNotEmpty || featureElements.isNotEmpty)
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  mainAxisAlignment: pw.MainAxisAlignment.center,
+                  children: [
+                    // Erste Zeile: Hauptabkürzungen
+                    if (mainElements.isNotEmpty)
+                      pw.Row(
+                        children: mainElements.map((element) => pw.Container(
+                          padding: pw.EdgeInsets.symmetric(horizontal: spacing/2),
+                          child: pw.Text(
+                            element,
+                            style: pw.TextStyle(
+                              fontSize: mainCodeSize,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                        )).toList(),
+                      ),
+
+                    pw.SizedBox(height: spacing /2),
+
+                    // Zweite Zeile: Features in Kästchen
+                    if (featureElements.isNotEmpty)
+                      pw.Row(
+                        children: featureElements.map((element) => pw.Container(
+                          margin: pw.EdgeInsets.only(right: spacing),
+                          padding: pw.EdgeInsets.symmetric(
+                              horizontal: spacing,
+                              vertical: spacing/5
+                          ),
+                          decoration: pw.BoxDecoration(
+                            border: pw.Border.all(width: 0.5),
+                            borderRadius: pw.BorderRadius.circular(2),
+                          ),
+                          child: pw.Text(
+                            element,
+                            style: pw.TextStyle(
+                              fontSize: featureSize,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                        )).toList(),
+                      ),
+                  ],
+                ),
+            ],
+          );
+        },
+      ),
+    );
+
+    try {
+      final output = await getTemporaryDirectory();
+      final file = File("${output.path}/label.pdf");
+      await file.writeAsBytes(await pdf.save());
+      return file;
+    } catch (e) {
+      print('Error creating PDF: $e');
       rethrow;
     }
   }
 
+  Future<File> _generatePdfForPrinter() async {
+    final pdf = pw.Document();
 
+    double pageWidth = selectedLabel?.width.toDouble() ?? 62.0;
+    double barcodeArea = pageWidth * 0.9;  // 90% der Label-Breite
+    double textHeight = pageWidth * 0.15;
+    double effectiveHeight = pageWidth;
+    double effectiveWidth = barcodeArea;
+
+    // Hier ist der Trick:
+    // - effectiveWidth wird zur Länge des Labels nach der Drehung
+    // - effectiveHeight wird zur Breite des Labels nach der Drehung
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat(
+          effectiveWidth,
+          effectiveHeight,
+          marginAll: 0,
+        ),
+        build: (pw.Context context) {
+          return pw.Row(
+            children: [
+              pw.Transform.rotate(
+                angle: pi/2,
+                child: pw.Row(
+                  children: [
+                    pw.Container(
+                      width: barcodeArea,
+                      child: pw.Column(
+                        mainAxisSize: pw.MainAxisSize.min,
+                        children: [
+                          pw.BarcodeWidget(
+                            data: barcodeData,
+                            barcode: pw.Barcode.code128(),
+                            width: barcodeArea,
+                            height: effectiveHeight * 0.3,
+                            drawText: false,
+                          ),
+                          pw.SizedBox(height: 2),
+                          pw.Text(
+                            barcodeData,
+                            style: pw.TextStyle(
+                              fontSize: textHeight,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_useShortCodes && _shortCodeDisplay != null)
+                      pw.Container(
+
+                        width: 10.0,
+                        child: pw.Text(
+                          _shortCodeDisplay!,
+                          style: pw.TextStyle(
+                            fontSize: textHeight,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    try {
+      final output = await getTemporaryDirectory();
+      final file = File("${output.path}/label.pdf");
+      await file.writeAsBytes(await pdf.save());
+      return file;
+    } catch (e) {
+      print('Error creating PDF: $e');
+      rethrow;
+    }
+  }
   Widget _buildBarcodeTypeSelector() {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 8.0, vertical: 0.0),
@@ -1436,28 +2044,29 @@ class PrinterScreenState extends State<PrinterScreen> {
                   ],
                 ),
               ),
+
             ],
           ),
-          if (selectedBarcodeType == BarcodeType.production)
-            Padding(
-              padding: const EdgeInsets.only(left: 16.0),
-              child: Row(
-                children: [
-                  Checkbox(
-                    value: _includeBatchNumber,
-                    onChanged: (bool? value) {
-                      setState(() {
-                        _includeBatchNumber = value ?? false;
-                        barcodeData = '';
-                        productData = null;
-                      });
-                    },
-                    activeColor: primaryAppColor,
-                  ),
-                  Text('Barcode inkl. Chargen-Nummer',style: smallestHeadline,),
-                ],
-              ),
-            ),
+          // if (selectedBarcodeType == BarcodeType.production)
+          //   Padding(
+          //     padding: const EdgeInsets.only(left: 16.0),
+          //     child: Row(
+          //       children: [
+          //         Checkbox(
+          //           value: _includeBatchNumber,
+          //           onChanged: (bool? value) {
+          //             setState(() {
+          //               _includeBatchNumber = value ?? false;
+          //               barcodeData = '';
+          //               productData = null;
+          //             });
+          //           },
+          //           activeColor: primaryAppColor,
+          //         ),
+          //         Text('Barcode inkl. Chargen-Nummer',style: smallestHeadline,),
+          //       ],
+          //     ),
+          //   ),
           Padding(
             padding: const EdgeInsets.fromLTRB(8,8,8,0),
             child: Row(
@@ -1531,11 +2140,70 @@ class PrinterScreenState extends State<PrinterScreen> {
               ],
             ),
           ),
+          // Container(
+          //   margin: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+          //   padding: EdgeInsets.all(8.0),
+          //
+          //   child: Row(
+          //     children: [
+          //       Icon(
+          //         Icons.short_text,  // oder ein anderes passendes Icon
+          //         color: primaryAppColor.withOpacity(0.6),
+          //         size: 24,
+          //       ),
+          //       SizedBox(width: 12),
+          //       Expanded(
+          //         child: Text(
+          //           'Abkürzungen anzeigen',
+          //           style: smallestHeadline,
+          //         ),
+          //       ),
+          //       Transform.scale(
+          //         scale: 0.9,  // Checkbox etwas kleiner machen
+          //         child: Checkbox(
+          //           value: _useShortCodes,
+          //           onChanged: (bool? value) async {
+          //             setState(() {
+          //               _useShortCodes = value ?? false;
+          //             });
+          //             if (barcodeData.isNotEmpty) {
+          //               await _updateShortCodeDisplay();
+          //               setState(() {});
+          //             }
+          //           },
+          //           activeColor: primaryAppColor,
+          //           shape: RoundedRectangleBorder(
+          //             borderRadius: BorderRadius.circular(4),
+          //           ),
+          //         ),
+          //       ),
+          //
+          //     ],
+          //   ),
+          // ),
+          // In der PrinterScreen build-Methode:
+          AbbreviationSelector(
+            selectedTypes: _selectedAbbreviationTypes,
+            onTypeToggled: _toggleAbbreviationType,
+            abbreviations: _abbreviations,
+            useShortCodes: _useShortCodes,
+            onUseShortCodesChanged: (value) async {
+              setState(() {
+                _useShortCodes = value;
+              });
+              if (barcodeData.isNotEmpty) {
+                await _updateShortCodeDisplay();
+              }
+            },
+            barcodeData: barcodeData,
+            barcodeType: selectedBarcodeType,
+            productionFeatures: _productionFeatures,  // Neu
+            onFeatureToggled: _updateProductionFeatures,  // Neu
+          ),
         ],
       ),
     );
   }
-
 
   Widget _buildPreview() {
     if (productData == null || barcodeData.isEmpty) {
@@ -1553,37 +2221,112 @@ class PrinterScreenState extends State<PrinterScreen> {
       );
     }
 
-    // Berechne die Breite basierend auf dem ausgewählten Papierformat
-    double containerWidth = selectedLabel?.width ?? 62.0;
+    // Barcode mit Shop-ID generieren wenn Online Shop aktiv ist
+    String displayBarcode = barcodeData;
+    if (_onlineShopItem && selectedBarcodeType == BarcodeType.production) {
+      String formattedShopId = lastShopItem.toString().padLeft(4, '0');
+      displayBarcode = '$barcodeData.$formattedShopId';
+    }
 
-    // Skalierungsfaktor für die Anzeige
-    double scaleFactor = 4.0;
+    // Hauptabkürzungen für erste Zeile
+    List<String> mainElements = [];
+    // Features für zweite Zeile
+    List<String> featureElements = [];
 
-    return Container(
-      width: containerWidth * scaleFactor,
-      padding: EdgeInsets.all(8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          BarcodeWidget(
-            data: barcodeData,
-            barcode: Barcode.code128(),
-            width: containerWidth * scaleFactor * 0.9,
-            height: 80,
-          ),
-          SizedBox(height: 8),
-          Text(
-            barcodeData,
-            style: TextStyle(
-              fontSize: min(containerWidth * 0.15, 14.0),
-              fontWeight: FontWeight.bold,
+    if (_useShortCodes) {
+      if (_shortCodeDisplay != null) {
+        mainElements.add(_shortCodeDisplay!);
+      }
+
+      if (selectedBarcodeType == BarcodeType.production) {
+        final parts = barcodeData.split('.');
+        if (parts.length >= 3) {
+          final features = parts[2];
+          if (features[0] == '1' && _productionFeatures['thermo']!) featureElements.add('Th');
+          if (features[1] == '1' && _productionFeatures['hasel']!) featureElements.add('Ha');
+          if (features[2] == '1' && _productionFeatures['mondholz']!) featureElements.add('Mo');
+          if (features[3] == '1' && _productionFeatures['fsc']!) featureElements.add('Fs');
+          if (parts.length >= 4 && _productionFeatures['year']!) featureElements.add('${parts[3]}');
+        }
+      }
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Container(
+        height: 180,
+        padding: EdgeInsets.all(8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                BarcodeWidget(
+                  data: displayBarcode,  // Hier wird der möglicherweise modifizierte Barcode verwendet
+                  barcode: Barcode.code128(),
+                  height: 60,
+                  width: 200,
+                  drawText: false,
+                ),
+                SizedBox(height: 4),
+                Text(
+                  displayBarcode,  // Und hier auch
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
-            textAlign: TextAlign.center,
-          ),
-        ],
+            SizedBox(width: 16),
+            if (_useShortCodes)
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Erste Zeile: Hauptabkürzung
+                  if (mainElements.isNotEmpty)
+                    Text(
+                      mainElements.first,
+                      style: TextStyle(
+                        fontSize: 60,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  SizedBox(height: 8),
+                  // Zweite Zeile: Features in Boxen
+                  if (featureElements.isNotEmpty)
+                    Row(
+                      children: featureElements.map((feature) => Container(
+                        margin: EdgeInsets.only(right: 8),
+                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: primaryAppColor),
+                        ),
+                        child: Text(
+                          feature,
+                          style: TextStyle(
+                            fontSize: 40,
+                            fontWeight: FontWeight.w500,
+                            color: primaryAppColor,
+                          ),
+                        ),
+                      )).toList(),
+                    ),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }
+
+
+
+
   void _showPrinterStatusToast() {
     if (!_printerSearching) {
       setState(() {
@@ -1603,6 +2346,76 @@ class PrinterScreenState extends State<PrinterScreen> {
   }
 
   LabelType? selectedLabel;
+
+
+  //
+  //
+  // Future<void> _updateShortCodeDisplay() async {
+  //   if (!_useShortCodes || barcodeData.isEmpty) {
+  //     setState(() {
+  //       _shortCodeDisplay = null;
+  //     });
+  //     return;
+  //   }
+  //
+  //   try {
+  //     // Barcode in 2-Ziffern-Gruppen aufteilen
+  //     String code = barcodeData.replaceAll('.', ''); // Punkte entfernen
+  //     List<String> parts = [];
+  //     for (int i = 0; i < code.length; i += 2) {
+  //       if (i + 2 <= code.length) {
+  //         parts.add(code.substring(i, i + 2));
+  //       }
+  //     }
+  //
+  //     if (parts.length < 4) return;
+  //
+  //     List<String> shorts = [];
+  //
+  //     // Instrument (erste 2 Ziffern)
+  //     var instrumentDoc = await FirebaseFirestore.instance
+  //         .collection('instruments')
+  //         .doc(parts[0])
+  //         .get();
+  //     if (instrumentDoc.exists) {
+  //       shorts.add(instrumentDoc.data()?['short'] ?? '');
+  //     }
+  //
+  //     // Part Type (zweite 2 Ziffern)
+  //     var partDoc = await FirebaseFirestore.instance
+  //         .collection('parts')
+  //         .doc(parts[1])
+  //         .get();
+  //     if (partDoc.exists) {
+  //       shorts.add(partDoc.data()?['short'] ?? '');
+  //     }
+  //
+  //     // Origin (dritte 2 Ziffern)
+  //     var originDoc = await FirebaseFirestore.instance
+  //         .collection('wood_types')
+  //         .doc(parts[2])
+  //         .get();
+  //     if (originDoc.exists) {
+  //       shorts.add(originDoc.data()?['short'] ?? '');
+  //     }
+  //
+  //     // Material (vierte 2 Ziffern)
+  //     var materialDoc = await FirebaseFirestore.instance
+  //         .collection('qualities')
+  //         .doc(parts[3])
+  //         .get();
+  //     if (materialDoc.exists) {
+  //       shorts.add(materialDoc.data()?['short'] ?? '');
+  //     }
+  //
+  //     setState(() {
+  //       _shortCodeDisplay = shorts.join('-');
+  //     });
+  //     print('Abkürzungen gefunden: $shorts');
+  //   } catch (e) {
+  //     print('Fehler beim Laden der Abkürzungen: $e');
+  //   }
+  // }
 
 // Modifiziere den manuellen Eingabe-Dialog
   void _showManualInputDialog() {
@@ -1704,228 +2517,7 @@ class PrinterScreenState extends State<PrinterScreen> {
             children: <Widget>[
 
               _buildBarcodeTypeSelector(),
-              //
-              // SizedBox(height: 0.02 * MediaQuery.of(context).size.height),
-              // BarcodeWidget(
-              //   data: barcodeData,
-              //   barcode: pw.Barcode.code128(),
-              //   width: 200,
-              //   height: 80,
-              // ),
 
-              // Padding(
-              //   padding: const EdgeInsets.fromLTRB(8,8,8,0),
-              //   child: Row(
-              //     children: [
-              //       Expanded(
-              //         child: ElevatedButton(
-              //           onPressed:_showProductSearchDialog,
-              //          child:const Icon(Icons.search),
-              //
-              //
-              //         ),
-              //       ),
-              //       const SizedBox(width: 8),
-              //       Expanded(
-              //         child: ElevatedButton(
-              //           onPressed: _startScanner,
-              //          child: const Icon(Icons.qr_code_scanner),
-              //
-              //         ),
-              //       ),
-              //       const SizedBox(width: 8),
-              //       Expanded(
-              //         child: ElevatedButton(
-              //           onPressed: () => _showManualInputDialog(),
-              //           // onPressed: () {
-              //           //   barcodeController.clear();
-              //           //   showDialog(
-              //           //     context: context,
-              //           //     builder: (BuildContext context) {
-              //           //       return AlertDialog(
-              //           //         title: const Text('Barcode eingeben'),
-              //           //         content: Column(
-              //           //           mainAxisSize: MainAxisSize.min,
-              //           //           children: [
-              //           //             TextFormField(
-              //           //               controller: barcodeController,
-              //           //               decoration: const InputDecoration(
-              //           //                 labelText: 'Barcode',
-              //           //                 border: OutlineInputBorder(),
-              //           //               ),
-              //           //               keyboardType: TextInputType.number,
-              //           //             //  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              //           //               autofocus: true,
-              //           //             ),
-              //           //           ],
-              //           //         ),
-              //           //         actions: [
-              //           //           TextButton(
-              //           //             onPressed: () => Navigator.pop(context),
-              //           //             child: const Text('Abbrechen'),
-              //           //           ),
-              //           //           ElevatedButton(
-              //           //             onPressed: () async {
-              //           //               if (barcodeController.text.isNotEmpty) {
-              //           //                 barcodeData = barcodeController.text;
-              //           //                 await _fetchProductData(barcodeData);
-              //           //                 Navigator.pop(context);
-              //           //               }
-              //           //             },
-              //           //             child: const Text('Suchen'),
-              //           //           ),
-              //           //         ],
-              //           //       );
-              //           //     },
-              //           //   );
-              //           // },
-              //           child: const Icon(Icons.keyboard),
-              //
-              //         ),
-              //       ),
-              //     ],
-              //   ),
-              // ),
-
-              // Padding(
-              //   padding: const EdgeInsets.all(0.0),
-              //   child: Container(
-              //     margin: const EdgeInsets.all(8.0),
-              //     child: Column(
-              //       crossAxisAlignment: CrossAxisAlignment.start,
-              //       mainAxisSize: MainAxisSize.min,
-              //       children: [
-              //         // Text(
-              //         //   'Papierformat auswählen:',
-              //         //   style: TextStyle(
-              //         //     fontSize: 16,
-              //         //     fontWeight: FontWeight.bold,
-              //         //     color: Colors.black87,
-              //         //   ),
-              //         // ),
-              //         const SizedBox(height: 8),
-              //         Container(
-              //           decoration: BoxDecoration(
-              //             color: Colors.white,
-              //             borderRadius: BorderRadius.circular(8),
-              //             border: Border.all(color: Colors.grey.shade300),
-              //             boxShadow: [
-              //               BoxShadow(
-              //                 color: Colors.grey.withOpacity(0.1),
-              //                 spreadRadius: 1,
-              //                 blurRadius: 2,
-              //                 offset: Offset(0, 1),
-              //               ),
-              //             ],
-              //           ),
-              //           child: DropdownButtonHideUnderline(
-              //             child: ButtonTheme(
-              //               alignedDropdown: true,
-              //               child: DropdownButton<LabelType>(
-              //                 value: selectedLabel,
-              //                 isExpanded: true,
-              //                 icon: Container(
-              //                   padding: EdgeInsets.only(right: 12),
-              //                   child: Icon(
-              //                     Icons.arrow_drop_down,
-              //                     color: Colors.black54,
-              //                     size: 30,
-              //                   ),
-              //                 ),
-              //                 dropdownColor: Colors.white,
-              //                 borderRadius: BorderRadius.circular(8),
-              //                 items: labelTypes.map((LabelType label) {
-              //                   return DropdownMenuItem<LabelType>(
-              //                     value: label,
-              //                     child: Row(
-              //                       children: [
-              //                         Container(
-              //                           width: 50,
-              //                           height: 40,
-              //                           decoration: BoxDecoration(
-              //                             color: const Color(0xFF0F4A29).withOpacity(0.1),
-              //                             borderRadius: BorderRadius.circular(8),
-              //                           ),
-              //                           child: Center(
-              //                             child: Text(
-              //                               '${label.width}',
-              //                               style: TextStyle(
-              //                                 fontWeight: FontWeight.bold,
-              //                                 color: const Color(0xFF3E9C37),
-              //                               ),
-              //                             ),
-              //                           ),
-              //                         ),
-              //                         SizedBox(width: 12),
-              //                         Expanded(
-              //                           child: Column(
-              //                             crossAxisAlignment: CrossAxisAlignment.start,
-              //                             mainAxisSize: MainAxisSize.min,
-              //                             children: [
-              //                               Text(
-              //                                 'Endlospapier ${label.width}mm',
-              //                                 style: TextStyle(
-              //                                   fontWeight: FontWeight.w500,
-              //                                   fontSize: 15,
-              //                                 ),
-              //                               ),
-              //                               Text(
-              //                                 label.description,
-              //                                 style: TextStyle(
-              //                                   color: Colors.grey[600],
-              //                                   fontSize: 13,
-              //                                 ),
-              //                               ),
-              //                             ],
-              //                           ),
-              //                         ),
-              //                       ],
-              //                     ),
-              //                   );
-              //                 }).toList(),
-              //                 onChanged: (LabelType? newValue) {
-              //                   setState(() {
-              //
-              //                     selectedLabel = newValue;
-              //                   });
-              //                   _saveCurrentSettings();
-              //                 },
-              //                 hint: Text(
-              //                   'Bitte Papierformat wählen',
-              //                   style: TextStyle(color: Colors.grey[600]),
-              //                 ),
-              //               ),
-              //             ),
-              //           ),
-              //         ),
-              //       ],
-              //     ),
-              //   )
-              // ),
-              //
-              //
-              //  Padding(
-              //               //     padding: const EdgeInsets.all(8.0),
-              //               //     child: Container(
-              //               //       decoration: BoxDecoration(
-              //               //         border: Border.all(color: Colors.grey),
-              //               //         borderRadius: BorderRadius.circular(8.0),
-              //               //       ),
-              //               //       child: selectedLabel == null
-              //               //           ? Center(child: Padding(
-              //               //             padding: const EdgeInsets.all(30.0),
-              //               //             child: Text('Bitte wähle ein Papierformat aus'),
-              //               //           ))
-              //               //           : ClipRRect(
-              //               //         borderRadius: BorderRadius.circular(8.0),
-              //               //         child: Container(
-              //               //           color: Colors.white,
-              //               //           child: _buildPreview(),
-              //               //         ),
-              //               //       ),
-              //               //     ),
-              //               //   ),
-              //               //
                Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: Container(
@@ -1945,186 +2537,394 @@ class PrinterScreenState extends State<PrinterScreen> {
 
               Container(
                 margin: const EdgeInsets.all(8.0),
-                child: Card(
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: _isPrinterOnline
-                                    ? const Color(0xFF0F4A29).withOpacity(0.1)
-                                    : Colors.grey.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                Icons.print,
-                                size: 24,
-                                color: _isPrinterOnline
-                                    ? primaryAppColor
-                                    : Colors.grey,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Etikett drucken',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: _isPrinterOnline
-                                          ? Colors.black
-                                          : Colors.grey,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _isPrinterOnline
-                                        ? (barcodeData.isEmpty
-                                        ? 'Bitte zuerst Produkt auswählen'
-                                        : _printerDetails ?? 'Drucker bereit')
-                                        : 'Drucker nicht verfügbar',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: _isPrinterOnline
-                                          ? Colors.black54
-                                          : Colors.grey,
-                                    ),
-                                  ),
+                child: Column(
+                  children: [
+                    if (selectedBarcodeType == BarcodeType.production)
+                      Card(
+                      color: Colors.white,
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Container(
 
-                                ],
-                              ),
-                            ),
-                            IconButton(
-                              icon: _printerSearching
-                                  ? SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        padding: const EdgeInsets.all(8.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: _isPrinterOnline
+                                        ? const Color(0xFF0F4A29).withOpacity(0.1)
+                                        : Colors.grey.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    Icons.shopping_cart_checkout,
+                                    size: 24,
+                                    color: _isPrinterOnline
+                                        ? primaryAppColor
+                                        : Colors.grey,
+                                  ),
                                 ),
-                              )
-                                  : Icon(Icons.refresh),
-                              onPressed: _printerSearching
-                                  ? null
-                                  : () {
-                                setState(() {
-                                  _printerSearching = true;
-                                  _indicatorColor = Colors.orange;
-                                });
-                                _checkPrinterStatus();
-                              },
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            'Shop',
+                                            style: TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.black
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          if (_onlineShopItem)
+                                            Expanded(
+                                              child: Container(
+                                                height: 40,
+                                                child: TextField(
+                                                  controller: _priceController,
+                                                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                                  decoration: InputDecoration(
+                                                   //prefixIcon: Icon(Icons.currency_bitcoin, color: primaryAppColor),
+                                                    prefixText: 'CHF ',
+                                                    border: OutlineInputBorder(
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      borderSide: BorderSide(color: Colors.grey.shade300),
+                                                    ),
+                                                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                                                  ),
+                                                  onChanged: (value) {
+                                                    setState(() {
+                                                      _onlineShopPrice = double.tryParse(value) ?? 0.0;
+                                                    });
+                                                  },
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Transform.scale(
+                                  scale: 0.9,
+                                  child: Switch(
+                                    value: _onlineShopItem,
+                                    onChanged: (bool value) {
+                                      setState(() {
+                                        _onlineShopItem = value;
+                                        if (!value) {
+                                          _priceController.clear();
+                                          _onlineShopPrice = 0.0;
+                                        }
+                                      });
+                                    },
+                                    activeColor: primaryAppColor,
+                                  ),
+                                ),
+                              ],
                             ),
-                            _buildConnectionIndicator(),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Text(
+                                  'Shop-ID',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+
+                                Expanded(
+                                  child: Container(
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: Colors.grey.shade300),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                      children: [
+
+                                        Text(
+                                          '$lastShopItem',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
                           ],
                         ),
-                        const SizedBox(height: 16),
-                        Row(
+                      ),
+                    ),
+                    Card(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              'Anzahl Etiketten:',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-
-                            Expanded(
-                              child: Container(
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey.shade300),
-                                  borderRadius: BorderRadius.circular(8),
+                            Row(
+                              children: [
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: _isPrinterOnline
+                                        ? const Color(0xFF0F4A29).withOpacity(0.1)
+                                        : Colors.grey.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    Icons.print,
+                                    size: 24,
+                                    color: _isPrinterOnline
+                                        ? primaryAppColor
+                                        : Colors.grey,
+                                  ),
                                 ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                  children: [
-                                    IconButton(
-                                      icon: Icon(Icons.remove),
-                                      onPressed: printQuantity > 1
-                                          ? () => setState(() => printQuantity--)
-                                          : null,
-                                      color: const Color(0xFF3E9C37),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Drucken',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: _isPrinterOnline
+                                              ? Colors.black
+                                              : Colors.grey,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        _isPrinterOnline
+                                            ? (barcodeData.isEmpty
+                                            ? 'Bitte zuerst Produkt auswählen'
+                                            : _printerDetails ?? 'Drucker bereit')
+                                            : 'Drucker nicht verfügbar',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: _isPrinterOnline
+                                              ? Colors.black54
+                                              : Colors.grey,
+                                        ),
+                                      ),
+                                      // Neue Zeile für die Etikettenbreite
+                                      Text(
+                                        'Etikett: ${selectedLabel?.width ?? "-"} mm',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: _isPrinterOnline ? Colors.black54 : Colors.grey,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: _printerSearching
+                                      ? SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                     ),
-                                    Text(
-                                      '$printQuantity',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
+                                  )
+                                      : Icon(Icons.refresh),
+                                  onPressed: _printerSearching
+                                      ? null
+                                      : () {
+                                    setState(() {
+                                      _printerSearching = true;
+                                      _indicatorColor = Colors.orange;
+                                    });
+                                    _checkPrinterStatus();
+                                  },
+                                ),
+                                _buildConnectionIndicator(),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Text(
+                                  'Etiketten:',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+
+                                Expanded(
+                                  child: Container(
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: Colors.grey.shade300),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                      children: [
+                                        IconButton(
+                                          icon: Icon(Icons.remove),
+                                          onPressed: printQuantity > 1
+                                              ? () => setState(() => printQuantity--)
+                                              : null,
+                                          color: const Color(0xFF3E9C37),
+                                        ),
+                                        Text(
+                                          '$printQuantity',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: Icon(Icons.add),
+                                          onPressed: () => setState(() => printQuantity++),
+                                          color: const Color(0xFF3E9C37),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 16),
+                            const SizedBox(height: 16),
+                            if (_onlineShopItem && selectedBarcodeType == BarcodeType.production)
+                            // Zwei Buttons bei aktiviertem Online-Shop
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      height: 48,
+                                      child: ElevatedButton(
+                                        onPressed: barcodeData.isEmpty
+                                            ? null
+                                            : () => _bookOnlineShopItem(lastShopItem),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.grey[200],
+                                          disabledBackgroundColor: Colors.grey.shade300,
+                                          elevation: 0,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'Nur buchen',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: barcodeData.isEmpty
+                                                ? Colors.grey.shade600
+                                                : Colors.black87,
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                    IconButton(
-                                      icon: Icon(Icons.add),
-                                      onPressed: () => setState(() => printQuantity++),
-                                      color: const Color(0xFF3E9C37),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Container(
+                                      height: 48,
+                                      child: ElevatedButton(
+                                        onPressed: barcodeData.isEmpty || !_isPrinterOnline
+                                            ? null
+                                            : () async {
+                                          await _bookOnlineShopItem(lastShopItem);
+                                          await printLabel(context);
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: primaryAppColor,
+                                          disabledBackgroundColor: Colors.grey.shade300,
+                                          elevation: 0,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'Drucken & buchen',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: barcodeData.isEmpty || !_isPrinterOnline
+                                                ? Colors.grey.shade600
+                                                : Colors.white,
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                  ],
+                                  ),
+                                ],
+                              )
+                            else
+                            // Ursprünglicher einzelner Button wenn Online-Shop deaktiviert
+                              Container(
+                                width: double.infinity,
+                                height: 48,
+                                child: ElevatedButton(
+                                  onPressed: barcodeData.isEmpty || !_isPrinterOnline
+                                      ? null
+                                      : () => printLabel(context),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: primaryAppColor,
+                                    disabledBackgroundColor: Colors.grey.shade300,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    !_isPrinterOnline
+                                        ? 'Drucker nicht verfügbar'
+                                        : 'Drucken',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: barcodeData.isEmpty || !_isPrinterOnline
+                                          ? Colors.grey.shade600
+                                          : Colors.white,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
+                              )
                           ],
                         ),
-
-                        const SizedBox(height: 16),
-                        Container(
-                          width: double.infinity,
-                          height: 48,
-                          child: ElevatedButton(
-                            onPressed: barcodeData.isEmpty || !_isPrinterOnline|| selectedLabel==null
-                                ? null
-                                : () => printLabel(context),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: primaryAppColor,
-                              disabledBackgroundColor: Colors.grey.shade300,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            child: Text(
-                              selectedLabel==null
-                                  ? 'Barcode nicht definiert'
-                                  : !_isPrinterOnline
-                                  ? 'Drucker nicht verfügbar'
-                                  : 'Drucken',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: barcodeData.isEmpty || !_isPrinterOnline || selectedLabel==null
-                                    ? Colors.grey.shade600
-                                    : Colors.white,
-                              ),
-                            ),
-                          ),
-                        )
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               )
 
-              // if (barcodeData.isNotEmpty)  // Produktkarte nur anzeigen wenn Barcode gescannt
-              //   Padding(
-              //     padding: const EdgeInsets.all(16.0),
-              //     child: ProductCard(
-              //       barcode: barcodeData,
-              //       productData: productData,
-              //     ),
-              //   ),
+
 
             ],
           ),
@@ -2138,3 +2938,424 @@ class PrinterScreenState extends State<PrinterScreen> {
   }
 }
 
+// Neue Klasse für die Abkürzungsauswahl
+// In der AbbreviationSelector Klasse:
+class AbbreviationSelector extends StatefulWidget {
+  final Map<String, bool> selectedTypes;
+  final Function(String, bool) onTypeToggled;
+  final Map<String, List<AbbreviationItem>> abbreviations;
+  final bool useShortCodes;
+  final Function(bool) onUseShortCodesChanged;
+  final String barcodeData;
+  final BarcodeType barcodeType;
+  final Map<String, bool> productionFeatures;  // Neu
+  final Function(String, bool) onFeatureToggled;  // Neu
+
+  const AbbreviationSelector({
+    Key? key,
+    required this.selectedTypes,
+    required this.onTypeToggled,
+    required this.abbreviations,
+    required this.useShortCodes,
+    required this.onUseShortCodesChanged,
+    required this.barcodeData,
+    required this.barcodeType,
+    required this.productionFeatures,
+    required this.onFeatureToggled,
+  }) : super(key: key);
+
+  @override
+  State<AbbreviationSelector> createState() => _AbbreviationSelectorState();
+}
+
+class _AbbreviationSelectorState extends State<AbbreviationSelector> {
+  bool _isExpanded = true; // Neuer State für den Expanded-Zustand
+  Map<String, bool> _productionFeatures = {
+    'thermo': false,
+    'hasel':false,
+    'mondholz': false,
+    'fsc': false,
+    'year': false,
+  };
+  String? _year;
+
+  @override
+  void initState() {
+    super.initState();
+    // Statt direkt setState aufzurufen, verzögern wir die Initialisierung
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _parseProductionCode();
+    });
+  }
+
+  @override
+  void didUpdateWidget(AbbreviationSelector oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.barcodeData != oldWidget.barcodeData) {
+      _parseProductionCode();
+    }
+  }
+
+  void _parseProductionCode() {
+    if (widget.barcodeType == BarcodeType.production && widget.barcodeData.isNotEmpty) {
+      final parts = widget.barcodeData.split('.');
+      if (parts.length >= 3) {
+        final features = parts[2];
+
+        setState(() {
+          _productionFeatures = {
+            'thermo': features[0] == '1',
+            'hasel': features[1] == '1',
+            'mondholz': features[2] == '1',
+            'fsc': features[3] == '1',
+            'year': parts.length >= 4
+          };
+        });
+      }
+    }
+  }
+
+  void _showFeatureNotAvailable(String feature) {
+    Fluttertoast.showToast(
+      msg: "Dieser Barcode enthält kein $feature",
+      toastLength: Toast.LENGTH_SHORT,
+      gravity: ToastGravity.BOTTOM,
+      backgroundColor: Colors.red,
+      textColor: Colors.white,
+    );
+  }
+
+  Widget _buildProductionFeatures() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 24),
+        Text(
+          'Zusätzliche Merkmale',
+          style: TextStyle(
+            fontWeight: FontWeight.w500,
+            color: Colors.grey[700],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _buildFeatureChip(
+              'Th',
+              _productionFeatures['thermo'] ?? false,
+                  (value) {
+                // Wenn Feature im Barcode als '1' markiert ist
+                if (widget.barcodeData.isNotEmpty) {
+                  final parts = widget.barcodeData.split('.');
+                  if (parts.length >= 3 && parts[2][0] == '1') {
+                    setState(() {
+                      _productionFeatures['thermo'] = !_productionFeatures['thermo']!;
+                      widget.onFeatureToggled('thermo', !(widget.productionFeatures['thermo'] ?? false));
+
+                    });
+                  } else {
+                    _showFeatureNotAvailable('Thermo-Behandlung');
+                  }
+                }
+              },
+            ),
+            _buildFeatureChip(
+              'Ha',
+              _productionFeatures['hasel'] ?? false,
+                  (value) {
+                if (widget.barcodeData.isNotEmpty) {
+                  final parts = widget.barcodeData.split('.');
+                  if (parts.length >= 3 && parts[2][1] == '1') {
+                    setState(() {
+                      _productionFeatures['hasel'] = !_productionFeatures['hasel']!;
+                      widget.onFeatureToggled('hasel', !(widget.productionFeatures['hasel'] ?? false));
+    });
+
+                  } else {
+                    _showFeatureNotAvailable('Hasel-Behandlung');
+                  }
+                }
+              },
+            ),
+            _buildFeatureChip(
+              'Mo',
+              _productionFeatures['mondholz'] ?? false,
+                  (value) {
+                if (widget.barcodeData.isNotEmpty) {
+                  final parts = widget.barcodeData.split('.');
+                  if (parts.length >= 3 && parts[2][2] == '1') {
+    setState(() {
+      _productionFeatures['mondholz'] = !_productionFeatures['mondholz']!;
+
+      widget.onFeatureToggled('mondholz', !(widget.productionFeatures['mondholz'] ?? false));
+
+    });
+                  } else {
+                    _showFeatureNotAvailable('Mondholz');
+                  }
+                }
+              },
+            ),
+            _buildFeatureChip(
+              'Fs',
+              _productionFeatures['fsc'] ?? false,
+                  (value) {
+                if (widget.barcodeData.isNotEmpty) {
+                  final parts = widget.barcodeData.split('.');
+                  if (parts.length >= 3 && parts[2][3] == '1') {
+    setState(() {
+    _productionFeatures['fsc'] = !_productionFeatures['fsc']!;
+
+                      widget.onFeatureToggled('fsc', !(widget.productionFeatures['fsc'] ?? false));
+    });
+
+                  } else {
+                    _showFeatureNotAvailable('FSC-Zertifizierung');
+                  }
+                }
+              },
+            ),
+
+              _buildFeatureChip(
+                'YY',
+                _productionFeatures['year'] ?? false,
+                    (value) {
+    setState(() {
+    _productionFeatures['year'] = !_productionFeatures['year']!;
+                    widget.onFeatureToggled('year', !(widget.productionFeatures['year'] ?? false));
+    });
+
+
+                },
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeatureChip(
+      String short,
+      bool isActive,
+      Function(bool?) onChanged,
+      ) {
+    bool isAvailable = false;
+    if (widget.barcodeData.isNotEmpty && widget.barcodeType == BarcodeType.production) {
+      final parts = widget.barcodeData.split('.');
+      if (parts.length >= 3) {
+        final features = parts[2];
+        isAvailable = switch (short) {
+          'Th' => features[0] == '1',
+          'Ha' => features[1] == '1',
+          'Mo' => features[2] == '1',
+          'Fs' => features[3] == '1',
+          'YY' => parts.length >= 4,
+          _ => false
+        };
+      }
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isActive ? Colors.grey[100] : Colors.grey[50],
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: isAvailable ? Colors.grey[300]! : Colors.grey[200]!,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            short,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: isAvailable ? primaryAppColor : Colors.grey,
+            ),
+          ),
+          Checkbox(
+            value: isActive,  // Hier nur isActive statt isActive && isAvailable
+            onChanged: isAvailable ? onChanged : null,
+            activeColor: primaryAppColor,
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      padding: EdgeInsets.all(12.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8.0),
+        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 2,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.short_text,
+                color: primaryAppColor.withOpacity(0.6),
+                size: 24,
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      _isExpanded = !_isExpanded;
+                    });
+                  },
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Abkürzungen',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      Transform.scale(
+                        scale: 0.9,
+                        child: Switch(
+                          value: widget.useShortCodes,
+                          onChanged: widget.onUseShortCodesChanged,
+                          activeColor: primaryAppColor,
+                        ),
+                      ),
+                      Icon(
+                        _isExpanded
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                        color: Colors.grey[600],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          AnimatedCrossFade(
+            firstChild: Container(),
+            secondChild: widget.useShortCodes ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Divider(height: 24),
+                ...widget.abbreviations.entries.map((entry) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _getGroupTitle(entry.key),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ),
+                          Checkbox(
+                            value: widget.selectedTypes[entry.key] ?? false,
+                            onChanged: (bool? value) {
+                              if (value != null) {
+                                widget.onTypeToggled(entry.key, value);
+                              }
+                            },
+                            activeColor: primaryAppColor,
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                }).toList(),
+                if (widget.barcodeType == BarcodeType.production &&
+                    widget.barcodeData.isNotEmpty)
+                  _buildProductionFeatures(),
+              ],
+            ) : Container(),
+            crossFadeState: _isExpanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            duration: Duration(milliseconds: 300),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+  String _getGroupTitle(String key) {
+    switch (key) {
+      case 'instruments':
+        return 'Instrumente';
+      case 'wood_types':
+        return 'Holzarten';
+      case 'parts':
+        return 'Bauteile';
+      case 'qualities':
+        return 'Qualitäten';
+      default:
+        return key;
+    }
+  }
+
+  Widget _buildAbbreviationChip(AbbreviationItem item) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Text(
+        '${item.short} - ${item.name}',
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.grey[800],
+        ),
+      ),
+    );
+  }
+
+
+// Hilfsklasse für Abkürzungselemente
+class AbbreviationItem {
+  final String code;
+  final String name;
+  final String short;
+
+  AbbreviationItem({
+    required this.code,
+    required this.name,
+    required this.short,
+  });
+
+  factory AbbreviationItem.fromFirestore(Map<String, dynamic> data) {
+    return AbbreviationItem(
+      code: data['code'] ?? '',
+      name: data['name'] ?? '',
+      short: data['short'] ?? '',
+    );
+  }
+}

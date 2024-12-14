@@ -38,7 +38,7 @@ class ChartConfig {
 class RoundwoodStrings {
   static const String appBarTitle = 'Rundholz Analytics';
   static const String listTabTitle = 'Liste';
-  static const String analysisTabTitle = 'Auswertung';
+  static const String analysisTabTitle = 'Analyse';
 
   // Filter-bezogene Strings
   static const String filterTitle = 'Filter';

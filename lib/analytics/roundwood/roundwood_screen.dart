@@ -75,7 +75,7 @@ class RoundwoodScreenState extends State<RoundwoodScreen> with SingleTickerProvi
               ),
             ),
             const SizedBox(width: 12),
-            const Text('Export Format wählen'),
+            const Text('Export'),
           ],
         ),
         content: Column(
@@ -91,8 +91,8 @@ class RoundwoodScreenState extends State<RoundwoodScreen> with SingleTickerProvi
                 ),
                 child: const Icon(Icons.table_chart, color: Colors.blue),
               ),
-              title: const Text('Als CSV exportieren'),
-              subtitle: const Text('Tabellarische Daten im CSV-Format'),
+              title: const Text('CSV'),
+              subtitle: const Text('Daten im CSV-Format'),
               onTap: () {
                 Navigator.pop(context);
                 _exportCsv();
@@ -110,7 +110,7 @@ class RoundwoodScreenState extends State<RoundwoodScreen> with SingleTickerProvi
                 child: const Icon(Icons.list_alt, color: Colors.red),
               ),
               title: const Text('PDF Liste'),
-              subtitle: const Text('Nur Rundholz-Liste als PDF'),
+              subtitle: const Text('Rundholz-Liste'),
               onTap: () {
                 Navigator.pop(context);
                 _exportPdf(items, includeAnalytics: false);
@@ -127,7 +127,7 @@ class RoundwoodScreenState extends State<RoundwoodScreen> with SingleTickerProvi
                 child: const Icon(Icons.analytics, color: Colors.red),
               ),
               title: const Text('PDF mit Analyse'),
-              subtitle: const Text('Liste und Auswertungen als PDF'),
+              subtitle: const Text('Rundholz-Liste inkl. Auswertung'),
               onTap: () {
                 Navigator.pop(context);
                 _exportPdf(items, includeAnalytics: true);

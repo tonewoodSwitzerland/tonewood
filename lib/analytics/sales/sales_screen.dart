@@ -35,11 +35,12 @@ class SalesScreen extends StatefulWidget {
 class SalesScreenState extends State<SalesScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   SalesFilter _activeFilter = SalesFilter();  // Filter-Zustand
+  bool isQuickFilterActive = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
         setState(() {});
@@ -53,7 +54,29 @@ class SalesScreenState extends State<SalesScreen> with SingleTickerProviderState
     super.dispose();
   }
 
+  void _toggleQuickFilter() {
+    setState(() {
+      isQuickFilterActive = !isQuickFilterActive;
 
+      if (isQuickFilterActive) {
+        // Filter setzen mit den gleichen Werten wie im Warehouse Screen
+        _activeFilter = SalesFilter(
+          instruments: [
+            '10',  // Steelstring Gitarre
+            '11',  // Klassische Gitarre
+            '12',  // Parlor Gitarre
+            '16', // Bouzuki/Mandoline flach
+            '20', // Violine
+            '22', // Cello
+          ],
+          parts: ['10'], // Decke
+        );
+      } else {
+        // Filter zurücksetzen
+        _activeFilter = SalesFilter();
+      }
+    });
+  }
   void _showFilterDialog() async {
     final result = await showDialog<SalesFilter>(
       context: context,
@@ -123,6 +146,17 @@ class SalesScreenState extends State<SalesScreen> with SingleTickerProviderState
                 margin: const EdgeInsets.only(top: 4.0),
                 child: Row(
                   children: [
+                    // Quick Filter Button
+                    IconButton(
+                      icon: Icon(
+                        isQuickFilterActive ? Icons.star : Icons.star_outline,
+                        color: isQuickFilterActive ? const Color(0xFF0F4A29) : null,
+                      ),
+                      onPressed: _toggleQuickFilter,
+                      tooltip: isQuickFilterActive
+                          ? 'Schnellfilter deaktivieren'
+                          : 'Schnellfilter für Decken aktivieren',
+                    ),
                     // Filter Badge
                     Badge(
                       isLabelVisible: _activeFilter.toMap().isNotEmpty,
@@ -187,7 +221,7 @@ class SalesScreenState extends State<SalesScreen> with SingleTickerProviderState
               ),
             ),
             const SizedBox(width: 12),
-            const Text('Export Format wählen'),
+            const Text('Export'),
           ],
         ),
         content: Column(
@@ -202,8 +236,8 @@ class SalesScreenState extends State<SalesScreen> with SingleTickerProviderState
                 ),
                 child: const Icon(Icons.table_chart, color: Colors.blue),
               ),
-              title: const Text('Als CSV exportieren'),
-              subtitle: const Text('Tabellarische Daten im CSV-Format'),
+              title: const Text('CSV'),
+              subtitle: const Text('Daten im CSV-Format'),
               onTap: () async {
                 Navigator.pop(context);
                 await _exportListToCsv();
