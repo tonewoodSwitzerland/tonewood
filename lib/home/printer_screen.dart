@@ -1500,10 +1500,12 @@ class PrinterScreenState extends State<PrinterScreen> {
               }
             }
           }
-        printInfo.printMode = PrintMode.FIT_TO_PAGE;
+
         printInfo.isAutoCut = true;
         printInfo.isCutAtEnd = true;
         printInfo.numberOfCopies = printQuantity;
+
+          printInfo.printMode = PrintMode.FIT_TO_PAGE;
 
 
           printInfo.orientation = brother.Orientation.LANDSCAPE; // Dies ist der wichtige Teil!
@@ -1715,7 +1717,7 @@ class PrinterScreenState extends State<PrinterScreen> {
 
     // Basis-Dimensionen
     final double barcodeHeight = 20.0 * scaleFactor;
-    final double barcodeWidth = 64.0 * scaleFactor;
+    final double barcodeWidth = 80.0 * scaleFactor;
     final double spacing = 2 * scaleFactor;
     final double textSize = 7 * scaleFactor;
     final double mainCodeSize = 17.0 * scaleFactor;

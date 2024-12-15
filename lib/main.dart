@@ -21,7 +21,7 @@ import 'package:feedback/feedback.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
+   // options: DefaultFirebaseOptions.currentPlatform,
   );
    FirebaseFunctions.instanceFor(region: 'europe-west1');
   //try {q

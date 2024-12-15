@@ -25,23 +25,8 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>com.googleusercontent.apps.160218984374:ios:30a2a277a5febc2da69b17</string>
-			</array>
-		</dict>
-	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
-	<key>CLIENT_ID</key>
-	<string>160218984374:ios:30a2a277a5febc2da69b17.apps.googleusercontent.com</string>
-	<key>GIDClientID</key>
-	<string>160218984374:ios:30a2a277a5febc2da69b17.apps.googleusercontent.com</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
@@ -72,10 +57,6 @@
 	<string>Die App benötigt Zugriff auf die Fotobibliothek, um Dateien hinzuzufügen.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Photo Library Access Warning</string>
-	<key>PLIST_VERSION</key>
-	<string>1</string>
-	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.160218984374:ios:30a2a277a5febc2da69b17</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

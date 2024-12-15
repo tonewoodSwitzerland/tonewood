@@ -233,6 +233,7 @@ class StartScreenState extends State<StartScreen> {
           children: [
             _buildFeedbackButton(),
             _buildLogo(),
+
             Expanded(
               flex: 2,
               child: Center(
@@ -249,6 +250,7 @@ class StartScreenState extends State<StartScreen> {
                             );
                           },
                             child: Text("Infos",style: smallHeadline,)):
+
                 IconButton(
                   icon: const Icon(
                     Icons.settings,

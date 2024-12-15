@@ -187,6 +187,7 @@ class SettingsFormState extends State<SettingsForm> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // User Info Card
+                Text("1.44",style: smallHeadline,),
                 Card(
                   child: Padding(
                     padding: EdgeInsets.all(16),
