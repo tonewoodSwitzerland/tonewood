@@ -93,17 +93,17 @@ class StartScreenState extends State<StartScreen> {
       //     label: "",
       //   ),
       const BottomNavigationBarItem(
-        icon: Icon(Icons.search, color: Colors.black87),
-        activeIcon: Icon(Icons.search, color: primaryAppColor),
-        label: "",
+        icon: Icon(Icons.warehouse, color: Colors.black87),
+        activeIcon: Icon(Icons.warehouse, color: primaryAppColor),
+        label: "Lager",
       ),
       const BottomNavigationBarItem(
         icon: FaIcon(FontAwesomeIcons.productHunt),
-        label: "",
+        label: "Produkt",
       ),
       const BottomNavigationBarItem(
-        icon:  FaIcon(FontAwesomeIcons.tree),
-        label: "",
+        icon:  FaIcon(FontAwesomeIcons.cartShopping),
+        label: "Verkauf",
       ),
       // const BottomNavigationBarItem(
       //   icon:  Icon(Icons.settings, color: Colors.black87),

@@ -4,6 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../constants.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 class WarehouseScreen extends StatefulWidget {
   final bool isDialog;
@@ -711,7 +717,11 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                       ),
                                     ),
                                     Text(
-                                      'CHF ${data['price_CHF']?.toString() ?? '0.00'}',
+                                      NumberFormat.currency(
+                                          locale: 'de_DE',
+                                          symbol: 'CHF',
+                                          decimalDigits: 2
+                                      ).format(data['price_CHF'] ?? 0.00),
                                       style: const TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
@@ -722,6 +732,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                               ),
                             ],
                           ),
+                          data: data,
                         ),
 
                         const SizedBox(height: 24),
@@ -836,12 +847,203 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       },
     );
   }
+// Fügen Sie diese neue Methode zur WarehouseScreenState Klasse hinzu
+  Future<void> _adjustStock(String shortBarcode, int adjustment) async {
+    try {
+      final inventoryRef = FirebaseFirestore.instance.collection('inventory').doc(shortBarcode);
 
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final doc = await transaction.get(inventoryRef);
+        if (!doc.exists) {
+          throw 'Produkt nicht gefunden';
+        }
+
+        final currentQuantity = doc.data()?['quantity'] ?? 0;
+        final newQuantity = currentQuantity + adjustment;
+
+        if (newQuantity < 0) {
+          throw 'Bestand kann nicht negativ werden';
+        }
+
+        transaction.update(inventoryRef, {
+          'quantity': newQuantity,
+          'last_modified': FieldValue.serverTimestamp(),
+          'last_stock_change': adjustment,
+        });
+
+        // Fügen Sie einen Eintrag in stock_entries hinzu
+        final entryRef = FirebaseFirestore.instance.collection('stock_entries').doc();
+        transaction.set(entryRef, {
+          'product_id': shortBarcode,
+          'quantity_change': adjustment,
+          'timestamp': FieldValue.serverTimestamp(),
+          'type': 'manual_adjustment',
+          'entry_type': adjustment > 0 ? 'increase' : 'decrease',
+        });
+      });
+
+
+    } catch (e) {
+      AppToast.show(
+        message: 'Fehler bei der Bestandsänderung: $e',
+        height: h,
+      );
+    }
+  }
+// Fügen Sie diese neue Methode hinzu, die einen Stream zurückgibt
+  Stream<int> _getAvailableQuantityStream(String shortBarcode) {
+    return FirebaseFirestore.instance
+        .collection('inventory')
+        .doc(shortBarcode)
+        .snapshots()
+        .map((doc) => doc.data()?['quantity'] ?? 0);
+  }
+
+
+// Aktualisieren Sie die buildDetailSection Methode
   Widget _buildDetailSection({
     required String title,
     required IconData icon,
     required Widget content,
+    Map<String, dynamic>? data,  // Neuer Parameter für Produktdaten
   }) {
+    if (title == 'Bestand & Preis' && data != null) {
+      return Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey[200]!),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+              ),
+              child: Row(
+                children: [
+                  Icon(icon, size: 20, color: const Color(0xFF0F4A29)),
+                  const SizedBox(width: 8),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  // Bestandsanzeige mit Anpassungsmöglichkeit
+                  StreamBuilder<int>(
+                    stream: _getAvailableQuantityStream(data['short_barcode']),
+                    builder: (context, snapshot) {
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F4A29).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Verfügbarer Bestand:',
+                                  style: TextStyle(
+                                    color: Colors.grey[700],
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  snapshot.hasData
+                                      ? '${snapshot.data} ${data['unit'] ?? 'Stück'}'
+                                      : 'Wird geladen...',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF0F4A29),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                ElevatedButton(
+                                  onPressed: snapshot.hasData && snapshot.data! > 0
+                                      ? () => _adjustStock(data['short_barcode'], -1)
+                                      : null,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.red[100],
+                                    foregroundColor: Colors.red[900],
+                                    shape: const CircleBorder(),
+                                    padding: const EdgeInsets.all(12),
+                                  ),
+                                  child: const Icon(Icons.remove),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () => _adjustStock(data['short_barcode'], 1),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green[100],
+                                    foregroundColor: Colors.green[900],
+                                    shape: const CircleBorder(),
+                                    padding: const EdgeInsets.all(12),
+                                  ),
+                                  child: const Icon(Icons.add),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  // Preisanzeige
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Preis pro ${data['unit'] ?? 'Stück'}:',
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'CHF ${data['price_CHF']?.toString() ?? '0.00'}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Ursprüngliche Implementierung für andere Sektionen
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey[200]!),
@@ -1032,90 +1234,98 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
           return Scaffold(
             appBar: AppBar(
-              title: Container(
-                height: 36,  // Etwas kleiner
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],  // Hellerer Hintergrund
-                  borderRadius: BorderRadius.circular(8),  // Weniger gerundet
-                  border: Border.all(
-                    color: Colors.grey[300]!,  // Subtile Umrandung
-                    width: 1,
+              title: IntrinsicWidth(
+                child: Container(
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.grey[300]!,
+                      width: 1,
+                    ),
                   ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => setState(() => _isOnlineShopView = false),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: !_isOnlineShopView ? primaryAppColor.withOpacity(0.1) : Colors.transparent,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            'Lager',
-                            style: TextStyle(
-                              fontSize: 14,  // Kleinere Schrift
-                              color: !_isOnlineShopView ? primaryAppColor : Colors.grey[600],
-                              fontWeight: !_isOnlineShopView ? FontWeight.w600 : FontWeight.normal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _isOnlineShopView = false),
+                          child: Container(
+                            alignment: Alignment.center,
+                            height: 36,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: !_isOnlineShopView ? primaryAppColor.withOpacity(0.1) : Colors.transparent,
+                              borderRadius: BorderRadius.horizontal(left: Radius.circular(7)),
+                            ),
+                            child: Text(
+                              'Lager',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: !_isOnlineShopView ? primaryAppColor : Colors.grey[600],
+                                fontWeight: !_isOnlineShopView ? FontWeight.w600 : FontWeight.normal,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    SizedBox(
-                      height: 20,
-                      child: VerticalDivider(
-                        color: Colors.grey[300],
-                        thickness: 1,
+                      Container(
+                        height: 24,
                         width: 1,
+                        color: Colors.grey[300],
                       ),
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => setState(() => _isOnlineShopView = true),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: _isOnlineShopView ? primaryAppColor.withOpacity(0.1) : Colors.transparent,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            'Shop',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: _isOnlineShopView ? primaryAppColor : Colors.grey[600],
-                              fontWeight: _isOnlineShopView ? FontWeight.w600 : FontWeight.normal,
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _isOnlineShopView = true),
+                          child: Container(
+                            alignment: Alignment.center,
+                            height: 36,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: _isOnlineShopView ? primaryAppColor.withOpacity(0.1) : Colors.transparent,
+                              borderRadius: BorderRadius.horizontal(right: Radius.circular(7)),
+                            ),
+                            child: Text(
+                              'Shop',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: _isOnlineShopView ? primaryAppColor : Colors.grey[600],
+                                fontWeight: _isOnlineShopView ? FontWeight.w600 : FontWeight.normal,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ), centerTitle: true,
-              // Nur für Mobile den Filter-Button zeigen
-              actions: !isDesktopLayout ? [
-                IconButton(
-                  icon: Icon(
-                    isQuickFilterActive ? Icons.star : Icons.star_outline,
-                    color: isQuickFilterActive ? const Color(0xFF0F4A29) : null,
+                    ],
                   ),
-                  onPressed: _toggleQuickFilter,
-                  tooltip: isQuickFilterActive
-                      ? 'Schnellfilter deaktivieren'
-                      : 'Schnellfilter für Decken aktivieren',
                 ),
+              ),
+             // centerTitle: true,
+              actions: [
+                if (!isDesktopLayout) ...[
+                  IconButton(
+                    icon: Icon(
+                      isQuickFilterActive ? Icons.star : Icons.star_outline,
+                      color: isQuickFilterActive ? const Color(0xFF0F4A29) : null,
+                    ),
+                    onPressed: _toggleQuickFilter,
+                    tooltip: isQuickFilterActive
+                        ? 'Schnellfilter deaktivieren'
+                        : 'Schnellfilter für Decken aktivieren',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.filter_list),
+                    onPressed: () => _showFilterDialog(),
+                  ),
+                ],
+                // Add the export button
                 IconButton(
-                  icon: const Icon(Icons.filter_list),
-                  onPressed: () => _showFilterDialog(),
+                  onPressed: _showExportDialog,
+                  icon: const Icon(Icons.download),
+                  tooltip: 'Exportieren',
                 ),
-              ] : null,
+              ],
             ),
             body: isDesktopLayout
                 ? _buildDesktopLayout()
@@ -1623,12 +1833,25 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        data['product_name']?.toString() ?? 'Unbenanntes Produkt',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            data['product_name']?.toString() ?? 'Unbenanntes Produkt',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+
+                                          Text(
+                                            data['quality_name']?.toString() ?? '-',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
@@ -1734,19 +1957,19 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                   )
                               ],
                             ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Instrument: ${data['instrument_name']} (${data['instrument_code']})',
-                              style: TextStyle(color: Colors.grey[800]),
-                            ),
-                            Text(
-                              'Bauteil: ${data['part_name']} (${data['part_code']})',
-                              style: TextStyle(color: Colors.grey[800]),
-                            ),
-                            Text(
-                              'Holzart: ${data['wood_name']} (${data['wood_code']})',
-                              style: TextStyle(color: Colors.grey[800]),
-                            ),
+                            // const SizedBox(height: 12),
+                            // Text(
+                            //   'Instrument: ${data['instrument_name']} (${data['instrument_code']})',
+                            //   style: TextStyle(color: Colors.grey[800]),
+                            // ),
+                            // Text(
+                            //   'Bauteil: ${data['part_name']} (${data['part_code']})',
+                            //   style: TextStyle(color: Colors.grey[800]),
+                            // ),
+                            // Text(
+                            //   'Holzart: ${data['wood_name']} (${data['wood_code']})',
+                            //   style: TextStyle(color: Colors.grey[800]),
+                            // ),
                           ],
                         ),
                       ),
@@ -1807,6 +2030,293 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     );
   }
 
+  Future<void> _exportWarehouseCsv() async {
+    try {
+      final query = buildQuery();
+      final snapshot = await query.get();
+      final items = snapshot.docs.map((doc) => doc.data()).toList();
+
+      final fileName = _isOnlineShopView
+          ? 'Onlineshop_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.csv'
+          : 'Lagerbestand_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.csv';
+
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/$fileName');
+
+      final StringBuffer csvContent = StringBuffer();
+
+      // Headers - unterschiedlich je nach Modus
+      final headers = _isOnlineShopView ? [
+        'Artikelnummer',
+        'Produkt',
+        'Instrument',
+        'Bauteil',
+        'Holzart',
+        'Qualität',
+        'Status',
+        'Preis CHF',
+        'Eingestellt am',
+        if (_shopFilter == 'sold') 'Verkauft am'
+      ] : [
+        'Artikelnummer',
+        'Produkt',
+        'Instrument',
+        'Bauteil',
+        'Holzart',
+        'Qualität',
+        'Bestand',
+        'Einheit',
+        'Preis CHF'
+      ];
+
+      csvContent.writeln(headers.join(';'));
+
+      // Data rows
+      for (final item in items) {
+        final row = _isOnlineShopView ? [
+          item['barcode'],
+          item['product_name'],
+          '${item['instrument_name']} (${item['instrument_code']})',
+          '${item['part_name']} (${item['part_code']})',
+          '${item['wood_name']} (${item['wood_code']})',
+          '${item['quality_name']} (${item['quality_code']})',
+          item['sold'] == true ? 'Verkauft' : 'Im Shop',
+          NumberFormat.currency(locale: 'de_DE', symbol: 'CHF', decimalDigits: 2).format(item['price_CHF']),
+          item['created_at'] != null
+              ? DateFormat('dd.MM.yyyy HH:mm').format((item['created_at'] as Timestamp).toDate())
+              : '',
+          if (_shopFilter == 'sold' && item['sold_at'] != null)
+            DateFormat('dd.MM.yyyy HH:mm').format((item['sold_at'] as Timestamp).toDate())
+        ] : [
+          item['short_barcode'],
+          item['product_name'],
+          '${item['instrument_name']} (${item['instrument_code']})',
+          '${item['part_name']} (${item['part_code']})',
+          '${item['wood_name']} (${item['wood_code']})',
+          '${item['quality_name']} (${item['quality_code']})',
+          item['quantity'].toString(),
+          item['unit'],
+          NumberFormat.currency(locale: 'de_DE', symbol: 'CHF', decimalDigits: 2).format(item['price_CHF'])
+        ];
+        csvContent.writeln(row.join(';'));
+      }
+
+      await file.writeAsBytes(csvContent.toString().codeUnits);
+
+      if (!mounted) return;
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: fileName,
+      );
+
+      Future.delayed(const Duration(minutes: 1), () => file.delete());
+      AppToast.show(message: 'Export erfolgreich', height: h);
+    } catch (e) {
+      if (!mounted) return;
+      AppToast.show(message: 'Fehler beim Export: $e', height: h);
+    }
+  }
+
+  Future<void> _exportWarehousePdf() async {
+    try {
+      final query = buildQuery();
+      final snapshot = await query.get();
+      final items = snapshot.docs.map((doc) => doc.data()).toList();
+
+      final fileName = _isOnlineShopView
+          ? 'Onlineshop_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.pdf'
+          : 'Lagerbestand_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.pdf';
+
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/$fileName');
+
+      final pdf = pw.Document();
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          orientation: pw.PageOrientation.landscape,
+          build: (pw.Context context) => [
+            pw.Header(
+              level: 0,
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(
+                    _isOnlineShopView ? 'Onlineshop Übersicht' : 'Lagerbestand Übersicht',
+                    style: pw.TextStyle(
+                      fontSize: 24,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.Text(
+                    'Stand: ${DateFormat('dd.MM.yyyy').format(DateTime.now())}',
+                    style: pw.TextStyle(
+                      fontSize: 14,
+                      color: PdfColors.grey700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Table.fromTextArray(
+              headerStyle: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.black,
+              ),
+              headerDecoration: pw.BoxDecoration(
+                color: PdfColors.grey300,
+              ),
+              cellHeight: 30,
+              cellAlignments: {
+                0: pw.Alignment.centerLeft,
+                1: pw.Alignment.centerLeft,
+                2: pw.Alignment.centerLeft,
+                3: pw.Alignment.centerLeft,
+                4: pw.Alignment.centerLeft,
+                5: pw.Alignment.center,
+                6: pw.Alignment.centerRight,
+              },
+              headers: _isOnlineShopView ? [
+                'Artikelnummer',
+                'Produkt',
+                'Instrument',
+                'Holzart',
+                'Qualität',
+                'Status',
+                'Preis CHF',
+                'Eingestellt am',
+                if (_shopFilter == 'sold') 'Verkauft am'
+              ] : [
+                'Artikelnummer',
+                'Produkt',
+                'Instrument',
+                'Holzart',
+                'Qualität',
+                'Bestand',
+                'Preis CHF'
+              ],
+              data: items.map((item) => _isOnlineShopView ? [
+                item['barcode'],
+                item['product_name'],
+                '${item['instrument_name']} (${item['instrument_code']})',
+                '${item['wood_name']} (${item['wood_code']})',
+                '${item['quality_name']} (${item['quality_code']})',
+                item['sold'] == true ? 'Verkauft' : 'Im Shop',
+                NumberFormat.currency(locale: 'de_DE', symbol: 'CHF', decimalDigits: 2).format(item['price_CHF']),
+                item['created_at'] != null
+                    ? DateFormat('dd.MM.yyyy HH:mm').format((item['created_at'] as Timestamp).toDate())
+                    : '',
+                if (_shopFilter == 'sold' && item['sold_at'] != null)
+                  DateFormat('dd.MM.yyyy HH:mm').format((item['sold_at'] as Timestamp).toDate())
+              ] : [
+                item['short_barcode'],
+                item['product_name'],
+                '${item['instrument_name']} (${item['instrument_code']})',
+                '${item['wood_name']} (${item['wood_code']})',
+                '${item['quality_name']} (${item['quality_code']})',
+                '${item['quantity']} ${item['unit']}',
+                NumberFormat.currency(locale: 'de_DE', symbol: 'CHF', decimalDigits: 2).format(item['price_CHF']),
+              ]).toList(),
+            ),
+            pw.SizedBox(height: 20),
+            pw.Footer(
+              title: pw.Text(
+                'Seite ',
+                style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      await file.writeAsBytes(await pdf.save());
+
+      if (!mounted) return;
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: fileName,
+      );
+
+      Future.delayed(const Duration(minutes: 1), () => file.delete());
+      AppToast.show(message: 'Export erfolgreich', height: h);
+    } catch (e) {
+      if (!mounted) return;
+      AppToast.show(message: 'Fehler beim Export: $e', height: h);
+    }
+  }
+
+  void _showExportDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F4A29).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.download,
+                color: Color(0xFF0F4A29),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(_isOnlineShopView ? 'Shop Export' : 'Lager Export'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.table_chart, color: Colors.blue),
+              ),
+              title: const Text('CSV'),
+              subtitle: const Text('Daten im CSV-Format'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportWarehouseCsv();
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.picture_as_pdf, color: Colors.red),
+              ),
+              title: const Text('Als PDF exportieren'),
+              subtitle: const Text('Übersicht als PDF'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportWarehousePdf();
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+        ],
+      ),
+    );
+  }
 
   bool _hasActiveFilters() {
     return selectedInstrumentCodes.isNotEmpty ||

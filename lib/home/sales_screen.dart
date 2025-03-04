@@ -7,6 +7,8 @@ import 'package:cloud_functions/cloud_functions.dart';
 
 import 'package:tonewood/home/warehouse_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -64,7 +66,25 @@ Stream<QuerySnapshot> get _basketStream => FirebaseFirestore.instance
     .orderBy('timestamp', descending: true)
     .snapshots();
 
+// Füge diese Variablen zur SalesScreenState-Klasse hinzu
+  final ValueNotifier<String> _currencyNotifier = ValueNotifier<String>('CHF');
+  final ValueNotifier<Map<String, double>> _exchangeRatesNotifier = ValueNotifier<Map<String, double>>({
+    'CHF': 1.0,
+    'EUR': 0.96,
+    'USD': 1.08,
+  });
 
+// Diese Getter machen den Code kürzer
+  String get _selectedCurrency => _currencyNotifier.value;
+  Map<String, double> get _exchangeRates => _exchangeRatesNotifier.value;
+
+
+  @override
+  void initState() {
+    super.initState();
+
+    _loadCurrencySettings(); // Neue Zeile
+  }
 
 @override
 Widget build(BuildContext context) {
@@ -230,7 +250,40 @@ return Scaffold(
           tooltip: 'Email-Konfiguration',
           onPressed: _showEmailConfigDialog,
         ),
+        // Währungsumrechner-Icon
+
+        ValueListenableBuilder<String>(
+          valueListenable: _currencyNotifier,
+          builder: (context, currency, child) {
+            return IconButton(
+              icon: Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  const Icon(Icons.currency_exchange),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: Text(
+                      currency,
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              tooltip: 'Währungseinstellungen',
+              onPressed: _showCurrencyConverterDialog,
+            );
+          },
+        ),
       ],
+
     ),
     // AppBar(
     //   title: Row(
@@ -636,6 +689,392 @@ return Scaffold(
       ),
     );
   }
+
+
+
+// Diese Methode lädt die Währungseinstellungen aus Firebase
+  Future<void> _loadCurrencySettings() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('currency_settings')
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+
+        // Lade die Wechselkurse
+        if (data.containsKey('exchange_rates')) {
+          final rates = data['exchange_rates'] as Map<String, dynamic>;
+          final ratesMap = {
+            'CHF': 1.0,
+            'EUR': rates['EUR'] as double? ?? 0.96,
+            'USD': rates['USD'] as double? ?? 1.08,
+          };
+          _exchangeRatesNotifier.value = ratesMap;
+        }
+
+        // Lade die ausgewählte Währung
+        if (data.containsKey('selected_currency')) {
+          _currencyNotifier.value = data['selected_currency'] as String? ?? 'CHF';
+        }
+
+        print('Währungseinstellungen geladen: $_selectedCurrency, $_exchangeRates');
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Währungseinstellungen: $e');
+    }
+  }
+
+// Diese Methode speichert die Währungseinstellungen in Firebase
+  Future<void> _saveCurrencySettings() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('currency_settings')
+          .set({
+        'selected_currency': _selectedCurrency,
+        'exchange_rates': {
+          'EUR': _exchangeRates['EUR'],
+          'USD': _exchangeRates['USD'],
+        },
+        'last_updated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      print('Währungseinstellungen gespeichert');
+    } catch (e) {
+      print('Fehler beim Speichern der Währungseinstellungen: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Speichern: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+// Füge diese Methode zur SalesScreenState-Klasse hinzu
+  Future<void> _fetchLatestExchangeRates() async {
+    try {
+      // Setze Meldung, dass Kurse aktualisiert werden
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aktuelle Wechselkurse werden abgerufen...'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+
+      // API-Aufruf
+      final response = await http.get(
+        Uri.parse('https://api.frankfurter.app/latest?from=CHF&to=EUR,USD'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final rates = data['rates'] as Map<String, dynamic>;
+
+        // Aktualisiere die Wechselkurse
+        final updatedRates = {
+          'CHF': 1.0,
+          'EUR': rates['EUR'] as double,
+          'USD': rates['USD'] as double,
+        };
+
+        // Speichere im ValueNotifier
+        _exchangeRatesNotifier.value = updatedRates;
+
+        // Speichere in Firebase
+        await _saveCurrencySettings();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Wechselkurse aktualisiert (Stand: ${data['date']})'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+
+        print('Wechselkurse aktualisiert: $updatedRates');
+      } else {
+        throw Exception('Fehler beim Abrufen der Wechselkurse: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Fehler beim Abrufen der Wechselkurse: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Abrufen der Wechselkurse: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+
+
+// Hilfsmethode zur Formatierung von Preisen
+  String _formatPrice(double amount) {
+    // Konvertiere von CHF in die ausgewählte Währung
+    double convertedAmount = amount;
+
+    if (_selectedCurrency != 'CHF') {
+      convertedAmount = amount * _exchangeRates[_selectedCurrency]!;
+    }
+
+    return NumberFormat.currency(
+        locale: 'de_DE',
+        symbol: _selectedCurrency,
+        decimalDigits: 2
+    ).format(convertedAmount);
+  }
+
+// Überarbeitete Methode für den Währungsumrechner
+  void _showCurrencyConverterDialog() {
+    final eurRateController = TextEditingController(text: _exchangeRates['EUR']!.toString());
+    final usdRateController = TextEditingController(text: _exchangeRates['USD']!.toString());
+    String currentCurrency = _selectedCurrency;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setState) {
+          return Dialog(
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              width: 400,
+              // Machen wir eine maximale Höhe
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.8,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Dialog-Header
+                  Row(
+                    children: [
+                      Text(
+                        'Währung',
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+
+                  // Scrollbarer Inhalt
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 24),
+
+                          // Aktuelle Währung
+                          Text(
+                            'Aktuelle Währung',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            decoration: const InputDecoration(
+                              labelText: 'Währung auswählen',
+                              border: OutlineInputBorder(),
+                            ),
+                            value: currentCurrency,
+                            items: _exchangeRates.keys.map((currency) =>
+                                DropdownMenuItem(
+                                  value: currency,
+                                  child: Text(currency),
+                                )
+                            ).toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() => currentCurrency = value);
+                              }
+                            },
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // Umrechnungsfaktoren
+                          Text(
+                            'Umrechnungsfaktoren (1 CHF =)',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // EUR Umrechnungsfaktor
+                          TextFormField(
+                            controller: eurRateController,
+                            decoration: const InputDecoration(
+                              labelText: 'EUR Faktor',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.euro),
+                              helperText: '1 CHF = x EUR',
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(RegExp(r'^\d*[,.]?\d{0,4}')),
+                            ],
+                            onChanged: (_) => setState(() {}),
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // USD Umrechnungsfaktor
+                          TextFormField(
+                            controller: usdRateController,
+                            decoration: const InputDecoration(
+                              labelText: 'USD Faktor',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.attach_money),
+                              helperText: '1 CHF = x USD',
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(RegExp(r'^\d*[,.]?\d{0,4}')),
+                            ],
+                            onChanged: (_) => setState(() {}),
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // Beispielumrechnungen
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Beispielumrechnungen:',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text('100 CHF = ${(100 * double.parse(eurRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} EUR'),
+                                Text('100 CHF = ${(100 * double.parse(usdRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} USD'),
+                                const SizedBox(height: 4),
+                                Text('100 EUR = ${(100 / double.parse(eurRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} CHF'),
+                                Text('100 USD = ${(100 / double.parse(usdRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} CHF'),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // Übernehmen Button
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              try {
+                                double eurRate = double.parse(eurRateController.text.replaceAll(',', '.'));
+                                double usdRate = double.parse(usdRateController.text.replaceAll(',', '.'));
+
+                                if (eurRate <= 0 || usdRate <= 0) {
+                                  throw Exception('Faktoren müssen positiv sein');
+                                }
+
+                                // Aktualisiere die Werte
+                                _exchangeRatesNotifier.value = {
+                                  'CHF': 1.0,
+                                  'EUR': eurRate,
+                                  'USD': usdRate
+                                };
+                                _currencyNotifier.value = currentCurrency;
+
+                                // Speichere in Firebase
+                                await _saveCurrencySettings();
+
+                                Navigator.pop(context);
+
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Währung auf $_selectedCurrency umgestellt'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Fehler: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.check),
+                            label: const Text('Übernehmen'),
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size(double.infinity, 45),
+                            ),
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // Kurse abrufen Button
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              Navigator.pop(context);
+                              await _fetchLatestExchangeRates();
+                              _showCurrencyConverterDialog(); // Dialog erneut öffnen mit neuen Kursen
+                            },
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Aktuelle Kurse abrufen'),
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size(double.infinity, 45),
+                            ),
+                          ),
+
+                          // Quelle der Wechselkurse
+                          const SizedBox(height: 8),
+                          Center(
+                            child: Text(
+                              'Quelle: Frankfurter API (Europäische Zentralbank)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontStyle: FontStyle.italic,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 8),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+
+
 
   Future<void> _saveOfficeSettings(Map<String, dynamic> updates) async {
     try {
@@ -1418,19 +1857,23 @@ return Scaffold(
                       },
                     ),
                   ),
-                  const SizedBox(height: 16),
                   SafeArea(
-                    child: Row(
+                    child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Abbrechen'),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _showNewCostCenterDialog();
+                          },
+                          icon: const Icon(Icons.add),
+                          label: const Text('Neue Kostenstelle'),
                         ),
 
                       ],
                     ),
                   ),
+
                 ],
               ),
             ),
@@ -1439,7 +1882,162 @@ return Scaffold(
       ),
     );
   }
+  void _showNewCostCenterDialog() {
+    final formKey = GlobalKey<FormState>();
+    final codeController = TextEditingController();
+    final nameController = TextEditingController();
+    final descriptionController = TextEditingController();
 
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Neue Kostenstelle',
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Basisdaten',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: codeController,
+                            decoration: const InputDecoration(
+                              labelText: 'Code *',
+                              border: OutlineInputBorder(),
+                              filled: true,
+                            ),
+                            validator: (value) => value?.isEmpty == true
+                                ? 'Bitte Code eingeben'
+                                : null,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: nameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Name *',
+                              border: OutlineInputBorder(),
+                              filled: true,
+                            ),
+                            validator: (value) => value?.isEmpty == true
+                                ? 'Bitte Namen eingeben'
+                                : null,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: descriptionController,
+                            decoration: const InputDecoration(
+                              labelText: 'Beschreibung',
+                              border: OutlineInputBorder(),
+                              filled: true,
+                            ),
+                            maxLines: 3,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Column(
+                      children: [
+                        Text(
+                          '* Pflichtfelder',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.outline,
+                            fontSize: 12,
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            const Spacer(),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Abbrechen'),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                if (formKey.currentState?.validate() == true) {
+                                  try {
+                                    final newCostCenter = CostCenter(
+                                      id: '',
+                                      code: codeController.text.trim(),
+                                      name: nameController.text.trim(),
+                                      description: descriptionController.text.trim(),
+                                      createdAt: DateTime.now(),  // Füge das aktuelle Datum hinzu
+                                    );
+
+                                    final docRef = await FirebaseFirestore.instance
+                                        .collection('cost_centers')
+                                        .add(newCostCenter.toMap());
+
+                                    if (mounted) {
+                                      Navigator.pop(context);
+                                      AppToast.show(
+                                        message: 'Kostenstelle wurde erfolgreich angelegt',
+                                        height: h,
+                                      );
+
+                                      // Optional: Direkt die neue Kostenstelle auswählen
+                                      await _saveTemporaryCostCenter(
+                                        CostCenter.fromMap(newCostCenter.toMap(), docRef.id),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (mounted) {
+                                      AppToast.show(
+                                        message: 'Fehler beim Anlegen: $e',
+                                        height: h,
+                                      );
+                                    }
+                                  }
+                                }
+                              },
+                              icon: const Icon(Icons.save),
+                              label: const Text('Speichern'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
 
   Future<String> _getNextReceiptNumber() async {
@@ -2589,7 +3187,7 @@ minimumSize: const Size(double.infinity, 48),
             final item = doc.data() as Map<String, dynamic>;
             final itemId = doc.id;
             final quantity = item['quantity'] as int;
-            final pricePerUnit = item['price_per_unit'] as double;
+            final pricePerUnit = (item['price_per_unit'] as num).toDouble();
             final subtotal = quantity * pricePerUnit;
             final itemDiscount = _itemDiscounts[itemId] ?? const Discount();
             final discountAmount = itemDiscount.calculateDiscount(subtotal);
@@ -2605,13 +3203,48 @@ minimumSize: const Size(double.infinity, 48),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                item['product_name'] ?? 'N/A',
-                                style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
+                              Row(
+                                children: [
+                                  Text(
+                                    item['instrument_name'] ?? 'N/A',
+                                    style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
+                                  ),
+                                  Text(
+                                    ' - ',
+                                    style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
+                                  ),
+                                  Text(
+                                    item['wood_name'] ?? 'N/A',
+                                    style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
+                                  ),
+                                ],
                               ),
-                              Text(
-                                '${quantity} ${item['unit']} × ${pricePerUnit.toStringAsFixed(2)} CHF',
-                                style: Theme.of(context).textTheme.bodySmall,
+                              Row(
+                                children: [
+                                  Text(
+                                    item['part_name'] ?? 'N/A',
+                                    style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
+                                  ),
+                                  Text(
+                                    ' - ',
+                                    style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
+                                  ),
+                                  Text(
+                                    item['quality_name'] ?? 'N/A',
+                                    style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
+                                  ),
+                                ],
+                              ),
+
+                              ValueListenableBuilder<String>(
+                                valueListenable: _currencyNotifier,
+                                builder: (context, currency, child) {
+                                  // Formatiere nur den Preis, nicht die Menge oder Einheit
+                                  return Text(
+                                    '${quantity} ${item['unit']} × ${_formatPrice(pricePerUnit)}',
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  );
+                                },
                               ),
                             ],
                           ),
@@ -2619,24 +3252,34 @@ minimumSize: const Size(double.infinity, 48),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text(
-                              '${subtotal.toStringAsFixed(2)} CHF',
-                              style: TextStyle(
-                                fontSize: 11,
-                                decoration: discountAmount > 0 ?
-                                TextDecoration.lineThrough : null,
-                                color: discountAmount > 0 ?
-                                Colors.grey : null,
-                              ),
+                            ValueListenableBuilder<String>(
+                              valueListenable: _currencyNotifier,
+                              builder: (context, currency, child) {
+                                return Text(
+                                  _formatPrice(subtotal),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    decoration: discountAmount > 0 ?
+                                    TextDecoration.lineThrough : null,
+                                    color: discountAmount > 0 ?
+                                    Colors.grey : null,
+                                  ),
+                                );
+                              },
                             ),
                             if (discountAmount > 0)
-                              Text(
-                                '${(subtotal - discountAmount).toStringAsFixed(2)} CHF',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
-                                ),
+                              ValueListenableBuilder<String>(
+                                valueListenable: _currencyNotifier,
+                                builder: (context, currency, child) {
+                                  return Text(
+                                    _formatPrice(subtotal - discountAmount),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green,
+                                    ),
+                                  );
+                                },
                               ),
                           ],
                         ),
@@ -2707,7 +3350,7 @@ minimumSize: const Size(double.infinity, 48),
         for (var doc in basketItems) {
           final data = doc.data() as Map<String, dynamic>;
           final itemSubtotal = (data['quantity'] as int) *
-              (data['price_per_unit'] as double);
+              (data['price_per_unit'] as num).toDouble();
           subtotal += itemSubtotal;
 
           final itemDiscount = _itemDiscounts[doc.id] ?? const Discount();
@@ -2740,7 +3383,12 @@ minimumSize: const Size(double.infinity, 48),
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Zwischensumme'),
-                    Text('${subtotal.toStringAsFixed(2)} CHF'),
+                    ValueListenableBuilder<String>(
+                      valueListenable: _currencyNotifier,
+                      builder: (context, currency, child) {
+                        return Text(_formatPrice(subtotal));
+                      },
+                    ),
                   ],
                 ),
 
@@ -2764,21 +3412,26 @@ minimumSize: const Size(double.infinity, 48),
                 // Gesamtrabatt
                 if (_totalDiscount.hasDiscount) ...[
                   const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                          'Gesamtrabatt '
-                              '${_totalDiscount.percentage > 0 ? '(${_totalDiscount.percentage}%)' : ''}'
-                              '${_totalDiscount.absolute > 0 ? ' ${_totalDiscount.absolute} CHF' : ''}'
-                      ),
-                      Text(
-                        '- ${totalDiscountAmount.toStringAsFixed(2)} CHF',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                    ],
+                  ValueListenableBuilder<String>(
+                    valueListenable: _currencyNotifier,
+                    builder: (context, currency, child) {
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                              'Gesamtrabatt '
+                                  '${_totalDiscount.percentage > 0 ? '(${_totalDiscount.percentage}%)' : ''}'
+                                  '${_totalDiscount.absolute > 0 ? ' ${_formatPrice(_totalDiscount.absolute)}' : ''}'
+                          ),
+                          Text(
+                            '- ${_formatPrice(totalDiscountAmount)}',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ],
 
@@ -2788,49 +3441,64 @@ minimumSize: const Size(double.infinity, 48),
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Nettobetrag'),
-                    Text('${netAmount.toStringAsFixed(2)} CHF'),
+                    ValueListenableBuilder<String>(
+                      valueListenable: _currencyNotifier,
+                      builder: (context, currency, child) {
+                        return Text(_formatPrice(netAmount));
+                      },
+                    ),
                   ],
                 ),
 
                 // MwSt
                 const SizedBox(height: 4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('MwSt ($_vatRate%)'),
-                    Row(
+                ValueListenableBuilder<String>(
+                  valueListenable: _currencyNotifier,
+                  builder: (context, currency, child) {
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit, size: 16),
-                          onPressed: _showVatRateDialog,
+                        Text('MwSt ($_vatRate%)'),
+                        Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit, size: 16),
+                              onPressed: _showVatRateDialog,
+                            ),
+                            Text(_formatPrice(vatAmount)),
+                          ],
                         ),
-                        Text('${vatAmount.toStringAsFixed(2)} CHF'),
                       ],
-                    ),
-                  ],
+                    );
+                  },
                 ),
 
                 const Divider(height: 16),
 
                 // Gesamtbetrag
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Gesamtbetrag',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      '${total.toStringAsFixed(2)} CHF',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                ValueListenableBuilder<String>(
+                  valueListenable: _currencyNotifier,
+                  builder: (context, currency, child) {
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Gesamtbetrag',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          _formatPrice(total),
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
 
                 const SizedBox(height: 16),
@@ -3756,7 +4424,7 @@ backgroundColor: Colors.red,
   //   return pdf.save();
   // }
 // 2. Erweiterte PDF-Generierung
-  Future<Uint8List> _generateEnhancedPdf(String receiptId)  async {
+  Future<Uint8List> _generateEnhancedPdf(String receiptId) async {
     final pdf = pw.Document();
     final receiptDoc = await FirebaseFirestore.instance
         .collection('sales_receipts')
@@ -3773,6 +4441,18 @@ backgroundColor: Colors.red,
     final logoImage = await rootBundle.load('images/logo.png');
     final logo = pw.MemoryImage(logoImage.buffer.asUint8List());
 
+    // Hilfsfunktion für PDF-Währungsformatierung
+    String formatPdfCurrency(double amount) {
+      // Konvertiere von CHF in die ausgewählte Währung
+      double convertedAmount = amount;
+
+      if (_selectedCurrency != 'CHF') {
+        convertedAmount = amount * _exchangeRates[_selectedCurrency]!;
+      }
+
+      return '${convertedAmount.toStringAsFixed(2)} $_selectedCurrency';
+    }
+
     pdf.addPage(
       pw.Page(
         margin: const pw.EdgeInsets.all(40),
@@ -3780,7 +4460,7 @@ backgroundColor: Colors.red,
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // Header-Sektion bleibt gleich...
+              // Header bleibt gleich
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
@@ -3797,7 +4477,7 @@ backgroundColor: Colors.red,
                       ),
                       pw.SizedBox(height: 8),
                       pw.Text(
-                        'Nr.: LS-$receiptNumber', // Verwende die neue Nummer
+                        'Nr.: LS-$receiptNumber',
                         style: const pw.TextStyle(fontSize: 12, color: PdfColors.blueGrey600),
                       ),
                       pw.Text(
@@ -3811,68 +4491,28 @@ backgroundColor: Colors.red,
               ),
               pw.SizedBox(height: 20),
 
-
-              pw.Container(
-                padding: const pw.EdgeInsets.all(15),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColors.blueGrey200, width: 0.5),
-                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-                  color: PdfColors.grey50,
-                ),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      customerData['company'] ?? '',
-                      style: pw.TextStyle(
-                        fontSize: 14,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.blueGrey800,
-                      ),
-                    ),
-                    pw.SizedBox(height: 4),
-                    pw.Text(
-                      customerData['fullName'] ?? '',
-                      style: const pw.TextStyle(color: PdfColors.blueGrey700),
-                    ),
-                    pw.SizedBox(height: 4),
-                    // Straße und Hausnummer in einer Zeile
-                    pw.Text(
-                      '${customerData['street'] ?? ''} ${customerData['houseNumber'] ?? ''}',
-                      style: const pw.TextStyle(color: PdfColors.blueGrey700),
-                    ),
-                    // PLZ und Stadt in einer Zeile
-                    pw.Text(
-                      '${customerData['zipCode'] ?? ''} ${customerData['city'] ?? ''}',
-                      style: const pw.TextStyle(color: PdfColors.blueGrey700),
-                    ),
-                    // Land in einer eigenen Zeile
-                    pw.Text(
-                      customerData['country'] ?? '',
-                      style: const pw.TextStyle(color: PdfColors.blueGrey700),
-                    ),
-                    pw.SizedBox(height: 10),
-                    pw.Text(
-                      'per mail an:',
-                      style: pw.TextStyle(
-                        fontSize: 8,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.blueGrey800,
-                      ),
-                    ),
-                    pw.SizedBox(height: 4),
-                    pw.Text(
-                      customerData['email'] ?? '',
-                      style: const pw.TextStyle(color: PdfColors.blueGrey700,  fontSize: 8,),
-                    ),
-                  ],
-                ),
-              ),
-
-
+              // Kunde bleibt gleich
+              // ...
 
               pw.SizedBox(height: 15),
-              // Erweiterte Artikel-Tabelle mit Rabatten
+
+              // Währungshinweis hinzufügen
+              if (_selectedCurrency != 'CHF')
+                pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.amber50,
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                    border: pw.Border.all(color: PdfColors.amber200, width: 0.5),
+                  ),
+                  child: pw.Text(
+                    'Alle Preise in $_selectedCurrency (Umrechnungskurs: 1 CHF = ${_exchangeRates[_selectedCurrency]!.toStringAsFixed(4)} $_selectedCurrency)',
+                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.amber900),
+                  ),
+                ),
+              pw.SizedBox(height: 15),
+
+              // Artikel-Tabelle
               pw.Table(
                 border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
                 columnWidths: {
@@ -3884,21 +4524,21 @@ backgroundColor: Colors.red,
                   5: const pw.FlexColumnWidth(3), // Summe
                 },
                 children: [
-                  // Erweiterter Header
+                  // Header anpassen
                   pw.TableRow(
                     decoration: pw.BoxDecoration(
                       color: PdfColors.blueGrey50,
                     ),
                     children: [
-                      _buildHeaderCell('Produkt',12),
-                      _buildHeaderCell('Menge',9),
-                      _buildHeaderCell('Einheit',9),
-                      _buildHeaderCell('Preis/Einheit',9, align: pw.TextAlign.right),
-                      _buildHeaderCell('Rabatt',9, align: pw.TextAlign.right),
-                      _buildHeaderCell('Summe',12, align: pw.TextAlign.right),
+                      _buildHeaderCell('Produkt', 12),
+                      _buildHeaderCell('Menge', 9),
+                      _buildHeaderCell('Einheit', 9),
+                      _buildHeaderCell('Preis/Einheit', 9, align: pw.TextAlign.right),
+                      _buildHeaderCell('Rabatt', 9, align: pw.TextAlign.right),
+                      _buildHeaderCell('Summe', 12, align: pw.TextAlign.right),
                     ],
                   ),
-                  // Artikel mit Rabatten
+                  // Artikel mit angepassten Währungsbezeichnungen
                   ...items.map((item) {
                     final quantity = item['quantity'] as num? ?? 0;
                     final pricePerUnit = item['price_per_unit'] as num? ?? 0;
@@ -3936,11 +4576,12 @@ backgroundColor: Colors.red,
                             ],
                           ),
                         ),
-                        _buildContentCell(pw.Text(quantity.toString(),style: const pw.TextStyle( fontSize: 9,),)),
-                        _buildContentCell(pw.Text(item['unit'] ?? '',style: const pw.TextStyle( fontSize: 9,),)),
+                        _buildContentCell(pw.Text(quantity.toString(), style: const pw.TextStyle(fontSize: 9,),)),
+                        _buildContentCell(pw.Text(item['unit'] ?? '', style: const pw.TextStyle(fontSize: 9,),)),
                         _buildContentCell(
                           pw.Text(
-                            '${pricePerUnit.toStringAsFixed(2)} CHF',
+                            // Preisformatierung angepasst
+                            formatPdfCurrency(pricePerUnit.toDouble()),
                             style: const pw.TextStyle(fontSize: 9,),
                             textAlign: pw.TextAlign.right,
                           ),
@@ -3952,21 +4593,21 @@ backgroundColor: Colors.red,
                               if (discount != null && discount['percentage'] > 0)
                                 pw.Text(
                                   '${discount['percentage']}%',
-                                  style: const pw.TextStyle(color: PdfColors.red,  fontSize: 9,),
+                                  style: const pw.TextStyle(color: PdfColors.red, fontSize: 9,),
                                   textAlign: pw.TextAlign.right,
-
                                 ),
                               if (discount != null && discount['absolute'] > 0)
                                 pw.Text(
-                                  '${discount['absolute']} CHF',
-                                  style: const pw.TextStyle(color: PdfColors.red,  fontSize: 9,),
+                                  // Rabattformatierung angepasst
+                                  formatPdfCurrency(discount['absolute'].toDouble()),
+                                  style: const pw.TextStyle(color: PdfColors.red, fontSize: 9,),
                                   textAlign: pw.TextAlign.right,
-
                                 ),
                               if (discountAmount > 0)
                                 pw.Text(
-                                  '-${discountAmount.toStringAsFixed(2)} CHF',
-                                  style: const pw.TextStyle(color: PdfColors.red,  fontSize: 9,),
+                                  // Rabattbetrag formatieren
+                                  '-${formatPdfCurrency(discountAmount.toDouble())}',
+                                  style: const pw.TextStyle(color: PdfColors.red, fontSize: 9,),
                                   textAlign: pw.TextAlign.right,
                                 ),
                             ],
@@ -3974,8 +4615,9 @@ backgroundColor: Colors.red,
                         ),
                         _buildContentCell(
                           pw.Text(
-                            style: const pw.TextStyle( fontSize: 9,),
-                            '${total.toStringAsFixed(2)} CHF',
+                            style: const pw.TextStyle(fontSize: 9,),
+                            // Gesamtbetrag formatieren
+                            formatPdfCurrency(total.toDouble()),
                             textAlign: pw.TextAlign.right,
                           ),
                         ),
@@ -3986,7 +4628,7 @@ backgroundColor: Colors.red,
               ),
               pw.SizedBox(height: 20),
 
-              // Erweiterte Gesamtberechnung
+              // Gesamtbeträge
               pw.Container(
                 alignment: pw.Alignment.centerRight,
                 child: pw.Container(
@@ -3998,42 +4640,62 @@ backgroundColor: Colors.red,
                   child: pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
-                      _buildTotalRow(
+                      // Zwischensumme
+                      _buildTotalRowWithCurrency(
                         'Zwischensumme:',
                         calculations['subtotal'] as num? ?? 0,
+                        _selectedCurrency,
+                        _exchangeRates[_selectedCurrency] ?? 1.0,
                       ),
+                      // Positionsrabatte
                       if ((calculations['item_discounts'] as num? ?? 0) > 0)
-                        _buildTotalRow(
+                        _buildTotalRowWithCurrency(
                           'Positionsrabatte:',
                           calculations['item_discounts'] as num? ?? 0,
+                          _selectedCurrency,
+                          _exchangeRates[_selectedCurrency] ?? 1.0,
                           isDiscount: true,
                         ),
+                      // Gesamtrabatt
                       if ((calculations['total_discount_amount'] as num? ?? 0) > 0) ...[
                         if ((calculations['total_discount'] as Map<String, dynamic>)['percentage'] > 0)
-                          _buildTotalRow(
+                          _buildTotalRowWithCurrency(
                             'Gesamtrabatt (${(calculations['total_discount'] as Map<String, dynamic>)['percentage']}%):',
                             calculations['total_discount_amount'] as num? ?? 0,
+                            _selectedCurrency,
+                            _exchangeRates[_selectedCurrency] ?? 1.0,
                             isDiscount: true,
                           ),
                         if ((calculations['total_discount'] as Map<String, dynamic>)['absolute'] > 0)
-                          _buildTotalRow(
+                          _buildTotalRowWithCurrency(
                             'Gesamtrabatt (absolut):',
                             (calculations['total_discount'] as Map<String, dynamic>)['absolute'] as num? ?? 0,
+                            _selectedCurrency,
+                            _exchangeRates[_selectedCurrency] ?? 1.0,
                             isDiscount: true,
                           ),
                       ],
-                      _buildTotalRow(
+                      // Nettobetrag
+                      _buildTotalRowWithCurrency(
                         'Nettobetrag:',
                         calculations['net_amount'] as num? ?? 0,
+                        _selectedCurrency,
+                        _exchangeRates[_selectedCurrency] ?? 1.0,
                       ),
-                      _buildTotalRow(
+                      // MwSt
+                      _buildTotalRowWithCurrency(
                         'MwSt (${(calculations['vat_rate'] as num? ?? 0).toStringAsFixed(1)}%):',
                         calculations['vat_amount'] as num? ?? 0,
+                        _selectedCurrency,
+                        _exchangeRates[_selectedCurrency] ?? 1.0,
                       ),
                       pw.Divider(color: PdfColors.blueGrey300),
-                      _buildTotalRow(
+                      // Gesamtbetrag
+                      _buildTotalRowWithCurrency(
                         'Gesamtbetrag:',
                         calculations['total'] as num? ?? 0,
+                        _selectedCurrency,
+                        _exchangeRates[_selectedCurrency] ?? 1.0,
                         isBold: true,
                         fontSize: 12,
                       ),
@@ -4041,7 +4703,6 @@ backgroundColor: Colors.red,
                   ),
                 ),
               ),
-
               // Footer bleibt gleich...
               pw.Expanded(child: pw.SizedBox()),
               pw.Container(
@@ -4091,7 +4752,45 @@ backgroundColor: Colors.red,
 
     return pdf.save();
   }
+  pw.Widget _buildTotalRowWithCurrency(
+      String label,
+      num amount,
+      String currency,
+      double exchangeRate, {
+        bool isDiscount = false,
+        bool isBold = false,
+        double fontSize = 10,
+      }) {
+    // Umrechnung von CHF zur Zielwährung
+    final convertedAmount = amount * exchangeRate;
 
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 2),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+              fontSize: fontSize,
+              fontWeight: isBold ? pw.FontWeight.bold : null,
+              color: PdfColors.blueGrey800,
+            ),
+          ),
+          pw.Text(
+            isDiscount
+                ? '-${convertedAmount.toStringAsFixed(2)} $currency'
+                : '${convertedAmount.toStringAsFixed(2)} $currency',
+            style: pw.TextStyle(
+              fontSize: fontSize,
+              fontWeight: isBold ? pw.FontWeight.bold : null,
+              color: isDiscount ? PdfColors.red : PdfColors.blueGrey800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 // Neue Hilfsmethode für Gesamtbeträge
   pw.Widget _buildTotalRow(
       String label,
@@ -4399,7 +5098,7 @@ Widget _buildSelectedProductInfo() {
           },
         ),
         Text(
-          'Preis: ${selectedProduct!['price_CHF']?.toStringAsFixed(2) ?? '0.00'} CHF',
+          'Preis: ${_formatPrice(selectedProduct!['price_CHF'] ?? 0.0)}',
         ),
       ],
     ),
@@ -4453,75 +5152,94 @@ Widget _buildCheckoutButton() {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Rabatt eingeben'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
+        content: ValueListenableBuilder<String>(
+          valueListenable: _currencyNotifier,
+          builder: (context, currency, child) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: percentageController,
-                    decoration: const InputDecoration(
-                      labelText: 'Rabatt %',
-                      suffixText: '%',
-                      border: OutlineInputBorder(),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: percentageController,
+                        decoration: const InputDecoration(
+                          labelText: 'Rabatt %',
+                          suffixText: '%',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                        ],
+                      ),
                     ),
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                    ],
-                  ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: TextFormField(
+                        controller: absoluteController,
+                        decoration: InputDecoration(
+                          labelText: 'Rabatt $currency',
+                          suffixText: currency,
+                          border: const OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextFormField(
-                    controller: absoluteController,
-                    decoration: const InputDecoration(
-                      labelText: 'Rabatt CHF',
-                      suffixText: 'CHF',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                    ],
+                const SizedBox(height: 16),
+                StreamBuilder<double>(
+                  stream: _calculateItemDiscount(
+                    currentAmount,
+                    double.tryParse(percentageController.text) ?? 0,
+                    // Konvertiere den absoluten Rabatt in CHF, wenn eine andere Währung ausgewählt ist
+                    currency != 'CHF'
+                        ? (double.tryParse(absoluteController.text) ?? 0) / _exchangeRates[currency]!
+                        : double.tryParse(absoluteController.text) ?? 0,
                   ),
+                  builder: (context, snapshot) {
+                    final discount = snapshot.data ?? 0.0;
+                    return Text(
+                      'Rabattbetrag: ${_formatPrice(discount)}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    );
+                  },
                 ),
               ],
-            ),
-            const SizedBox(height: 16),
-            StreamBuilder<double>(
-              stream: _calculateItemDiscount(
-                currentAmount,
-                double.tryParse(percentageController.text) ?? 0,
-                double.tryParse(absoluteController.text) ?? 0,
-              ),
-              builder: (context, snapshot) {
-                final discount = snapshot.data ?? 0.0;
-                return Text(
-                  'Rabattbetrag: ${discount.toStringAsFixed(2)} CHF',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                );
-              },
-            ),
-          ],
+            );
+          },
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Abbrechen'),
           ),
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _itemDiscounts[itemId] = Discount(
-                  percentage: double.tryParse(percentageController.text) ?? 0,
-                  absolute: double.tryParse(absoluteController.text) ?? 0,
-                );
-              });
-              Navigator.pop(context);
+          ValueListenableBuilder<String>(
+            valueListenable: _currencyNotifier,
+            builder: (context, currency, child) {
+              return ElevatedButton(
+                onPressed: () {
+                  // Konvertiere den absoluten Rabatt in CHF, wenn eine andere Währung ausgewählt ist
+                  double absoluteValue = double.tryParse(absoluteController.text) ?? 0;
+                  if (currency != 'CHF') {
+                    absoluteValue = absoluteValue / _exchangeRates[currency]!;
+                  }
+
+                  setState(() {
+                    _itemDiscounts[itemId] = Discount(
+                      percentage: double.tryParse(percentageController.text) ?? 0,
+                      absolute: absoluteValue, // Immer in CHF speichern
+                    );
+                  });
+                  Navigator.pop(context);
+                },
+                child: const Text('Übernehmen'),
+              );
             },
-            child: const Text('Übernehmen'),
           ),
         ],
       ),
@@ -4539,94 +5257,122 @@ Widget _buildCheckoutButton() {
 
 // Methode für den Gesamtrabatt
   void _showTotalDiscountDialog() {
+    // Konvertiere den absoluten Wert von CHF in die aktuelle Währung für die Anzeige
+    double displayAbsolute = _totalDiscount.absolute;
+    if (_selectedCurrency != 'CHF') {
+      displayAbsolute = _totalDiscount.absolute * _exchangeRates[_selectedCurrency]!;
+    }
+
     final percentageController = TextEditingController(
         text: _totalDiscount.percentage.toString()
     );
     final absoluteController = TextEditingController(
-        text: _totalDiscount.absolute.toString()
+        text: displayAbsolute.toStringAsFixed(2)
     );
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Gesamtrabatt'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
+        content: ValueListenableBuilder<String>(
+          valueListenable: _currencyNotifier,
+          builder: (context, currency, child) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: percentageController,
-                    decoration: const InputDecoration(
-                      labelText: 'Rabatt %',
-                      suffixText: '%',
-                      border: OutlineInputBorder(),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: percentageController,
+                        decoration: const InputDecoration(
+                          labelText: 'Rabatt %',
+                          suffixText: '%',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                        ],
+                      ),
                     ),
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                    ],
-                  ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: TextFormField(
+                        controller: absoluteController,
+                        decoration: InputDecoration(
+                          labelText: 'Rabatt $currency',
+                          suffixText: currency,
+                          border: const OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextFormField(
-                    controller: absoluteController,
-                    decoration: const InputDecoration(
-                      labelText: 'Rabatt CHF',
-                      suffixText: 'CHF',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                    ],
-                  ),
+                const SizedBox(height: 16),
+                StreamBuilder<double>(
+                  stream: _basketStream.map((snapshot) {
+                    final subtotal = snapshot.docs.fold<double>(
+                      0.0,
+                          (sum, doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return sum + (data['quantity'] as int) *
+                            (data['price_per_unit'] as double);
+                      },
+                    );
+                    final percentage = double.tryParse(percentageController.text) ?? 0;
+
+                    // Konvertiere den absoluten Rabatt zurück zu CHF wenn nötig
+                    double absolute = double.tryParse(absoluteController.text) ?? 0;
+                    if (currency != 'CHF') {
+                      absolute = absolute / _exchangeRates[currency]!;
+                    }
+
+                    return (subtotal * (percentage / 100)) + absolute;
+                  }),
+                  builder: (context, snapshot) {
+                    final discount = snapshot.data ?? 0.0;
+                    return Text(
+                      'Rabattbetrag: ${_formatPrice(discount)}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    );
+                  },
                 ),
               ],
-            ),
-            const SizedBox(height: 16),
-            StreamBuilder<double>(
-              stream: _basketStream.map((snapshot) {
-                final subtotal = snapshot.docs.fold<double>(
-                  0.0,
-                      (sum, doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    return sum + (data['quantity'] as int) *
-                        (data['price_per_unit'] as double);
-                  },
-                );
-                final percentage = double.tryParse(percentageController.text) ?? 0;
-                final absolute = double.tryParse(absoluteController.text) ?? 0;
-                return (subtotal * (percentage / 100)) + absolute;
-              }),
-              builder: (context, snapshot) {
-                final discount = snapshot.data ?? 0.0;
-                return Text(
-                  'Rabattbetrag: ${discount.toStringAsFixed(2)} CHF',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                );
-              },
-            ),
-          ],
+            );
+          },
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Abbrechen'),
           ),
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _totalDiscount = Discount(
-                  percentage: double.tryParse(percentageController.text) ?? 0,
-                  absolute: double.tryParse(absoluteController.text) ?? 0,
-                );
-              });
-              Navigator.pop(context);
+          ValueListenableBuilder<String>(
+            valueListenable: _currencyNotifier,
+            builder: (context, currency, child) {
+              return ElevatedButton(
+                onPressed: () {
+                  // Konvertiere den absoluten Rabatt in CHF, wenn eine andere Währung ausgewählt ist
+                  double absoluteValue = double.tryParse(absoluteController.text) ?? 0;
+                  if (currency != 'CHF') {
+                    absoluteValue = absoluteValue / _exchangeRates[currency]!;
+                  }
+
+                  setState(() {
+                    _totalDiscount = Discount(
+                      percentage: double.tryParse(percentageController.text) ?? 0,
+                      absolute: absoluteValue, // Immer in CHF speichern
+                    );
+                  });
+                  Navigator.pop(context);
+                },
+                child: const Text('Übernehmen'),
+              );
             },
-            child: const Text('Übernehmen'),
           ),
         ],
       ),
@@ -4695,6 +5441,8 @@ Widget _buildCheckoutButton() {
 
 @override
 void dispose() {
+  _currencyNotifier.dispose();
+  _exchangeRatesNotifier.dispose();
   _isLoading.dispose();
   _selectedFairNotifier.dispose();
   customerSearchController.dispose();

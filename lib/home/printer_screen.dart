@@ -90,7 +90,7 @@ class PrinterScreenState extends State<PrinterScreen> {
   String _activeConnectionType = PrinterConnectionType.none;
   bool _includeBatchNumber = false;
   String? _printerDetails;
-  PrinterModel selectedPrinterModel = PrinterModel.QL1110NWB;
+  PrinterModel selectedPrinterModel = PrinterModel.QL820NWB;
   int printQuantity = 1;
   late List<LabelType> labelTypes;
   final TextEditingController barcodeController = TextEditingController();
@@ -164,7 +164,7 @@ class PrinterScreenState extends State<PrinterScreen> {
       return false;
     }
   }
-  Future<void> _bookOnlineShopItem(int lastShopItem) async {
+  Future<void> _bookOnlineShopItem(int nextShopItem) async {  // nextShopItem statt lastShopItem
     if (_onlineShopPrice <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Bitte gib einen gültigen Preis ein'), backgroundColor: Colors.red),
@@ -183,15 +183,11 @@ class PrinterScreenState extends State<PrinterScreen> {
         return;
       }
 
-      // Wenn Lageraktualisierung erfolgreich, dann Shop-Eintrag erstellen
-      String shopId = lastShopItem.toString().padLeft(4, '0');
+      // nextShopItem ist bereits der richtige Wert
+      String shopId = nextShopItem.toString().padLeft(4, '0');
       String fullBarcode = '$barcodeData.$shopId';
 
-      await FirebaseFirestore.instance.collection('general_data').doc('counters').set(
-          { 'lastShopifyItem': FieldValue.increment(1)},
-          SetOptions(merge: true)
-      );
-
+      // Shop-Eintrag erstellen
       await FirebaseFirestore.instance
           .collection('onlineshop')
           .doc(fullBarcode)
@@ -204,7 +200,13 @@ class PrinterScreenState extends State<PrinterScreen> {
         'price_CHF': _onlineShopPrice,
       });
 
-      _loadSwitchValue();
+      // Counter auf den VERWENDETEN Wert setzen
+      await FirebaseFirestore.instance.collection('general_data').doc('counters').set(
+          { 'lastShopifyItem': nextShopItem },  // Direkt den verwendeten Wert speichern
+          SetOptions(merge: true)
+      );
+
+      _loadSwitchValue();  // Lädt dann den nächsten verfügbaren Wert
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Produkt erfolgreich zum Shop hinzugefügt'), backgroundColor: Colors.green),
@@ -637,47 +639,169 @@ class PrinterScreenState extends State<PrinterScreen> {
   }
   void _showProductSearchDialog() {
     if (selectedBarcodeType == BarcodeType.production) {
-      showDialog(
+      showModalBottomSheet(
         context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
         builder: (BuildContext context) {
-          return Dialog(
-            child: SizedBox(
-              width: MediaQuery.of(context).size.width * 0.9,
-              height: MediaQuery.of(context).size.height * 0.9,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: ProductionScreen(
-                  isDialog: true,
-                  onProductSelected: (productId) async {
-                    Navigator.pop(context);
-                    await _handleProductionBarcode(productId);
-                  },
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.9,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 10,
+                  spreadRadius: 0,
+                  offset: Offset(0, -1),
                 ),
-              ),
+              ],
+            ),
+            child: Column(
+              children: [
+                // Drag Handle oben
+                Container(
+                  margin: EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+
+                // Titel mit Schließen-Button
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: Colors.grey.shade200,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.inventory, color: primaryAppColor),
+                      SizedBox(width: 12),
+                      Text(
+                        'Produktionsliste',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: primaryAppColor,
+                        ),
+                      ),
+                      Spacer(),
+                      IconButton(
+                        icon: Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                        color: Colors.grey[600],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Hauptinhalt
+                Expanded(
+                  child: ProductionScreen(
+                    isDialog: true,
+                    onProductSelected: (productId) async {
+                      Navigator.pop(context);
+                      await _handleProductionBarcode(productId);
+                    },
+                  ),
+                ),
+
+
+              ],
             ),
           );
         },
       );
     } else {
-      // Verkaufsprodukte bleiben unverändert
-      showDialog(
+
+      showModalBottomSheet(
         context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
         builder: (BuildContext context) {
-          return Dialog(
-            child: SizedBox(
-              width: MediaQuery.of(context).size.width * 0.9,
-              height: MediaQuery.of(context).size.height * 0.9,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: WarehouseScreen(
-                  isDialog: true,
-                  onBarcodeSelected: (barcode) async {
-                    Navigator.pop(context);
-                    await _fetchProductData(barcode);
-                  },
-                  key: UniqueKey(),
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.9,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 10,
+                  spreadRadius: 0,
+                  offset: Offset(0, -1),
                 ),
-              ),
+              ],
+            ),
+            child: Column(
+              children: [
+                // Drag Handle oben
+                Container(
+                  margin: EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+
+                // Titel mit Schließen-Button
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: Colors.grey.shade200,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warehouse, color: primaryAppColor),
+                      SizedBox(width: 12),
+                      Text(
+                        'Verkaufsliste',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: primaryAppColor,
+                        ),
+                      ),
+                      Spacer(),
+                      IconButton(
+                        icon: Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                        color: Colors.grey[600],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Hauptinhalt
+                Expanded(
+                  child: WarehouseScreen(
+                    isDialog: true,
+                    onBarcodeSelected: (barcode) async {
+                      Navigator.pop(context);
+                      await _fetchProductData(barcode);
+                    },
+                    key: UniqueKey(),
+                  ),
+                ),
+
+
+              ],
             ),
           );
         },
@@ -724,6 +848,7 @@ class PrinterScreenState extends State<PrinterScreen> {
     });
   }
 // Modifiziere die Scan-Funktion
+// Modifizierte Scan-Funktion mit Validierung
   Future<void> _startScanner() async {
     setState(() {
       _printerSearching = true;
@@ -739,10 +864,52 @@ class PrinterScreenState extends State<PrinterScreen> {
       );
 
       if (barcodeResult != '-1') {
-        if (selectedBarcodeType == BarcodeType.production) {
-          await _handleProductionBarcode(barcodeResult);
+        print("bc:$barcodeResult");
+
+        // Speichere den aktuellen Barcode-Typ
+        BarcodeType currentType = selectedBarcodeType;
+
+        // Prüfe, ob der Barcode für den aktuellen Typ gültig ist
+        bool isValidForCurrentType = _validateBarcode(barcodeResult, currentType);
+
+        // Prüfe, ob der Barcode für den anderen Typ gültig wäre
+        BarcodeType otherType = currentType == BarcodeType.sales ? BarcodeType.production : BarcodeType.sales;
+        bool isValidForOtherType = _validateBarcode(barcodeResult, otherType);
+
+        if (isValidForCurrentType) {
+          // Barcode ist für den aktuellen Typ gültig, verarbeite ihn
+          if (currentType == BarcodeType.production) {
+            await _handleProductionBarcode(barcodeResult);
+          } else {
+            await _fetchProductData(barcodeResult);
+          }
         } else {
-          await _fetchProductData(barcodeResult);
+          // Zeige passende Fehlermeldung abhängig von der Situation
+          String errorMessage;
+
+          if (isValidForOtherType) {
+            // Der Barcode ist für den anderen Typ gültig
+            if (currentType == BarcodeType.production) {
+              errorMessage = 'Du hast einen Verkaufscode gescannt. Ein Produktionsbarcode hat das Format IIPP.HHQQ.0000.JJ';
+            } else {
+              errorMessage = 'Du hast einen Produktionscode gescannt. Ein Verkaufsbarcode hat das Format IIPP.HHQQ';
+            }
+          } else {
+            // Der Barcode ist für keinen Typ gültig
+            if (currentType == BarcodeType.production) {
+              errorMessage = 'Ungültiger Barcode. Ein Produktionsbarcode sollte das Format IIPP.HHQQ.0000.JJ haben.';
+            } else {
+              errorMessage = 'Ungültiger Barcode. Ein Verkaufsbarcode sollte das Format IIPP.HHQQ haben.';
+            }
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 4),
+            ),
+          );
         }
       }
     } on PlatformException {
@@ -756,6 +923,25 @@ class PrinterScreenState extends State<PrinterScreen> {
       setState(() {
         _printerSearching = false;
       });
+    }
+  }
+
+// Aktualisierte Validierungsfunktion mit explizitem Typ-Parameter
+  bool _validateBarcode(String barcode, BarcodeType type) {
+    // Verkaufsbarcode-Format: xxxx.yyyy
+    // Erweiterte Produktionsbarcode-Formate
+
+    final RegExp salesPattern = RegExp(r'^\d{4}\.\d{4}$');
+
+    // Erweiterte Muster für Produktionsbarcodes
+    final RegExp productionPattern = RegExp(
+        r'^\d{4}\.\d{4}\.\d{4}(\.\d{1,2})?(\.\d{4})?$'
+    );
+
+    if (type == BarcodeType.sales) {
+      return salesPattern.hasMatch(barcode);
+    } else {
+      return productionPattern.hasMatch(barcode);
     }
   }
 
@@ -798,13 +984,17 @@ class PrinterScreenState extends State<PrinterScreen> {
       if (printerDoc.exists || officeDoc.exists) {
 
         setState(() {
+          print("Lade Drucker Typ");
           // Lade den Drucker-Typ
           if (printerDoc.data()?['printerModel'] != null) {
             selectedPrinterModel = PrinterModel.values.firstWhere(
                   (model) => model.toString() == printerDoc.data()!['printerModel'],
-              orElse: () => PrinterModel.QL1110NWB,
+              orElse: () => PrinterModel.QL820NWB,
             );
             _updateLabelTypes();
+
+            print("slP:$selectedPrinterModel");
+         //   AppToast.show(height:h,message:"slP:$selectedPrinterModel");
           }
 
           // Setze das Label aus dem office Dokument
@@ -1259,6 +1449,8 @@ class PrinterScreenState extends State<PrinterScreen> {
         List<BluetoothPrinter> printers =
         await printer.getBluetoothPrinters([printInfo.printerModel.getName()]);
 
+print("printers:ssss:$printers");
+
         if (printers.isNotEmpty && mounted) {
           setState(() {
             _isPrinterOnline = true;
@@ -1273,7 +1465,12 @@ class PrinterScreenState extends State<PrinterScreen> {
         List<NetPrinter> printers =
         await printer.getNetPrinters([printInfo.printerModel.getName()]);
 
+        print("printers:$printers");
+
+
         if (printers.isNotEmpty && mounted) {
+
+          print("yuup");
           setState(() {
             _isPrinterOnline = true;
             _indicatorColor = primaryAppColor;
@@ -1308,8 +1505,13 @@ class PrinterScreenState extends State<PrinterScreen> {
 
       var printer = Printer();
       var printInfo = PrinterInfo();
+      print(printInfo.printerModel);
       printInfo.printerModel = Model.QL_820NWB;
+      // printInfo.printerModel = selectedPrinterModel == PrinterModel.QL1110NWB
+      //     ? Model.QL_1110NWB
+      //     : Model.QL_820NWB;
 
+      print("sPM:$selectedPrinterModel");
       // Erste Verbindungsmethode versuchen
       bool connected = await _tryConnection(
           printer,
@@ -1436,7 +1638,7 @@ class PrinterScreenState extends State<PrinterScreen> {
   }
 
   Future<void> printLabel(BuildContext context) async {
-    print("haaaaaaalo");
+    print("Starte Druckvorgang...");
     if (!_isPrinterOnline || barcodeData.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Drucker nicht bereit oder kein Barcode ausgewählt'),
@@ -1446,72 +1648,108 @@ class PrinterScreenState extends State<PrinterScreen> {
     }
 
     await PrintStatus.show(context, () async {
+      try {
+        PrintStatus.updateStatus("Initialisiere Drucker...");
+        print("Aktiver Verbindungstyp: $_activeConnectionType");
 
-        try {
-          PrintStatus.updateStatus("Initialisiere Drucker...");
+        // Benutzereinstellung für bevorzugte Verbindung laden
+        bool useBluetoothFirst = await FirebaseFirestore.instance
+            .collection('general_data')
+            .doc('office')
+            .get()
+            .then((doc) => doc.get('bluetoothFirst') ?? true);
 
-          // Benutzereinstellung für bevorzugte Verbindung laden
-          bool useBluetoothFirst = await FirebaseFirestore.instance
-              .collection('general_data')
-              .doc('office')
-              .get()
-              .then((doc) => doc.get('bluetoothFirst') ?? true);
+        print("Bluetooth First: $useBluetoothFirst");
 
-          var printer = Printer();
-          var printInfo = PrinterInfo();
-          printInfo.printerModel = Model.QL_820NWB;
+        var printer = Printer();
+        var printInfo = PrinterInfo();
+
+        print("Ausgewähltes Druckermodell: $selectedPrinterModel");
+        // printInfo.printerModel = selectedPrinterModel == PrinterModel.QL1110NWB
+        //     ? Model.QL_1110NWB
+        //     : Model.QL_820NWB;
+
+        printInfo.printerModel = Model.QL_820NWB;
 
 
-          print("uBL:$useBluetoothFirst");
+        print("Konfiguriertes Druckermodell: ${printInfo.printerModel}");
 
-          // Erst die bevorzugte Verbindungsart versuchen
-          if (useBluetoothFirst) {
-            printInfo.port = Port.BLUETOOTH;
-            // Versuche Bluetooth
-            List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_820NWB.getName()]);
-            if (bluetoothPrinters.isNotEmpty) {
-              _activeConnectionType = PrinterConnectionType.bluetooth;
-              // Bluetooth-spezifische Konfiguration
-            } else {
-              // Wenn Bluetooth fehlschlägt, versuche WLAN
-              print("bingo");
-              printInfo.port = Port.NET;
-              List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
-              if (netPrinters.isNotEmpty) {
-                _activeConnectionType = PrinterConnectionType.wifi;
-                // WLAN-spezifische Konfiguration
-              }
-            }
+        print("uBL:$useBluetoothFirst");
+
+        // Erst die bevorzugte Verbindungsart versuchen
+        if (useBluetoothFirst) {
+          printInfo.port = Port.BLUETOOTH;
+          // Versuche Bluetooth
+          print("Versuche Bluetooth-Verbindung...");
+         // List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([printInfo.printerModel.getName()]);
+          List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_820NWB.getName()]);
+
+
+          print("Gefundene Bluetooth-Drucker: ${bluetoothPrinters.length}");
+          for (var p in bluetoothPrinters) {
+            print("- ${p.modelName} (${p.macAddress})");
+          }
+
+          if (bluetoothPrinters.isNotEmpty) {
+            _activeConnectionType = PrinterConnectionType.bluetooth;
+            // Bluetooth-spezifische Konfiguration
           } else {
-            print("bingo2");
-            // WLAN zuerst versuchen
+            // Wenn Bluetooth fehlschlägt, versuche WLAN
+            print("Bluetooth fehlgeschlagen, versuche WLAN");
             printInfo.port = Port.NET;
+          //  List<NetPrinter> netPrinters = await printer.getNetPrinters([printInfo.printerModel.getName()]);
             List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
+
+            print("Gefundene Netzwerk-Drucker: ${netPrinters.length}");
+            for (var p in netPrinters) {
+              print("- ${p.modelName} (${p.ipAddress})");
+            }
+
             if (netPrinters.isNotEmpty) {
               _activeConnectionType = PrinterConnectionType.wifi;
               // WLAN-spezifische Konfiguration
-            } else {
-              // Wenn WLAN fehlschlägt, versuche Bluetooth
-              printInfo.port = Port.BLUETOOTH;
-              List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_820NWB.getName()]);
-              if (bluetoothPrinters.isNotEmpty) {
-                _activeConnectionType = PrinterConnectionType.bluetooth;
-                // Bluetooth-spezifische Konfiguration
-              }
             }
           }
+        } else {
+          print("WLAN wird zuerst versucht");
+          // WLAN zuerst versuchen
+          printInfo.port = Port.NET;
+          //List<NetPrinter> netPrinters = await printer.getNetPrinters([printInfo.printerModel.getName()]);
+          List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
+
+
+          print("Gefundene Netzwerk-Drucker: ${netPrinters.length}");
+          for (var p in netPrinters) {
+            print("- ${p.modelName} (${p.ipAddress})");
+          }
+
+          if (netPrinters.isNotEmpty) {
+            _activeConnectionType = PrinterConnectionType.wifi;
+            // WLAN-spezifische Konfiguration
+          } else {
+            // Wenn WLAN fehlschlägt, versuche Bluetooth
+            print("WLAN fehlgeschlagen, versuche Bluetooth");
+            printInfo.port = Port.BLUETOOTH;
+          //  List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([printInfo.printerModel.getName()]);
+            List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_820NWB.getName()]);
+
+            print("Gefundene Bluetooth-Drucker: ${bluetoothPrinters.length}");
+            for (var p in bluetoothPrinters) {
+              print("- ${p.modelName} (${p.macAddress})");
+            }
+
+            if (bluetoothPrinters.isNotEmpty) {
+              _activeConnectionType = PrinterConnectionType.bluetooth;
+              // Bluetooth-spezifische Konfiguration
+            }
+          }
+        }
 
         printInfo.isAutoCut = true;
         printInfo.isCutAtEnd = true;
         printInfo.numberOfCopies = printQuantity;
-
-          printInfo.printMode = PrintMode.FIT_TO_PAGE;
-
-
-          printInfo.orientation = brother.Orientation.LANDSCAPE; // Dies ist der wichtige Teil!
-
-
-
+        printInfo.printMode = PrintMode.FIT_TO_PAGE;
+        printInfo.orientation = brother.Orientation.LANDSCAPE;
 
         if (selectedLabel != null) {
           var labelId = QL700.W62.getId();  // Zum Debuggen
@@ -1546,16 +1784,15 @@ class PrinterScreenState extends State<PrinterScreen> {
           }
         }
 
-
-
-
         PrintStatus.updateStatus("Suche Drucker...");
         if (_activeConnectionType == PrinterConnectionType.bluetooth) {
           PrintStatus.updateStatus("Prüfe Bluetooth-Verbindung...");
           // Kurze Verzögerung einfügen
           await Future.delayed(const Duration(milliseconds: 1000));
 
-          List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_820NWB.getName()]);
+          List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([printInfo.printerModel.getName()]);
+          print("Finale Bluetooth-Drucker Suche: ${bluetoothPrinters.length} Drucker gefunden");
+
           if (bluetoothPrinters.isEmpty) {
             throw Exception('Bluetooth-Drucker nicht gefunden');
           }
@@ -1563,25 +1800,24 @@ class PrinterScreenState extends State<PrinterScreen> {
           PrintStatus.updateStatus("Verbinde mit Bluetooth-Drucker...");
           // Sicherstellen dass der Drucker erreichbar ist
           printInfo.macAddress = bluetoothPrinters[0].macAddress;
+          print("Versuche Verbindung mit MAC: ${printInfo.macAddress}");
           bool isConnected = await printer.setPrinterInfo(printInfo);
           if (!isConnected) {
             throw Exception('Bluetooth-Verbindung fehlgeschlagen');
           }
         } else {
-          print("netPrinterWW");
-          List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
+          print("Suche nach Netzwerk-Druckern...");
+          List<NetPrinter> netPrinters = await printer.getNetPrinters([printInfo.printerModel.getName()]);
+          print("Finale Netzwerk-Drucker Suche: ${netPrinters.length} Drucker gefunden");
+
           if (netPrinters.isEmpty) {
             throw Exception('Netzwerk-Drucker nicht gefunden');
           }
           PrintStatus.updateStatus("Konfiguriere Drucker...");
           printInfo.ipAddress = netPrinters[0].ipAddress;
+          print("Versuche Verbindung mit IP: ${printInfo.ipAddress}");
           await printer.setPrinterInfo(printInfo);
         }
-
-
-
-
-
 
         PrintStatus.updateStatus("Generiere PDF...");
         final pdfFile = await _generatePdfForPrinter2();
@@ -1591,6 +1827,7 @@ class PrinterScreenState extends State<PrinterScreen> {
 
         // Prüfe ob es ein echter Fehler ist oder ERROR_NONE
         if (status.errorCode.getName() != 'ERROR_NONE') {
+          print("Druckerstatus: ${status.errorCode.getName()}");
           throw status;
         }
 
@@ -1607,6 +1844,7 @@ class PrinterScreenState extends State<PrinterScreen> {
         });
 
       } catch (e) {
+        print("Druckfehler aufgetreten: $e");
         PrintStatus.updateStatus("Fehler: ${PrinterErrorHelper.getErrorMessage(e)}");
         await Future.delayed(const Duration(seconds: 1));
         throw e;
@@ -1707,7 +1945,8 @@ class PrinterScreenState extends State<PrinterScreen> {
     // Barcode mit Shop-ID generieren wenn Online Shop aktiv ist
     String displayBarcode = barcodeData;
     if (_onlineShopItem && selectedBarcodeType == BarcodeType.production) {
-      String formattedShopId = lastShopItem.toString().padLeft(4, '0');
+      String formattedShopId = (lastShopItem - 1).toString().padLeft(4, '0');  // Der aktuelle Wert
+
       displayBarcode = '$barcodeData.$formattedShopId';
     }
 
@@ -1764,6 +2003,11 @@ class PrinterScreenState extends State<PrinterScreen> {
       }
       totalLength += max(textWidth, featureWidth);
     }
+
+  //  print("totalLength:$totalLength");
+if(totalLength>150){
+    totalLength=206;}
+   // print("totalLength:$totalLength");
 
     final pageFormat = PdfPageFormat(totalLength, labelWidth, marginAll: 0);
 

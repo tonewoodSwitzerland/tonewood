@@ -78,12 +78,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
                               _buildPartsFilter(),
                               tempFilter.parts?.isNotEmpty ?? false,
                             ),
-                            _buildFilterCategory(
-                              Icons.forest,
-                              'Holzart',
-                              _buildWoodTypeFilter(),
-                              tempFilter.woodTypes?.isNotEmpty ?? false,
-                            ),
+
                             _buildFilterCategory(
                               Icons.grade,
                               'Qualität',

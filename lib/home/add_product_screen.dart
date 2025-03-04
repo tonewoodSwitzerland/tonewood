@@ -56,7 +56,7 @@ class AddProductScreenState extends State<AddProductScreen> {
   bool isSpecialProduct = false;
 
   // Constants
-  final List<String> units = ['Stück', 'Kg', 'Palette', 'm³'];
+  final List<String> units = ['Stück', 'Kg', 'Palette', 'm³','m²'];
 
   // Dropdown data
   List<QueryDocumentSnapshot>? instruments;

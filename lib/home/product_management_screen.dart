@@ -329,6 +329,7 @@ print("sB:$searchBarcode");
       );
     }
   }
+
   void _saveStockEntry(String productId, Map<String, dynamic> productData, int quantity) async {
     try {
       final batch = FirebaseFirestore.instance.batch();
@@ -436,6 +437,7 @@ print("sB:$searchBarcode");
                       children: [
                         _buildInfoRow('Artikelnummer', productId),
                         _buildInfoRow('Produkt', productData['product_name']),
+                        _buildInfoRow('Qualität', productData['quality_name']),
                         const Divider(),
                         // Grundinformationen ExpansionTile
                         ExpansionTile(

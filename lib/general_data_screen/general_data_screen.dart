@@ -318,7 +318,7 @@ class GeneralDataScreenState extends State<GeneralDataScreen> {
                             child: Padding(
                               padding: EdgeInsets.symmetric(vertical: 8),
                               child: Text(
-                                'Fs',
+                                'FSC',
                                 style: TextStyle(fontWeight: FontWeight.bold),
                               ),
                             ),

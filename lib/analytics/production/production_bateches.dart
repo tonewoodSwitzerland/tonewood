@@ -436,7 +436,6 @@ class ProductionBatches extends StatelessWidget {
                         Icons.info_outline,
                         Column(
                           children: [
-                            _buildDetailRow('', batch['product_name'], Icons.inventory_2),
                             _buildDetailRow('Instrument', batch['instrument_name'], Icons.piano),
                             _buildDetailRow('Bauteil', batch['part_name'], Icons.construction),
                             _buildDetailRow('Holzart', batch['wood_name'], Icons.forest),
@@ -457,14 +456,20 @@ class ProductionBatches extends StatelessWidget {
                             ),
                             _buildDetailRow(
                               'Preis pro ${batch['unit']}',
-                              NumberFormat.currency(locale: 'de_CH', symbol: 'CHF')
-                                  .format(batch['price_CHF']),
+                              NumberFormat.currency(
+                                  locale: 'de_DE',
+                                  symbol: 'CHF',
+                                  decimalDigits: 2
+                              ).format(batch['price_CHF']),
                               Icons.attach_money,
                             ),
                             _buildDetailRow(
                               'Gesamtwert',
-                              NumberFormat.currency(locale: 'de_CH', symbol: 'CHF')
-                                  .format(batch['value']),
+                              NumberFormat.currency(
+                                  locale: 'de_DE',
+                                  symbol: 'CHF',
+                                  decimalDigits: 2
+                              ).format(batch['value']),
                               Icons.payments,
                             ),
                           ],
@@ -538,17 +543,26 @@ class ProductionBatches extends StatelessWidget {
           Icon(icon, size: 16, color: Colors.grey[600]),
           const SizedBox(width: 8),
           Expanded(
+            flex: 3, // Gibt dem Label mehr Platz
             child: Text(
               label,
               style: TextStyle(
                 color: Colors.grey[600],
               ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
             ),
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              fontWeight: FontWeight.w500,
+          Expanded(
+            flex: 5, // Gibt dem Value weniger Platz
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              textAlign: TextAlign.right,
             ),
           ),
         ],

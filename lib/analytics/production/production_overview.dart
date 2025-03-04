@@ -218,12 +218,13 @@ class ProductionOverview extends StatelessWidget {
       'PAL': (Icons.grid_view, Colors.green),
       'KG': (Icons.scale, Colors.orange),
       'M3': (Icons.view_in_ar, Colors.purple),
+      'M2': (Icons.square_foot, Colors.teal),
     };
 
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: MediaQuery.of(context).size.width > 1200 ? 4 : 2,
+      crossAxisCount: MediaQuery.of(context).size.width > 1200 ? 5 : 2,
       crossAxisSpacing: 16,
       mainAxisSpacing: 16,
       childAspectRatio: 1.5,

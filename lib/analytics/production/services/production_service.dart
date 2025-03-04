@@ -150,9 +150,7 @@ class ProductionService {
 
   Future<Map<String, dynamic>> getProductionTotals(ProductionFilter filter) async {
     try {
-      //print('Starting getProductionTotals');
       final docs = await getProductionWithBatches(filter);
-      //print('Got ${docs.length} documents with batches');
 
       // Map für die Normalisierung der Einheiten
       final unitNormalization = {
@@ -164,6 +162,8 @@ class ProductionService {
         'KG': 'KG',
         'PAL': 'PAL',
         'Palette': 'PAL',
+        'm²': 'M2',
+        'M2': 'M2',
       };
 
       final totals = {
@@ -172,6 +172,7 @@ class ProductionService {
           'PAL': 0,
           'KG': 0,
           'M3': 0,
+          'M2': 0,
         },
         'total_value': 0.0,
         'batch_count': 0,
@@ -188,7 +189,6 @@ class ProductionService {
 
         // Normalisiere die Einheit
         unit = unitNormalization[unit] ?? unit;
-        //print('Processing document with normalized unit: $unit');
 
         final price = (data['price_CHF'] as num?)?.toDouble() ?? 0.0;
 
@@ -199,7 +199,6 @@ class ProductionService {
 
         try {
           final batches = await doc.reference.collection('batch').get();
-          //print('Found ${batches.docs.length} batches for document');
 
           for (var batch in batches.docs) {
             try {
@@ -211,8 +210,6 @@ class ProductionService {
 
               final quantity = batchData['quantity'] as int? ?? 0;
               if (quantity == 0) continue;
-
-              //print('Processing batch with quantity: $quantity for unit: $unit');
 
               // Sichere Addition der Mengen mit normalisierter Einheit
               final quantities = totals['quantities'] as Map<String, int>;
@@ -236,17 +233,11 @@ class ProductionService {
                 specialWood['thermally_treated'] = (specialWood['thermally_treated'] ?? 0) + quantity;
               }
             } catch (e, stackTrace) {
-              //print('Error processing batch: $e');
-              //print('StackTrace: $stackTrace');
             }
           }
         } catch (e, stackTrace) {
-          //print('Error processing document batches: $e');
-          //print('StackTrace: $stackTrace');
         }
       }
-
-      //print('Final quantities before normalization: ${totals['quantities']}');
 
       // Stelle sicher, dass nur die standardisierten Einheiten zurückgegeben werden
       final quantities = totals['quantities'] as Map<String, int>;
@@ -255,18 +246,16 @@ class ProductionService {
         'PAL': quantities['PAL'] ?? 0,
         'KG': quantities['KG'] ?? 0,
         'M3': quantities['M3'] ?? 0,
+        'M2': quantities['M2'] ?? 0,
       };
       totals['quantities'] = normalizedQuantities;
 
-      //print('Final normalized quantities: ${totals['quantities']}');
-      //print('Completed getProductionTotals successfully');
       return totals;
     } catch (e, stackTrace) {
-      //print('Error in getProductionTotals: $e');
-      //print('StackTrace: $stackTrace');
       rethrow;
     }
   }
+
 // Die getProductionWithBatches Methode sollten wir auch anpassen:
   Future<List<DocumentSnapshot>> getProductionWithBatches(ProductionFilter filter) async {
     final snapshot = await getProductionStream(filter).first;
@@ -298,7 +287,6 @@ class ProductionService {
   Future<Map<String, Map<String, dynamic>>> getProductionByInstrument(ProductionFilter filter) async {
     try {
       final docs = await getProductionWithBatches(filter);
-      //print('Got ${docs.length} documents for instrument stats');
 
       final stats = <String, Map<String, dynamic>>{};
 
@@ -311,6 +299,8 @@ class ProductionService {
         'KG': 'KG',
         'PAL': 'PAL',
         'Palette': 'PAL',
+        'm²': 'M2',
+        'M2': 'M2',
       };
 
       for (var doc in docs) {
@@ -322,8 +312,6 @@ class ProductionService {
         unit = unitNormalization[unit] ?? unit;
         final price = (data['price_CHF'] as num?)?.toDouble() ?? 0.0;
 
-       
-
         if (!stats.containsKey(instrumentCode)) {
           stats[instrumentCode] = {
             'name': instrumentName,
@@ -332,6 +320,7 @@ class ProductionService {
               'PAL': 0,
               'KG': 0,
               'M3': 0,
+              'M2': 0,
             },
             'total_value': 0.0,
           };
@@ -339,30 +328,25 @@ class ProductionService {
 
         // Batches summieren
         final batches = await doc.reference.collection('batch').get();
-     
+
         for (var batch in batches.docs) {
           final batchData = batch.data();
           final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
           if (_isDateInRange(batchDate, filter)) {
             final quantity = batchData['quantity'] as int;
-           ;
 
             final quantities = stats[instrumentCode]!['quantities'] as Map<String, int>;
             quantities[unit] = (quantities[unit] ?? 0) + quantity;
 
             stats[instrumentCode]!['total_value'] =
                 (stats[instrumentCode]!['total_value'] as double) + (quantity * price);
-
-           
           }
         }
       }
 
-
       return stats;
     } catch (e, stackTrace) {
-     
       rethrow;
     }
   }
@@ -370,7 +354,7 @@ class ProductionService {
   Future<Map<String, Map<String, dynamic>>> getProductionByPart(ProductionFilter filter) async {
     try {
       final docs = await getProductionWithBatches(filter);
-     
+
       final stats = <String, Map<String, dynamic>>{};
 
       final unitNormalization = {
@@ -382,6 +366,8 @@ class ProductionService {
         'KG': 'KG',
         'PAL': 'PAL',
         'Palette': 'PAL',
+        'm²': 'M2',
+        'M2': 'M2',
       };
 
       for (var doc in docs) {
@@ -393,8 +379,6 @@ class ProductionService {
         unit = unitNormalization[unit] ?? unit;
         final price = (data['price_CHF'] as num?)?.toDouble() ?? 0.0;
 
-        //print('Processing part type: $partName ($partCode) with unit: $unit');
-
         if (!stats.containsKey(partCode)) {
           stats[partCode] = {
             'name': partName,
@@ -403,6 +387,7 @@ class ProductionService {
               'PAL': 0,
               'KG': 0,
               'M3': 0,
+              'M2': 0,
             },
             'total_value': 0.0,
           };
@@ -410,7 +395,6 @@ class ProductionService {
 
         // Batches summieren
         final batches = await doc.reference.collection('batch').get();
-        //print('Found ${batches.docs.length} batches for part type $partName');
 
         for (var batch in batches.docs) {
           final batchData = batch.data();
@@ -418,32 +402,24 @@ class ProductionService {
 
           if (_isDateInRange(batchDate, filter)) {
             final quantity = batchData['quantity'] as int;
-            //print('Adding quantity $quantity to part type $partName with unit $unit');
 
             final quantities = stats[partCode]!['quantities'] as Map<String, int>;
             quantities[unit] = (quantities[unit] ?? 0) + quantity;
 
             stats[partCode]!['total_value'] =
                 (stats[partCode]!['total_value'] as double) + (quantity * price);
-
-            //print('New quantities for $partName: ${quantities}');
           }
         }
       }
 
-      //print('Final part type stats: $stats');
       return stats;
     } catch (e, stackTrace) {
-      //print('Error in getProductionByPart: $e');
-      //print('StackTrace: $stackTrace');
       rethrow;
     }
   }
-
   Future<Map<String, Map<String, dynamic>>> getProductionByWoodType(ProductionFilter filter) async {
     try {
       final docs = await getProductionWithBatches(filter);
-      //print('Got ${docs.length} documents for wood type stats');
 
       final stats = <String, Map<String, dynamic>>{};
 
@@ -456,6 +432,8 @@ class ProductionService {
         'KG': 'KG',
         'PAL': 'PAL',
         'Palette': 'PAL',
+        'm²': 'M2',
+        'M2': 'M2',
       };
 
       for (var doc in docs) {
@@ -467,8 +445,6 @@ class ProductionService {
         unit = unitNormalization[unit] ?? unit;
         final price = (data['price_CHF'] as num?)?.toDouble() ?? 0.0;
 
-        //print('Processing wood type: $woodName ($woodCode) with unit: $unit');
-
         if (!stats.containsKey(woodCode)) {
           stats[woodCode] = {
             'name': woodName,
@@ -477,6 +453,7 @@ class ProductionService {
               'PAL': 0,
               'KG': 0,
               'M3': 0,
+              'M2': 0,
             },
             'total_value': 0.0,
           };
@@ -484,7 +461,6 @@ class ProductionService {
 
         // Batches summieren
         final batches = await doc.reference.collection('batch').get();
-        //print('Found ${batches.docs.length} batches for wood type $woodName');
 
         for (var batch in batches.docs) {
           final batchData = batch.data();
@@ -492,32 +468,24 @@ class ProductionService {
 
           if (_isDateInRange(batchDate, filter)) {
             final quantity = batchData['quantity'] as int;
-            //print('Adding quantity $quantity to wood type $woodName with unit $unit');
 
             final quantities = stats[woodCode]!['quantities'] as Map<String, int>;
             quantities[unit] = (quantities[unit] ?? 0) + quantity;
 
             stats[woodCode]!['total_value'] =
                 (stats[woodCode]!['total_value'] as double) + (quantity * price);
-
-            //print('New quantities for $woodName: ${quantities}');
           }
         }
       }
 
-      //print('Final wood type stats: $stats');
       return stats;
     } catch (e, stackTrace) {
-      //print('Error in getProductionByWoodType: $e');
-      //print('StackTrace: $stackTrace');
       rethrow;
     }
   }
-
   Future<Map<String, Map<String, dynamic>>> getProductionByQuality(ProductionFilter filter) async {
     try {
       final docs = await getProductionWithBatches(filter);
-      //print('Got ${docs.length} documents for quality stats');
 
       final stats = <String, Map<String, dynamic>>{};
 
@@ -530,6 +498,8 @@ class ProductionService {
         'KG': 'KG',
         'PAL': 'PAL',
         'Palette': 'PAL',
+        'm²': 'M2',
+        'M2': 'M2',
       };
 
       for (var doc in docs) {
@@ -540,8 +510,6 @@ class ProductionService {
         unit = unitNormalization[unit] ?? unit;
         final price = (data['price_CHF'] as num?)?.toDouble() ?? 0.0;
 
-        //print('Processing quality: $qualityName ($qualityCode) with unit: $unit');
-
         if (!stats.containsKey(qualityCode)) {
           stats[qualityCode] = {
             'name': qualityName,
@@ -550,6 +518,7 @@ class ProductionService {
               'PAL': 0,
               'KG': 0,
               'M3': 0,
+              'M2': 0,
             },
             'total_value': 0.0,
           };
@@ -557,7 +526,6 @@ class ProductionService {
 
         // Batches summieren
         final batches = await doc.reference.collection('batch').get();
-        //print('Found ${batches.docs.length} batches for quality $qualityName');
 
         for (var batch in batches.docs) {
           final batchData = batch.data();
@@ -565,28 +533,21 @@ class ProductionService {
 
           if (_isDateInRange(batchDate, filter)) {
             final quantity = batchData['quantity'] as int;
-            //print('Adding quantity $quantity to quality $qualityName with unit $unit');
 
             final quantities = stats[qualityCode]!['quantities'] as Map<String, int>;
             quantities[unit] = (quantities[unit] ?? 0) + quantity;
 
             stats[qualityCode]!['total_value'] =
                 (stats[qualityCode]!['total_value'] as double) + (quantity * price);
-
-            //print('New quantities for $qualityName: ${quantities}');
           }
         }
       }
 
-      //print('Final quality stats: $stats');
       return stats;
     } catch (e, stackTrace) {
-      //print('Error in getProductionByQuality: $e');
-      //print('StackTrace: $stackTrace');
       rethrow;
     }
   }
-
   bool _isDateInRange(DateTime date, ProductionFilter filter) {
   if (filter.timeRange != null) {
   final now = DateTime.now();
