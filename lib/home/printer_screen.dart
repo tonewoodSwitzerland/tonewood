@@ -93,7 +93,7 @@ class PrinterScreenState extends State<PrinterScreen> {
   bool _includeBatchNumber = false;
   String? _printerDetails;
   PrinterModel selectedPrinterModel = PrinterModel.QL820NWB; ///TODO RÜCKGÄNGIG
-  //PrinterModel selectedPrinterModel = PrinterModel.QL1110NWB;
+//  PrinterModel selectedPrinterModel = PrinterModel.QL1110NWB;
   int printQuantity = 1;
   late List<LabelType> labelTypes;
   final TextEditingController barcodeController = TextEditingController();
@@ -1194,7 +1194,7 @@ class PrinterScreenState extends State<PrinterScreen> {
           if (printerDoc.data()?['printerModel'] != null) {
             selectedPrinterModel = PrinterModel.values.firstWhere(
                   (model) => model.toString() == printerDoc.data()!['printerModel'],
-              orElse: () => PrinterModel.QL820NWB,
+             orElse: () => PrinterModel.QL820NWB,
              // orElse: () => PrinterModel.QL1110NWB,
               ///TODO RÜCKGÄNGIG
 
@@ -1761,7 +1761,7 @@ print("printers:ssss:$printers");
       var printInfo = PrinterInfo();
       print(printInfo.printerModel);
      printInfo.printerModel = Model.QL_820NWB;
-     // printInfo.printerModel = Model.QL_1110NWB;
+    // printInfo.printerModel = Model.QL_1110NWB;
       ///TODO RÜCKGÄNGIG
 
       // printInfo.printerModel = selectedPrinterModel == PrinterModel.QL1110NWB
@@ -1929,8 +1929,8 @@ print("printers:ssss:$printers");
         //     ? Model.QL_1110NWB
         //     : Model.QL_820NWB;
 
-       printInfo.printerModel = Model.QL_820NWB;
-       // printInfo.printerModel = Model.QL_1110NWB;
+      printInfo.printerModel = Model.QL_820NWB;
+      //  printInfo.printerModel = Model.QL_1110NWB;
         ///TODO RÜCKGÄNGIG
 
 
@@ -1945,7 +1945,7 @@ print("printers:ssss:$printers");
           print("Versuche Bluetooth-Verbindung...");
          // List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([printInfo.printerModel.getName()]);
           List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_820NWB.getName()]);
-         // List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_1110NWB.getName()]);
+         //List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_1110NWB.getName()]);
           ///TODO RÜCKGÄNGIG
 
 
@@ -1961,9 +1961,9 @@ print("printers:ssss:$printers");
             // Wenn Bluetooth fehlschlägt, versuche WLAN
             print("Bluetooth fehlgeschlagen, versuche WLAN");
             printInfo.port = Port.NET;
-            List<NetPrinter> netPrinters = await printer.getNetPrinters([printInfo.printerModel.getName()]);
-            ///List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
-           // List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_1110NWB.getName()]);
+           // List<NetPrinter> netPrinters = await printer.getNetPrinters([printInfo.printerModel.getName()]);
+            List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
+          // List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_1110NWB.getName()]);
 
             ///TODO RÜCKGÄNGIG
 
@@ -1984,7 +1984,7 @@ print("printers:ssss:$printers");
           //List<NetPrinter> netPrinters = await printer.getNetPrinters([printInfo.printerModel.getName()]);
          List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
          ///TODO Rückgängi
-         // List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_1110NWB.getName()]);
+        // List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_1110NWB.getName()]);
 
 
           print("Gefundene Netzwerk-Drucker: ${netPrinters.length}");
@@ -3470,17 +3470,60 @@ print("printers:ssss:$printers");
                                     onPressed: barcodeData.isEmpty || !_isPrinterOnline
                                         ? null
                                         : () async {
-                                      // Zuerst drucken, dann buchen wenn erfolgreich
-                                      bool druckErfolgreich = await printLabel(context);
+                                      // 1. Zuerst Lagerbestand prüfen, ohne ihn zu aktualisieren
+                                      try {
+                                        // Extrahiere den Verkaufscode
+                                        String inventoryId = barcodeData;
+                                        if (selectedBarcodeType == BarcodeType.production) {
+                                          final parts = barcodeData.split('.');
+                                          if (parts.length >= 2) {
+                                            inventoryId = '${parts[0]}.${parts[1]}';
+                                          }
+                                        }
 
-                                      if (druckErfolgreich) {
-                                        await _bookOnlineShopItem(lastShopItem);
-                                      } else {
-                                        // Fehlerfall - Benutzer informieren
+                                        // Lagerbestand prüfen (ohne zu aktualisieren)
+                                        final inventoryDoc = await FirebaseFirestore.instance
+                                            .collection('inventory')
+                                            .doc(inventoryId)
+                                            .get();
+
+                                        if (!inventoryDoc.exists) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Produkt nicht im Lager gefunden'), backgroundColor: Colors.red),
+                                          );
+                                          return;
+                                        }
+
+                                        final currentQuantity = inventoryDoc.data()?['quantity'] ?? 0;
+
+                                        // 2. Prüfen ob mindestens 1 auf Lager
+                                        if (currentQuantity < 1) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Nicht genügend Lagerbestand verfügbar'), backgroundColor: Colors.red),
+                                          );
+                                          return;
+                                        }
+
+                                        // 3. Lagerbestand ist ok - jetzt drucken
+                                        bool druckErfolgreich = await printLabel(context);
+
+                                        // 4. Wenn Druck erfolgreich, dann buchen
+                                        if (druckErfolgreich) {
+                                          await _bookOnlineShopItem(lastShopItem);
+                                        } else {
+                                          // Druckfehler
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Buchung wurde nicht durchgeführt, da der Druck fehlgeschlagen ist'),
+                                              backgroundColor: Colors.orange,
+                                            ),
+                                          );
+                                        }
+                                      } catch (e) {
                                         ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Buchung wurde nicht durchgeführt, da der Druck fehlgeschlagen ist'),
-                                            backgroundColor: Colors.orange,
+                                          SnackBar(
+                                            content: Text('Fehler bei der Lagerprüfung: $e'),
+                                            backgroundColor: Colors.red,
                                           ),
                                         );
                                       }
