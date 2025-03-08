@@ -37,6 +37,14 @@ import '../services/fair_management_screen.dart';
 import '../services/fairs.dart';
 
 import 'package:csv/csv.dart';
+
+
+enum TaxOption {
+  standard,  // Normales System mit Netto/Steuer/Brutto
+  noTax,     // Komplett ohne Steuer (nur Netto)
+  totalOnly  // Nur Bruttobetrag (inkl. MwSt), keine Steuerausweisung
+}
+
 class SalesScreen extends StatefulWidget {
 const SalesScreen({Key? key}) : super(key: key);
 
@@ -46,6 +54,8 @@ SalesScreenState createState() => SalesScreenState();
 
 class SalesScreenState extends State<SalesScreen> {
   Fair? selectedFair;
+  final ValueNotifier<TaxOption> _taxOptionNotifier = ValueNotifier<TaxOption>(TaxOption.standard);
+
   final ValueNotifier<Fair?> _selectedFairNotifier = ValueNotifier<Fair?>(null);
 bool isLoading = false;
 final TextEditingController barcodeController = TextEditingController();
@@ -691,7 +701,125 @@ return Scaffold(
   }
 
 
+// Methode zum Anzeigen des Steueroptionen-Dialogs
+  void _showTaxOptionsDialog() {
+    TaxOption selectedOption = _taxOptionNotifier.value;
 
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.settings,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text('Steuer'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Option 1: Standard
+                RadioListTile<TaxOption>(
+                  title: const Text('Standard'),
+                  subtitle: const Text('Netto, MwSt und Brutto separat ausgewiesen'),
+                  value: TaxOption.standard,
+                  groupValue: selectedOption,
+                  onChanged: (value) {
+                    setState(() => selectedOption = value!);
+                  },
+                ),
+
+                // Steuersatz-Eingabe (nur für Standard)
+                if (selectedOption == TaxOption.standard)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 32.0, right: 16.0, top: 8.0),
+                    child: TextFormField(
+                      initialValue: _vatRate.toString(),
+                      decoration: const InputDecoration(
+                        labelText: 'MwSt-Satz',
+                        suffixText: '%',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                      ],
+                      onChanged: (value) {
+                        final String normalizedInput = value.replaceAll(',', '.');
+                        final newRate = double.tryParse(normalizedInput);
+                        if (newRate != null) {
+                          _vatRate = newRate;
+                        }
+                      },
+                    ),
+                  ),
+
+                const Divider(height: 24),
+
+                // Option 2: Ohne Steuer
+                RadioListTile<TaxOption>(
+                  title: const Text('Ohne MwSt'),
+                  subtitle: const Text('Nur Nettobetrag, keine Steuer'),
+                  value: TaxOption.noTax,
+                  groupValue: selectedOption,
+                  onChanged: (value) {
+                    setState(() => selectedOption = value!);
+                  },
+                ),
+
+                const Divider(height: 24),
+
+                // Option 3: Nur Bruttobetrag
+                RadioListTile<TaxOption>(
+                  title: const Text('Gesamt inkl. MwSt'),
+                  subtitle: const Text('Bruttobetrag ohne separate Steuer'),
+                  value: TaxOption.totalOnly,
+                  groupValue: selectedOption,
+                  onChanged: (value) {
+                    setState(() => selectedOption = value!);
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Abbrechen'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  _taxOptionNotifier.value = selectedOption;
+                  Navigator.pop(context);
+
+                  // Optionaler Toast zur Bestätigung
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Steuereinstellungen aktualisiert'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                },
+                child: const Text('Übernehmen'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 // Diese Methode lädt die Währungseinstellungen aus Firebase
   Future<void> _loadCurrencySettings() async {
     try {
@@ -1639,41 +1767,138 @@ return Scaffold(
     );
   });
   void _showWarehouseDialog() {
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return Dialog(
-          child: Container(
-            width: MediaQuery.of(context).size.width * 0.9,
-            height: MediaQuery.of(context).size.height * 0.9,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Scaffold(
-                // appBar: AppBar(
-                //   title: const Text('Lager durchsuchen'),
-                //   automaticallyImplyLeading: false,
-                //   actions: [
-                //     IconButton(
-                //       icon: const Icon(Icons.close),
-                //       onPressed: () => Navigator.pop(context),
-                //     ),
-                //   ],
-                // ),
-                body: WarehouseScreen(
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.9,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 10,
+                spreadRadius: 0,
+                offset: Offset(0, -1),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              // Drag Handle oben
+              Container(
+                margin: EdgeInsets.only(top: 12, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+
+              // Titel mit Schließen-Button
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Colors.grey.shade200,
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warehouse),
+                    SizedBox(width: 12),
+                    Text(
+                      'Lager durchsuchen',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Spacer(),
+                    IconButton(
+                      icon: Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Hauptinhalt
+              Expanded(
+                child: WarehouseScreen(
                   key: UniqueKey(),
                   isDialog: true,
+                  mode: 'shopping',
                   onBarcodeSelected: (barcode) {
+                    print("bc:$barcode");
                     Navigator.pop(context);
+                   // _checkAndHandleOnlineShopItem(barcode);
                     _fetchProductAndShowQuantityDialog(barcode);
                   },
                 ),
               ),
-            ),
+            ],
           ),
         );
       },
     );
   }
+
+  // Future<void> _checkAndHandleOnlineShopItem(String barcode) async {
+  //   try {
+  //     // Check if it's an online shop item by looking in the onlineshop collection
+  //     final onlineShopDocs = await FirebaseFirestore.instance
+  //         .collection('onlineshop')
+  //         .where('short_barcode', isEqualTo: barcode)
+  //         .where('sold', isEqualTo: false)
+  //         .limit(1)
+  //         .get();
+  //
+  //     if (onlineShopDocs.docs.isNotEmpty) {
+  //       // It's an online shop item
+  //       final onlineShopDoc = onlineShopDocs.docs.first;
+  //       final onlineShopBarcode = onlineShopDoc.id; // The document ID is the full barcode
+  //
+  //       // Get the product from inventory
+  //       final doc = await FirebaseFirestore.instance
+  //           .collection('inventory')
+  //           .doc(barcode)
+  //           .get();
+  //
+  //       if (doc.exists) {
+  //         // Add to cart with quantity 1 and mark as shop item
+  //         await _addToTemporaryBasket(barcode, doc.data()!, 1, onlineShopBarcode);
+  //
+  //         ScaffoldMessenger.of(context).showSnackBar(
+  //           const SnackBar(
+  //             content: Text('Online-Shop Artikel wurde zum Warenkorb hinzugefügt'),
+  //             backgroundColor: Colors.green,
+  //           ),
+  //         );
+  //       }
+  //     } else {
+  //       // Regular inventory product
+  //       _fetchProductAndShowQuantityDialog(barcode);
+  //     }
+  //   } catch (e) {
+  //     print('Error in _checkAndHandleOnlineShopItem: $e');
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //         content: Text('Fehler: $e'),
+  //         backgroundColor: Colors.red,
+  //       ),
+  //     );
+  //   }
+  // }
+
+
   // Methode zum Speichern der temporären Kostenstelle
   Future<void> _saveTemporaryCostCenter(CostCenter costCenter) async {
     try {
@@ -3187,145 +3412,195 @@ minimumSize: const Size(double.infinity, 48),
             final item = doc.data() as Map<String, dynamic>;
             final itemId = doc.id;
             final quantity = item['quantity'] as int;
-            final pricePerUnit = (item['price_per_unit'] as num).toDouble();
+           // final pricePerUnit = (item['price_per_unit'] as num).toDouble();
+            final pricePerUnit = ((item['custom_price_per_unit'] ?? item['price_per_unit']) as num).toDouble();
             final subtotal = quantity * pricePerUnit;
             final itemDiscount = _itemDiscounts[itemId] ?? const Discount();
             final discountAmount = itemDiscount.calculateDiscount(subtotal);
 
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: Column(
-                children: [
-                  ListTile(
-                    title: Row(
+            return GestureDetector(
+              onTap: () => _showPriceEditDialog(doc.id, item),
+              child: Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: Stack(
+                  children: [
+                    Column(
                       children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        ListTile(
+                          title: Row(
                             children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    item['instrument_name'] ?? 'N/A',
-                                    style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
-                                  ),
-                                  Text(
-                                    ' - ',
-                                    style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
-                                  ),
-                                  Text(
-                                    item['wood_name'] ?? 'N/A',
-                                    style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
-                                  ),
-                                ],
-                              ),
-                              Row(
-                                children: [
-                                  Text(
-                                    item['part_name'] ?? 'N/A',
-                                    style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
-                                  ),
-                                  Text(
-                                    ' - ',
-                                    style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
-                                  ),
-                                  Text(
-                                    item['quality_name'] ?? 'N/A',
-                                    style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
-                                  ),
-                                ],
-                              ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          item['instrument_name'] ?? 'N/A',
+                                          style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
+                                        ),
+                                        Text(
+                                          ' - ',
+                                          style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
+                                        ),
+                                        Text(
+                                          item['wood_name'] ?? 'N/A',
+                                          style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
+                                        ),
+                                      ],
+                                    ),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          item['part_name'] ?? 'N/A',
+                                          style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
+                                        ),
+                                        Text(
+                                          ' - ',
+                                          style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
+                                        ),
+                                        Text(
+                                          item['quality_name'] ?? 'N/A',
+                                          style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
+                                        ),
+                                      ],
+                                    ),
 
-                              ValueListenableBuilder<String>(
-                                valueListenable: _currencyNotifier,
-                                builder: (context, currency, child) {
-                                  // Formatiere nur den Preis, nicht die Menge oder Einheit
-                                  return Text(
-                                    '${quantity} ${item['unit']} × ${_formatPrice(pricePerUnit)}',
-                                    style: Theme.of(context).textTheme.bodySmall,
-                                  );
-                                },
+                                    ValueListenableBuilder<String>(
+                                      valueListenable: _currencyNotifier,
+                                      builder: (context, currency, child) {
+                                        return Text(
+                                          '${quantity} ${item['unit']} × ${_formatPrice(pricePerUnit)}${item['is_price_customized'] == true ? ' *' : ''}',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontStyle: item['is_price_customized'] == true ? FontStyle.italic : FontStyle.normal,
+                                            color: item['is_price_customized'] == true ? Colors.green[700] : null,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  ValueListenableBuilder<String>(
+                                    valueListenable: _currencyNotifier,
+                                    builder: (context, currency, child) {
+                                      return Text(
+                                        _formatPrice(subtotal),
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          decoration: discountAmount > 0 ?
+                                          TextDecoration.lineThrough : null,
+                                          color: discountAmount > 0 ?
+                                          Colors.grey : null,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  if (discountAmount > 0)
+                                    ValueListenableBuilder<String>(
+                                      valueListenable: _currencyNotifier,
+                                      builder: (context, currency, child) {
+                                        return Text(
+                                          _formatPrice(subtotal - discountAmount),
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.green,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          trailing: Padding(
+                            padding: const EdgeInsets.fromLTRB(0, 4,0,0),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.discount,
+                                    color: itemDiscount.hasDiscount ?
+                                    Theme.of(context).colorScheme.primary : null,
+                                  ),
+                                  onPressed: () => _showItemDiscountDialog(itemId, subtotal),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete),
+                                  onPressed: () => _removeFromBasket(doc.id),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (itemDiscount.hasDiscount)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Rabatt: ${itemDiscount.percentage > 0 ? '${itemDiscount.percentage}% ' : ''}'
+                                      '${itemDiscount.absolute > 0 ? '${itemDiscount.absolute} CHF' : ''}',
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                                Text(
+                                  '- ${discountAmount.toStringAsFixed(2)} CHF',
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (item['is_online_shop_item'] == true)
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade700,
+                            borderRadius: const BorderRadius.only(
+                              topRight: Radius.circular(4),
+                              bottomLeft: Radius.circular(8),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.shopping_cart,
+                                color: Colors.white,
+                                size: 14,
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'Shop - ${item['online_shop_barcode']}',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ],
                           ),
                         ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            ValueListenableBuilder<String>(
-                              valueListenable: _currencyNotifier,
-                              builder: (context, currency, child) {
-                                return Text(
-                                  _formatPrice(subtotal),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    decoration: discountAmount > 0 ?
-                                    TextDecoration.lineThrough : null,
-                                    color: discountAmount > 0 ?
-                                    Colors.grey : null,
-                                  ),
-                                );
-                              },
-                            ),
-                            if (discountAmount > 0)
-                              ValueListenableBuilder<String>(
-                                valueListenable: _currencyNotifier,
-                                builder: (context, currency, child) {
-                                  return Text(
-                                    _formatPrice(subtotal - discountAmount),
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.green,
-                                    ),
-                                  );
-                                },
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: Icon(
-                            Icons.discount,
-                            color: itemDiscount.hasDiscount ?
-                            Theme.of(context).colorScheme.primary : null,
-                          ),
-                          onPressed: () => _showItemDiscountDialog(itemId, subtotal),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete),
-                          onPressed: () => _removeFromBasket(doc.id),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (itemDiscount.hasDiscount)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Rabatt: ${itemDiscount.percentage > 0 ? '${itemDiscount.percentage}% ' : ''}'
-                                '${itemDiscount.absolute > 0 ? '${itemDiscount.absolute} CHF' : ''}',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                          Text(
-                            '- ${discountAmount.toStringAsFixed(2)} CHF',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                        ],
                       ),
-                    ),
-                ],
+                  ],
+                ),
+
               ),
             );
           },
@@ -3334,212 +3609,298 @@ minimumSize: const Size(double.infinity, 48),
     );
   }
 
-// Erweiterte Gesamtsummen-Anzeige
   Widget _buildTotalBar() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _basketStream,
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox.shrink();
+    return ValueListenableBuilder<String>(
+      valueListenable: _currencyNotifier,
+      builder: (context, selectedCurrency, _) {
+        return ValueListenableBuilder<Map<String, double>>(
+          valueListenable: _exchangeRatesNotifier,
+          builder: (context, exchangeRates, _) {
+            return ValueListenableBuilder<TaxOption>(
+              valueListenable: _taxOptionNotifier,
+              builder: (context, taxOption, _) {
+                return StreamBuilder<QuerySnapshot>(
+                  stream: _basketStream,
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const SizedBox.shrink();
 
-        final basketItems = snapshot.data!.docs;
+                    final basketItems = snapshot.data!.docs;
 
-        // Berechne Zwischensummen
-        double subtotal = 0.0;
-        double itemDiscounts = 0.0;
+                    // Berechne Zwischensummen
+                    double subtotal = 0.0;
+                    double itemDiscounts = 0.0;
 
-        for (var doc in basketItems) {
-          final data = doc.data() as Map<String, dynamic>;
-          final itemSubtotal = (data['quantity'] as int) *
-              (data['price_per_unit'] as num).toDouble();
-          subtotal += itemSubtotal;
+                    for (var doc in basketItems) {
+                      final data = doc.data() as Map<String, dynamic>;
 
-          final itemDiscount = _itemDiscounts[doc.id] ?? const Discount();
-          itemDiscounts += itemDiscount.calculateDiscount(itemSubtotal);
-        }
+                      // Hier den korrekten Preis verwenden (custom oder standard)
+                      final customPriceValue = data['custom_price_per_unit'];
+                      final pricePerUnit = customPriceValue != null
+                          ? (customPriceValue as num).toDouble()
+                          : (data['price_per_unit'] as num).toDouble();
 
-        final afterItemDiscounts = subtotal - itemDiscounts;
-        final totalDiscountAmount = _totalDiscount.calculateDiscount(afterItemDiscounts);
-        final netAmount = afterItemDiscounts - totalDiscountAmount;
-        final vatAmount = netAmount * (_vatRate / 100);
-        final total = netAmount + vatAmount;
+                      final itemSubtotal = (data['quantity'] as int) * pricePerUnit;
+                      subtotal += itemSubtotal;
 
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 4,
-                offset: const Offset(0, -2),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            child: Column(
-              children: [
-                // Zwischensumme
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Zwischensumme'),
-                    ValueListenableBuilder<String>(
-                      valueListenable: _currencyNotifier,
-                      builder: (context, currency, child) {
-                        return Text(_formatPrice(subtotal));
-                      },
-                    ),
-                  ],
-                ),
+                      final itemDiscount = _itemDiscounts[doc.id] ?? const Discount();
+                      itemDiscounts += itemDiscount.calculateDiscount(
+                          itemSubtotal,
 
-                // Positionsrabatte
-                if (itemDiscounts > 0) ...[
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Positionsrabatte'),
-                      Text(
-                        '- ${itemDiscounts.toStringAsFixed(2)} CHF',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                      );
+                    }
 
-                // Gesamtrabatt
-                if (_totalDiscount.hasDiscount) ...[
-                  const SizedBox(height: 4),
-                  ValueListenableBuilder<String>(
-                    valueListenable: _currencyNotifier,
-                    builder: (context, currency, child) {
-                      return Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                              'Gesamtrabatt '
-                                  '${_totalDiscount.percentage > 0 ? '(${_totalDiscount.percentage}%)' : ''}'
-                                  '${_totalDiscount.absolute > 0 ? ' ${_formatPrice(_totalDiscount.absolute)}' : ''}'
-                          ),
-                          Text(
-                            '- ${_formatPrice(totalDiscountAmount)}',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
+                    final afterItemDiscounts = subtotal - itemDiscounts;
+                    final totalDiscountAmount = _totalDiscount.calculateDiscount(
+                        afterItemDiscounts,
+
+                    );
+                    final netAmount = afterItemDiscounts - totalDiscountAmount;
+
+                    // MwSt nur berechnen, wenn es Standard-Option ist
+                    double vatAmount = 0.0;
+                    double total = netAmount;
+
+                    if (taxOption == TaxOption.standard) {
+                      vatAmount = netAmount * (_vatRate / 100);
+                      total = netAmount + vatAmount;
+                    }
+
+                    return Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 4,
+                            offset: const Offset(0, -2),
                           ),
                         ],
-                      );
-                    },
-                  ),
-                ],
-
-                // Nettobetrag
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Nettobetrag'),
-                    ValueListenableBuilder<String>(
-                      valueListenable: _currencyNotifier,
-                      builder: (context, currency, child) {
-                        return Text(_formatPrice(netAmount));
-                      },
-                    ),
-                  ],
-                ),
-
-                // MwSt
-                const SizedBox(height: 4),
-                ValueListenableBuilder<String>(
-                  valueListenable: _currencyNotifier,
-                  builder: (context, currency, child) {
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('MwSt ($_vatRate%)'),
-                        Row(
+                      ),
+                      child: SafeArea(
+                        child: Column(
                           children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit, size: 16),
-                              onPressed: _showVatRateDialog,
+                            // Zwischensumme
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Zwischensumme'),
+                                Text(_formatPrice(subtotal)),
+                              ],
                             ),
-                            Text(_formatPrice(vatAmount)),
+
+                            // Positionsrabatte
+                            if (itemDiscounts > 0) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Positionsrabatte'),
+                                  Text(
+                                    '- ${_formatPrice(itemDiscounts)}',
+                                    style: TextStyle(
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+
+                            // Gesamtrabatt
+                            if (_totalDiscount.hasDiscount) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                      'Gesamtrabatt '
+                                          '${_totalDiscount.percentage > 0 ? '(${_totalDiscount.percentage}%)' : ''}'
+                                          '${_totalDiscount.absolute > 0 ? ' ${_formatPrice(_totalDiscount.absolute)}' : ''}'
+                                  ),
+                                  Text(
+                                    '- ${_formatPrice(totalDiscountAmount)}',
+                                    style: TextStyle(
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+
+                            // MwSt-Bereich basierend auf gewählter Option
+                            if (taxOption == TaxOption.standard) ...[
+                              const SizedBox(height: 4),
+                              // Nettobetrag
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Nettobetrag'),
+                                  Text(_formatPrice(netAmount)),
+                                ],
+                              ),
+
+                              const SizedBox(height: 4),
+
+                              // MwSt mit Einstellungsrad
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('MwSt ($_vatRate%)'),
+                                  Row(
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.settings, size: 16),
+                                        onPressed: _showTaxOptionsDialog,
+                                        tooltip: 'Steuereinstellungen ändern',
+                                      ),
+                                      Text(_formatPrice(vatAmount)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+
+                              const Divider(height: 16),
+
+                              // Gesamtbetrag
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    'Gesamtbetrag',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    _formatPrice(total),
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ] else if (taxOption == TaxOption.noTax) ...[
+                              const SizedBox(height: 4),
+                              // Einstellungs-Button
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.settings, size: 16),
+                                    onPressed: _showTaxOptionsDialog,
+                                    tooltip: 'Steuereinstellungen ändern',
+                                  ),
+                                ],
+                              ),
+
+                              const Divider(height: 16),
+
+                              // Nettobetrag
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    'Nettobetrag',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    _formatPrice(netAmount),
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ] else ...[
+                              // totalOnly - Nur Gesamtbetrag, keine MwSt
+                              const SizedBox(height: 4),
+                              // Einstellungs-Button
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.settings, size: 16),
+                                    onPressed: _showTaxOptionsDialog,
+                                    tooltip: 'Steuereinstellungen ändern',
+                                  ),
+                                ],
+                              ),
+
+                              const Divider(height: 16),
+
+                              // Bruttobetrag (= Nettobetrag, keine MwSt)
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    'Gesamtbetrag inkl. MwSt',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    _formatPrice(netAmount), // Hier nehmen wir direkt den Nettobetrag
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+
+                            const SizedBox(height: 16),
+
+                            // Aktionsbuttons
+                            Row(
+                              children: [
+                                // Rabatt-Button
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: basketItems.isEmpty ? null : _showTotalDiscountDialog,
+                                    icon: Icon(
+                                      Icons.discount,
+                                      color: _totalDiscount.hasDiscount ?
+                                      Theme.of(context).colorScheme.primary : null,
+                                    ),
+                                    label: const Text('Gesamtrabatt'),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                // Abschließen-Button
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: basketItems.isEmpty || isLoading
+                                        ? null
+                                        : _processTransaction,
+                                    icon: isLoading
+                                        ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                        : const Icon(Icons.check),
+                                    label: const Text('Abschließen'),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
-                      ],
+                      ),
                     );
                   },
-                ),
-
-                const Divider(height: 16),
-
-                // Gesamtbetrag
-                ValueListenableBuilder<String>(
-                  valueListenable: _currencyNotifier,
-                  builder: (context, currency, child) {
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Gesamtbetrag',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          _formatPrice(total),
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-
-                const SizedBox(height: 16),
-
-                // Aktionsbuttons
-                Row(
-                  children: [
-                    // Rabatt-Button
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: basketItems.isEmpty ? null : _showTotalDiscountDialog,
-                        icon: Icon(
-                          Icons.discount,
-                          color: _totalDiscount.hasDiscount ?
-                          Theme.of(context).colorScheme.primary : null,
-                        ),
-                        label: const Text('Gesamtrabatt'),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    // Abschließen-Button
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: basketItems.isEmpty || isLoading
-                            ? null
-                            : _processTransaction,
-                        icon: isLoading
-                            ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                            : const Icon(Icons.check),
-                        label: const Text('Abschließen'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+                );
+              },
+            );
+          },
         );
       },
     );
@@ -3573,8 +3934,142 @@ minimumSize: const Size(double.infinity, 48),
     }
   }
 
+  void _showPriceEditDialog(String basketItemId, Map<String, dynamic> itemData) {
+    // Sicheres Konvertieren von int oder double nach double
+    final double originalPrice = (itemData['price_per_unit'] as num).toDouble();
 
-  Future<void> _addToTemporaryBasket(String shortBarcode, Map<String, dynamic> productData, int quantity) async {
+    // Falls bereits ein angepasster Preis existiert, diesen verwenden, sonst Originalpreis
+    final customPriceValue = itemData['custom_price_per_unit'];
+    final double currentPriceInCHF = customPriceValue != null
+        ? (customPriceValue as num).toDouble()
+        : originalPrice;
+
+    // Umrechnung in aktuelle Währung
+    double displayPrice = currentPriceInCHF;
+    if (_selectedCurrency != 'CHF') {
+      displayPrice = currentPriceInCHF * _exchangeRates[_selectedCurrency]!;
+    }
+
+    final priceController = TextEditingController(text: displayPrice.toStringAsFixed(2));
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Preis anpassen'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Artikel: ${itemData['product_name']}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text('Originalpreis: ${NumberFormat.currency(locale: 'de_CH', symbol: 'CHF').format(originalPrice)}'),
+            if (currentPriceInCHF != originalPrice)
+              Text(
+                'Aktueller Preis: ${NumberFormat.currency(locale: 'de_CH', symbol: 'CHF').format(currentPriceInCHF)}',
+                style: TextStyle(color: Colors.green[700]),
+              ),
+            const SizedBox(height: 12),
+            ValueListenableBuilder<String>(
+              valueListenable: _currencyNotifier,
+              builder: (context, currency, child) {
+                return Text(
+                    'Neuer Preis in $_selectedCurrency:',
+                    style: TextStyle(fontWeight: FontWeight.bold)
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: priceController,
+              decoration: InputDecoration(
+                labelText: 'Neuer Preis',
+                suffixText: _selectedCurrency,
+                border: const OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+              ],
+            ),
+
+          ],
+        ),
+        actions: [
+
+          // Option zum Zurücksetzen auf Originalpreis, falls bereits angepasst
+          if (currentPriceInCHF != originalPrice)
+            TextButton(
+              onPressed: () async {
+                await FirebaseFirestore.instance
+                    .collection('temporary_basket')
+                    .doc(basketItemId)
+                    .update({
+                  'custom_price_per_unit': FieldValue.delete(),
+                  'is_price_customized': false,
+                });
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Preis wurde auf Original zurückgesetzt'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              },
+              child: const Text('Zurücksetzen'),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+            ),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                // Neuen Preis parsen (Komma oder Punkt akzeptieren)
+                final String normalizedInput = priceController.text.replaceAll(',', '.');
+                final newPrice = double.tryParse(normalizedInput) ?? 0.0;
+                if (newPrice <= 0) {
+                  throw Exception('Bitte gib einen gültigen Preis ein');
+                }
+
+                // Umrechnen in CHF für die Speicherung
+                double priceInCHF = newPrice;
+                if (_selectedCurrency != 'CHF') {
+                  priceInCHF = newPrice / _exchangeRates[_selectedCurrency]!;
+                }
+
+                // Speichere den angepassten Preis, nicht den Originalpreis überschreiben
+                await FirebaseFirestore.instance
+                    .collection('temporary_basket')
+                    .doc(basketItemId)
+                    .update({
+                  'custom_price_per_unit': priceInCHF,
+                  'is_price_customized': true,
+                });
+
+                Navigator.pop(context);
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Preis wurde aktualisiert'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Fehler: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text('Speichern'),
+          ),
+        ],
+      ),
+    );
+  }
+  Future<void> _addToTemporaryBasket(String shortBarcode, Map<String, dynamic> productData, int quantity, String? onlineShopBarcode) async {
     await FirebaseFirestore.instance
         .collection('temporary_basket')
         .add({
@@ -3592,6 +4087,10 @@ minimumSize: const Size(double.infinity, 48),
       'wood_code': productData['wood_code'],
       'quality_name': productData['quality_name'],
       'quality_code': productData['quality_code'],
+
+      // Füge das Feld nur hinzu, wenn es gesetzt ist
+      if (onlineShopBarcode != null) 'online_shop_barcode': onlineShopBarcode,
+      if (onlineShopBarcode != null) 'is_online_shop_item': true,
     });
   }
 
@@ -3605,15 +4104,18 @@ await FirebaseFirestore.instance
 void _showQuantityDialog(String barcode, Map<String, dynamic> productData) {
 quantityController.clear();
 showDialog(
+
 context: context,
 builder: (BuildContext context) {
 return AlertDialog(
-title: const Text('Menge eingeben'),
+title: const Text('Menge'),
 content: Column(
 mainAxisSize: MainAxisSize.min,
 crossAxisAlignment: CrossAxisAlignment.start,
 children: [
-Text('Produkt: ${productData['product_name'] ?? 'N/A'}'),
+  Text('Produkt:',style: TextStyle(fontWeight: FontWeight.bold),),
+Text('${productData['instrument_name'] ?? 'N/A'} -  ${productData['part_name'] ?? 'N/A'}'),
+  Text('${productData['wood_name'] ?? 'N/A'} - ${productData['quality_name'] ?? 'N/A'}'),
 FutureBuilder<int>(
 future: _getAvailableQuantity(barcode),
 builder: (context, snapshot) {
@@ -3639,9 +4141,9 @@ autofocus: true,
 ],
 ),
 actions: [
-TextButton(
+ElevatedButton(
 onPressed: () => Navigator.pop(context),
-child: const Text('Abbrechen'),
+child: const Text('X'),
 ),
 ElevatedButton(
 onPressed: () async {
@@ -3650,7 +4152,7 @@ final quantity = int.parse(quantityController.text);
 final availableQuantity = await _getAvailableQuantity(barcode);
 
 if (quantity <= availableQuantity) {
-await _addToTemporaryBasket(barcode, productData, quantity);
+await _addToTemporaryBasket(barcode, productData, quantity,null);
 Navigator.pop(context);
 } else {
   AppToast.show(message: "Nicht genügend Bestand verfügbar", height: h);
@@ -3668,8 +4170,55 @@ child: const Text('Hinzufügen'),
 
   Future<void> _fetchProductAndShowQuantityDialog(String barcode) async {
     try {
+      // Prüfe zuerst, ob es ein Online-Shop-Item ist
+      final onlineShopDocs = await FirebaseFirestore.instance
+          .collection('onlineshop')
+          .where('barcode', isEqualTo: barcode)  // Changed from short_barcode to barcode
+          .where('sold', isEqualTo: false) // Nur nicht verkaufte
+          .limit(1)
+          .get();
+
+      if (onlineShopDocs.docs.isNotEmpty) {
+        final onlineShopDoc = onlineShopDocs.docs.first;
+        final onlineShopBarcode = onlineShopDoc.id; // Der Dokument-ID ist der vollständige Barcode
+        final onlineShopData = onlineShopDoc.data();
+
+        // Es ist ein Online-Shop-Item, füge es direkt mit Menge 1 hinzu
+        final doc = await FirebaseFirestore.instance
+            .collection('inventory')
+            .doc(onlineShopData['short_barcode']) // Fixed: use onlineShopData instead of onlineShopDocs
+            .get();
+
+        if (doc.exists) {
+          // Hier das Online-Shop-Barcode übergeben
+          await _addToTemporaryBasket(
+              onlineShopData['short_barcode'], // Use the short barcode for inventory reference
+              doc.data()!,
+              1,
+              onlineShopBarcode
+          );
+
+          // Online-Shop-Item als "im Warenkorb" markieren
+          await FirebaseFirestore.instance
+              .collection('onlineshop')
+              .doc(onlineShopBarcode)
+              .update({'in_cart': true});
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Online-Shop Artikel wurde zum Warenkorb hinzugefügt'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        }
+        return;
+      }
+
+      // Normales Lagerprodukt - bestehender Code
       final doc = await FirebaseFirestore.instance
-          .collection('inventory')  // Geändert von 'products' zu 'inventory'
+          .collection('inventory')
           .doc(barcode)
           .get();
 
@@ -3761,6 +4310,8 @@ backgroundColor: Colors.red,
     setState(() => isLoading = true);
 
     try {
+      // Aktuelle Steueroption abrufen
+      final TaxOption taxOption = _taxOptionNotifier.value;
 
       // Prüfe ob Kostenstelle ausgewählt wurde
       final costCenterSnapshot = await FirebaseFirestore.instance
@@ -3861,8 +4412,14 @@ backgroundColor: Colors.red,
       double itemDiscounts = 0.0;
       final items = basketSnapshot.docs.map((doc) {
         final data = doc.data();
-        final itemSubtotal = (data['quantity'] as int) *
-            (data['price_per_unit'] as double);
+
+        // Angepasster Preis
+        final customPriceValue = data['custom_price_per_unit'];
+        final pricePerUnit = customPriceValue != null
+            ? (customPriceValue as num).toDouble()
+            : (data['price_per_unit'] as num).toDouble();
+
+        final itemSubtotal = (data['quantity'] as int) * pricePerUnit;
         subtotal += itemSubtotal;
 
         final itemDiscount = _itemDiscounts[doc.id] ?? const Discount();
@@ -3871,6 +4428,9 @@ backgroundColor: Colors.red,
 
         return {
           ...data,
+          'price_per_unit': pricePerUnit, // Speichere den tatsächlich verwendeten Preis
+          'original_price_per_unit': data['price_per_unit'], // Speichere den Originalpreis zur Referenz
+          'is_price_customized': data['is_price_customized'] ?? false,
           'subtotal': itemSubtotal,
           'discount': itemDiscount.toMap(),
           'discount_amount': discountAmount,
@@ -3922,10 +4482,14 @@ backgroundColor: Colors.red,
           'total_discount_amount': totalDiscountAmount,
           'net_amount': netAmount,
           'vat_rate': _vatRate,
-          'vat_amount': vatAmount,
-          'total': total,
+
+          'vat_amount': taxOption == TaxOption.standard ? vatAmount : 0, // Je nach Option
+          'total': taxOption == TaxOption.standard ? total : netAmount, // Je nach Option
+
         },
         'metadata': {
+          'tax_option': _taxOptionNotifier.value.index, // Speichern der Steueroption
+
           'fairId': fair?.id,
           'fairName': fair?.name,
           'fairCostCenter': fair?.costCenterCode,
@@ -4433,10 +4997,17 @@ backgroundColor: Colors.red,
 
     final receiptData = receiptDoc.data()!;
     final customerData = receiptData['customer'] as Map<String, dynamic>;
+    final metaData = receiptData['metadata'] as Map<String, dynamic>;
     final items = (receiptData['items'] as List).cast<Map<String, dynamic>>();
     final calculations = receiptData['calculations'] as Map<String, dynamic>;
     final receiptNumber = receiptData['receiptNumber'] as String;
+    final taxOption = TaxOption.values[metaData['tax_option'] ?? 0]; // Standard als Fallback
 
+
+print("taxOption:$taxOption");
+print("test:${receiptData['tax_option']}");
+print(TaxOption.values);
+    print(TaxOption.values[2]);
     // Lade das Firmenlogo
     final logoImage = await rootBundle.load('images/logo.png');
     final logo = pw.MemoryImage(logoImage.buffer.asUint8List());
@@ -4491,8 +5062,65 @@ backgroundColor: Colors.red,
               ),
               pw.SizedBox(height: 20),
 
-              // Kunde bleibt gleich
-              // ...
+              pw.Container(
+                padding: const pw.EdgeInsets.all(15),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.blueGrey200, width: 0.5),
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                  color: PdfColors.grey50,
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      customerData['company'] ?? '',
+                      style: pw.TextStyle(
+                        fontSize: 14,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.blueGrey800,
+                      ),
+                    ),
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                      customerData['fullName'] ?? '',
+                      style: const pw.TextStyle(color: PdfColors.blueGrey700),
+                    ),
+                    pw.SizedBox(height: 4),
+                    // Straße und Hausnummer in einer Zeile
+                    pw.Text(
+                      '${customerData['street'] ?? ''} ${customerData['houseNumber'] ?? ''}',
+                      style: const pw.TextStyle(color: PdfColors.blueGrey700),
+                    ),
+                    // PLZ und Stadt in einer Zeile
+                    pw.Text(
+                      '${customerData['zipCode'] ?? ''} ${customerData['city'] ?? ''}',
+                      style: const pw.TextStyle(color: PdfColors.blueGrey700),
+                    ),
+                    // Land in einer eigenen Zeile
+                    pw.Text(
+                      customerData['country'] ?? '',
+                      style: const pw.TextStyle(color: PdfColors.blueGrey700),
+                    ),
+                    pw.SizedBox(height: 10),
+                    pw.Text(
+                      'per mail an:',
+                      style: pw.TextStyle(
+                        fontSize: 8,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.blueGrey800,
+                      ),
+                    ),
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                      customerData['email'] ?? '',
+                      style: const pw.TextStyle(color: PdfColors.blueGrey700,  fontSize: 8,),
+                    ),
+                  ],
+                ),
+              ),
+
+
+
 
               pw.SizedBox(height: 15),
 
@@ -4628,7 +5256,6 @@ backgroundColor: Colors.red,
               ),
               pw.SizedBox(height: 20),
 
-              // Gesamtbeträge
               pw.Container(
                 alignment: pw.Alignment.centerRight,
                 child: pw.Container(
@@ -4647,6 +5274,7 @@ backgroundColor: Colors.red,
                         _selectedCurrency,
                         _exchangeRates[_selectedCurrency] ?? 1.0,
                       ),
+
                       // Positionsrabatte
                       if ((calculations['item_discounts'] as num? ?? 0) > 0)
                         _buildTotalRowWithCurrency(
@@ -4656,6 +5284,7 @@ backgroundColor: Colors.red,
                           _exchangeRates[_selectedCurrency] ?? 1.0,
                           isDiscount: true,
                         ),
+
                       // Gesamtrabatt
                       if ((calculations['total_discount_amount'] as num? ?? 0) > 0) ...[
                         if ((calculations['total_discount'] as Map<String, dynamic>)['percentage'] > 0)
@@ -4675,30 +5304,73 @@ backgroundColor: Colors.red,
                             isDiscount: true,
                           ),
                       ],
-                      // Nettobetrag
-                      _buildTotalRowWithCurrency(
-                        'Nettobetrag:',
-                        calculations['net_amount'] as num? ?? 0,
-                        _selectedCurrency,
-                        _exchangeRates[_selectedCurrency] ?? 1.0,
-                      ),
-                      // MwSt
-                      _buildTotalRowWithCurrency(
-                        'MwSt (${(calculations['vat_rate'] as num? ?? 0).toStringAsFixed(1)}%):',
-                        calculations['vat_amount'] as num? ?? 0,
-                        _selectedCurrency,
-                        _exchangeRates[_selectedCurrency] ?? 1.0,
-                      ),
-                      pw.Divider(color: PdfColors.blueGrey300),
-                      // Gesamtbetrag
-                      _buildTotalRowWithCurrency(
-                        'Gesamtbetrag:',
-                        calculations['total'] as num? ?? 0,
-                        _selectedCurrency,
-                        _exchangeRates[_selectedCurrency] ?? 1.0,
-                        isBold: true,
-                        fontSize: 12,
-                      ),
+
+                      // Je nach Steueroption unterschiedliche Darstellung
+                      if (taxOption == TaxOption.standard) ...[
+                        // Nettobetrag
+                        _buildTotalRowWithCurrency(
+                          'Nettobetrag:',
+                          calculations['net_amount'] as num? ?? 0,
+                          _selectedCurrency,
+                          _exchangeRates[_selectedCurrency] ?? 1.0,
+                        ),
+
+                        // MwSt
+                        _buildTotalRowWithCurrency(
+                          'MwSt (${(calculations['vat_rate'] as num? ?? 0).toStringAsFixed(1)}%):',
+                          calculations['vat_amount'] as num? ?? 0,
+                          _selectedCurrency,
+                          _exchangeRates[_selectedCurrency] ?? 1.0,
+                        ),
+
+                        pw.Divider(color: PdfColors.blueGrey300),
+
+                        // Gesamtbetrag
+                        _buildTotalRowWithCurrency(
+                          'Gesamtbetrag:',
+                          calculations['total'] as num? ?? 0,
+                          _selectedCurrency,
+                          _exchangeRates[_selectedCurrency] ?? 1.0,
+                          isBold: true,
+                          fontSize: 12,
+                        ),
+                      ] else if (taxOption == TaxOption.noTax) ...[
+                        pw.Divider(color: PdfColors.blueGrey300),
+
+                        // Nettobetrag (als Gesamt)
+                        _buildTotalRowWithCurrency(
+                          'Nettobetrag:',
+                          calculations['net_amount'] as num? ?? 0,
+                          _selectedCurrency,
+                          _exchangeRates[_selectedCurrency] ?? 1.0,
+                          isBold: true,
+                          fontSize: 12,
+                        ),
+
+                        // Steuerhinweis
+                        pw.SizedBox(height: 4),
+                        pw.Text(
+                          'Es wird keine Mehrwertsteuer berechnet.',
+                          style: pw.TextStyle(
+                            fontSize: 9,
+                            fontStyle: pw.FontStyle.italic,
+                            color: PdfColors.grey700,
+                          ),
+                        ),
+                      ] else ...[
+                        // TaxOption.totalOnly
+                        pw.Divider(color: PdfColors.blueGrey300),
+
+                        // Bruttobetrag (einfach der Nettobetrag ohne Steuer)
+                        _buildTotalRowWithCurrency(
+                          'Gesamtbetrag inkl. MwSt:',
+                          calculations['net_amount'] as num? ?? 0,
+                          _selectedCurrency,
+                          _exchangeRates[_selectedCurrency] ?? 1.0,
+                          isBold: true,
+                          fontSize: 12,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -5443,6 +6115,7 @@ Widget _buildCheckoutButton() {
 void dispose() {
   _currencyNotifier.dispose();
   _exchangeRatesNotifier.dispose();
+  _taxOptionNotifier.dispose();
   _isLoading.dispose();
   _selectedFairNotifier.dispose();
   customerSearchController.dispose();

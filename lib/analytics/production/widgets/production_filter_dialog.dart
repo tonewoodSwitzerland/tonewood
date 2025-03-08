@@ -85,6 +85,15 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
                               _buildQualityFilter(),
                               tempFilter.qualities?.isNotEmpty ?? false,
                             ),
+
+
+                            _buildFilterCategory(
+                              Icons.date_range,
+                              'Jahrgang',
+                              _buildYearsFilter(),
+                              tempFilter.years?.isNotEmpty ?? false,
+                            ),
+
                             _buildFilterCategory(
                               Icons.calendar_today,
                               'Zeitraum',
@@ -187,6 +196,9 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
             ...tempFilter.qualities!.map(_buildQualityChip),
           if (tempFilter.timeRange != null || tempFilter.startDate != null)
             _buildTimeRangeChip(),
+          if (tempFilter.years?.isNotEmpty ?? false)
+            ...tempFilter.years!.map(_buildYearChip),
+
           if (tempFilter.isMoonwood == true)
             _buildSpecialChip(
               'Mondholz',
@@ -347,6 +359,25 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
       ),
     );
   }
+
+  Widget _buildYearChip(String year) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Chip(
+        backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
+        label: Text('$year'),
+        deleteIcon: const Icon(Icons.close, size: 18),
+        onDeleted: () {
+          setState(() {
+            tempFilter = tempFilter.copyWith(
+              years: tempFilter.years?.where((y) => y != year).toList(),
+            );
+          });
+        },
+      ),
+    );
+  }
+
   Widget _buildQualityChip(String code) {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
@@ -471,6 +502,47 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
     );
   }
 
+  Widget _buildYearsFilter() {
+    // Jahre von 2001 bis zum aktuellen Jahr + 1 generieren
+    final int currentYear = DateTime.now().year;
+    final List<String> years = [];
+
+    // Jahre in umgekehrter Reihenfolge erstellen (neueste zuerst)
+    for (int year = currentYear + 1; year >= 2001; year--) {
+      years.add(year.toString());
+    }
+
+    // Widget für die Jahre-Auswahl erstellen
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: years.map((year) {
+            final bool isSelected = (tempFilter.years ?? []).contains(year);
+            return FilterChip(
+              label: Text(year),
+              selected: isSelected,
+              onSelected: (selected) {
+                final List<String> updatedYears = List.from(tempFilter.years ?? []);
+                if (selected) {
+                  updatedYears.add(year);
+                } else {
+                  updatedYears.remove(year);
+                }
+                setState(() {
+                  tempFilter = tempFilter.copyWith(years: updatedYears);
+                });
+              },
+              selectedColor: const Color(0xFF0F4A29).withOpacity(0.2),
+              checkmarkColor: const Color(0xFF0F4A29),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
   Widget _buildInstrumentsFilter() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -910,6 +982,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
         (tempFilter.instruments?.isNotEmpty ?? false) ||
         (tempFilter.parts?.isNotEmpty ?? false) ||
         (tempFilter.qualities?.isNotEmpty ?? false) ||
+        (tempFilter.years?.isNotEmpty ?? false) ||
         tempFilter.timeRange != null ||
         tempFilter.startDate != null ||
         tempFilter.endDate != null ||

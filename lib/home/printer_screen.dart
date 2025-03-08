@@ -86,11 +86,14 @@ class PrinterScreenState extends State<PrinterScreen> {
   int lastShopItem=0;
   bool _onlineShopItem = false;
   bool _useShortCodes = false;
+  bool _isExistingOnlineShopItem = false;
+  TextEditingController maxLengthController = TextEditingController();
   String? _shortCodeDisplay;
   String _activeConnectionType = PrinterConnectionType.none;
   bool _includeBatchNumber = false;
   String? _printerDetails;
-  PrinterModel selectedPrinterModel = PrinterModel.QL820NWB;
+  PrinterModel selectedPrinterModel = PrinterModel.QL820NWB; ///TODO RÜCKGÄNGIG
+  //PrinterModel selectedPrinterModel = PrinterModel.QL1110NWB;
   int printQuantity = 1;
   late List<LabelType> labelTypes;
   final TextEditingController barcodeController = TextEditingController();
@@ -285,10 +288,12 @@ class PrinterScreenState extends State<PrinterScreen> {
 
 // Modifizierte _updateShortCodeDisplay Methode
   Future<void> _updateShortCodeDisplay() async {
+    // Erstmal den alten Display-Wert zurücksetzen
+    setState(() {
+      _shortCodeDisplay = null;
+    });
+
     if (!_useShortCodes || barcodeData.isEmpty) {
-      setState(() {
-        _shortCodeDisplay = null;
-      });
       return;
     }
 
@@ -324,9 +329,12 @@ class PrinterScreenState extends State<PrinterScreen> {
         }
       }
 
+      // Wichtig: Hier setzen wir den Wert und erzwingen ein rebuild
       setState(() {
         _shortCodeDisplay = shorts.join('-');
       });
+
+      print('Kürzel aktualisiert: $_shortCodeDisplay'); // Debug-Ausgabe
     } catch (e) {
       print('Fehler beim Aktualisieren der Abkürzungen: $e');
     }
@@ -353,145 +361,340 @@ class PrinterScreenState extends State<PrinterScreen> {
     }
   }
   void showPrinterSettingsDialog(BuildContext context) {
+    // Controller für das Textfeld zur maximalen Länge
+
+    // Debug-Ausgabe 1: Direkt beim Start
+    FirebaseFirestore.instance
+        .collection('general_data')
+        .doc('office')
+        .get()
+        .then((doc) {
+      print("====== DIRECT FIRESTORE CHECK ======");
+      print("Document exists: ${doc.exists}");
+      print("Document data: ${doc.data()}");
+      if (doc.exists) {
+        print("maxLabelLength in doc: ${doc.data()?['maxLabelLength']}");
+        print("Type: ${doc.data()?['maxLabelLength']?.runtimeType}");
+      }
+    });
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('general_data')
-                  .doc('office')
-                  .snapshots(),
-              builder: (context, snapshot) {
-                bool bluetoothFirst = snapshot.hasData
-                    ? (snapshot.data?.data()?['bluetoothFirst'] ?? true)
-                    : true;
-                double defaultWidth = snapshot.hasData
-                    ? (snapshot.data?.data()?['defaultLabelWidth']?.toDouble() ?? 62.0)
-                    : 62.0;
+        return Dialog(
+          // Volle Größe mit Margins
+          insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.8, // Max 80% der Bildschirmhöhe
+            ),
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                  stream: FirebaseFirestore.instance
+                      .collection('general_data')
+                      .doc('office')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    bool bluetoothFirst = snapshot.hasData
+                        ? (snapshot.data?.data()?['bluetoothFirst'] ?? true)
+                        : true;
+                    double defaultWidth = snapshot.hasData
+                        ? (snapshot.data?.data()?['defaultLabelWidth']?.toDouble() ?? 62.0)
+                        : 62.0;
+                    double maxLabelLength = snapshot.hasData
+                        ? (snapshot.data?.data()?['maxLabelLength']?.toDouble() ?? 206.0)
+                        : 206.0;
 
-                return AlertDialog(
-                  backgroundColor: Colors.white,
-                  title: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0F4A29).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
+                    // Controller nur einmal setzen oder bei Änderungen in Firebase
+                    if (maxLengthController.text.isEmpty ||
+                        maxLengthController.text != maxLabelLength.toString()) {
+                      maxLengthController.text = maxLabelLength.toString();
+                    }
+
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Dialog-Header
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0F4A29).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.print,
+                                  color: Color(0xFF0F4A29),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Drucker Einstellungen',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Spacer(),
+                              IconButton(
+                                icon: Icon(Icons.close),
+                                onPressed: () => Navigator.of(context).pop(),
+                              )
+                            ],
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.print,
-                          color: Color(0xFF0F4A29),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text('Drucker'),
-                    ],
-                  ),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Verbindungsart
-                      const Text(
-                        'Bevorzugte Verbindung',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildConnectionOption(
-                              icon: Icons.bluetooth,
-                              label: 'Bluetooth',
-                              isSelected: bluetoothFirst,
-                              onTap: () {
-                                FirebaseFirestore.instance
-                                    .collection('general_data')
-                                    .doc('office')
-                                    .set({'bluetoothFirst': true}, SetOptions(merge: true));
-                              },
+
+                        Divider(height: 1),
+
+                        // Scrollbarer Inhalt
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Verbindungsart
+                                const Text(
+                                  'Bevorzugte Verbindung',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildConnectionOption(
+                                        icon: Icons.bluetooth,
+                                        label: 'Bluetooth',
+                                        isSelected: bluetoothFirst,
+                                        onTap: () {
+                                          FirebaseFirestore.instance
+                                              .collection('general_data')
+                                              .doc('office')
+                                              .set({'bluetoothFirst': true}, SetOptions(merge: true));
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _buildConnectionOption(
+                                        icon: Icons.wifi,
+                                        label: 'WLAN',
+                                        isSelected: !bluetoothFirst,
+                                        onTap: () {
+                                          FirebaseFirestore.instance
+                                              .collection('general_data')
+                                              .doc('office')
+                                              .set({'bluetoothFirst': false}, SetOptions(merge: true));
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 24),
+
+                                // Papierformat
+                                const Text(
+                                  'Standard-Papierformat',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: [
+                                      _buildLabelOption(
+                                        width: 62,
+                                        isSelected: defaultWidth == 62,
+                                        onTap: () => _updateDefaultLabel(62),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _buildLabelOption(
+                                        width: 54,
+                                        isSelected: defaultWidth == 54,
+                                        onTap: () => _updateDefaultLabel(54),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _buildLabelOption(
+                                        width: 50,
+                                        isSelected: defaultWidth == 50,
+                                        onTap: () => _updateDefaultLabel(50),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _buildLabelOption(
+                                        width: 38,
+                                        isSelected: defaultWidth == 38,
+                                        onTap: () => _updateDefaultLabel(38),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _buildLabelOption(
+                                        width: 29,
+                                        isSelected: defaultWidth == 29,
+                                        onTap: () => _updateDefaultLabel(29),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                const SizedBox(height: 24),
+
+                                // Maximale Etikettenlänge
+// Maximale Etikettenlänge
+                                Text(
+                                  'Maximale Etikettenlänge',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.grey[300]!),
+                                    color: Colors.white,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: maxLengthController,
+                                          keyboardType: TextInputType.number,
+                                          decoration: InputDecoration(
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                            border: InputBorder.none,
+                                            hintText: 'Länge eingeben',
+                                            suffixText: 'mm',
+                                          ),
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                      Container(
+                                        height: 48,
+                                        width: 48,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF0F4A29),
+                                          borderRadius: BorderRadius.horizontal(right: Radius.circular(7)),
+                                        ),
+                                        child: IconButton(
+                                          onPressed: () {
+                                            final double? value = double.tryParse(maxLengthController.text);
+                                            if (value != null && value > 0) {
+                                              // Mindestlänge von 80 Punkten (ca. 75mm) erzwingen
+                                              final double finalValue = max(value, 80.0);
+
+                                              if (finalValue != value) {
+                                                // Wenn Wert angepasst wurde, Controller aktualisieren
+                                                maxLengthController.text = finalValue.toString();
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text('Wert auf Mindestlänge von 80 (ca. 75mm) angepasst'),
+                                                      backgroundColor: Colors.orange,
+                                                    )
+                                                );
+                                              }
+
+                                              FirebaseFirestore.instance
+                                                  .collection('general_data')
+                                                  .doc('office')
+                                                  .set({'maxLabelLength': finalValue}, SetOptions(merge: true));
+
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(
+                                                    content: Row(
+                                                      children: [
+                                                        Icon(Icons.check_circle, color: Colors.white),
+                                                        SizedBox(width: 8),
+                                                        Text('Maximale Länge gespeichert'),
+                                                      ],
+                                                    ),
+                                                    backgroundColor: const Color(0xFF0F4A29),
+                                                  )
+                                              );
+                                            }
+                                          },
+                                          icon: Icon(Icons.save, color: Colors.white),
+                                          tooltip: 'Speichern',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Padding(
+                                  padding: EdgeInsets.only(left: 8),
+                                  child: Text(
+                                    // Korrekter Umrechnungsfaktor: 0.937 (206 entspricht 193mm real)
+                                    'Reale Länge ca. ${(maxLabelLength * 0.937).toStringAsFixed(1)}mm (Mindestens 75mm)',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ),
+
+                                SizedBox(height: 16),
+                                Container(
+                                  padding: EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.amber),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Icon(Icons.info_outline, color: Colors.amber[800], size: 20),
+                                      SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Hinweis: Die eingestellte Länge kann von der tatsächlichen Drucklänge abweichen. Bei Problemen die Länge anpassen.',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildConnectionOption(
-                              icon: Icons.wifi,
-                              label: 'WLAN',
-                              isSelected: !bluetoothFirst,
-                              onTap: () {
-                                FirebaseFirestore.instance
-                                    .collection('general_data')
-                                    .doc('office')
-                                    .set({'bluetoothFirst': false}, SetOptions(merge: true));
-                              },
-                            ),
+                        ),
+
+                        // Footer mit Aktionsbuttons
+                        Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: Text('Schließen'),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      // Papierformat
-                      const Text(
-                        'Standard-Papierformat',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            _buildLabelOption(
-                              width: 62,
-                              isSelected: defaultWidth == 62,
-                              onTap: () => _updateDefaultLabel(62),
-                            ),
-                            const SizedBox(width: 8),
-                            _buildLabelOption(
-                              width: 54,
-                              isSelected: defaultWidth == 54,
-                              onTap: () => _updateDefaultLabel(54),
-                            ),
-                            const SizedBox(width: 8),
-                            _buildLabelOption(
-                              width: 50,
-                              isSelected: defaultWidth == 50,
-                              onTap: () => _updateDefaultLabel(50),
-                            ),
-                            const SizedBox(width: 8),
-                            _buildLabelOption(
-                              width: 38,
-                              isSelected: defaultWidth == 38,
-                              onTap: () => _updateDefaultLabel(38),
-                            ),
-                            const SizedBox(width: 8),
-                            _buildLabelOption(
-                              width: 29,
-                              isSelected: defaultWidth == 29,
-                              onTap: () => _updateDefaultLabel(29),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Schließen'),
-                    ),
-                  ],
+                      ],
+                    );
+                  },
                 );
               },
-            );
-          },
+            ),
+          ),
         );
       },
     );
@@ -791,8 +994,10 @@ class PrinterScreenState extends State<PrinterScreen> {
                 // Hauptinhalt
                 Expanded(
                   child: WarehouseScreen(
+                    mode: 'barcodePrinting',
                     isDialog: true,
                     onBarcodeSelected: (barcode) async {
+                      print("trest");
                       Navigator.pop(context);
                       await _fetchProductData(barcode);
                     },
@@ -990,6 +1195,9 @@ class PrinterScreenState extends State<PrinterScreen> {
             selectedPrinterModel = PrinterModel.values.firstWhere(
                   (model) => model.toString() == printerDoc.data()!['printerModel'],
               orElse: () => PrinterModel.QL820NWB,
+             // orElse: () => PrinterModel.QL1110NWB,
+              ///TODO RÜCKGÄNGIG
+
             );
             _updateLabelTypes();
 
@@ -1103,6 +1311,36 @@ class PrinterScreenState extends State<PrinterScreen> {
 
   Future<void> _fetchProductData(String barcode) async {
     try {
+      // Reset existing shop item state
+      setState(() {
+        _isExistingOnlineShopItem = false;
+      });
+
+      // Check if this is an existing online shop item
+      final onlineShopDoc = await FirebaseFirestore.instance
+          .collection('onlineshop')
+          .doc(barcode)
+          .get();
+
+      if (onlineShopDoc.exists) {
+        setState(() {
+          barcodeData = barcode;
+          productData = onlineShopDoc.data();
+          if (productData?['price_CHF'] != null) {
+            _onlineShopPrice = productData!['price_CHF'].toDouble();
+            _priceController.text = _onlineShopPrice.toString();
+          }
+          _isExistingOnlineShopItem = true;
+          _onlineShopItem = true;
+        });
+        await _saveCurrentSettings();
+        if (_useShortCodes) {
+          await _updateShortCodeDisplay();
+        }
+        return;
+      }
+
+
       if (selectedBarcodeType == BarcodeType.sales) {
         // Extrahiere den Verkaufscode (xxxx.yyyy)
         final searchBarcode = _extractSalesBarcode(barcode);
@@ -1122,9 +1360,14 @@ class PrinterScreenState extends State<PrinterScreen> {
             }
           });
           await _saveCurrentSettings();
-          if (_useShortCodes) {
-            await _updateShortCodeDisplay();
-          }
+          await _updateShortCodeDisplay();
+
+          // Warte einen Frame, damit alles aktualisiert wird
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            setState(() {
+              // Hier nichts ändern, aber setState erzwingen
+            });
+          });
         } else {
           setState(() {
             barcodeData = 'Produkt nicht gefunden';
@@ -1402,6 +1645,17 @@ class PrinterScreenState extends State<PrinterScreen> {
           _saveCurrentSettings();
         });
       }
+      // Hier den neuen Code einfügen:
+      await _updateShortCodeDisplay();
+
+      // Zusätzliches setState für vollständiges UI-Update
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {
+          // Nichts ändern, nur UI aktualisieren
+        });
+      });
+
+
     } catch (e) {
       print('Fehler beim Laden der Produktionsdaten: $e');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1506,7 +1760,10 @@ print("printers:ssss:$printers");
       var printer = Printer();
       var printInfo = PrinterInfo();
       print(printInfo.printerModel);
-      printInfo.printerModel = Model.QL_820NWB;
+     printInfo.printerModel = Model.QL_820NWB;
+     // printInfo.printerModel = Model.QL_1110NWB;
+      ///TODO RÜCKGÄNGIG
+
       // printInfo.printerModel = selectedPrinterModel == PrinterModel.QL1110NWB
       //     ? Model.QL_1110NWB
       //     : Model.QL_820NWB;
@@ -1637,15 +1894,18 @@ print("printers:ssss:$printers");
     }
   }
 
-  Future<void> printLabel(BuildContext context) async {
+  Future<bool> printLabel(BuildContext context) async {
     print("Starte Druckvorgang...");
     if (!_isPrinterOnline || barcodeData.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Drucker nicht bereit oder kein Barcode ausgewählt'),
         backgroundColor: Colors.red,
       ));
-      return;
+      return false;
     }
+
+    bool druckErfolgreich = false;
+
 
     await PrintStatus.show(context, () async {
       try {
@@ -1669,7 +1929,9 @@ print("printers:ssss:$printers");
         //     ? Model.QL_1110NWB
         //     : Model.QL_820NWB;
 
-        printInfo.printerModel = Model.QL_820NWB;
+       printInfo.printerModel = Model.QL_820NWB;
+       // printInfo.printerModel = Model.QL_1110NWB;
+        ///TODO RÜCKGÄNGIG
 
 
         print("Konfiguriertes Druckermodell: ${printInfo.printerModel}");
@@ -1683,6 +1945,8 @@ print("printers:ssss:$printers");
           print("Versuche Bluetooth-Verbindung...");
          // List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([printInfo.printerModel.getName()]);
           List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_820NWB.getName()]);
+         // List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_1110NWB.getName()]);
+          ///TODO RÜCKGÄNGIG
 
 
           print("Gefundene Bluetooth-Drucker: ${bluetoothPrinters.length}");
@@ -1697,8 +1961,11 @@ print("printers:ssss:$printers");
             // Wenn Bluetooth fehlschlägt, versuche WLAN
             print("Bluetooth fehlgeschlagen, versuche WLAN");
             printInfo.port = Port.NET;
-          //  List<NetPrinter> netPrinters = await printer.getNetPrinters([printInfo.printerModel.getName()]);
-            List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
+            List<NetPrinter> netPrinters = await printer.getNetPrinters([printInfo.printerModel.getName()]);
+            ///List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
+           // List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_1110NWB.getName()]);
+
+            ///TODO RÜCKGÄNGIG
 
             print("Gefundene Netzwerk-Drucker: ${netPrinters.length}");
             for (var p in netPrinters) {
@@ -1715,7 +1982,9 @@ print("printers:ssss:$printers");
           // WLAN zuerst versuchen
           printInfo.port = Port.NET;
           //List<NetPrinter> netPrinters = await printer.getNetPrinters([printInfo.printerModel.getName()]);
-          List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
+         List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
+         ///TODO Rückgängi
+         // List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_1110NWB.getName()]);
 
 
           print("Gefundene Netzwerk-Drucker: ${netPrinters.length}");
@@ -1826,11 +2095,20 @@ print("printers:ssss:$printers");
         var status = await printer.printPdfFile(pdfFile.path, 1);
 
         // Prüfe ob es ein echter Fehler ist oder ERROR_NONE
+        // Prüfe ob es ein echter Fehler ist oder ERROR_NONE
         if (status.errorCode.getName() != 'ERROR_NONE') {
           print("Druckerstatus: ${status.errorCode.getName()}");
+
+          // Spezifischen Fehler für falsches Label abfangen
+          if (status.errorCode.getName() == 'ERROR_WRONG_LABEL') {
+            throw Exception('WRONG_LABEL'); // Spezieller Fehler für Labelgröße
+          }
+
           throw status;
         }
 
+
+        druckErfolgreich = true;
         PrintStatus.updateStatus("Druckvorgang erfolgreich abgeschlossen");
         await Future.delayed(const Duration(milliseconds: 500));
 
@@ -1845,11 +2123,62 @@ print("printers:ssss:$printers");
 
       } catch (e) {
         print("Druckfehler aufgetreten: $e");
-        PrintStatus.updateStatus("Fehler: ${PrinterErrorHelper.getErrorMessage(e)}");
-        await Future.delayed(const Duration(seconds: 1));
+
+        // Speziellen Fehler für Labelgröße abfangen
+        if (e.toString().contains('WRONG_LABEL')) {
+          PrintStatus.updateStatus("Fehler: Falsche Etikettengröße im Drucker");
+          await Future.delayed(const Duration(seconds: 2));
+        } else {
+          PrintStatus.updateStatus("Fehler: ${PrinterErrorHelper.getErrorMessage(e)}");
+          await Future.delayed(const Duration(seconds: 1));
+        }
+
         throw e;
       }
+    }).catchError((error) async {
+      // Abfangen des Fehlers nach dem Dialog
+      if (error.toString().contains('WRONG_LABEL')) {
+        await showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text('Falsche Etikettengröße'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.warning, color: Colors.orange, size: 48),
+                  SizedBox(height: 16),
+                  Text(
+                    'Die eingestellte Etikettengröße stimmt nicht mit der im Drucker eingelegten überein.',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('Schließen'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    showPrinterSettingsDialog(context); // Öffne direkt die Druckereinstellungen
+                  },
+                  child: Text('Einstellungen öffnen',style: TextStyle(color: Colors.white),),
+                  style: ElevatedButton.styleFrom(
+
+                    backgroundColor: primaryAppColor,
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      }
+      return false;
     });
+
+    return druckErfolgreich;
   }
   Future<File> _generatePdfForPrinter3() async {
     final pdf = pw.Document();
@@ -1939,30 +2268,81 @@ print("printers:ssss:$printers");
       rethrow;
     }
   }
+
+  // Verbesserte Funktion für die Textbreite
+  double calculateTextWidth(String text, double fontSize) {
+    double width = 0;
+
+    // Zeichengewichtung (relative Breite)
+    Map<String, double> charWidths = {
+      'i': 0.3,
+      'l': 0.3,
+      'I': 0.3,
+      'j': 0.4,
+      'f': 0.4,
+      't': 0.4,
+      'r': 0.5,
+      // Standard für nicht definierte Zeichen
+      'default': 0.7,
+      // Breite Zeichen
+      'w': 0.9,
+      'W': 0.9,
+      'm': 0.9,
+      'M': 0.9,
+      'O': 0.8,
+      'G': 0.8,
+      // Sonderzeichen
+      '-': 0.4,
+      '.': 0.3,
+      ' ': 0.3,
+    };
+
+    // Jedes Zeichen einzeln bewerten
+    for (int i = 0; i < text.length; i++) {
+      String char = text[i];
+      double factor = charWidths[char] ?? charWidths['default']!;
+      width += fontSize * factor;
+    }
+
+    return width;
+  }
+
+
   Future<File> _generatePdfForPrinter2() async {
     final pdf = pw.Document();
 
     // Barcode mit Shop-ID generieren wenn Online Shop aktiv ist
     String displayBarcode = barcodeData;
-    if (_onlineShopItem && selectedBarcodeType == BarcodeType.production) {
-      String formattedShopId = (lastShopItem - 1).toString().padLeft(4, '0');  // Der aktuelle Wert
-
+    if (!_isExistingOnlineShopItem && _onlineShopItem && selectedBarcodeType == BarcodeType.production) {
+      String formattedShopId = lastShopItem.toString().padLeft(4, '0');
       displayBarcode = '$barcodeData.$formattedShopId';
     }
-
 
     final double labelWidth = selectedLabel?.width.toDouble() ?? 38;
     final double scaleFactor = labelWidth / 38;
 
-    // Basis-Dimensionen
+    // Initiale Größen
+    double mainCodeSize = 17.0 * scaleFactor;
+    double featureSize = 11.0 * scaleFactor;
+
+    // Basisgrößen
     final double barcodeHeight = 20.0 * scaleFactor;
     final double barcodeWidth = 80.0 * scaleFactor;
     final double spacing = 2 * scaleFactor;
     final double textSize = 7 * scaleFactor;
-    final double mainCodeSize = 17.0 * scaleFactor;
-    final double featureSize = 11.0 * scaleFactor;
 
-    double totalLength = barcodeWidth + spacing;
+    // Firebase-Einstellungen abrufen
+    final officeSettings = await FirebaseFirestore.instance
+        .collection('general_data')
+        .doc('office')
+        .get();
+
+    // Maximale Etikettenlänge aus Firebase laden (Default: 206)
+    // Mit Mindestlänge von 80 (ca. 75mm)
+    final double MAX_LABEL_LENGTH = max(
+        officeSettings.data()?['maxLabelLength']?.toDouble() ?? 206.0,
+        80.0
+    );
 
     // Hauptabkürzungen für erste Zeile
     List<String> mainElements = [];
@@ -1978,36 +2358,83 @@ print("printers:ssss:$printers");
         final parts = barcodeData.split('.');
         if (parts.length >= 3) {
           final features = parts[2];
-
-          // Features in zweite Zeile
           if (features[0] == '1' && _productionFeatures['thermo']!) featureElements.add('Th');
           if (features[1] == '1' && _productionFeatures['hasel']!) featureElements.add('Ha');
           if (features[2] == '1' && _productionFeatures['mondholz']!) featureElements.add('Mo');
-          if (features[3] == '1' && _productionFeatures['fsc']!) featureElements.add('Fs');
+          if (features[3] == '1' && _productionFeatures['fsc']!) featureElements.add('FSC');
           if (parts.length >= 4 && _productionFeatures['year']!) featureElements.add('${parts[3]}');
         }
       }
     }
 
-    // Längenberechnung für beide Zeilen
-    if (mainElements.isNotEmpty || featureElements.isNotEmpty) {
-      double textWidth = 0;
-      // Breite für Hauptzeile
-      for (var element in mainElements) {
-        textWidth += (element.length * mainCodeSize * 0.6) + spacing;
+    // Funktion für die Textbreitenberechnung
+    double calculateTextWidth(String text, double fontSize) {
+      double width = 0;
+      Map<String, double> charWidths = {
+        'i': 0.3, 'l': 0.3, 'I': 0.3, 'j': 0.4, 'f': 0.4, 't': 0.4, 'r': 0.5,
+        'default': 0.7,
+        'w': 0.9, 'W': 0.9, 'm': 0.9, 'M': 0.9, 'O': 0.8, 'G': 0.8,
+        '-': 0.4, '.': 0.3, ' ': 0.3,
+      };
+
+      for (int i = 0; i < text.length; i++) {
+        String char = text[i];
+        double factor = charWidths[char] ?? charWidths['default']!;
+        width += fontSize * factor;
       }
-      // Breite für Feature-Zeile (mit Kästchen)
-      double featureWidth = 0;
-      for (var element in featureElements) {
-        featureWidth += (element.length * featureSize * 1) + spacing * 2.7; // Extra Platz für Kästchen
-      }
-      totalLength += max(textWidth, featureWidth);
+      return width;
     }
 
-  //  print("totalLength:$totalLength");
-if(totalLength>150){
-    totalLength=206;}
-   // print("totalLength:$totalLength");
+    // Funktion zur Berechnung der Gesamtlänge
+    double calculateTotalLength() {
+      double totalLength = barcodeWidth + spacing;
+
+      // Text-Elemente
+      if (mainElements.isNotEmpty) {
+        double textWidth = 0;
+        for (var element in mainElements) {
+          textWidth += calculateTextWidth(element, mainCodeSize) + spacing;
+        }
+        totalLength += textWidth;
+      }
+
+      // Feature-Elemente
+      if (featureElements.isNotEmpty) {
+        double featureWidth = 0;
+        for (var element in featureElements) {
+          featureWidth += calculateTextWidth(element, featureSize) + (spacing * 3);
+        }
+        totalLength = max(totalLength, barcodeWidth + spacing + featureWidth);
+      }
+
+      // Puffer hinzufügen
+      totalLength += 10 * scaleFactor;
+
+      return totalLength;
+    }
+
+    // Iteratives Verkleinern der Schriftgröße, wenn nötig
+    double totalLength = calculateTotalLength();
+    int iterations = 0;
+    final int MAX_ITERATIONS = 200; // Begrenzen um Endlosschleifen zu vermeiden
+
+    while (totalLength > MAX_LABEL_LENGTH && iterations < MAX_ITERATIONS) {
+      // Schriftgrößen um 5% verkleinern
+      mainCodeSize *= 0.95;
+      featureSize *= 0.95;
+
+      // Neu berechnen
+      totalLength = calculateTotalLength();
+      iterations++;
+
+      print("Iteration $iterations: Länge=$totalLength, Haupttextgröße=$mainCodeSize, Feature-Größe=$featureSize");
+    }
+
+    // Absolute Grenze durchsetzen
+    if (totalLength > MAX_LABEL_LENGTH) {
+      totalLength = MAX_LABEL_LENGTH;
+      print("Warnung: Maximale Etikettenlänge erreicht. Einige Inhalte könnten abgeschnitten werden.");
+    }
 
     final pageFormat = PdfPageFormat(totalLength, labelWidth, marginAll: 0);
 
@@ -2028,7 +2455,7 @@ if(totalLength>150){
                   children: [
                     pw.BarcodeWidget(
                       barcode: pw.Barcode.code128(),
-                      data:  displayBarcode,
+                      data: displayBarcode,
                       height: barcodeHeight,
                       drawText: false,
                     ),
@@ -2036,7 +2463,7 @@ if(totalLength>150){
                     pw.Text(
                       displayBarcode,
                       style: pw.TextStyle(
-                        fontSize: _onlineShopItem?textSize*0.8:textSize,
+                        fontSize: _onlineShopItem ? textSize*0.8 : textSize,
                         fontWeight: pw.FontWeight.bold,
                       ),
                     ),
@@ -2061,7 +2488,7 @@ if(totalLength>150){
                           child: pw.Text(
                             element,
                             style: pw.TextStyle(
-                              fontSize: mainCodeSize,
+                              fontSize: mainCodeSize,  // Angepasste Größe
                               fontWeight: pw.FontWeight.bold,
                             ),
                           ),
@@ -2086,7 +2513,7 @@ if(totalLength>150){
                           child: pw.Text(
                             element,
                             style: pw.TextStyle(
-                              fontSize: featureSize,
+                              fontSize: featureSize,  // Angepasste Größe
                               fontWeight: pw.FontWeight.bold,
                             ),
                           ),
@@ -2376,10 +2803,12 @@ if(totalLength>150){
 
     // Barcode mit Shop-ID generieren wenn Online Shop aktiv ist
     String displayBarcode = barcodeData;
-    if (_onlineShopItem && selectedBarcodeType == BarcodeType.production) {
+    if (!_isExistingOnlineShopItem && _onlineShopItem && selectedBarcodeType == BarcodeType.production) {
       String formattedShopId = lastShopItem.toString().padLeft(4, '0');
       displayBarcode = '$barcodeData.$formattedShopId';
     }
+
+
 
     // Hauptabkürzungen für erste Zeile
     List<String> mainElements = [];
@@ -2398,7 +2827,7 @@ if(totalLength>150){
           if (features[0] == '1' && _productionFeatures['thermo']!) featureElements.add('Th');
           if (features[1] == '1' && _productionFeatures['hasel']!) featureElements.add('Ha');
           if (features[2] == '1' && _productionFeatures['mondholz']!) featureElements.add('Mo');
-          if (features[3] == '1' && _productionFeatures['fsc']!) featureElements.add('Fs');
+          if (features[3] == '1' && _productionFeatures['fsc']!) featureElements.add('FSC');
           if (parts.length >= 4 && _productionFeatures['year']!) featureElements.add('${parts[3]}');
         }
       }
@@ -2779,6 +3208,10 @@ if(totalLength>150){
                                         if (!value) {
                                           _priceController.clear();
                                           _onlineShopPrice = 0.0;
+                                        } else if (productData != null && productData!['price_CHF'] != null) {
+                                          // Restore price from productData when toggling back on
+                                          _onlineShopPrice = productData!['price_CHF'].toDouble();
+                                          _priceController.text = _onlineShopPrice.toString();
                                         }
                                       });
                                     },
@@ -2973,7 +3406,35 @@ if(totalLength>150){
                             const SizedBox(height: 16),
                             const SizedBox(height: 16),
                             if (_onlineShopItem && selectedBarcodeType == BarcodeType.production)
-                            // Zwei Buttons bei aktiviertem Online-Shop
+                              _isExistingOnlineShopItem
+                                  ? // Nur ein Button zum erneuten Drucken für existierende Shop-Artikel
+                              Container(
+                                width: double.infinity,
+                                height: 48,
+                                child: ElevatedButton(
+                                  onPressed: barcodeData.isEmpty || !_isPrinterOnline
+                                      ? null
+                                      : () => printLabel(context),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: primaryAppColor,
+                                    disabledBackgroundColor: Colors.grey.shade300,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Barcode erneut drucken',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: barcodeData.isEmpty || !_isPrinterOnline
+                                          ? Colors.grey.shade600
+                                          : Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ):
                               Row(
                                 children: [
                                   Expanded(
@@ -3005,37 +3466,44 @@ if(totalLength>150){
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Container(
-                                      height: 48,
-                                      child: ElevatedButton(
-                                        onPressed: barcodeData.isEmpty || !_isPrinterOnline
-                                            ? null
-                                            : () async {
-                                          await _bookOnlineShopItem(lastShopItem);
-                                          await printLabel(context);
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: primaryAppColor,
-                                          disabledBackgroundColor: Colors.grey.shade300,
-                                          elevation: 0,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(8),
+                                  ElevatedButton(
+                                    onPressed: barcodeData.isEmpty || !_isPrinterOnline
+                                        ? null
+                                        : () async {
+                                      // Zuerst drucken, dann buchen wenn erfolgreich
+                                      bool druckErfolgreich = await printLabel(context);
+
+                                      if (druckErfolgreich) {
+                                        await _bookOnlineShopItem(lastShopItem);
+                                      } else {
+                                        // Fehlerfall - Benutzer informieren
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Buchung wurde nicht durchgeführt, da der Druck fehlgeschlagen ist'),
+                                            backgroundColor: Colors.orange,
                                           ),
-                                        ),
-                                        child: Text(
-                                          'Drucken & buchen',
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: barcodeData.isEmpty || !_isPrinterOnline
-                                                ? Colors.grey.shade600
-                                                : Colors.white,
-                                          ),
-                                        ),
+                                        );
+                                      }
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: primaryAppColor,
+                                      disabledBackgroundColor: Colors.grey.shade300,
+                                      elevation: 0,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
                                     ),
-                                  ),
+                                    child: Text(
+                                      'Drucken & buchen',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: barcodeData.isEmpty || !_isPrinterOnline
+                                            ? Colors.grey.shade600
+                                            : Colors.white,
+                                      ),
+                                    ),
+                                  )
                                 ],
                               )
                             else
@@ -3252,7 +3720,7 @@ class _AbbreviationSelectorState extends State<AbbreviationSelector> {
               },
             ),
             _buildFeatureChip(
-              'Fs',
+              'FSC',
               _productionFeatures['fsc'] ?? false,
                   (value) {
                 if (widget.barcodeData.isNotEmpty) {
@@ -3303,7 +3771,7 @@ class _AbbreviationSelectorState extends State<AbbreviationSelector> {
           'Th' => features[0] == '1',
           'Ha' => features[1] == '1',
           'Mo' => features[2] == '1',
-          'Fs' => features[3] == '1',
+          'FSC' => features[3] == '1',
           'YY' => parts.length >= 4,
           _ => false
         };

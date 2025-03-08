@@ -14,12 +14,13 @@ import 'package:pdf/widgets.dart' as pw;
 class WarehouseScreen extends StatefulWidget {
   final bool isDialog;
   final Function(String)? onBarcodeSelected;  // Nur der Barcode wird übergeben
-
+  final String mode;
 
   const WarehouseScreen({
     required Key key,
     this.isDialog = false,
     this.onBarcodeSelected,
+    this.mode = 'lookup',
   }) : super(key: key);
 
   @override
@@ -108,6 +109,24 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
 
 
+  Future<bool> _isItemInCart(String barcode) async {
+    final querySnapshot = await FirebaseFirestore.instance
+        .collection('temporary_basket')
+        .where('online_shop_barcode', isEqualTo: barcode)
+        .limit(1)
+        .get();
+    return querySnapshot.docs.isNotEmpty;
+  }
+
+// Alternative als Stream für reaktive UI-Updates
+  Stream<bool> _itemInCartStream(String barcode) {
+    return FirebaseFirestore.instance
+        .collection('temporary_basket')
+        .where('online_shop_barcode', isEqualTo: barcode)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.isNotEmpty);
+  }
+
   Future<void> _addToTemporaryBasket(Map<String, dynamic> productData, int quantity) async {
     await FirebaseFirestore.instance
         .collection('temporary_basket')
@@ -130,320 +149,468 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
 
   void _showOnlineShopDetails(Map<String, dynamic> data) {
+    print(widget.isDialog);
+    if (widget.mode == 'barcodePrinting' && widget.isDialog && widget.onBarcodeSelected != null) {
+      widget.onBarcodeSelected!(data['barcode']);
+      return;
+    }
+    // Nur für Shopping-Modus und als Dialog aufgerufen
+    if (widget.mode == 'shopping' && widget.isDialog && widget.onBarcodeSelected != null) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Online-Shop Artikel'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                data['product_name'] ?? 'Unbekanntes Produkt',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text('${data['quality_name'] ?? 'N/A'}'),
+              const SizedBox(height: 16),
+              const Text(
+                'Möchten Sie diesen Online-Shop Artikel zum Warenkorb hinzufügen?',
+                style: TextStyle(
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Abbrechen'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                widget.onBarcodeSelected!(data['barcode']);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F4A29),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('In den Warenkorb'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return Dialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Container(
-            width: MediaQuery.of(context).size.width * 0.9,
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.9,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
-                        spreadRadius: 1,
-                        blurRadius: 3,
-                        offset: const Offset(0, 1),
-                      ),
-                    ],
+        return StreamBuilder<bool>(
+            stream: _itemInCartStream(data['barcode']),
+            builder: (context, isInCartSnapshot) {
+              final bool isInCart = isInCartSnapshot.data ?? false;
+
+              return Dialog(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: 600,
+                    maxHeight: MediaQuery.of(context).size.height * 0.9,
                   ),
-                  child: Row(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Header (unverändert)
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0F4A29).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
+                          color: Colors.white,
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.1),
+                              spreadRadius: 1,
+                              blurRadius: 3,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
                         ),
-                        child: const Icon(
-                          Icons.shopping_cart,
-                          color: Color(0xFF0F4A29),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0F4A29).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.shopping_cart,
+                                color: Color(0xFF0F4A29),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                data['product_name']?.toString() ?? 'Produktdetails',
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F4A29),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close),
+                              onPressed: () => Navigator.of(context).pop(),
+                              color: Colors.grey[600],
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          data['product_name']?.toString() ?? 'Produktdetails',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF0F4A29),
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.of(context).pop(),
-                        color: Colors.grey[600],
-                      ),
-                    ],
-                  ),
-                ),
 
-                // Content
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildDetailSection(
-                          title: 'Barcode',
-                          icon: Icons.qr_code,
-                          content: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.tag, color: Colors.grey[600], size: 20),
-                                const SizedBox(width: 8),
-                                Text(
-                                  data['barcode']?.toString() ?? 'N/A',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        _buildDetailSection(
-                          title: 'Status',
-                          icon: Icons.info_outline,
-                          content: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: (data['sold'] == true ? Colors.red : Colors.green).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  data['sold'] == true ? Icons.sell : Icons.store,
-                                  color: data['sold'] == true ? Colors.red : Colors.green,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  data['sold'] == true ? 'Verkauft' : 'Im Shop',
-                                  style: TextStyle(
-                                    color: data['sold'] == true ? Colors.red : Colors.green,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        _buildDetailSection(
-                          title: 'Produktinformationen',
-                          icon: Icons.info_outline,
-                          content: Column(
+                      // Content (unverändert, nur Warenkorb-Status hinzugefügt)
+                      Flexible(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildDetailRow(
-                                'Instrument',
-                                '${data['instrument_name']} (${data['instrument_code']})',
-                                icon: Icons.piano,
+                              _buildDetailSection(
+                                title: 'Barcode',
+                                icon: Icons.qr_code,
+                                content: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[100],
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.tag, color: Colors.grey[600], size: 20),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        data['barcode']?.toString() ?? 'N/A',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                              _buildDetailRow(
-                                'Bauteil',
-                                '${data['part_name']} (${data['part_code']})',
-                                icon: Icons.construction,
+
+                              const SizedBox(height: 16),
+
+                              // Warenkorb-Status hinzufügen
+                              if (isInCart)
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  margin: const EdgeInsets.only(bottom: 16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.shopping_cart,
+                                        color: Colors.orange,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: const [
+                                            Text(
+                                              'Artikel ist im Warenkorb',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.orange,
+                                              ),
+                                            ),
+                                            Text(
+                                              'Dieser Artikel kann erst als verkauft markiert werden, wenn er aus dem Warenkorb entfernt wurde.',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.orange,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                              _buildDetailSection(
+                                title: 'Status',
+                                icon: Icons.info_outline,
+                                content: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: (data['sold'] == true ? Colors.red : Colors.green).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        data['sold'] == true ? Icons.sell : Icons.store,
+                                        color: data['sold'] == true ? Colors.red : Colors.green,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        data['sold'] == true ? 'Verkauft' : 'Im Shop',
+                                        style: TextStyle(
+                                          color: data['sold'] == true ? Colors.red : Colors.green,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                              _buildDetailRow(
-                                'Holzart',
-                                '${data['wood_name']} (${data['wood_code']})',
-                                icon: Icons.forest,
-                              ),
-                              _buildDetailRow(
-                                'Qualität',
-                                '${data['quality_name']} (${data['quality_code']})',
-                                icon: Icons.stars,
+
+                              const SizedBox(height: 16),
+
+                              _buildDetailSection(
+                                title: 'Produktinformationen',
+                                icon: Icons.info_outline,
+                                content: Column(
+                                  children: [
+                                    _buildDetailRow(
+                                      'Instrument',
+                                      '${data['instrument_name']} (${data['instrument_code']})',
+                                      icon: Icons.piano,
+                                    ),
+                                    _buildDetailRow(
+                                      'Bauteil',
+                                      '${data['part_name']} (${data['part_code']})',
+                                      icon: Icons.construction,
+                                    ),
+                                    _buildDetailRow(
+                                      'Holzart',
+                                      '${data['wood_name']} (${data['wood_code']})',
+                                      icon: Icons.forest,
+                                    ),
+                                    _buildDetailRow(
+                                      'Qualität',
+                                      '${data['quality_name']} (${data['quality_code']})',
+                                      icon: Icons.stars,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Footer mit Aktionsbuttons
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
-                        spreadRadius: 1,
-                        blurRadius: 3,
-                        offset: const Offset(0, -1),
                       ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      if (!data['sold'])
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              // Sicherheitsdialog
-                              final bool? confirmDelete = await showDialog<bool>(
-                                context: context,
-                                builder: (context) => AlertDialog(
-                                  title: Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: Colors.red.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: const Icon(
-                                          Icons.warning,
-                                          color: Colors.red,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      const Text('Produkt entfernen'),
-                                    ],
-                                  ),
-                                  content: Text(
-                                    'Möchtest du das Produkt "${data['product_name']}" wirklich aus dem Online-Shop entfernen? Der Eintrag wird gelöscht, der normale Warenbestand um +1 erhöht.',
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context, false),
-                                      child: const Text('Abbrechen'),
-                                    ),
-                                    FilledButton.icon(
-                                      onPressed: () => Navigator.pop(context, true),
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor: Colors.red,
-                                      ),
-                                      icon: const Icon(Icons.delete),
-                                      label: const Text('Entfernen'),
-                                    ),
-                                  ],
-                                ),
-                              );
 
-                              // Nur wenn bestätigt wurde
-                              if (confirmDelete == true) {
-                                await _removeFromOnlineShop(data);
-                                Navigator.of(context).pop();
-                              }
-                            },
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                              side: const BorderSide(color: Colors.red),
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      // Footer mit Aktionsbuttons - Hier die Änderungen berücksichtigen
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.1),
+                              spreadRadius: 1,
+                              blurRadius: 3,
+                              offset: const Offset(0, -1),
                             ),
-                            icon: const Icon(Icons.remove_shopping_cart),
-                            label: const Text('Entfernen'),
-                          ),
+                          ],
                         ),
-                      if (!data['sold'])
-                        const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: data['sold'] ? null : () async {
-                            // Sicherheitsdialog
-                            final bool? confirmSold = await showDialog<bool>(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                title: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF0F4A29).withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            if (!data['sold'])
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: isInCart ? null : () async {
+                                    // Sicherheitsdialog (unverändert)
+                                    final bool? confirmDelete = await showDialog<bool>(
+                                      context: context,
+                                      builder: (context) => AlertDialog(
+                                        title: Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.red.withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: const Icon(
+                                                Icons.warning,
+                                                color: Colors.red,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            const Text('Produkt entfernen'),
+                                          ],
+                                        ),
+                                        content: Text(
+                                          'Möchtest du das Produkt "${data['product_name']}" wirklich aus dem Online-Shop entfernen? Der Eintrag wird gelöscht, der normale Warenbestand um +1 erhöht.',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(context, false),
+                                            child: const Text('Abbrechen'),
+                                          ),
+                                          FilledButton.icon(
+                                            onPressed: () => Navigator.pop(context, true),
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: Colors.red,
+                                            ),
+                                            icon: const Icon(Icons.delete),
+                                            label: const Text('Entfernen'),
+                                          ),
+                                        ],
                                       ),
-                                      child: const Icon(
-                                        Icons.sell,
-                                        color: Color(0xFF0F4A29),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    const Text('Verkaufen'),
-                                  ],
-                                ),
-                                content: Text(
-                                  'Möchtest du das Produkt "${data['product_name']}" wirklich als verkauft markieren?',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context, false),
-                                    child: const Text('Abbrechen'),
-                                  ),
-                                  FilledButton.icon(
-                                    onPressed: () => Navigator.pop(context, true),
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: const Color(0xFF0F4A29),
-                                    ),
-                                    icon: const Icon(Icons.check),
-                                    label: const Text('Als verkauft markieren'),
-                                  ),
-                                ],
-                              ),
-                            );
+                                    );
 
-                            // Nur wenn bestätigt wurde
-                            if (confirmSold == true) {
-                              await _markAsSold(data);
-                              Navigator.of(context).pop();
-                            }
-                          },
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF0F4A29),
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                          ),
-                          icon: const Icon(Icons.sell),
-                          label: const Text('Als verkauft markieren'),
+                                    // Nur wenn bestätigt wurde
+                                    if (confirmDelete == true) {
+                                      await _removeFromOnlineShop(data);
+                                      Navigator.of(context).pop();
+                                    }
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.red,
+                                    side: const BorderSide(color: Colors.red),
+                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                    // Deaktivierte Farbe ändern
+                                    disabledForegroundColor: Colors.grey.withOpacity(0.5),
+                                    disabledBackgroundColor: Colors.grey.withOpacity(0.1),
+                                  ),
+                                  icon: const Icon(Icons.remove_shopping_cart),
+                                  label: Text(isInCart ? 'Im Warenkorb' : 'Entfernen'),
+                                ),
+                              ),
+                            if (!data['sold'])
+                              const SizedBox(width: 12),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: (data['sold'] || isInCart) ? null : () async {
+                                  // Sicherheitsdialog (unverändert)
+                                  final bool? confirmSold = await showDialog<bool>(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      title: Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF0F4A29).withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: const Icon(
+                                              Icons.sell,
+                                              color: Color(0xFF0F4A29),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          const Text('Verkaufen'),
+                                        ],
+                                      ),
+                                      content: Text(
+                                        'Möchtest du das Produkt "${data['product_name']}" wirklich als verkauft markieren?',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context, false),
+                                          child: const Text('Abbrechen'),
+                                        ),
+                                        FilledButton.icon(
+                                          onPressed: () => Navigator.pop(context, true),
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor: const Color(0xFF0F4A29),
+                                          ),
+                                          icon: const Icon(Icons.check),
+                                          label: const Text('Als verkauft markieren'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+
+                                  // Nur wenn bestätigt wurde
+                                  if (confirmSold == true) {
+                                    await _markAsSold(data);
+                                    Navigator.of(context).pop();
+                                  }
+                                },
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFF0F4A29),
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                  // Deaktivierte Farbe ändern
+                                  disabledBackgroundColor: Colors.grey[300],
+                                ),
+                                icon: const Icon(Icons.sell),
+                                label: Text(
+                                    isInCart ? 'Im Warenkorb - nicht verfügbar' :
+                                    data['sold'] ? 'Bereits verkauft' : 'Als verkauft markieren'
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
+              );
+            }
         );
       },
     );
   }
+  Future<void> _addOnlineShopItemToBasket(Map<String, dynamic> data) async {
+    // Für Online-Shop Items muss eine andere ID-Struktur verwendet werden
+    // Wir verwenden den vollständigen Barcode als Produkt-ID
+    await FirebaseFirestore.instance
+        .collection('temporary_basket')
+        .add({
+      'product_id': data['short_barcode'],
+      'product_name': data['product_name'],
+      'quantity': 1, // Immer 1 für Online-Shop Items
+      'timestamp': FieldValue.serverTimestamp(),
+      'price_per_unit': data['price_CHF'],
+      'unit': data['unit'] ?? 'Stück',
+      'instrument_name': data['instrument_name'],
+      'instrument_code': data['instrument_code'],
+      'part_name': data['part_name'],
+      'part_code': data['part_code'],
+      'wood_name': data['wood_name'],
+      'wood_code': data['wood_code'],
+      'quality_name': data['quality_name'],
+      'quality_code': data['quality_code'],
+      'is_online_shop_item': true, // Markierung für Online-Shop Items
+      'online_shop_barcode': data['barcode'], // Original Shop-Barcode speichern
+    });
 
+    // Optional: Markiere das Item als "im Warenkorb" in der Online-Shop-Collection
+    // Dies verhindert, dass andere Benutzer es gleichzeitig in den Warenkorb legen
+    await FirebaseFirestore.instance
+        .collection('onlineshop')
+        .doc(data['barcode'])
+        .update({
+      'in_cart': true,
+      'cart_timestamp': FieldValue.serverTimestamp(),
+    });
+  }
   Future<void> _removeFromOnlineShop(Map<String, dynamic> data) async {
     try {
+      // Zunächst prüfen, ob das Item im Warenkorb ist
+      bool isInCart = await _isItemInCart(data['barcode']);
+
+      if (isInCart) {
+        throw Exception('Dieser Artikel ist im Warenkorb und kann nicht entfernt werden');
+      }
+
       // Online-Shop Eintrag löschen
       await FirebaseFirestore.instance
           .collection('onlineshop')
@@ -484,6 +651,13 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
   Future<void> _markAsSold(Map<String, dynamic> data) async {
     try {
+      // Zunächst prüfen, ob das Item im Warenkorb ist
+      bool isInCart = await _isItemInCart(data['barcode']);
+
+      if (isInCart) {
+        throw Exception('Dieser Artikel ist im Warenkorb und kann nicht als verkauft markiert werden');
+      }
+
       await FirebaseFirestore.instance
           .collection('onlineshop')
           .doc(data['barcode'])
@@ -518,6 +692,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
 
   void _showProductDetails(Map<String, dynamic> data) {
+  //  print("produkt:${widget.isDialog}");
     if (widget.isDialog && widget.onBarcodeSelected != null) {
       widget.onBarcodeSelected!(data['short_barcode']);
       return;
@@ -1234,6 +1409,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
           return Scaffold(
             appBar: AppBar(
+              automaticallyImplyLeading: false,
               title: IntrinsicWidth(
                 child: Container(
                   height: 36,
@@ -2074,7 +2250,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       // Data rows
       for (final item in items) {
         final row = _isOnlineShopView ? [
-          item['barcode'],
+          // Add apostrophe to force Excel to treat as text
+          "'${item['barcode']}",
           item['product_name'],
           '${item['instrument_name']} (${item['instrument_code']})',
           '${item['part_name']} (${item['part_code']})',
@@ -2088,7 +2265,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           if (_shopFilter == 'sold' && item['sold_at'] != null)
             DateFormat('dd.MM.yyyy HH:mm').format((item['sold_at'] as Timestamp).toDate())
         ] : [
-          item['short_barcode'],
+          // Add apostrophe to force Excel to treat as text
+          "'${item['short_barcode']}",
           item['product_name'],
           '${item['instrument_name']} (${item['instrument_code']})',
           '${item['part_name']} (${item['part_code']})',

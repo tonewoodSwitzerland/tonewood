@@ -10,6 +10,7 @@ class ProductionFilter {
   final bool? isHaselfichte;
   final bool? isThermallyTreated;
   final bool? isFSC;  // FSC-100 Filter
+  final List<String>? years; // Added years list for filtering by year
 
   const ProductionFilter({
     this.startDate,
@@ -23,6 +24,7 @@ class ProductionFilter {
     this.isHaselfichte,
     this.isThermallyTreated,
     this.isFSC,
+    this.years, // Added years parameter
   });
 
   ProductionFilter copyWith({
@@ -33,6 +35,7 @@ class ProductionFilter {
     List<String>? instruments,
     List<String>? parts,
     List<String>? qualities,
+    List<String>? years, // Added years parameter to copyWith
     bool? isMoonwood,
     bool? isHaselfichte,
     bool? isThermallyTreated,
@@ -43,6 +46,7 @@ class ProductionFilter {
       endDate: endDate ?? this.endDate,
       timeRange: timeRange ?? this.timeRange,
       parts:  parts ?? this. parts,
+      years: years ?? this.years, // Include years in copyWith
       woodTypes: woodTypes ?? this.woodTypes,
      instruments:  instruments ?? this. instruments,
       qualities: qualities ?? this.qualities,
@@ -63,6 +67,7 @@ class ProductionFilter {
     if (instruments?.isNotEmpty ?? false) map['instruments'] = instruments;
     if (parts?.isNotEmpty ?? false) map['parts'] = parts;
     if (qualities?.isNotEmpty ?? false) map['qualities'] = qualities;
+    if (years?.isNotEmpty ?? false) map['years'] = years; // Add years to map
     if (isMoonwood == true) map['isMoonwood'] = true;
     if (isHaselfichte == true) map['isHaselfichte'] = true;
     if (isThermallyTreated == true) map['isThermallyTreated'] = true;
@@ -79,6 +84,7 @@ class ProductionFilter {
           (instruments?.isEmpty ?? true) &&
           (parts?.isEmpty ?? true) &&
           (qualities?.isEmpty ?? true) &&
+          (years?.isEmpty ?? true) && // Add years check to isEmpty
           isMoonwood != true &&
           isHaselfichte != true &&
           isThermallyTreated != true &&

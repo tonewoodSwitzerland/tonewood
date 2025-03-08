@@ -48,6 +48,39 @@ class ProductionOverview extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
 
+          // Prüfen, ob zu viele Ergebnisse
+          if (totalsSnapshot.data!.containsKey('too_many_results') &&
+              totalsSnapshot.data!['too_many_results'] == true) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      size: 72,
+                      color: Colors.amber,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Zu viele Ergebnisse (${totalsSnapshot.data!['document_count']})',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Bitte schränke deine Suche weiter ein, um die Daten anzuzeigen.',
+                      textAlign: TextAlign.center,
+                    ),
+
+                  ],
+                ),
+              ),
+            );
+          }
+
           final totals = totalsSnapshot.data!;
           final quantities = totals['quantities'] as Map<String, int>;
 

@@ -28,6 +28,13 @@ class ProductionService {
       query = query.where('created_at', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay));
     }
 
+    // Add year filter if provided
+    if (filter.years?.isNotEmpty ?? false) {
+      // Konvertiere Strings zu Zahlen für die Abfrage
+      final numericYears = filter.years!.map((y) => int.parse(y)).toList();
+      query = query.where('year', whereIn: numericYears);
+    }
+
     // Parts Filter
     if (filter.parts?.isNotEmpty ?? false) {
       query = query.where('part_code', whereIn: filter.parts);
@@ -97,6 +104,13 @@ class ProductionService {
       query = query.where('created_at', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay));
     }
 
+
+    if (filter.years?.isNotEmpty ?? false) {
+      // Konvertiere Strings zu Zahlen für die Abfrage
+      final numericYears = filter.years!.map((y) => int.parse(y)).toList();
+      query = query.where('year', whereIn: numericYears);
+    }
+
     // Instrument Filter
     if (filter.instruments?.isNotEmpty ?? false) {
       query = query.where('instrument_code', whereIn: filter.instruments);
@@ -114,6 +128,8 @@ class ProductionService {
     if (filter.qualities?.isNotEmpty ?? false) {
       query = query.where('quality_code', whereIn: filter.qualities);
     }
+
+
 
     // Spezialfilter über Stream-Transformation
     return query.snapshots().map((snapshot) {
@@ -141,7 +157,8 @@ class ProductionService {
       if (filteredDocs.length != snapshot.docs.length) {
         //print('Active filters: ${filter.toMap()}');
       }
-
+      print("Dokumente vor der Filterung: ${snapshot.docs.length}");
+      print("Dokumente nach der Filterung: ${filteredDocs.length}");
       return snapshot;
     });
   }
@@ -150,6 +167,15 @@ class ProductionService {
 
   Future<Map<String, dynamic>> getProductionTotals(ProductionFilter filter) async {
     try {
+      // Zuerst nur die Anzahl der Dokumente prüfen
+      final snapshot = await getProductionStream(filter).first;
+      final documentCount = snapshot.docs.length;
+
+      // Zu viele Dokumente? Dann früh zurückkehren
+      if (documentCount > 200) {
+        return {'document_count': documentCount, 'too_many_results': true};
+      }
+
       final docs = await getProductionWithBatches(filter);
 
       // Map für die Normalisierung der Einheiten
@@ -181,6 +207,7 @@ class ProductionService {
           'haselfichte': 0,
           'thermally_treated': 0,
         },
+        'document_count': documentCount, // Anzahl der Dokumente hinzufügen
       };
 
       for (var doc in docs) {
@@ -233,9 +260,11 @@ class ProductionService {
                 specialWood['thermally_treated'] = (specialWood['thermally_treated'] ?? 0) + quantity;
               }
             } catch (e, stackTrace) {
+              // Fehlerbehandlung für einzelne Batches
             }
           }
         } catch (e, stackTrace) {
+          // Fehlerbehandlung für Batch-Collection
         }
       }
 
@@ -259,6 +288,7 @@ class ProductionService {
 // Die getProductionWithBatches Methode sollten wir auch anpassen:
   Future<List<DocumentSnapshot>> getProductionWithBatches(ProductionFilter filter) async {
     final snapshot = await getProductionStream(filter).first;
+    print("Dokumente in getProductionWithBatches: ${snapshot.docs.length}");
     final List<DocumentSnapshot> result = [];
 
     for (final doc in snapshot.docs) {
@@ -284,6 +314,10 @@ class ProductionService {
 
     return result;
   }
+
+
+
+
   Future<Map<String, Map<String, dynamic>>> getProductionByInstrument(ProductionFilter filter) async {
     try {
       final docs = await getProductionWithBatches(filter);
@@ -593,6 +627,20 @@ class ProductionService {
 
   return true;
   }
+
+
+  // Hilfsmethode für die Jahre im Filter-Dialog
+  Stream<List<String>> getAvailableYears() {
+    return _firestore
+        .collection('years')
+        .orderBy('year', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+        .map((doc) => doc.id)
+        .toList());
+  }
+
+
 
   // Hilfsmethoden für Filter-Dialog
   Stream<List<CodeNamePair>> getWoodTypes() {
