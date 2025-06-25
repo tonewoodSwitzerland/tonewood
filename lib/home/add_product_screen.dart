@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../constants.dart';
+import '../services/icon_helper.dart';
 
 class AddProductScreen extends StatefulWidget {
   final bool editMode;
@@ -349,9 +350,6 @@ class AddProductScreenState extends State<AddProductScreen> {
 
   @override
   Widget build(BuildContext context) {
-
-
-
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -360,88 +358,169 @@ class AddProductScreenState extends State<AddProductScreen> {
               : (widget.editMode ? 'Bestand bearbeiten' : 'Neuer Verkauf'),
           style: headline4_0,
         ),
+        backgroundColor: Colors.white,
+        elevation: 2,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(24.0),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Barcode Anzeige
+              // Barcode Anzeige für neue Produkte
+              // Barcode Anzeige für neue Produkte
               if (!widget.editMode)
                 Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8), // Kein horizontaler Abstand
                   child: Padding(
-                    padding: const EdgeInsets.all(16.0),
+                    padding: const EdgeInsets.all(24.0),
                     child: Column(
                       children: [
                         Text(
                           widget.isProduction
                               ? 'Generierte Produktions-Artikelnummer:'
                               : 'Verkaufs-Artikelnummer:',
-                          style: TextStyle(color: Colors.grey[600]),
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 16,
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          widget.isProduction ? generatedBarcode : shortBarcode,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity, // Volle Breite
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F4A29).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center, // Zentriert den Inhalt
+                            children: [
+                              getAdaptiveIcon(
+                                iconName: 'tag',
+                                defaultIcon: Icons.tag,
+                                color: Colors.grey[700],
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                widget.isProduction ? generatedBarcode : shortBarcode,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F4A29),
+                                ),
+                                textAlign: TextAlign.center, // Zentrierte Ausrichtung
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
                 ),
+              if (!widget.editMode)
+                const SizedBox(height: 24),
+
+// Verkaufs-Artikelnummer immer anzeigen
               Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8), // Kein horizontaler Abstand
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(24.0),
                   child: Column(
                     children: [
                       Text(
-
-                             'Verkaufs-Artikelnummer:',
-                        style: TextStyle(color: Colors.grey[600]),
+                        'Verkaufs-Artikelnummer:',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 16,
+                        ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                         shortBarcode,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity, // Volle Breite
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center, // Zentriert den Inhalt
+                          children: [
+                            getAdaptiveIcon(
+                              iconName: 'tag',
+                              defaultIcon: Icons.tag,
+                              color: Colors.grey[700],
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              shortBarcode,
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey[800],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
 
-              // Grundinformationen Card (immer sichtbar)
-            IgnorePointer(
-                  ignoring:    widget.editMode,
-                  child: _buildBasicInformationCard()),
+              // Grundinformationen Card
+              IgnorePointer(
+                ignoring: widget.editMode,
+                child: _buildBasicInformationCard(),
+              ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
 
               // Produktionsdetails nur im Produktionsmodus anzeigen
               if (widget.isProduction) ...[
                 _buildProductionDetailsCard(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
               ],
 
               // Bestand und Preis Card
               _buildInventoryAndPriceCard(),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 32),
 
               // Speichern Button
               SizedBox(
                 width: double.infinity,
-                height: 50,
+                height: 54,
                 child: ElevatedButton(
                   onPressed: _saveProduct,
-                  child: Text(widget.editMode ? 'Änderungen speichern' : 'Speichern'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F4A29),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 2,
+                  ),
+                  child: Text(
+                    widget.editMode ? 'Änderungen speichern' : 'Speichern',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -449,29 +528,49 @@ class AddProductScreenState extends State<AddProductScreen> {
         ),
       ),
     );
-
   }
 
   Widget _buildBasicInformationCard() {
     return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Grundinformationen',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                getAdaptiveIcon(
+                  iconName: 'info',
+                  defaultIcon: Icons.info,
+                  color: const Color(0xFF0F4A29),
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Grundinformationen',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F4A29),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
             if (instruments != null)
               DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Instrument',
-                  border: OutlineInputBorder(),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  filled: true,
+                  fillColor: Colors.grey[50],
                 ),
                 value: selectedInstrument,
                 items: instruments!.map((doc) {
@@ -488,13 +587,23 @@ class AddProductScreenState extends State<AddProductScreen> {
                   });
                 },
                 validator: (value) => value == null ? 'Pflichtfeld' : null,
+                icon: getAdaptiveIcon(
+                  iconName: 'arrow_drop_down',
+                  defaultIcon: Icons.arrow_drop_down,
+                  color: Colors.grey[700],
+                ),
               ),
             const SizedBox(height: 16),
             if (parts != null)
               DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Bauteil',
-                  border: OutlineInputBorder(),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  filled: true,
+                  fillColor: Colors.grey[50],
                 ),
                 value: selectedPart,
                 items: parts!.map((doc) {
@@ -511,13 +620,23 @@ class AddProductScreenState extends State<AddProductScreen> {
                   });
                 },
                 validator: (value) => value == null ? 'Pflichtfeld' : null,
+                icon: getAdaptiveIcon(
+                  iconName: 'arrow_drop_down',
+                  defaultIcon: Icons.arrow_drop_down,
+                  color: Colors.grey[700],
+                ),
               ),
             const SizedBox(height: 16),
             if (woodTypes != null)
               DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Holzart',
-                  border: OutlineInputBorder(),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  filled: true,
+                  fillColor: Colors.grey[50],
                 ),
                 value: selectedWoodType,
                 items: woodTypes!.map((doc) {
@@ -534,13 +653,23 @@ class AddProductScreenState extends State<AddProductScreen> {
                   });
                 },
                 validator: (value) => value == null ? 'Pflichtfeld' : null,
+                icon: getAdaptiveIcon(
+                  iconName: 'arrow_drop_down',
+                  defaultIcon: Icons.arrow_drop_down,
+                  color: Colors.grey[700],
+                ),
               ),
             const SizedBox(height: 16),
             if (qualities != null)
               DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Qualität',
-                  border: OutlineInputBorder(),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  filled: true,
+                  fillColor: Colors.grey[50],
                 ),
                 value: selectedQuality,
                 items: qualities!.map((doc) {
@@ -557,26 +686,42 @@ class AddProductScreenState extends State<AddProductScreen> {
                   });
                 },
                 validator: (value) => value == null ? 'Pflichtfeld' : null,
+                icon: getAdaptiveIcon(
+                  iconName: 'arrow_drop_down',
+                  defaultIcon: Icons.arrow_drop_down,
+                  color: Colors.grey[700],
+                ),
               ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               decoration: InputDecoration(
                 labelText: 'Einheit',
-                border: const OutlineInputBorder(),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(
+                    color: isUnitMismatch ? Colors.red : Colors.grey[400]!,
+                    width: isUnitMismatch ? 2 : 1,
+                  ),
+                ),
                 errorText: isUnitMismatch ? unitMismatchMessage : null,
                 errorStyle: const TextStyle(color: Colors.red),
                 enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide(
-                    color: isUnitMismatch ? Colors.red : Colors.grey,
+                    color: isUnitMismatch ? Colors.red : Colors.grey[400]!,
                     width: isUnitMismatch ? 2 : 1,
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide(
-                    color: isUnitMismatch ? Colors.red : primaryAppColor,
+                    color: isUnitMismatch ? Colors.red : const Color(0xFF0F4A29),
                     width: 2,
                   ),
                 ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                filled: true,
+                fillColor: Colors.grey[50],
               ),
               value: selectedUnit,
               items: units.map((unit) => DropdownMenuItem<String>(
@@ -596,6 +741,11 @@ class AddProductScreenState extends State<AddProductScreen> {
                 });
               },
               validator: (value) => value == null ? 'Pflichtfeld' : null,
+              icon: getAdaptiveIcon(
+                iconName: 'arrow_drop_down',
+                defaultIcon: Icons.arrow_drop_down,
+                color: isUnitMismatch ? Colors.red : Colors.grey[700],
+              ),
             )
           ],
         ),
@@ -605,24 +755,50 @@ class AddProductScreenState extends State<AddProductScreen> {
 
   Widget _buildInventoryAndPriceCard() {
     return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Bestand und Preis',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                getAdaptiveIcon(
+                  iconName: 'inventory',
+                  defaultIcon: Icons.inventory,
+                  color: const Color(0xFF0F4A29),
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Bestand und Preis',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F4A29),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
             TextFormField(
               controller: quantityController,
               decoration: InputDecoration(
                 labelText: 'Bestand (${selectedUnit ?? ""})',
-                border: const OutlineInputBorder(),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                filled: true,
+                fillColor: Colors.grey[50],
+                prefixIcon: getAdaptiveIcon(
+                  iconName: 'layers',
+                  defaultIcon: Icons.layers,
+                  color: Colors.grey[600],
+                ),
               ),
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -631,9 +807,19 @@ class AddProductScreenState extends State<AddProductScreen> {
             const SizedBox(height: 16),
             TextFormField(
               controller: priceController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Preis (CHF)',
-                border: OutlineInputBorder(),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                filled: true,
+                fillColor: Colors.grey[50],
+                prefixIcon: getAdaptiveIcon(
+                  iconName: 'attach_money',
+                  defaultIcon: Icons.attach_money,
+                  color: Colors.grey[600],
+                ),
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               inputFormatters: [
@@ -647,110 +833,621 @@ class AddProductScreenState extends State<AddProductScreen> {
     );
   }
 
-
   Widget _buildProductionDetailsCard() {
     return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Produktionsdetails',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                getAdaptiveIcon(
+                  iconName: 'precision_manufacturing',
+                  defaultIcon: Icons.precision_manufacturing,
+                  color: const Color(0xFF0F4A29),
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Produktionsdetails',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F4A29),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
 
             // Jahrgang Dropdown
             DropdownButtonFormField<int>(
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Jahrgang',
-                border: OutlineInputBorder(),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                filled: true,
+                fillColor: Colors.grey[50],
+                prefixIcon: getAdaptiveIcon(
+                  iconName: 'calendar_today',
+                  defaultIcon: Icons.calendar_today,
+                  color: Colors.grey[600],
+                  size: 20,
+                ),
               ),
               value: selectedYear,
               items: List<int>.generate(
                 DateTime.now().year - 1999,
-                    (index) => 2000 + index+1,
+                    (index) => 2000 + index + 1,
               ).map((year) => DropdownMenuItem<int>(
                 value: year,
                 child: Text(year.toString()),
               )).toList(),
               onChanged: (value) {
-                if (value != selectedYear) {  // Nur updaten wenn sich der Wert wirklich ändert
+                if (value != selectedYear) {
                   setState(() {
                     selectedYear = value;
                   });
-                  _updateBarcode();  // Direkte Prüfung bei Änderung
+                  _updateBarcode();
                 }
               },
               validator: (value) => value == null ? 'Pflichtfeld' : null,
+              icon: getAdaptiveIcon(
+                iconName: 'arrow_drop_down',
+                defaultIcon: Icons.arrow_drop_down,
+                color: Colors.grey[700],
+              ),
             ),
 
             const SizedBox(height: 24),
-            const Text(
-              'Eigenschaften',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
               ),
-            ),
-            const SizedBox(height: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'settings',
+                          defaultIcon: Icons.settings,
+                          color: Colors.grey[700],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Eigenschaften',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
 
-            // Thermobehandelt Switch
-            SwitchListTile(
-              title: const Text('Thermobehandelt'),
-              value: thermallyTreated,
-              onChanged: (value) {
-                setState(() {
-                  thermallyTreated = value;
-                  _updateBarcode();
-                });
-              },
-            ),
+                  // Eigenschaften als Switchs
+                  SwitchListTile(
+                    title: Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'whatshot',
+                          defaultIcon: Icons.whatshot,
+                          color: thermallyTreated ? const Color(0xFF0F4A29) : Colors.grey[600],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('Thermobehandelt'),
+                      ],
+                    ),
+                    value: thermallyTreated,
+                    onChanged: (value) {
+                      setState(() {
+                        thermallyTreated = value;
+                        _updateBarcode();
+                      });
+                    },
+                    activeColor: const Color(0xFF0F4A29),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
 
-            // Haselfichte Switch
-            SwitchListTile(
-              title: const Text('Haselfichte'),
-              value: haselfichte,
-              onChanged: (value) {
-                setState(() {
-                  haselfichte = value;
-                  _updateBarcode();
-                });
-              },
-            ),
+                  SwitchListTile(
+                    title: Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'grain',
+                          defaultIcon: Icons.grain,
+                          color: haselfichte ? const Color(0xFF0F4A29) : Colors.grey[600],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('Haselfichte'),
+                      ],
+                    ),
+                    value: haselfichte,
+                    onChanged: (value) {
+                      setState(() {
+                        haselfichte = value;
+                        _updateBarcode();
+                      });
+                    },
+                    activeColor: const Color(0xFF0F4A29),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
 
-            // Mondholz Switch
-            SwitchListTile(
-              title: const Text('Mondholz'),
-              value: moonwood,
-              onChanged: (value) {
-                setState(() {
-                  moonwood = value;
-                  _updateBarcode();
-                });
-              },
-            ),
+                  SwitchListTile(
+                    title: Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'nightlight',
+                          defaultIcon: Icons.nightlight,
+                          color: moonwood ? const Color(0xFF0F4A29) : Colors.grey[600],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('Mondholz'),
+                      ],
+                    ),
+                    value: moonwood,
+                    onChanged: (value) {
+                      setState(() {
+                        moonwood = value;
+                        _updateBarcode();
+                      });
+                    },
+                    activeColor: const Color(0xFF0F4A29),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
 
-            // FSC 100% Switch
-            SwitchListTile(
-              title: const Text('FSC 100%'),
-              value: fsc100,
-              onChanged: (value) {
-                setState(() {
-                  fsc100 = value;
-                  _updateBarcode();
-                });
-              },
+                  SwitchListTile(
+                    title: Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'eco',
+                          defaultIcon: Icons.eco,
+                          color: fsc100 ? const Color(0xFF0F4A29) : Colors.grey[600],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('FSC 100%'),
+                      ],
+                    ),
+                    value: fsc100,
+                    onChanged: (value) {
+                      setState(() {
+                        fsc100 = value;
+                        _updateBarcode();
+                      });
+                    },
+                    activeColor: const Color(0xFF0F4A29),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
       ),
     );
   }
+  // Widget build(BuildContext context) {
+  //
+  //
+  //
+  //   return Scaffold(
+  //     appBar: AppBar(
+  //       title: Text(
+  //         widget.isProduction
+  //             ? (widget.editMode ? 'Produktion bearbeiten' : 'Neues Produkt')
+  //             : (widget.editMode ? 'Bestand bearbeiten' : 'Neuer Verkauf'),
+  //         style: headline4_0,
+  //       ),
+  //     ),
+  //     body: SingleChildScrollView(
+  //       padding: const EdgeInsets.all(16.0),
+  //       child: Form(
+  //         key: _formKey,
+  //         child: Column(
+  //           crossAxisAlignment: CrossAxisAlignment.start,
+  //           children: [
+  //             // Barcode Anzeige
+  //             if (!widget.editMode)
+  //               Card(
+  //                 child: Padding(
+  //                   padding: const EdgeInsets.all(16.0),
+  //                   child: Column(
+  //                     children: [
+  //                       Text(
+  //                         widget.isProduction
+  //                             ? 'Generierte Produktions-Artikelnummer:'
+  //                             : 'Verkaufs-Artikelnummer:',
+  //                         style: TextStyle(color: Colors.grey[600]),
+  //                       ),
+  //                       const SizedBox(height: 8),
+  //                       Text(
+  //                         widget.isProduction ? generatedBarcode : shortBarcode,
+  //                         style: const TextStyle(
+  //                           fontSize: 18,
+  //                           fontWeight: FontWeight.bold,
+  //                         ),
+  //                       ),
+  //                     ],
+  //                   ),
+  //                 ),
+  //               ),
+  //             Card(
+  //               child: Padding(
+  //                 padding: const EdgeInsets.all(16.0),
+  //                 child: Column(
+  //                   children: [
+  //                     Text(
+  //
+  //                            'Verkaufs-Artikelnummer:',
+  //                       style: TextStyle(color: Colors.grey[600]),
+  //                     ),
+  //                     const SizedBox(height: 8),
+  //                     Text(
+  //                        shortBarcode,
+  //                       style: const TextStyle(
+  //                         fontSize: 18,
+  //                         fontWeight: FontWeight.bold,
+  //                       ),
+  //                     ),
+  //                   ],
+  //                 ),
+  //               ),
+  //             ),
+  //             const SizedBox(height: 16),
+  //
+  //             // Grundinformationen Card (immer sichtbar)
+  //           IgnorePointer(
+  //                 ignoring:    widget.editMode,
+  //                 child: _buildBasicInformationCard()),
+  //
+  //             const SizedBox(height: 16),
+  //
+  //             // Produktionsdetails nur im Produktionsmodus anzeigen
+  //             if (widget.isProduction) ...[
+  //               _buildProductionDetailsCard(),
+  //               const SizedBox(height: 16),
+  //             ],
+  //
+  //             // Bestand und Preis Card
+  //             _buildInventoryAndPriceCard(),
+  //
+  //             const SizedBox(height: 24),
+  //
+  //             // Speichern Button
+  //             SizedBox(
+  //               width: double.infinity,
+  //               height: 50,
+  //               child: ElevatedButton(
+  //                 onPressed: _saveProduct,
+  //                 child: Text(widget.editMode ? 'Änderungen speichern' : 'Speichern'),
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //       ),
+  //     ),
+  //   );
+  //
+  // }
+  //
+  // Widget _buildBasicInformationCard() {
+  //   return Card(
+  //     child: Padding(
+  //       padding: const EdgeInsets.all(16.0),
+  //       child: Column(
+  //         crossAxisAlignment: CrossAxisAlignment.start,
+  //         children: [
+  //           const Text(
+  //             'Grundinformationen',
+  //             style: TextStyle(
+  //               fontSize: 18,
+  //               fontWeight: FontWeight.bold,
+  //             ),
+  //           ),
+  //           const SizedBox(height: 16),
+  //           if (instruments != null)
+  //             DropdownButtonFormField<String>(
+  //               decoration: const InputDecoration(
+  //                 labelText: 'Instrument',
+  //                 border: OutlineInputBorder(),
+  //               ),
+  //               value: selectedInstrument,
+  //               items: instruments!.map((doc) {
+  //                 final data = doc.data() as Map<String, dynamic>;
+  //                 return DropdownMenuItem<String>(
+  //                   value: data['code'] as String,
+  //                   child: Text('${data['name']} (${data['code']})'),
+  //                 );
+  //               }).toList(),
+  //               onChanged: (value) {
+  //                 setState(() {
+  //                   selectedInstrument = value;
+  //                   _updateBarcode();
+  //                 });
+  //               },
+  //               validator: (value) => value == null ? 'Pflichtfeld' : null,
+  //             ),
+  //           const SizedBox(height: 16),
+  //           if (parts != null)
+  //             DropdownButtonFormField<String>(
+  //               decoration: const InputDecoration(
+  //                 labelText: 'Bauteil',
+  //                 border: OutlineInputBorder(),
+  //               ),
+  //               value: selectedPart,
+  //               items: parts!.map((doc) {
+  //                 final data = doc.data() as Map<String, dynamic>;
+  //                 return DropdownMenuItem<String>(
+  //                   value: data['code'] as String,
+  //                   child: Text('${data['name']} (${data['code']})'),
+  //                 );
+  //               }).toList(),
+  //               onChanged: (value) {
+  //                 setState(() {
+  //                   selectedPart = value;
+  //                   _updateBarcode();
+  //                 });
+  //               },
+  //               validator: (value) => value == null ? 'Pflichtfeld' : null,
+  //             ),
+  //           const SizedBox(height: 16),
+  //           if (woodTypes != null)
+  //             DropdownButtonFormField<String>(
+  //               decoration: const InputDecoration(
+  //                 labelText: 'Holzart',
+  //                 border: OutlineInputBorder(),
+  //               ),
+  //               value: selectedWoodType,
+  //               items: woodTypes!.map((doc) {
+  //                 final data = doc.data() as Map<String, dynamic>;
+  //                 return DropdownMenuItem<String>(
+  //                   value: data['code'] as String,
+  //                   child: Text('${data['name']} (${data['code']})'),
+  //                 );
+  //               }).toList(),
+  //               onChanged: (value) {
+  //                 setState(() {
+  //                   selectedWoodType = value;
+  //                   _updateBarcode();
+  //                 });
+  //               },
+  //               validator: (value) => value == null ? 'Pflichtfeld' : null,
+  //             ),
+  //           const SizedBox(height: 16),
+  //           if (qualities != null)
+  //             DropdownButtonFormField<String>(
+  //               decoration: const InputDecoration(
+  //                 labelText: 'Qualität',
+  //                 border: OutlineInputBorder(),
+  //               ),
+  //               value: selectedQuality,
+  //               items: qualities!.map((doc) {
+  //                 final data = doc.data() as Map<String, dynamic>;
+  //                 return DropdownMenuItem<String>(
+  //                   value: data['code'] as String,
+  //                   child: Text('${data['name']} (${data['code']})'),
+  //                 );
+  //               }).toList(),
+  //               onChanged: (value) {
+  //                 setState(() {
+  //                   selectedQuality = value;
+  //                   _updateBarcode();
+  //                 });
+  //               },
+  //               validator: (value) => value == null ? 'Pflichtfeld' : null,
+  //             ),
+  //           const SizedBox(height: 16),
+  //           DropdownButtonFormField<String>(
+  //             decoration: InputDecoration(
+  //               labelText: 'Einheit',
+  //               border: const OutlineInputBorder(),
+  //               errorText: isUnitMismatch ? unitMismatchMessage : null,
+  //               errorStyle: const TextStyle(color: Colors.red),
+  //               enabledBorder: OutlineInputBorder(
+  //                 borderSide: BorderSide(
+  //                   color: isUnitMismatch ? Colors.red : Colors.grey,
+  //                   width: isUnitMismatch ? 2 : 1,
+  //                 ),
+  //               ),
+  //               focusedBorder: OutlineInputBorder(
+  //                 borderSide: BorderSide(
+  //                   color: isUnitMismatch ? Colors.red : primaryAppColor,
+  //                   width: 2,
+  //                 ),
+  //               ),
+  //             ),
+  //             value: selectedUnit,
+  //             items: units.map((unit) => DropdownMenuItem<String>(
+  //               value: unit,
+  //               child: Text(unit),
+  //             )).toList(),
+  //             onChanged: (value) {
+  //               setState(() {
+  //                 selectedUnit = value;
+  //                 if (existingUnit != null && value != existingUnit) {
+  //                   isUnitMismatch = true;
+  //                   unitMismatchMessage = 'Produkt existiert bereits mit der Einheit "$existingUnit"!';
+  //                 } else {
+  //                   isUnitMismatch = false;
+  //                   unitMismatchMessage = null;
+  //                 }
+  //               });
+  //             },
+  //             validator: (value) => value == null ? 'Pflichtfeld' : null,
+  //           )
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
+  //
+  // Widget _buildInventoryAndPriceCard() {
+  //   return Card(
+  //     child: Padding(
+  //       padding: const EdgeInsets.all(16.0),
+  //       child: Column(
+  //         crossAxisAlignment: CrossAxisAlignment.start,
+  //         children: [
+  //           const Text(
+  //             'Bestand und Preis',
+  //             style: TextStyle(
+  //               fontSize: 18,
+  //               fontWeight: FontWeight.bold,
+  //             ),
+  //           ),
+  //           const SizedBox(height: 16),
+  //           TextFormField(
+  //             controller: quantityController,
+  //             decoration: InputDecoration(
+  //               labelText: 'Bestand (${selectedUnit ?? ""})',
+  //               border: const OutlineInputBorder(),
+  //             ),
+  //             keyboardType: TextInputType.number,
+  //             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+  //             validator: (value) => value?.isEmpty ?? true ? 'Pflichtfeld' : null,
+  //           ),
+  //           const SizedBox(height: 16),
+  //           TextFormField(
+  //             controller: priceController,
+  //             decoration: const InputDecoration(
+  //               labelText: 'Preis (CHF)',
+  //               border: OutlineInputBorder(),
+  //             ),
+  //             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+  //             inputFormatters: [
+  //               FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+  //             ],
+  //             validator: (value) => value?.isEmpty ?? true ? 'Pflichtfeld' : null,
+  //           ),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
+  //
+  //
+  // Widget _buildProductionDetailsCard() {
+  //   return Card(
+  //     child: Padding(
+  //       padding: const EdgeInsets.all(16.0),
+  //       child: Column(
+  //         crossAxisAlignment: CrossAxisAlignment.start,
+  //         children: [
+  //           const Text(
+  //             'Produktionsdetails',
+  //             style: TextStyle(
+  //               fontSize: 18,
+  //               fontWeight: FontWeight.bold,
+  //             ),
+  //           ),
+  //           const SizedBox(height: 16),
+  //
+  //           // Jahrgang Dropdown
+  //           DropdownButtonFormField<int>(
+  //             decoration: const InputDecoration(
+  //               labelText: 'Jahrgang',
+  //               border: OutlineInputBorder(),
+  //             ),
+  //             value: selectedYear,
+  //             items: List<int>.generate(
+  //               DateTime.now().year - 1999,
+  //                   (index) => 2000 + index+1,
+  //             ).map((year) => DropdownMenuItem<int>(
+  //               value: year,
+  //               child: Text(year.toString()),
+  //             )).toList(),
+  //             onChanged: (value) {
+  //               if (value != selectedYear) {  // Nur updaten wenn sich der Wert wirklich ändert
+  //                 setState(() {
+  //                   selectedYear = value;
+  //                 });
+  //                 _updateBarcode();  // Direkte Prüfung bei Änderung
+  //               }
+  //             },
+  //             validator: (value) => value == null ? 'Pflichtfeld' : null,
+  //           ),
+  //
+  //           const SizedBox(height: 24),
+  //           const Text(
+  //             'Eigenschaften',
+  //             style: TextStyle(
+  //               fontSize: 16,
+  //               fontWeight: FontWeight.bold,
+  //             ),
+  //           ),
+  //           const SizedBox(height: 8),
+  //
+  //           // Thermobehandelt Switch
+  //           SwitchListTile(
+  //             title: const Text('Thermobehandelt'),
+  //             value: thermallyTreated,
+  //             onChanged: (value) {
+  //               setState(() {
+  //                 thermallyTreated = value;
+  //                 _updateBarcode();
+  //               });
+  //             },
+  //           ),
+  //
+  //           // Haselfichte Switch
+  //           SwitchListTile(
+  //             title: const Text('Haselfichte'),
+  //             value: haselfichte,
+  //             onChanged: (value) {
+  //               setState(() {
+  //                 haselfichte = value;
+  //                 _updateBarcode();
+  //               });
+  //             },
+  //           ),
+  //
+  //           // Mondholz Switch
+  //           SwitchListTile(
+  //             title: const Text('Mondholz'),
+  //             value: moonwood,
+  //             onChanged: (value) {
+  //               setState(() {
+  //                 moonwood = value;
+  //                 _updateBarcode();
+  //               });
+  //             },
+  //           ),
+  //
+  //           // FSC 100% Switch
+  //           SwitchListTile(
+  //             title: const Text('FSC 100%'),
+  //             value: fsc100,
+  //             onChanged: (value) {
+  //               setState(() {
+  //                 fsc100 = value;
+  //                 _updateBarcode();
+  //               });
+  //             },
+  //           ),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
 
 
   String getNameFromDocs(List<QueryDocumentSnapshot> docs, String code) {

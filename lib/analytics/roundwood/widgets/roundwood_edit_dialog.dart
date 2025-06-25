@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../../constants.dart';
+import '../../../services/icon_helper.dart';
 import '../models/roundwood_models.dart';
 
 class RoundwoodEditDialog extends StatefulWidget {
@@ -116,7 +117,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                     onPressed: () => Navigator.of(context).pop(),
                     color: Colors.grey[600],
                   ),
@@ -216,7 +217,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                   ),
                   const SizedBox(width: 8),
                   FilledButton.icon(
-                    icon: const Icon(Icons.save),
+                    icon: getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save,),
                     label: const Text('Speichern'),
                     onPressed: _saveChanges,
                     style: FilledButton.styleFrom(

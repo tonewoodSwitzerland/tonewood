@@ -11,6 +11,8 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../services/icon_helper.dart';
+
 class WarehouseScreen extends StatefulWidget {
   final bool isDialog;
   final Function(String)? onBarcodeSelected;  // Nur der Barcode wird übergeben
@@ -86,26 +88,44 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
 
   Future<int> _getAvailableQuantity(String shortBarcode) async {
-    // Aktuellen Bestand aus inventory collection abrufen
-    final inventoryDoc = await FirebaseFirestore.instance
-        .collection('inventory')
-        .doc(shortBarcode)
-        .get();
+    try {
+      // Aktuellen Bestand aus inventory collection abrufen
+      final inventoryDoc = await FirebaseFirestore.instance
+          .collection('inventory')
+          .doc(shortBarcode)
+          .get();
 
-    final currentStock = (inventoryDoc.data()?['quantity'] ?? 0) as int;
+      final currentStock = (inventoryDoc.data()?['quantity'] ?? 0) as int;
 
-    // Temporär gebuchte Menge abrufen
-    final tempBasketDoc = await FirebaseFirestore.instance
-        .collection('temporary_basket')
-        .where('product_id', isEqualTo: shortBarcode)
-        .get();
+      // Temporär gebuchte Menge abrufen
+      final tempBasketDoc = await FirebaseFirestore.instance
+          .collection('temporary_basket')
+          .where('product_id', isEqualTo: shortBarcode)
+          .get();
 
-    final reservedQuantity = tempBasketDoc.docs.fold<int>(
-      0,
-          (sum, doc) => sum + (doc.data()['quantity'] as int),
-    );
+      final cartQuantity = tempBasketDoc.docs.fold<int>(
+        0,
+            (sum, doc) => sum + (doc.data()['quantity'] as int),
+      );
 
-    return currentStock - reservedQuantity;
+      // Reservierte Menge aus stock_movements abrufen
+      final reservationsDoc = await FirebaseFirestore.instance
+          .collection('stock_movements')
+          .where('productId', isEqualTo: shortBarcode)
+          .where('type', isEqualTo: 'reservation')
+          .where('status', isEqualTo: 'reserved')
+          .get();
+
+      final reservedQuantity = reservationsDoc.docs.fold<int>(
+        0,
+            (sum, doc) => sum + ((doc.data()['quantity'] as int).abs()),
+      );
+
+      return currentStock - cartQuantity - reservedQuantity;
+    } catch (e) {
+      print('Fehler beim Abrufen der verfügbaren Menge: $e');
+      return 0;
+    }
   }
 
 
@@ -145,6 +165,23 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       'wood_code': productData['wood_code'],
       'quality_name': productData['quality_name'],
       'quality_code': productData['quality_code'],
+    });
+  }
+
+// Füge diese Methode zur WarehouseScreenState Klasse hinzu
+// Diese Methode zur WarehouseScreenState Klasse hinzufügen
+  Stream<int> _getReservedQuantityStream(String shortBarcode) {
+    return FirebaseFirestore.instance
+        .collection('stock_movements')
+        .where('productId', isEqualTo: shortBarcode)
+        .where('type', isEqualTo: 'reservation')
+        .where('status', isEqualTo: 'reserved')
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.fold<int>(
+        0,
+            (sum, doc) => sum + ((doc.data()['quantity'] as int).abs()), // abs() weil die Menge negativ gespeichert wird
+      );
     });
   }
 
@@ -244,8 +281,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                 color: const Color(0xFF0F4A29).withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: const Icon(
-                                Icons.shopping_cart,
+                              child:
+                                  getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart,
                                 color: Color(0xFF0F4A29),
                               ),
                             ),
@@ -262,7 +299,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                               ),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.close),
+                              icon:getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                               onPressed: () => Navigator.of(context).pop(),
                               color: Colors.grey[600],
                             ),
@@ -279,6 +316,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                             children: [
                               _buildDetailSection(
                                 title: 'Barcode',
+                                iconName: 'qr_code',
                                 icon: Icons.qr_code,
                                 content: Container(
                                   padding: const EdgeInsets.all(12),
@@ -316,8 +354,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(
-                                        Icons.shopping_cart,
+
+                                          getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart,
                                         color: Colors.orange,
                                       ),
                                       const SizedBox(width: 8),
@@ -348,7 +386,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
                               _buildDetailSection(
                                 title: 'Status',
-                                icon: Icons.info_outline,
+iconName: 'info',
+                                icon: Icons.info,
                                 content: Container(
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
@@ -379,28 +418,33 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
                               _buildDetailSection(
                                 title: 'Produktinformationen',
-                                icon: Icons.info_outline,
+                                iconName: 'info',
+                                icon: Icons.info,
                                 content: Column(
                                   children: [
                                     _buildDetailRow(
                                       'Instrument',
                                       '${data['instrument_name']} (${data['instrument_code']})',
-                                      icon: Icons.piano,
+                                      icon: Icons.music_note,
+                                        iconName: 'music_note'
                                     ),
                                     _buildDetailRow(
                                       'Bauteil',
                                       '${data['part_name']} (${data['part_code']})',
-                                      icon: Icons.construction,
+                                      icon: Icons.category,
+                                        iconName: 'category'
                                     ),
                                     _buildDetailRow(
                                       'Holzart',
                                       '${data['wood_name']} (${data['wood_code']})',
                                       icon: Icons.forest,
+                                        iconName: 'forest'
                                     ),
                                     _buildDetailRow(
                                       'Qualität',
                                       '${data['quality_name']} (${data['quality_code']})',
-                                      icon: Icons.stars,
+                                      icon: Icons.star,
+                                      iconName: 'star'
                                     ),
                                   ],
                                 ),
@@ -466,7 +510,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                             style: FilledButton.styleFrom(
                                               backgroundColor: Colors.red,
                                             ),
-                                            icon: const Icon(Icons.delete),
+                                            icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete,),
                                             label: const Text('Entfernen'),
                                           ),
                                         ],
@@ -739,10 +783,10 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                           color: const Color(0xFF0F4A29).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(
-                          Icons.inventory_2,
-                          color: Color(0xFF0F4A29),
-                        ),
+                        child:
+                        getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory),
+
+
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -757,7 +801,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close),
+                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                         onPressed: () => Navigator.of(context).pop(),
                         color: Colors.grey[600],
                       ),
@@ -775,6 +819,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                         // Artikelnummer Sektion
                         _buildDetailSection(
                           title: 'Artikelnummer',
+                          iconName: 'qr_code',
                           icon: Icons.qr_code,
                           content: Container(
                             padding: const EdgeInsets.all(12),
@@ -784,7 +829,11 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                             ),
                             child: Row(
                               children: [
-                                Icon(Icons.tag, color: Colors.grey[600], size: 20),
+                                getAdaptiveIcon(
+                                  iconName: 'tag',
+                                  defaultIcon: Icons.tag,
+                                ),
+
                                 const SizedBox(width: 8),
                                 Text(
                                   data['short_barcode']?.toString() ?? 'N/A',
@@ -803,28 +852,33 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                         // Produktinformationen
                         _buildDetailSection(
                           title: 'Produktinformationen',
-                          icon: Icons.info_outline,
+                          iconName: 'info',
+                          icon: Icons.info,
                           content: Column(
                             children: [
                               _buildDetailRow(
                                 'Instrument',
                                 '${data['instrument_name']} (${data['instrument_code']})',
-                                icon: Icons.piano,
+                                iconName: 'music_note',
+                                icon: Icons.music_note,
                               ),
                               _buildDetailRow(
                                 'Bauteil',
                                 '${data['part_name']} (${data['part_code']})',
-                                icon: Icons.construction,
+                                iconName: 'category',
+                                icon: Icons.category,
                               ),
                               _buildDetailRow(
                                 'Holzart',
                                 '${data['wood_name']} (${data['wood_code']})',
+                                iconName: 'forest',
                                 icon: Icons.forest,
                               ),
                               _buildDetailRow(
                                 'Qualität',
                                 '${data['quality_name']} (${data['quality_code']})',
-                                icon: Icons.stars,
+                                iconName: 'star',
+                                icon: Icons.star,
                               ),
                             ],
                           ),
@@ -835,6 +889,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                         // Bestand und Preis
                         _buildDetailSection(
                           title: 'Bestand & Preis',
+                          iconName: 'inventory',
                           icon: Icons.inventory,
                           content: Column(
                             children: [
@@ -915,6 +970,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                         // Warenkorb Sektion
                         _buildDetailSection(
                           title: 'In den Warenkorb',
+iconName: 'shopping_cart',
                           icon: Icons.shopping_cart,
                           content: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -956,7 +1012,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                     ],
                   ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       OutlinedButton(
                         onPressed: () => Navigator.pop(context),
@@ -965,12 +1021,17 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                           side: BorderSide(color: Colors.grey[300]!),
                           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                         ),
-                        child: const Text('Abbrechen'),
+                        child: const Text('X'),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 24),
                       ElevatedButton.icon(
-                        icon: const Icon(Icons.shopping_cart),
-                        label: const Text('In den Warenkorb'),
+                        icon: getAdaptiveIcon(
+                          color: Colors.white,
+                          iconName: 'shopping_cart',
+                          defaultIcon: Icons.shopping_cart,
+                        ),
+
+                        label: const Text('Warenkorb'),
                         onPressed: () async {
                           if (quantityController.text.isEmpty) return;
 
@@ -1071,16 +1132,44 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         .collection('inventory')
         .doc(shortBarcode)
         .snapshots()
-        .map((doc) => doc.data()?['quantity'] ?? 0);
-  }
+        .asyncMap((inventoryDoc) async {
+      final stock = inventoryDoc.data()?['quantity'] ?? 0;
 
+      // Warenkorb-Menge abrufen
+      final cartSnapshot = await FirebaseFirestore.instance
+          .collection('temporary_basket')
+          .where('product_id', isEqualTo: shortBarcode)
+          .get();
+
+      final cartQuantity = cartSnapshot.docs.fold<int>(
+        0,
+            (sum, doc) => sum + (doc.data()['quantity'] as int),
+      );
+
+      // Reservierte Menge aus stock_movements abrufen
+      final reservedSnapshot = await FirebaseFirestore.instance
+          .collection('stock_movements')
+          .where('productId', isEqualTo: shortBarcode)
+          .where('type', isEqualTo: 'reservation')
+          .where('status', isEqualTo: 'reserved')
+          .get();
+
+      final reservedQuantity = reservedSnapshot.docs.fold<int>(
+        0,
+            (sum, doc) => sum + ((doc.data()['quantity'] as int).abs()),
+      );
+
+      return stock - cartQuantity - reservedQuantity;
+    });
+  }
 
 // Aktualisieren Sie die buildDetailSection Methode
   Widget _buildDetailSection({
     required String title,
     required IconData icon,
     required Widget content,
-    Map<String, dynamic>? data,  // Neuer Parameter für Produktdaten
+    Map<String, dynamic>? data,  // Parameter für Produktdaten
+    String? iconName,            // Neuer Parameter für adaptive Icons
   }) {
     if (title == 'Bestand & Preis' && data != null) {
       return Container(
@@ -1099,7 +1188,14 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(icon, size: 20, color: const Color(0xFF0F4A29)),
+                  iconName != null
+                      ? getAdaptiveIcon(
+                    iconName: iconName,
+                    defaultIcon: icon,
+                    size: 20,
+                    color: const Color(0xFF0F4A29),
+                  )
+                      : Icon(icon, size: 20, color: const Color(0xFF0F4A29)),
                   const SizedBox(width: 8),
                   Text(
                     title,
@@ -1122,7 +1218,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                       return Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0F4A29).withOpacity(0.1),
+                          color: const Color(0xFF0F4A29).withValues(
+                              red: 15,    // 0x0F
+                              green: 74,  // 0x4A
+                              blue: 41,   // 0x29
+                              alpha: 0.1
+                          ),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Column(
@@ -1163,7 +1264,11 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                     shape: const CircleBorder(),
                                     padding: const EdgeInsets.all(12),
                                   ),
-                                  child: const Icon(Icons.remove),
+                                  child: getAdaptiveIcon(
+                                    iconName: 'remove',
+                                    defaultIcon: Icons.remove,
+                                    color: Colors.red[900],
+                                  ),
                                 ),
                                 ElevatedButton(
                                   onPressed: () => _adjustStock(data['short_barcode'], 1),
@@ -1173,7 +1278,11 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                     shape: const CircleBorder(),
                                     padding: const EdgeInsets.all(12),
                                   ),
-                                  child: const Icon(Icons.add),
+                                  child: getAdaptiveIcon(
+                                    iconName: 'add',
+                                    defaultIcon: Icons.add,
+                                    color: Colors.green[900],
+                                  ),
                                 ),
                               ],
                             ),
@@ -1235,7 +1344,14 @@ class WarehouseScreenState extends State<WarehouseScreen> {
             ),
             child: Row(
               children: [
-                Icon(icon, size: 20, color: const Color(0xFF0F4A29)),
+                iconName != null
+                    ? getAdaptiveIcon(
+                  iconName: iconName,
+                  defaultIcon: icon,
+                  size: 20,
+                  color: const Color(0xFF0F4A29),
+                )
+                    : Icon(icon, size: 20, color: const Color(0xFF0F4A29)),
                 const SizedBox(width: 8),
                 Text(
                   title,
@@ -1256,13 +1372,20 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value, {IconData? icon}) {
+  Widget _buildDetailRow(String label, String value, {IconData? icon, String? iconName}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: 18, color: Colors.grey[600]),
+          if (icon != null || iconName != null) ...[
+            iconName != null
+                ? getAdaptiveIcon(
+              iconName: iconName,
+              defaultIcon: icon ?? Icons.info,
+              size: 18,
+              color: Colors.grey[600],
+            )
+                : Icon(icon, size: 18, color: Colors.grey[600]),
             const SizedBox(width: 8),
           ],
           Expanded(
@@ -1480,25 +1603,32 @@ class WarehouseScreenState extends State<WarehouseScreen> {
              // centerTitle: true,
               actions: [
                 if (!isDesktopLayout) ...[
+
                   IconButton(
-                    icon: Icon(
-                      isQuickFilterActive ? Icons.star : Icons.star_outline,
-                      color: isQuickFilterActive ? const Color(0xFF0F4A29) : null,
-                    ),
-                    onPressed: _toggleQuickFilter,
-                    tooltip: isQuickFilterActive
-                        ? 'Schnellfilter deaktivieren'
-                        : 'Schnellfilter für Decken aktivieren',
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.filter_list),
+                    icon:getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list,),
+
                     onPressed: () => _showFilterDialog(),
                   ),
                 ],
+                IconButton(
+                  icon:
+          isQuickFilterActive ?
+          getAdaptiveIcon(iconName: 'star_fill', defaultIcon: Icons.star,)
+                        :
+          getAdaptiveIcon(iconName: 'star',defaultIcon:Icons.star_outline,
+                    ),
+                  onPressed: _toggleQuickFilter,
+                  tooltip: isQuickFilterActive
+                      ? 'Schnellfilter deaktivieren'
+                      : 'Schnellfilter für aktivieren',
+                ),
                 // Add the export button
                 IconButton(
                   onPressed: _showExportDialog,
-                  icon: const Icon(Icons.download),
+                  icon: getAdaptiveIcon(
+                    iconName: 'download',
+                    defaultIcon: Icons.download,
+                  ),
                   tooltip: 'Exportieren',
                 ),
               ],
@@ -1574,7 +1704,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               child: Chip(
                backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
                 label: Text('${getNameForCode(instruments!, code)} ($code)'),
-                deleteIcon: const Icon(Icons.close, size: 18),
+                deleteIcon:getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                 onDeleted: () {
                   setState(() {
                     selectedInstrumentCodes.remove(code);
@@ -1588,7 +1718,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               child: Chip(
                 backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
                 label: Text('${getNameForCode(parts!, code)} ($code)'),
-                deleteIcon: const Icon(Icons.close, size: 18),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                 onDeleted: () {
                   setState(() {
                     selectedPartCodes.remove(code);
@@ -1602,7 +1732,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               child: Chip(
                 backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
                 label: Text('${getNameForCode(woodTypes!, code)} ($code)'),
-                deleteIcon: const Icon(Icons.close, size: 18),
+                deleteIcon:getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                 onDeleted: () {
                   setState(() {
                     selectedWoodCodes.remove(code);
@@ -1616,7 +1746,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               child: Chip(
                 backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
                 label: Text('${getNameForCode(qualities!, code)} ($code)'),
-                deleteIcon: const Icon(Icons.close, size: 18),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                 onDeleted: () {
                   setState(() {
                     selectedQualityCodes.remove(code);
@@ -1630,7 +1760,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               padding: const EdgeInsets.only(right: 8.0),
               child: Chip(
                 label: Text('Einheit: $selectedUnit'),
-                deleteIcon: const Icon(Icons.close, size: 18),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                 onDeleted: () {
                   setState(() {
                     selectedUnit = null;
@@ -1675,7 +1805,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Verfeinern Sie Ihre Suche',
+              'Verfeinere die Suche',
               style: TextStyle(
                 color: Colors.grey[600],
                 fontSize: 14,
@@ -1685,7 +1815,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
             if (instruments != null) ...[
               _buildFilterCategory(
-                icon: Icons.piano,
+                iconName: 'music_note', // Neuer Parameter für das PNG im Web
+                icon: Icons.music_note,
                 title: 'Instrument',
                 child: _buildMultiSelectDropdown(
                   label: 'Instrument auswählen',
@@ -1703,7 +1834,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
             if (parts != null) ...[
               _buildFilterCategory(
-                icon: Icons.construction,
+                iconName: 'category',
+                icon: Icons.category,
                 title: 'Bauteil',
                 child: _buildMultiSelectDropdown(
                   label: 'Bauteil auswählen',
@@ -1721,6 +1853,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
             if (woodTypes != null) ...[
               _buildFilterCategory(
+                iconName: 'forest',
                 icon: Icons.forest,
                 title: 'Holzart',
                 child: _buildMultiSelectDropdown(
@@ -1739,7 +1872,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
             if (qualities != null) ...[
               _buildFilterCategory(
-                icon: Icons.stars,
+                iconName: 'star',
+                icon: Icons.star,
                 title: 'Qualität',
                 child: _buildMultiSelectDropdown(
                   label: 'Qualität auswählen',
@@ -1768,7 +1902,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                     ),
                   ),
                   TextButton.icon(
-                    icon: const Icon(Icons.clear_all),
+                    icon: getAdaptiveIcon(iconName: 'clear_all', defaultIcon: Icons.clear_all,),
                     label: const Text('Zurücksetzen'),
                     onPressed: () {
                       setState(() {
@@ -1795,9 +1929,10 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
 
   Widget _buildFilterCategory({
-    required IconData icon,
+    required dynamic icon,  // Kann IconData oder ein Widget von getAdaptiveIcon sein
     required String title,
     required Widget child,
+    String? iconName,      // Optional: Für getAdaptiveIcon
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -1805,7 +1940,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.grey.withValues(
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 0.1,
+            ),
             spreadRadius: 1,
             blurRadius: 3,
             offset: const Offset(0, 1),
@@ -1818,14 +1958,28 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           leading: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xFF0F4A29).withOpacity(0.1),
+              color: const Color(0xFF0F4A29).withValues(
+                  red: 15,    // 0x0F
+                  green: 74,  // 0x4A
+                  blue: 41,   // 0x29
+                  alpha: 0.1
+              ),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(
+            child: iconName != null
+                ? getAdaptiveIcon(
+              iconName: iconName,
+              defaultIcon: icon is IconData ? icon : Icons.category,
+              color: const Color(0xFF0F4A29),
+              size: 24,
+            )
+                : icon is IconData
+                ? Icon(
               icon,
               color: const Color(0xFF0F4A29),
               size: 24,
-            ),
+            )
+                : icon, // Direkte Verwendung, wenn bereits ein Widget
           ),
           title: Text(
             title,
@@ -1876,7 +2030,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         style: const TextStyle(fontSize: 12),
       ),
       backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-      deleteIcon: const Icon(Icons.close, size: 16),
+      deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
       onDeleted: onRemove,
       deleteIconColor: const Color(0xFF0F4A29),
       labelPadding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1911,7 +2065,6 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         if (snapshot.hasError) {
           print(snapshot.error);
           return const Center(child: Text('Ein Fehler ist aufgetreten'));
-
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -1923,7 +2076,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey[400]),
+                getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory, size: 48),
                 const SizedBox(height: 16),
                 Text(
                   'Keine Produkte gefunden',
@@ -1981,15 +2134,15 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                 itemBuilder: (context, index) {
                   final doc = snapshot.data!.docs[index];
                   final data = doc.data() as Map<String, dynamic>? ?? {};
-              
+
                   return Card(
                     margin: const EdgeInsets.only(bottom: 12),
+                    elevation: 2,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      side: BorderSide(color: Colors.grey[200]!),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
                       onTap: () {
                         if (_isOnlineShopView) {
                           _showOnlineShopDetails(data);
@@ -2009,143 +2162,53 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                      Text(
+                                        data['product_name']?.toString() ?? 'Unbenanntes Produkt',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
                                         children: [
-                                          Text(
-                                            data['product_name']?.toString() ?? 'Unbenanntes Produkt',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              data['quality_name']?.toString() ?? '-',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                              ),
                                             ),
                                           ),
-
+                                          const SizedBox(width: 8),
                                           Text(
-                                            data['quality_name']?.toString() ?? '-',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
+                                            _isOnlineShopView
+                                                ? data['barcode']?.toString() ?? ''
+                                                : data['short_barcode']?.toString() ?? '',
+                                            style: TextStyle(
+                                              color: Colors.grey[600],
+                                              fontSize: 12,
                                             ),
                                           ),
                                         ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        _isOnlineShopView
-                                            ? 'Barcode: ${data['barcode']?.toString() ?? ''}'
-                                            : 'Art.Nr: ${data['short_barcode']?.toString() ?? ''}',
-                                        style: TextStyle(
-                                          color: Colors.grey[600],
-                                          fontSize: 13,
-                                        ),
                                       ),
                                     ],
                                   ),
                                 ),
                                 // Bestand/Status Anzeige
                                 if (_isOnlineShopView)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: (data['sold'] == true ? Colors.red : Colors.green).withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    child: Text(
-                                      data['sold'] == true ? 'Verkauft' : 'Im Shop',
-                                      style: TextStyle(
-                                        color: data['sold'] == true ? Colors.red : Colors.green,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  )
+                                  _buildOnlineShopStatus(data)
                                 else
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF0F4A29).withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(16),
-                                        ),
-                                        child: Text(
-                                          'Lager: ${data['quantity']?.toString() ?? '0'} ${data['unit']?.toString() ?? ''}',
-                                          style: const TextStyle(
-                                            color: Color(0xFF0F4A29),
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-              
-              
-              
-                                      StreamBuilder<QuerySnapshot>(
-                                        stream: FirebaseFirestore.instance
-                                            .collection('temporary_basket')
-                                            .where('product_id', isEqualTo: data['short_barcode'])
-                                            .snapshots(),
-                                        builder: (context, cartSnapshot) {
-                                          int cartQuantity = 0;
-                                          if (cartSnapshot.hasData) {
-                                            cartQuantity = cartSnapshot.data!.docs.fold(0,
-                                                    (sum, doc) => sum + (doc.data() as Map<String, dynamic>)['quantity'] as int);
-                                          }
-                                          if (cartQuantity > 0) {
-                                            return Padding(
-                                              padding: const EdgeInsets.only(top: 4),
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.orange.withOpacity(0.1),
-                                                  borderRadius: BorderRadius.circular(16),
-                                                ),
-                                                child: Text(
-                                                  'Warenkorb: $cartQuantity',
-                                                  style: const TextStyle(
-                                                    color: Colors.orange,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          }
-                                          return const SizedBox.shrink();
-                                        },
-                                      ),
-                                      const SizedBox(height: 8),
-              
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(16),
-                                        ),
-                                        child: Text(
-                                          'Online: ${data['quantity_online_shop']?.toString() ?? '0'} ${data['unit']?.toString() ?? ''}',
-                                          style: const TextStyle(
-                                            color: Colors.blue,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  )
+                                  _buildInventoryStatus(data),
                               ],
                             ),
-                            // const SizedBox(height: 12),
-                            // Text(
-                            //   'Instrument: ${data['instrument_name']} (${data['instrument_code']})',
-                            //   style: TextStyle(color: Colors.grey[800]),
-                            // ),
-                            // Text(
-                            //   'Bauteil: ${data['part_name']} (${data['part_code']})',
-                            //   style: TextStyle(color: Colors.grey[800]),
-                            // ),
-                            // Text(
-                            //   'Holzart: ${data['wood_name']} (${data['wood_code']})',
-                            //   style: TextStyle(color: Colors.grey[800]),
-                            // ),
                           ],
                         ),
                       ),
@@ -2157,6 +2220,212 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           ],
         );
       },
+    );
+  }
+
+// Neue Hilfsmethode für Online-Shop Status
+  Widget _buildOnlineShopStatus(Map<String, dynamic> data) {
+    final bool isSold = data['sold'] == true;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: (isSold ? Colors.red : Colors.green).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: (isSold ? Colors.red : Colors.green).withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isSold ? Icons.sell : Icons.storefront,
+            size: 16,
+            color: isSold ? Colors.red : Colors.green,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            isSold ? 'Verkauft' : 'Verfügbar',
+            style: TextStyle(
+              color: isSold ? Colors.red : Colors.green,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+// Neue Hilfsmethode für Lagerbestand Status
+  Widget _buildInventoryStatus(Map<String, dynamic> data) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // Hauptbestand mit verfügbarer Menge
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F4A29).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: const Color(0xFF0F4A29).withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: StreamBuilder<int>(
+            stream: _getAvailableQuantityStream(data['short_barcode']),
+            builder: (context, availableSnapshot) {
+              final available = availableSnapshot.data ?? data['quantity'] ?? 0;
+              final total = data['quantity'] ?? 0;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.inventory_2,
+                        size: 14,
+                        color: const Color(0xFF0F4A29),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$total',
+                        style: const TextStyle(
+                          color: Color(0xFF0F4A29),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (available != total) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'verfügbar: $available',
+                      style: TextStyle(
+                        color: const Color(0xFF0F4A29).withOpacity(0.8),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
+              );
+            },
+          ),
+        ),
+
+        // Status-Indikatoren in einer Zeile
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Warenkorb Status
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('temporary_basket')
+                    .where('product_id', isEqualTo: data['short_barcode'])
+                    .snapshots(),
+                builder: (context, cartSnapshot) {
+                  int cartQuantity = 0;
+                  if (cartSnapshot.hasData) {
+                    cartQuantity = cartSnapshot.data!.docs.fold(0,
+                            (sum, doc) => sum + (doc.data() as Map<String, dynamic>)['quantity'] as int);
+                  }
+                  if (cartQuantity > 0) {
+                    return _buildStatusIndicator(
+                      icon: Icons.shopping_cart,
+                      value: cartQuantity,
+                      color: Colors.orange,
+                      tooltip: 'Im Warenkorb',
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+
+              // Reservierungen Status
+              StreamBuilder<int>(
+                stream: _getReservedQuantityStream(data['short_barcode']),
+                builder: (context, reservedSnapshot) {
+                  final reservedQuantity = reservedSnapshot.data ?? 0;
+                  if (reservedQuantity > 0) {
+                    return Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: _buildStatusIndicator(
+                        icon: Icons.lock_clock,
+                        value: reservedQuantity,
+                        color: Colors.purple,
+                        tooltip: 'Reserviert',
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+
+              // Online Shop Status
+              if ((data['quantity_online_shop'] ?? 0) > 0)
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: _buildStatusIndicator(
+                    icon: Icons.language,
+                    value: data['quantity_online_shop'],
+                    color: Colors.blue,
+                    tooltip: 'Online Shop',
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+// Hilfsmethode für Status-Indikatoren
+  Widget _buildStatusIndicator({
+    required IconData icon,
+    required int value,
+    required Color color,
+    required String tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: color.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: color,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '$value',
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -2439,10 +2708,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                 color: const Color(0xFF0F4A29).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(
-                Icons.download,
-                color: Color(0xFF0F4A29),
+              child:
+              getAdaptiveIcon(
+                iconName: 'download',
+                defaultIcon: Icons.download,
               ),
+
             ),
             const SizedBox(width: 12),
             Text(_isOnlineShopView ? 'Shop Export' : 'Lager Export'),
@@ -2458,7 +2729,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   color: Colors.blue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.table_chart, color: Colors.blue),
+                child:
+                getAdaptiveIcon(iconName: 'table_chart', defaultIcon: Icons.table_chart,),
+
               ),
               title: const Text('CSV'),
               subtitle: const Text('Daten im CSV-Format'),
@@ -2475,7 +2748,10 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   color: Colors.red.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.picture_as_pdf, color: Colors.red),
+
+                child:
+                getAdaptiveIcon(iconName: 'picture_as_pdf', defaultIcon: Icons.picture_as_pdf,),
+
               ),
               title: const Text('Als PDF exportieren'),
               subtitle: const Text('Übersicht als PDF'),
@@ -2545,8 +2821,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                   color: const Color(0xFF0F4A29).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: const Icon(
-                                  Icons.filter_list,
+                                child: getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list,
                                   color: Color(0xFF0F4A29),
                                 ),
                               ),
@@ -2562,7 +2837,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                             ],
                           ),
                           IconButton(
-                            icon: const Icon(Icons.close),
+                            icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
+
                             onPressed: () => Navigator.of(context).pop(),
                             color: Colors.grey[600],
                           ),
@@ -2580,7 +2856,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                             children: [
                               if (instruments != null) ...[
                                 _buildFilterCategory(
-                                  icon: Icons.piano,
+                                  iconName: 'music_note', // Neuer Parameter für das PNG im Web
+                                  icon: Icons.music_note,
                                   title: 'Instrument',
                                   child: _buildMultiSelectDropdown(
                                     label: 'Instrument auswählen',
@@ -2598,7 +2875,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
                               if (parts != null) ...[
                                 _buildFilterCategory(
-                                  icon: Icons.construction,
+                                  iconName: 'category',
+                                  icon: Icons.category,
                                   title: 'Bauteil',
                                   child: _buildMultiSelectDropdown(
                                     label: 'Bauteil auswählen',
@@ -2616,6 +2894,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
                               if (woodTypes != null) ...[
                                 _buildFilterCategory(
+                                  iconName: 'forest',
                                   icon: Icons.forest,
                                   title: 'Holzart',
                                   child: _buildMultiSelectDropdown(
@@ -2634,7 +2913,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
                               if (qualities != null) ...[
                                 _buildFilterCategory(
-                                  icon: Icons.stars,
+                                  iconName: 'star',
+                                  icon: Icons.star,
                                   title: 'Qualität',
                                   child: _buildMultiSelectDropdown(
                                     label: 'Qualität auswählen',
@@ -2665,7 +2945,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                         ),
                                       ),
                                       TextButton.icon(
-                                        icon: const Icon(Icons.clear_all),
+                                        icon: getAdaptiveIcon(iconName: 'clear_all', defaultIcon: Icons.clear_all,),
                                         label: const Text('Zurücksetzen'),
                                         onPressed: () {
                                           setState(() {

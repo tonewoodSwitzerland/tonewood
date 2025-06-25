@@ -20,11 +20,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:tonewood/home/warehouse_screen.dart';
 import '../components/product_cart.dart';
 import '../constants.dart';
+import '../services/icon_helper.dart';
 import '../services/print_status.dart';
 import '../services/printer_service.dart';
 enum BarcodeType {
   sales,
   production,
+  salesShop,
 }
 enum PrinterModel {
   QL1110NWB,
@@ -81,6 +83,7 @@ class PrinterScreenState extends State<PrinterScreen> {
       });
     });
   }
+  String? _selectedYear;
   double _onlineShopPrice = 0.0;
   TextEditingController _priceController = TextEditingController();
   int lastShopItem=0;
@@ -119,6 +122,53 @@ class PrinterScreenState extends State<PrinterScreen> {
       _updateLabelTypes();
       _loadSwitchValue();
     });
+  }
+
+// Prüfen, ob Features gesetzt wurden
+  bool _hasSetFeatures() {
+    return _productionFeatures.values.any((value) => value == true);
+  }
+
+// Feature-String für den Barcode erstellen
+  String _getFeatureString() {
+    if (!_hasSetFeatures()) return "";
+
+    String thermo = _productionFeatures['thermo']! ? '1' : '0';
+    String hasel = _productionFeatures['hasel']! ? '1' : '0';
+    String mondholz = _productionFeatures['mondholz']! ? '1' : '0';
+    String fsc = _productionFeatures['fsc']! ? '1' : '0';
+
+    return "$thermo$hasel$mondholz$fsc";
+  }
+
+// Jahr-String für den Barcode erstellen
+  String _getYearString() {
+    if (_selectedYear == null) return "";
+    return _selectedYear!;
+  }
+
+
+
+// Feature-Switch-Widget für den Dialog
+  Widget _buildFeatureSwitch(String title, String feature, StateSetter setState) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(title),
+          Switch(
+            value: _productionFeatures[feature] ?? false,
+            onChanged: (value) {
+              setState(() {
+                _productionFeatures[feature] = value;
+              });
+            },
+            activeColor: primaryAppColor,
+          ),
+        ],
+      ),
+    );
   }
 
 
@@ -167,7 +217,7 @@ class PrinterScreenState extends State<PrinterScreen> {
       return false;
     }
   }
-  Future<void> _bookOnlineShopItem(int nextShopItem) async {  // nextShopItem statt lastShopItem
+  Future<void> _bookOnlineShopItem(int nextShopItem) async {
     if (_onlineShopPrice <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Bitte gib einen gültigen Preis ein'), backgroundColor: Colors.red),
@@ -186,9 +236,34 @@ class PrinterScreenState extends State<PrinterScreen> {
         return;
       }
 
-      // nextShopItem ist bereits der richtige Wert
-      String shopId = nextShopItem.toString().padLeft(4, '0');
-      String fullBarcode = '$barcodeData.$shopId';
+      // Vollständigen Barcode generieren
+      String fullBarcode;
+      if (selectedBarcodeType == BarcodeType.salesShop) {
+        // Für salesShop-Typ den erweiterten Code erstellen
+        String features = _getFeatureString().isEmpty ? "0000" : _getFeatureString();
+        String year = _getYearString().isEmpty ? "00" : _getYearString();
+        String formattedShopId = nextShopItem.toString().padLeft(4, '0');
+        fullBarcode = '$barcodeData.$features.$year.$formattedShopId';
+      } else {
+        // Für Standard-Produktion den Barcode wie bisher
+        String formattedShopId = nextShopItem.toString().padLeft(4, '0');
+        fullBarcode = '$barcodeData.$formattedShopId';
+      }
+
+      // Zusätzliche Daten für den salesShop-Typ
+      Map<String, dynamic> additionalData = {};
+      if (selectedBarcodeType == BarcodeType.salesShop) {
+        additionalData = {
+          'features': {
+            'thermo': _productionFeatures['thermo'] ?? false,
+            'hasel': _productionFeatures['hasel'] ?? false,
+            'mondholz': _productionFeatures['mondholz'] ?? false,
+            'fsc': _productionFeatures['fsc'] ?? false,
+          },
+          'year': _selectedYear,
+          'is_manual_shop_item': true,
+        };
+      }
 
       // Shop-Eintrag erstellen
       await FirebaseFirestore.instance
@@ -196,16 +271,17 @@ class PrinterScreenState extends State<PrinterScreen> {
           .doc(fullBarcode)
           .set({
         ...productData!,
+        ...additionalData,
         'sold': false,
         'created_at': FieldValue.serverTimestamp(),
         'barcode': fullBarcode,
-        'shop_id': shopId,
+        'shop_id': nextShopItem.toString().padLeft(4, '0'),
         'price_CHF': _onlineShopPrice,
       });
 
       // Counter auf den VERWENDETEN Wert setzen
       await FirebaseFirestore.instance.collection('general_data').doc('counters').set(
-          { 'lastShopifyItem': nextShopItem },  // Direkt den verwendeten Wert speichern
+          { 'lastShopifyItem': nextShopItem },
           SetOptions(merge: true)
       );
 
@@ -427,10 +503,9 @@ class PrinterScreenState extends State<PrinterScreen> {
                                   color: const Color(0xFF0F4A29).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: const Icon(
-                                  Icons.print,
-                                  color: Color(0xFF0F4A29),
-                                ),
+                                child:
+                                getAdaptiveIcon(iconName: 'print', defaultIcon: Icons.print,),
+
                               ),
                               const SizedBox(width: 8),
                               const Text(
@@ -442,7 +517,9 @@ class PrinterScreenState extends State<PrinterScreen> {
                               ),
                               Spacer(),
                               IconButton(
-                                icon: Icon(Icons.close),
+                                icon:
+                                getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
+
                                 onPressed: () => Navigator.of(context).pop(),
                               )
                             ],
@@ -471,7 +548,8 @@ class PrinterScreenState extends State<PrinterScreen> {
                                   children: [
                                     Expanded(
                                       child: _buildConnectionOption(
-                                        icon: Icons.bluetooth,
+                                        icon:Icons.bluetooth,
+                                        iconName:'bluetooth',
                                         label: 'Bluetooth',
                                         isSelected: bluetoothFirst,
                                         onTap: () {
@@ -486,6 +564,7 @@ class PrinterScreenState extends State<PrinterScreen> {
                                     Expanded(
                                       child: _buildConnectionOption(
                                         icon: Icons.wifi,
+                                        iconName:'wifi',
                                         label: 'WLAN',
                                         isSelected: !bluetoothFirst,
                                         onTap: () {
@@ -617,7 +696,8 @@ class PrinterScreenState extends State<PrinterScreen> {
                                                   SnackBar(
                                                     content: Row(
                                                       children: [
-                                                        Icon(Icons.check_circle, color: Colors.white),
+
+                                                        getAdaptiveIcon(iconName: 'check', defaultIcon: Icons.check,color: Colors.white),
                                                         SizedBox(width: 8),
                                                         Text('Maximale Länge gespeichert'),
                                                       ],
@@ -627,7 +707,7 @@ class PrinterScreenState extends State<PrinterScreen> {
                                               );
                                             }
                                           },
-                                          icon: Icon(Icons.save, color: Colors.white),
+                                          icon: getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save, color: Colors.white),
                                           tooltip: 'Speichern',
                                         ),
                                       ),
@@ -659,7 +739,8 @@ class PrinterScreenState extends State<PrinterScreen> {
                                   child: Row(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Icon(Icons.info_outline, color: Colors.amber[800], size: 20),
+
+                                      getAdaptiveIcon(iconName: 'info', defaultIcon: Icons.info,color: Colors.amber[800]),
                                       SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
@@ -762,6 +843,7 @@ class PrinterScreenState extends State<PrinterScreen> {
     required String label,
     required bool isSelected,
     required VoidCallback onTap,
+    String? iconName, // Neuer Parameter für adaptiveIcon
   }) {
     return InkWell(
       onTap: onTap,
@@ -769,7 +851,14 @@ class PrinterScreenState extends State<PrinterScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF0F4A29).withOpacity(0.1) : Colors.transparent,
+          color: isSelected
+              ? const Color(0xFF0F4A29).withValues(
+              red: 15,    // 0x0F
+              green: 74,  // 0x4A
+              blue: 41,   // 0x29
+              alpha: 0.1
+          )
+              : Colors.transparent,
           border: Border.all(
             color: isSelected ? const Color(0xFF0F4A29) : Colors.grey[300]!,
             width: isSelected ? 2 : 1,
@@ -778,7 +867,14 @@ class PrinterScreenState extends State<PrinterScreen> {
         ),
         child: Column(
           children: [
-            Icon(
+            iconName != null
+                ? getAdaptiveIcon(
+              iconName: iconName,
+              defaultIcon: icon,
+              color: isSelected ? const Color(0xFF0F4A29) : Colors.grey[600],
+              size: 24,
+            )
+                : Icon(
               icon,
               color: isSelected ? const Color(0xFF0F4A29) : Colors.grey[600],
               size: 24,
@@ -840,6 +936,7 @@ class PrinterScreenState extends State<PrinterScreen> {
       ),
     ];
   }
+
   void _showProductSearchDialog() {
     if (selectedBarcodeType == BarcodeType.production) {
       showModalBottomSheet(
@@ -887,7 +984,8 @@ class PrinterScreenState extends State<PrinterScreen> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.inventory, color: primaryAppColor),
+                      getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory,),
+
                       SizedBox(width: 12),
                       Text(
                         'Produktionsliste',
@@ -899,7 +997,7 @@ class PrinterScreenState extends State<PrinterScreen> {
                       ),
                       Spacer(),
                       IconButton(
-                        icon: Icon(Icons.close),
+                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                         onPressed: () => Navigator.pop(context),
                         color: Colors.grey[600],
                       ),
@@ -917,15 +1015,12 @@ class PrinterScreenState extends State<PrinterScreen> {
                     },
                   ),
                 ),
-
-
               ],
             ),
           );
         },
       );
     } else {
-
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -971,10 +1066,11 @@ class PrinterScreenState extends State<PrinterScreen> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.warehouse, color: primaryAppColor),
+                      getAdaptiveIcon(iconName: 'warehouse', defaultIcon: Icons.warehouse,),
+
                       SizedBox(width: 12),
                       Text(
-                        'Verkaufsliste',
+                        selectedBarcodeType == BarcodeType.salesShop ? 'Verkaufsliste für Shop' : 'Verkaufsliste',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -983,7 +1079,7 @@ class PrinterScreenState extends State<PrinterScreen> {
                       ),
                       Spacer(),
                       IconButton(
-                        icon: Icon(Icons.close),
+                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                         onPressed: () => Navigator.pop(context),
                         color: Colors.grey[600],
                       ),
@@ -991,7 +1087,7 @@ class PrinterScreenState extends State<PrinterScreen> {
                   ),
                 ),
 
-                // Hauptinhalt
+                // Hauptinhalt - gleiche Komponente für Verkauf und Verkauf+Shop
                 Expanded(
                   child: WarehouseScreen(
                     mode: 'barcodePrinting',
@@ -1004,8 +1100,6 @@ class PrinterScreenState extends State<PrinterScreen> {
                     key: UniqueKey(),
                   ),
                 ),
-
-
               ],
             ),
           );
@@ -1013,6 +1107,7 @@ class PrinterScreenState extends State<PrinterScreen> {
       );
     }
   }
+
   Future<void> _savePrinterSettings() async {
     try {
       await FirebaseFirestore.instance
@@ -1052,8 +1147,6 @@ class PrinterScreenState extends State<PrinterScreen> {
       }
     });
   }
-// Modifiziere die Scan-Funktion
-// Modifizierte Scan-Funktion mit Validierung
   Future<void> _startScanner() async {
     setState(() {
       _printerSearching = true;
@@ -1077,9 +1170,10 @@ class PrinterScreenState extends State<PrinterScreen> {
         // Prüfe, ob der Barcode für den aktuellen Typ gültig ist
         bool isValidForCurrentType = _validateBarcode(barcodeResult, currentType);
 
-        // Prüfe, ob der Barcode für den anderen Typ gültig wäre
-        BarcodeType otherType = currentType == BarcodeType.sales ? BarcodeType.production : BarcodeType.sales;
-        bool isValidForOtherType = _validateBarcode(barcodeResult, otherType);
+        // Prüfe, ob der Barcode für andere Typen gültig wäre
+        bool isValidForSales = _validateBarcode(barcodeResult, BarcodeType.sales);
+        bool isValidForProduction = _validateBarcode(barcodeResult, BarcodeType.production);
+        bool isValidForSalesShop = _validateBarcode(barcodeResult, BarcodeType.salesShop);
 
         if (isValidForCurrentType) {
           // Barcode ist für den aktuellen Typ gültig, verarbeite ihn
@@ -1092,19 +1186,19 @@ class PrinterScreenState extends State<PrinterScreen> {
           // Zeige passende Fehlermeldung abhängig von der Situation
           String errorMessage;
 
-          if (isValidForOtherType) {
-            // Der Barcode ist für den anderen Typ gültig
-            if (currentType == BarcodeType.production) {
-              errorMessage = 'Du hast einen Verkaufscode gescannt. Ein Produktionsbarcode hat das Format IIPP.HHQQ.0000.JJ';
-            } else {
-              errorMessage = 'Du hast einen Produktionscode gescannt. Ein Verkaufsbarcode hat das Format IIPP.HHQQ';
-            }
+          // Der Barcode könnte für einen anderen Typ gültig sein
+          if (currentType == BarcodeType.production && (isValidForSales || isValidForSalesShop)) {
+            errorMessage = 'Du hast einen Verkaufscode gescannt. Ein Produktionsbarcode hat das Format IIPP.HHQQ.0000.JJ';
+          } else if ((currentType == BarcodeType.sales || currentType == BarcodeType.salesShop) && isValidForProduction) {
+            errorMessage = 'Du hast einen Produktionscode gescannt. Ein Verkaufsbarcode hat das Format IIPP.HHQQ';
           } else {
             // Der Barcode ist für keinen Typ gültig
             if (currentType == BarcodeType.production) {
               errorMessage = 'Ungültiger Barcode. Ein Produktionsbarcode sollte das Format IIPP.HHQQ.0000.JJ haben.';
-            } else {
+            } else if (currentType == BarcodeType.sales) {
               errorMessage = 'Ungültiger Barcode. Ein Verkaufsbarcode sollte das Format IIPP.HHQQ haben.';
+            } else {
+              errorMessage = 'Ungültiger Barcode. Für Verkauf+Shop sind sowohl IIPP.HHQQ als auch IIPP.HHQQ.FFFF.JJ.NNNN gültig.';
             }
           }
 
@@ -1131,11 +1225,8 @@ class PrinterScreenState extends State<PrinterScreen> {
     }
   }
 
-// Aktualisierte Validierungsfunktion mit explizitem Typ-Parameter
   bool _validateBarcode(String barcode, BarcodeType type) {
     // Verkaufsbarcode-Format: xxxx.yyyy
-    // Erweiterte Produktionsbarcode-Formate
-
     final RegExp salesPattern = RegExp(r'^\d{4}\.\d{4}$');
 
     // Erweiterte Muster für Produktionsbarcodes
@@ -1143,13 +1234,20 @@ class PrinterScreenState extends State<PrinterScreen> {
         r'^\d{4}\.\d{4}\.\d{4}(\.\d{1,2})?(\.\d{4})?$'
     );
 
+    // Shop-Item für salesShop-Typ
+    final RegExp salesShopPattern = RegExp(
+        r'^\d{4}\.\d{4}\.\d{4}\.\d{2}\.\d{4}$'
+    );
+
     if (type == BarcodeType.sales) {
       return salesPattern.hasMatch(barcode);
+    } else if (type == BarcodeType.salesShop) {
+      // Für salesShop akzeptieren wir sowohl sales als auch salesShop-Format
+      return salesPattern.hasMatch(barcode) || salesShopPattern.hasMatch(barcode);
     } else {
       return productionPattern.hasMatch(barcode);
     }
   }
-
 
   Future<void> _loadSwitchValue() async {
     try {
@@ -1281,14 +1379,133 @@ class PrinterScreenState extends State<PrinterScreen> {
   // Modifiziere die bestehenden Funktionen, um die Einstellungen zu speichern
 
   // Beim Ändern des Barcode-Typs
+  // In der Methode _onBarcodeTypeChanged
+// Beim Ändern des Barcode-Typs
   void _onBarcodeTypeChanged(BarcodeType? value) {
     if (value != null) {
       setState(() {
         selectedBarcodeType = value;
         barcodeData = '';
         productData = null;
+
+        // Für salesShop automatisch onlineShopItem aktivieren
+        if (value == BarcodeType.salesShop) {
+          _onlineShopItem = true;
+        }
+
+        // Bei Wechsel zu anderem Typ die Features zurücksetzen
+        if (value != BarcodeType.salesShop) {
+          _productionFeatures = {
+            'thermo': false,
+            'hasel': false,
+            'mondholz': false,
+            'fsc': false,
+            'year': false,
+          };
+          _selectedYear = null;
+        }
       });
+
+      // Laden der gespeicherten Barcode-Daten - OHNE Dialog
+      _loadSavedBarcodeDataWithoutDialog(value);
+    }
+  }
+
+// Neue Methode zum Laden gespeicherter Barcode-Daten ohne Dialog
+  Future<void> _loadSavedBarcodeDataWithoutDialog(BarcodeType type) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('printer')
+          .get();
+
+      if (!doc.exists) return;
+
+      if (type == BarcodeType.sales &&
+          doc.data()?['lastSalesBarcode'] != null) {
+        String lastCode = doc.data()!['lastSalesBarcode'];
+        if (lastCode.isNotEmpty) {
+          await _fetchProductData(lastCode);
+        }
+      } else if (type == BarcodeType.production &&
+          doc.data()?['lastProductionBarcode'] != null) {
+        String lastCode = doc.data()!['lastProductionBarcode'];
+        if (lastCode.isNotEmpty) {
+          // Hier ist der Fehler: Wir laden den letzten Code ohne Dialog zu zeigen
+          final parts = lastCode.split('.');
+
+          // Bei einem vollständigen Produktionscode (4 Teile oder mehr)
+          if (parts.length >= 3) {
+            // Dokument direkt holen ohne Dialog
+            final doc = await FirebaseFirestore.instance
+                .collection('production')
+                .doc(lastCode)
+                .get();
+
+            if (doc.exists) {
+              setState(() {
+                barcodeData = lastCode;
+                productData = doc.data();
+
+                // Features aus dem Barcode extrahieren, falls vorhanden
+                if (parts.length >= 3) {
+                  final features = parts[2];
+                  if (features.length >= 4) {
+                    _productionFeatures = {
+                      'thermo': features[0] == '1',
+                      'hasel': features[1] == '1',
+                      'mondholz': features[2] == '1',
+                      'fsc': features[3] == '1',
+                      'year': parts.length >= 4,
+                    };
+                  }
+                }
+
+                if (productData?['price_CHF'] != null) {
+                  _onlineShopPrice = productData!['price_CHF'].toDouble();
+                  _priceController.text = _onlineShopPrice.toString();
+                }
+              });
+
+              await _updateShortCodeDisplay();
+            }
+          }
+        }
+      }
+
       _saveCurrentSettings();
+    } catch (e) {
+      print('Fehler beim Laden des letzten Barcodes: $e');
+    }
+  }
+
+// Neue Methode zum Laden gespeicherter Barcode-Daten
+  Future<void> _loadSavedBarcodeData(BarcodeType type) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('printer')
+          .get();
+
+      if (!doc.exists) return;
+
+      if (type == BarcodeType.sales &&
+          doc.data()?['lastSalesBarcode'] != null) {
+        String lastCode = doc.data()!['lastSalesBarcode'];
+        if (lastCode.isNotEmpty) {
+          await _fetchProductData(lastCode);
+        }
+      } else if (type == BarcodeType.production &&
+          doc.data()?['lastProductionBarcode'] != null) {
+        String lastCode = doc.data()!['lastProductionBarcode'];
+        if (lastCode.isNotEmpty) {
+          await _handleProductionBarcode(lastCode);
+        }
+      }
+
+      _saveCurrentSettings();
+    } catch (e) {
+      print('Fehler beim Laden des letzten Barcodes: $e');
     }
   }
 
@@ -1332,6 +1549,18 @@ class PrinterScreenState extends State<PrinterScreen> {
           }
           _isExistingOnlineShopItem = true;
           _onlineShopItem = true;
+
+          // Bei einem Shop-Item die Features extrahieren, wenn vorhanden
+          if (productData?['features'] != null) {
+            _productionFeatures = {
+              'thermo': productData!['features']['thermo'] ?? false,
+              'hasel': productData!['features']['hasel'] ?? false,
+              'mondholz': productData!['features']['mondholz'] ?? false,
+              'fsc': productData!['features']['fsc'] ?? false,
+              'year': productData!['year'] != null,
+            };
+            _selectedYear = productData!['year'];
+          }
         });
         await _saveCurrentSettings();
         if (_useShortCodes) {
@@ -1340,8 +1569,8 @@ class PrinterScreenState extends State<PrinterScreen> {
         return;
       }
 
-
-      if (selectedBarcodeType == BarcodeType.sales) {
+      // Für Verkauf oder Verkauf+Shop den Verkaufscode extrahieren
+      if (selectedBarcodeType == BarcodeType.sales || selectedBarcodeType == BarcodeType.salesShop) {
         // Extrahiere den Verkaufscode (xxxx.yyyy)
         final searchBarcode = _extractSalesBarcode(barcode);
 
@@ -1352,11 +1581,37 @@ class PrinterScreenState extends State<PrinterScreen> {
 
         if (doc.exists) {
           setState(() {
-            barcodeData = doc.id;
+            // Stelle sicher, dass wir nur den Basisteil des Barcodes speichern
+            barcodeData = searchBarcode; // Wichtig: Nur die ersten zwei Teile
             productData = doc.data();
             if (productData?['price_CHF'] != null) {
               _onlineShopPrice = productData!['price_CHF'].toDouble();
               _priceController.text = _onlineShopPrice.toString();
+            }
+
+            // Features je nach Typ setzen
+            if (selectedBarcodeType == BarcodeType.salesShop) {
+              // Bei salesShop die Features immer setzen
+              _productionFeatures = {
+                'thermo': false,
+                'hasel': false,
+                'mondholz': false,
+                'fsc': false,
+                'year': true, // Jahr standardmäßig aktivieren
+              };
+
+              // Aktuelles Jahr als Standard setzen
+              _selectedYear = DateTime.now().year.toString().substring(2);
+            } else {
+              // Bei normalen Verkaufsartikeln Features zurücksetzen
+              _productionFeatures = {
+                'thermo': false,
+                'hasel': false,
+                'mondholz': false,
+                'fsc': false,
+                'year': false,
+              };
+              _selectedYear = null;
             }
           });
           await _saveCurrentSettings();
@@ -1451,7 +1706,7 @@ class PrinterScreenState extends State<PrinterScreen> {
                       padding: const EdgeInsets.all(16.0),
                       child: Row(
                         children: [
-                          Icon(Icons.inventory_2, color: primaryAppColor),
+                          getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory,),
                           SizedBox(width: 8),
                           Expanded(
                             child: Column(
@@ -1516,10 +1771,9 @@ class PrinterScreenState extends State<PrinterScreen> {
                                       color: primaryAppColor.withOpacity(0.1),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
-                                    child: Icon(
-                                      Icons.inventory,
-                                      color: primaryAppColor,
-                                    ),
+                                    child:
+                                    getAdaptiveIcon(iconName: 'iventory', defaultIcon: Icons.inventory,),
+
                                   ),
                                   children: [
                                     if (snapshot.hasData)
@@ -1573,10 +1827,8 @@ class PrinterScreenState extends State<PrinterScreen> {
                                       color: primaryAppColor.withOpacity(0.1),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
-                                    child: Icon(
-                                      Icons.inventory,
-                                      color: primaryAppColor,
-                                    ),
+                                    child:
+                                    getAdaptiveIcon(iconName: 'iventory', defaultIcon: Icons.inventory,),
                                   ),
                                   title: Text(productionDoc.id),
                                   subtitle: Text(productionData['product_name']?.toString() ?? ''),
@@ -1825,7 +2077,192 @@ print("printers:ssss:$printers");
       }
     });
   }
+// Neues Widget für die Feature-Buttons
+  Widget _buildFeatureButtons() {
+    if (selectedBarcodeType != BarcodeType.salesShop || productData == null) {
+      return SizedBox.shrink();
+    }
 
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              getAdaptiveIcon(
+                iconName: 'build',
+                defaultIcon: Icons.build,
+                color: primaryAppColor,
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Eigenschaften',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildFeatureToggle('Thermo', 'thermo'),
+              _buildFeatureToggle('Hasel', 'hasel'),
+              _buildFeatureToggle('Mond', 'mondholz'),
+              _buildFeatureToggle('FSC', 'fsc'),
+            ],
+          ),
+          SizedBox(height: 16),
+          Row(
+            children: [
+              getAdaptiveIcon(
+                iconName: 'date_range',
+                defaultIcon: Icons.date_range,
+                color: primaryAppColor,
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Jahrgang',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12),
+          _buildYearSelector(),
+        ],
+      ),
+    );
+  }
+// Kalender-ähnliches Layout für die Jahresauswahl
+  Widget _buildYearSelector() {
+    int currentYear = DateTime.now().year;
+    List<int> years = List.generate(20, (index) => currentYear - index);
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 6,
+        childAspectRatio: 1.5,
+        crossAxisSpacing: 4,
+        mainAxisSpacing: 4,
+      ),
+      itemCount: years.length,
+      itemBuilder: (context, index) {
+        int year = years[index];
+        String shortYear = year.toString().substring(2);
+        bool isSelected = _selectedYear == shortYear;
+
+        return InkWell(
+          onTap: () {
+            setState(() {
+              _selectedYear = shortYear;
+            });
+          },
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.green.shade100 : Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isSelected ? Colors.green : Colors.grey.shade300,
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    "$year",
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected ? Colors.green.shade900 : Colors.grey.shade800,
+                    ),
+                  ),
+                  // Text(
+                  //   "($shortYear)",
+                  //   style: TextStyle(
+                  //     fontSize: 12,
+                  //     color: isSelected ? Colors.green.shade800 : Colors.grey.shade600,
+                  //   ),
+                  // ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+// Toggle-Button für Eigenschaften
+  Widget _buildFeatureToggle(String label, String feature) {
+    bool isActive = _productionFeatures[feature] ?? false;
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _productionFeatures[feature] = !isActive;
+        });
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? Colors.green.shade100 : Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isActive ? Colors.green : Colors.grey.shade300,
+            width: isActive ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                color: isActive ? Colors.green.shade900 : Colors.grey.shade700,
+              ),
+            ),
+            SizedBox(height: 4),
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isActive ? Colors.green : Colors.transparent,
+                border: Border.all(
+                  color: isActive ? Colors.green : Colors.grey.shade400,
+                ),
+              ),
+              child: isActive
+                  ? Icon(
+                Icons.check,
+                size: 16,
+                color: Colors.white,
+              )
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
   Widget _buildConnectionIndicator() {
     if (_printerSearching) {
       return Container(
@@ -2146,7 +2583,7 @@ print("printers:ssss:$printers");
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.warning, color: Colors.orange, size: 48),
+                  getAdaptiveIcon(iconName: 'warning', defaultIcon: Icons.warning, color: Colors.orange, size: 48),
                   SizedBox(height: 16),
                   Text(
                     'Die eingestellte Etikettengröße stimmt nicht mit der im Drucker eingelegten überein.',
@@ -2312,10 +2749,20 @@ print("printers:ssss:$printers");
     final pdf = pw.Document();
 
     // Barcode mit Shop-ID generieren wenn Online Shop aktiv ist
+    // Barcode mit Shop-ID generieren wenn Online Shop aktiv ist
     String displayBarcode = barcodeData;
-    if (!_isExistingOnlineShopItem && _onlineShopItem && selectedBarcodeType == BarcodeType.production) {
-      String formattedShopId = lastShopItem.toString().padLeft(4, '0');
-      displayBarcode = '$barcodeData.$formattedShopId';
+    if (!_isExistingOnlineShopItem && _onlineShopItem) {
+      if (selectedBarcodeType == BarcodeType.production) {
+        String formattedShopId = lastShopItem.toString().padLeft(4, '0');
+        displayBarcode = '$barcodeData.$formattedShopId';
+      } else if (selectedBarcodeType == BarcodeType.salesShop) {
+        // Features und Jahr hinzufügen, wenn sie gesetzt sind
+        String features = _getFeatureString().isEmpty ? "0000" : _getFeatureString();
+        String year = _getYearString().isEmpty ? "00" : _getYearString();
+        String formattedShopId = lastShopItem.toString().padLeft(4, '0');
+
+        displayBarcode = '$barcodeData.$features.$year.$formattedShopId';
+      }
     }
 
     final double labelWidth = selectedLabel?.width.toDouble() ?? 38;
@@ -2638,24 +3085,103 @@ print("printers:ssss:$printers");
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-
           Row(
             children: [
+              // Verkauf
               Expanded(
-                child: RadioListTile<BarcodeType>(
-                  title: Text('Verkauf',style: smallestHeadline,),
-                  value: BarcodeType.sales,
-                  groupValue: selectedBarcodeType,
-                  onChanged: (BarcodeType? value) async {
-                    if (value != null) {
-                      setState(() {
-                        selectedBarcodeType = value;
-                        _includeBatchNumber = false; // Reset beim Wechsel
-                        barcodeData = '';
-                        productData = null;
-                      });
+                child: InkWell(
+                  onTap: () async {
+                    setState(() {
+                      selectedBarcodeType = BarcodeType.sales;
+                      _includeBatchNumber = false;
+                      barcodeData = '';
+                      productData = null;
+                    });
 
-                      // Lade den letzten Verkaufscode
+                    try {
+                      final doc = await FirebaseFirestore.instance
+                          .collection('general_data')
+                          .doc('printer')
+                          .get();
+
+                      if (doc.exists && doc.data()?['lastSalesBarcode'] != null) {
+                        String lastCode = doc.data()!['lastSalesBarcode'];
+                        if (lastCode.isNotEmpty) {
+                          await _fetchProductData(lastCode);
+                        }
+                      }
+                    } catch (e) {
+                      print('Fehler beim Laden des letzten Verkaufscodes: $e');
+                    }
+
+                    _saveCurrentSettings();
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: selectedBarcodeType == BarcodeType.sales
+                          ? primaryAppColor.withOpacity(0.1)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selectedBarcodeType == BarcodeType.sales
+                            ? primaryAppColor
+                            : Colors.grey.shade300,
+                        width: selectedBarcodeType == BarcodeType.sales ? 2 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'storefront',
+                          defaultIcon: Icons.storefront,
+                          color: selectedBarcodeType == BarcodeType.sales
+                              ? primaryAppColor
+                              : Colors.grey[600],
+                          size: 24,
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Verkauf',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: selectedBarcodeType == BarcodeType.sales
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: selectedBarcodeType == BarcodeType.sales
+                                ? primaryAppColor
+                                : Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              SizedBox(width: 8),
+
+              // Shop
+              Expanded(
+                child: InkWell(
+                  onTap: () async {
+                    setState(() {
+                      selectedBarcodeType = BarcodeType.salesShop;
+                      _onlineShopItem = true;
+
+                      _productionFeatures = {
+                        'thermo': false,
+                        'hasel': false,
+                        'mondholz': false,
+                        'fsc': false,
+                        'year': true,
+                      };
+
+                      _selectedYear = DateTime.now().year.toString().substring(2);
+                    });
+
+                    if (barcodeData.isEmpty) {
                       try {
                         final doc = await FirebaseFirestore.instance
                             .collection('general_data')
@@ -2671,54 +3197,162 @@ print("printers:ssss:$printers");
                       } catch (e) {
                         print('Fehler beim Laden des letzten Verkaufscodes: $e');
                       }
-
-                      _saveCurrentSettings();
                     }
+
+                    _saveCurrentSettings();
                   },
-                  activeColor: primaryAppColor,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: selectedBarcodeType == BarcodeType.salesShop
+                          ? primaryAppColor.withOpacity(0.1)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selectedBarcodeType == BarcodeType.salesShop
+                            ? primaryAppColor
+                            : Colors.grey.shade300,
+                        width: selectedBarcodeType == BarcodeType.salesShop ? 2 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'shopping_cart',
+                          defaultIcon: Icons.shopping_cart,
+                          color: selectedBarcodeType == BarcodeType.salesShop
+                              ? primaryAppColor
+                              : Colors.grey[600],
+                          size: 24,
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Shop',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: selectedBarcodeType == BarcodeType.salesShop
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: selectedBarcodeType == BarcodeType.salesShop
+                                ? primaryAppColor
+                                : Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-              Expanded(
-                child: Column(
-                  children: [
-                    RadioListTile<BarcodeType>(
-                      title: Text('Produktion',style: smallestHeadline,),
-                      value: BarcodeType.production,
-                      groupValue: selectedBarcodeType,
-                      onChanged: (BarcodeType? value) async {
-                        if (value != null) {
-                          setState(() {
-                            selectedBarcodeType = value;
-                            barcodeData = '';
-                            productData = null;
-                          });
 
-                          try {
-                            final doc = await FirebaseFirestore.instance
-                                .collection('general_data')
-                                .doc('printer')
+              SizedBox(width: 8),
+
+              // Produktion
+              Expanded(
+                child: InkWell(
+                  onTap: () async {
+                    setState(() {
+                      selectedBarcodeType = BarcodeType.production;
+                      barcodeData = '';
+                      productData = null;
+                    });
+
+                    try {
+                      final doc = await FirebaseFirestore.instance
+                          .collection('general_data')
+                          .doc('printer')
+                          .get();
+
+                      if (doc.exists && doc.data()?['lastProductionBarcode'] != null) {
+                        String lastCode = doc.data()!['lastProductionBarcode'];
+                        if (lastCode.isNotEmpty) {
+                          final parts = lastCode.split('.');
+                          String docId = lastCode;
+
+                          if (parts.length >= 3) {
+                            final prodDoc = await FirebaseFirestore.instance
+                                .collection('production')
+                                .doc(docId)
                                 .get();
 
-                            if (doc.exists && doc.data()?['lastProductionBarcode'] != null) {
-                              String lastCode = doc.data()!['lastProductionBarcode'];
-                              if (lastCode.isNotEmpty) {
-                                await _fetchProductData(lastCode);
-                              }
+                            if (prodDoc.exists) {
+                              setState(() {
+                                barcodeData = docId;
+                                productData = prodDoc.data();
+
+                                if (parts.length >= 3) {
+                                  final features = parts[2];
+                                  if (features.length >= 4) {
+                                    _productionFeatures = {
+                                      'thermo': features[0] == '1',
+                                      'hasel': features[1] == '1',
+                                      'mondholz': features[2] == '1',
+                                      'fsc': features[3] == '1',
+                                      'year': parts.length >= 4,
+                                    };
+                                  }
+                                }
+
+                                if (productData?['price_CHF'] != null) {
+                                  _onlineShopPrice = productData!['price_CHF'].toDouble();
+                                  _priceController.text = _onlineShopPrice.toString();
+                                }
+                              });
+
+                              await _updateShortCodeDisplay();
                             }
-                          } catch (e) {
-                            print('Fehler beim Laden des letzten Produktionscodes: $e');
                           }
-
-                          _saveCurrentSettings();
                         }
-                      },
-                      activeColor: primaryAppColor,
-                    ),
+                      }
+                    } catch (e) {
+                      print('Fehler beim Laden des letzten Produktionscodes: $e');
+                    }
 
-                  ],
+                    _saveCurrentSettings();
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: selectedBarcodeType == BarcodeType.production
+                          ? primaryAppColor.withOpacity(0.1)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selectedBarcodeType == BarcodeType.production
+                            ? primaryAppColor
+                            : Colors.grey.shade300,
+                        width: selectedBarcodeType == BarcodeType.production ? 2 : 1,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'precision_manufacturing',
+                          defaultIcon: Icons.precision_manufacturing,
+                          color: selectedBarcodeType == BarcodeType.production
+                              ? primaryAppColor
+                              : Colors.grey[600],
+                          size: 24,
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Prod.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: selectedBarcodeType == BarcodeType.production
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: selectedBarcodeType == BarcodeType.production
+                                ? primaryAppColor
+                                : Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-
             ],
           ),
 
@@ -2727,35 +3361,23 @@ print("printers:ssss:$printers");
             child: Row(
               children: [
                 Expanded(
-                  child:ElevatedButton(
-                    onPressed: _showProductSearchDialog,
-                    child: kIsWeb
-                        ? const Text('Suchen',style: smallHeadline,)
-                        : const Icon(Icons.search),
-                  )
+                    child: ElevatedButton(
+                      onPressed: _showProductSearchDialog,
+                      child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search,),
+                    )
                 ),
-              if(!kIsWeb)  const SizedBox(width: 8),
-                if(!kIsWeb)   Expanded(
+                if(!kIsWeb) const SizedBox(width: 8),
+                if(!kIsWeb) Expanded(
                   child: ElevatedButton(
                     onPressed: _startScanner,
-                    child:
-
-
-
-                    const Icon(Icons.qr_code_scanner),
-
+                    child: getAdaptiveIcon(iconName: 'qr_code', defaultIcon: Icons.qr_code,),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child:
-                  ElevatedButton(
+                  child: ElevatedButton(
                     onPressed: () => _showManualInputDialog(),
-
-                    child: kIsWeb
-                        ? const Text('Manuelle Eingabe',style: smallHeadline,)
-                        : const Icon(Icons.keyboard),
-
+                    child: getAdaptiveIcon(iconName: 'keyboard', defaultIcon: Icons.keyboard,),
                   ),
                 ),
               ],
@@ -2777,16 +3399,23 @@ print("printers:ssss:$printers");
             },
             barcodeData: barcodeData,
             barcodeType: selectedBarcodeType,
-            productionFeatures: _productionFeatures,  // Neu
-            onFeatureToggled: _updateProductionFeatures,  // Neu
+            productionFeatures: _productionFeatures,
+            onFeatureToggled: _updateProductionFeatures,
           ),
         ],
       ),
     );
   }
 
+
+
+
   Widget _buildPreview() {
     if (productData == null || barcodeData.isEmpty) {
+      // Zeige einen Platzhalter für den "Shop"-Typ mit Dummy-Barcode an
+
+
+      // Standard-Platzhalter für andere Typen
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(30.0),
@@ -2803,12 +3432,29 @@ print("printers:ssss:$printers");
 
     // Barcode mit Shop-ID generieren wenn Online Shop aktiv ist
     String displayBarcode = barcodeData;
-    if (!_isExistingOnlineShopItem && _onlineShopItem && selectedBarcodeType == BarcodeType.production) {
+
+    // Die Shop-ID für normale Barcodes oder Shop-Barcodes hinzufügen
+    if (!_isExistingOnlineShopItem) {
       String formattedShopId = lastShopItem.toString().padLeft(4, '0');
-      displayBarcode = '$barcodeData.$formattedShopId';
+
+      if (selectedBarcodeType == BarcodeType.production && _onlineShopItem) {
+        // Für Produktionsartikel nur die Shop-ID hinzufügen
+        displayBarcode = '$barcodeData.$formattedShopId';
+      }
+      else if (selectedBarcodeType == BarcodeType.salesShop) {
+        // Für Shop-Artikel die Features und das Jahr hinzufügen
+        String features = _getFeatureString().isEmpty ? "0000" : _getFeatureString();
+        String year = _getYearString().isEmpty ? "00" : _getYearString();
+
+        // Nur den Basiscode (IIPP.HHQQ) nehmen, keine bestehenden Features/Jahr
+        if (barcodeData.contains('.')) {
+          String baseCode = barcodeData.split('.').take(2).join('.');
+          displayBarcode = '$baseCode.$features.$year.$formattedShopId';
+        } else {
+          displayBarcode = '$barcodeData.$features.$year.$formattedShopId';
+        }
+      }
     }
-
-
 
     // Hauptabkürzungen für erste Zeile
     List<String> mainElements = [];
@@ -2820,16 +3466,13 @@ print("printers:ssss:$printers");
         mainElements.add(_shortCodeDisplay!);
       }
 
-      if (selectedBarcodeType == BarcodeType.production) {
-        final parts = barcodeData.split('.');
-        if (parts.length >= 3) {
-          final features = parts[2];
-          if (features[0] == '1' && _productionFeatures['thermo']!) featureElements.add('Th');
-          if (features[1] == '1' && _productionFeatures['hasel']!) featureElements.add('Ha');
-          if (features[2] == '1' && _productionFeatures['mondholz']!) featureElements.add('Mo');
-          if (features[3] == '1' && _productionFeatures['fsc']!) featureElements.add('FSC');
-          if (parts.length >= 4 && _productionFeatures['year']!) featureElements.add('${parts[3]}');
-        }
+      if (selectedBarcodeType == BarcodeType.production || selectedBarcodeType == BarcodeType.salesShop) {
+        // Feature-Text-Elemente hinzufügen
+        if (_productionFeatures['thermo']!) featureElements.add('Th');
+        if (_productionFeatures['hasel']!) featureElements.add('Ha');
+        if (_productionFeatures['mondholz']!) featureElements.add('Mo');
+        if (_productionFeatures['fsc']!) featureElements.add('FSC');
+        if (_selectedYear != null && _productionFeatures['year']!) featureElements.add('${_selectedYear}');
       }
     }
 
@@ -2845,7 +3488,7 @@ print("printers:ssss:$printers");
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 BarcodeWidget(
-                  data: displayBarcode,  // Hier wird der möglicherweise modifizierte Barcode verwendet
+                  data: displayBarcode,
                   barcode: Barcode.code128(),
                   height: 60,
                   width: 200,
@@ -2853,7 +3496,7 @@ print("printers:ssss:$printers");
                 ),
                 SizedBox(height: 4),
                 Text(
-                  displayBarcode,  // Und hier auch
+                  displayBarcode,
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -2905,7 +3548,6 @@ print("printers:ssss:$printers");
       ),
     );
   }
-
 
 
 
@@ -3051,32 +3693,13 @@ print("printers:ssss:$printers");
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Center(child: Text('Barcode drucken', style: headline4_0)),
+        title:
+
+        Center(child: Text('Barcode drucken', style: headline4_0)),
         actions: [
-          // GestureDetector(
-          //   onTap: _showPrinterStatusToast,
-          //   child: Padding(
-          //     padding: const EdgeInsets.all(8.0),
-          //     child: Container(
-          //       width: 20,
-          //       height: 20,
-          //       decoration: BoxDecoration(
-          //         shape: BoxShape.circle,
-          //         color: _indicatorColor,
-          //         boxShadow: [
-          //           BoxShadow(
-          //             color: Colors.grey.withOpacity(0.6),
-          //             spreadRadius: 2,
-          //             blurRadius: 2,
-          //             offset: Offset(0, 0),
-          //           ),
-          //         ],
-          //       ),
-          //     ),
-          //   ),
-          // ),
+
           IconButton(
-            icon: const Icon(Icons.settings),
+            icon:   getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
             onPressed: () {
               showPrinterSettingsDialog(context);
             },
@@ -3116,12 +3739,15 @@ print("printers:ssss:$printers");
                     ),
                   ),
                 ),
-
+              // Feature-Buttons außerhalb der Barcode-Vorschau
+              if (selectedBarcodeType == BarcodeType.salesShop)
+                _buildFeatureButtons(),
               Container(
                 margin: const EdgeInsets.all(8.0),
                 child: Column(
                   children: [
-                    if (selectedBarcodeType == BarcodeType.production)
+                    if (selectedBarcodeType == BarcodeType.production ||
+                        selectedBarcodeType == BarcodeType.salesShop)
                       Card(
                       color: Colors.white,
                       elevation: 2,
@@ -3145,8 +3771,8 @@ print("printers:ssss:$printers");
                                         : Colors.grey.withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  child: Icon(
-                                    Icons.shopping_cart_checkout,
+                                  child:
+                                      getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart,
                                     size: 24,
                                     color: _isPrinterOnline
                                         ? primaryAppColor
@@ -3177,7 +3803,7 @@ print("printers:ssss:$printers");
                                                   controller: _priceController,
                                                   keyboardType: TextInputType.numberWithOptions(decimal: true),
                                                   decoration: InputDecoration(
-                                                   //prefixIcon: Icon(Icons.currency_bitcoin, color: primaryAppColor),
+
                                                     prefixText: 'CHF ',
                                                     border: OutlineInputBorder(
                                                       borderRadius: BorderRadius.circular(8),
@@ -3198,6 +3824,7 @@ print("printers:ssss:$printers");
                                     ],
                                   ),
                                 ),
+                                if (selectedBarcodeType == BarcodeType.production)
                                 Transform.scale(
                                   scale: 0.9,
                                   child: Switch(
@@ -3283,8 +3910,8 @@ print("printers:ssss:$printers");
                                         : Colors.grey.withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  child: Icon(
-                                    Icons.print,
+                                  child:
+                                  getAdaptiveIcon(iconName: 'print', defaultIcon: Icons.print,
                                     size: 24,
                                     color: _isPrinterOnline
                                         ? primaryAppColor
@@ -3341,7 +3968,9 @@ print("printers:ssss:$printers");
                                       valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                     ),
                                   )
-                                      : Icon(Icons.refresh),
+                                      :
+                                  getAdaptiveIcon(iconName: 'refresh', defaultIcon: Icons.refresh,),
+
                                   onPressed: _printerSearching
                                       ? null
                                       : () {
@@ -3378,7 +4007,8 @@ print("printers:ssss:$printers");
                                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                       children: [
                                         IconButton(
-                                          icon: Icon(Icons.remove),
+                                          icon:
+                                          getAdaptiveIcon(iconName: 'remove', defaultIcon: Icons.remove,),
                                           onPressed: printQuantity > 1
                                               ? () => setState(() => printQuantity--)
                                               : null,
@@ -3392,7 +4022,8 @@ print("printers:ssss:$printers");
                                           ),
                                         ),
                                         IconButton(
-                                          icon: Icon(Icons.add),
+                                          icon:
+                                          getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add,),
                                           onPressed: () => setState(() => printQuantity++),
                                           color: const Color(0xFF3E9C37),
                                         ),
@@ -3405,7 +4036,7 @@ print("printers:ssss:$printers");
 
                             const SizedBox(height: 16),
                             const SizedBox(height: 16),
-                            if (_onlineShopItem && selectedBarcodeType == BarcodeType.production)
+                            if (_onlineShopItem && (selectedBarcodeType == BarcodeType.production || selectedBarcodeType == BarcodeType.salesShop))
                               _isExistingOnlineShopItem
                                   ? // Nur ein Button zum erneuten Drucken für existierende Shop-Artikel
                               Container(
@@ -3434,14 +4065,16 @@ print("printers:ssss:$printers");
                                     ),
                                   ),
                                 ),
-                              ):
+                              ) :
                               Row(
                                 children: [
                                   Expanded(
                                     child: Container(
                                       height: 48,
                                       child: ElevatedButton(
-                                        onPressed: barcodeData.isEmpty
+                                        onPressed: barcodeData.isEmpty ||
+                                            (selectedBarcodeType == BarcodeType.salesShop &&
+                                                (!_hasSetFeatures() || _selectedYear == null))
                                             ? null
                                             : () => _bookOnlineShopItem(lastShopItem),
                                         style: ElevatedButton.styleFrom(
@@ -3457,7 +4090,9 @@ print("printers:ssss:$printers");
                                           style: TextStyle(
                                             fontSize: 16,
                                             fontWeight: FontWeight.bold,
-                                            color: barcodeData.isEmpty
+                                            color: barcodeData.isEmpty ||
+                                                (selectedBarcodeType == BarcodeType.salesShop &&
+                                                    (!_hasSetFeatures() || _selectedYear == null))
                                                 ? Colors.grey.shade600
                                                 : Colors.black87,
                                           ),
@@ -3467,7 +4102,9 @@ print("printers:ssss:$printers");
                                   ),
                                   const SizedBox(width: 8),
                                   ElevatedButton(
-                                    onPressed: barcodeData.isEmpty || !_isPrinterOnline
+                                    onPressed: barcodeData.isEmpty || !_isPrinterOnline ||
+                                        (selectedBarcodeType == BarcodeType.salesShop &&
+                                            (!_hasSetFeatures() || _selectedYear == null))
                                         ? null
                                         : () async {
                                       // 1. Zuerst Lagerbestand prüfen, ohne ihn zu aktualisieren
@@ -3541,7 +4178,9 @@ print("printers:ssss:$printers");
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
-                                        color: barcodeData.isEmpty || !_isPrinterOnline
+                                        color: barcodeData.isEmpty || !_isPrinterOnline ||
+                                            (selectedBarcodeType == BarcodeType.salesShop &&
+                                                (!_hasSetFeatures() || _selectedYear == null))
                                             ? Colors.grey.shade600
                                             : Colors.white,
                                       ),
@@ -3550,7 +4189,7 @@ print("printers:ssss:$printers");
                                 ],
                               )
                             else
-                            // Ursprünglicher einzelner Button wenn Online-Shop deaktiviert
+// Ursprünglicher einzelner Button wenn Online-Shop deaktiviert
                               Container(
                                 width: double.infinity,
                                 height: 48,
@@ -3873,8 +4512,7 @@ class _AbbreviationSelectorState extends State<AbbreviationSelector> {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.short_text,
+              getAdaptiveIcon(iconName: 'short_text', defaultIcon: Icons.short_text,
                 color: primaryAppColor.withOpacity(0.6),
                 size: 24,
               ),
@@ -3905,12 +4543,12 @@ class _AbbreviationSelectorState extends State<AbbreviationSelector> {
                           activeColor: primaryAppColor,
                         ),
                       ),
-                      Icon(
+
                         _isExpanded
-                            ? Icons.expand_less
-                            : Icons.expand_more,
-                        color: Colors.grey[600],
-                      ),
+                            ?
+                        getAdaptiveIcon(iconName: 'expand_less', defaultIcon: Icons.expand_less,)
+                            :  getAdaptiveIcon(iconName: 'expand_more', defaultIcon: Icons.expand_more,color: Colors.grey[600],)
+
                     ],
                   ),
                 ),

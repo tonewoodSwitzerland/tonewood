@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'package:tonewood/analytics/sales/services/sales_services.dart';
+import '../../services/icon_helper.dart';
 import 'models/sales_filter.dart';
 import 'models/sales_models.dart';
 
@@ -49,6 +50,7 @@ class SalesOverview extends StatelessWidget {
                         symbol: 'CHF',
                       ).format(stats.totalRevenue),
                       icon: Icons.attach_money,
+                      iconName: 'attach_money',
                       trend: stats.revenueTrend,
                       subtitle: _getFilterTimeRange(),
                       color: Colors.green,
@@ -61,6 +63,7 @@ class SalesOverview extends StatelessWidget {
                       title: 'Top Kunde (brutto)',
                       value: stats.topCustomer.name,
                       icon: Icons.person,
+                      iconName: 'person',
                       subtitle: NumberFormat.currency(
                         locale: 'de_CH',
                         symbol: 'CHF',
@@ -80,6 +83,7 @@ class SalesOverview extends StatelessWidget {
                       title: 'Top Produkt',
                       value: stats.topProduct.name,
                       icon: Icons.inventory,
+                      iconName: 'inventory',
                       subtitle: '${stats.topProduct.quantity} Stück verkauft',
                       color: Colors.purple,
                     ),
@@ -93,7 +97,8 @@ class SalesOverview extends StatelessWidget {
                         locale: 'de_CH',
                         symbol: 'CHF',
                       ).format(stats.averageOrderValue),
-                      icon: Icons.shopping_cart,
+                      icon:    Icons.shopping_cart,
+                     iconName: 'shopping_cart',
                       trend: stats.orderValueTrend,
                       subtitle: 'Pro Verkauf',
                       color: Colors.orange,
@@ -119,10 +124,8 @@ class SalesOverview extends StatelessWidget {
                               color: Colors.blue.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Icon(
-                              Icons.bar_chart,
-                              color: Colors.blue,
-                            ),
+                            child:
+                            getAdaptiveIcon(iconName: 'bar_chart', defaultIcon: Icons.bar_chart, color: Colors.blue,),
                           ),
                           const SizedBox(width: 12),
                           Column(
@@ -298,6 +301,9 @@ class SalesOverview extends StatelessWidget {
         String? subtitle,
         double? trend,
         required Color color,
+        String? iconName, // Neuer Parameter für adaptiveIcon
+        String? trendUpIconName, // Für den Trend-Up-Icon
+        String? trendDownIconName, // Für den Trend-Down-Icon
       }) {
     return Card(
       child: Padding(
@@ -310,10 +316,21 @@ class SalesOverview extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(
+                        red: 0,
+                        green:0,
+                        blue: 0,
+                        alpha: 0.1
+                    ),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(icon, color: color),
+                  child: iconName != null
+                      ? getAdaptiveIcon(
+                    iconName: iconName,
+                    defaultIcon: icon,
+                    color: color,
+                  )
+                      : Icon(icon, color: color),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -350,9 +367,17 @@ class SalesOverview extends StatelessWidget {
                   ),
                   if (trend != null) ...[
                     const SizedBox(width: 8),
-                    Icon(
-                      trend >= 0 ? Icons.trending_up : Icons.trending_down,
-                      color: trend >= 0 ? Colors.green : Colors.red,
+                    trend >= 0
+                        ? getAdaptiveIcon(
+                      iconName: trendUpIconName ?? 'trending_up',
+                      defaultIcon: Icons.trending_up,
+                      color: Colors.green,
+                      size: 16,
+                    )
+                        : getAdaptiveIcon(
+                      iconName: trendDownIconName ?? 'trending_down',
+                      defaultIcon: Icons.trending_down,
+                      color: Colors.red,
                       size: 16,
                     ),
                     Text(

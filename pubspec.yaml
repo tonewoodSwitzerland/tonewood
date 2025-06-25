@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.4.8+7
+version: 1.6.0+10
 
 environment:
   sdk: '>=3.4.3 <4.0.0'
@@ -36,6 +36,7 @@ dependencies:
   cloud_firestore: ^5.1.0
   cloud_functions: 5.1.3
   device_info_plus: ^10.1.0
+
   csv: ^6.0.0
   get: ^4.6.6
   google_sign_in: ^6.2.1
@@ -52,7 +53,7 @@ dependencies:
   font_awesome_flutter: ^10.7.0
   flutter_barcode_scanner: ^2.0.0
   flutter_secure_storage: ^9.0.0
-  flutter_launcher_icons: ^0.13.1
+  flutter_launcher_icons: ^0.14.4
   local_auth: ^2.1.8
   modal_progress_hud_nsn: ^0.5.1
   package_info_plus: ^8.0.0
@@ -60,6 +61,7 @@ dependencies:
   permission_handler: ^11.3.1
   pdf: ^3.11.1
   printing: ^5.9.0
+
   shared_preferences: ^2.2.2
   share_plus: ^10.1.1
   syncfusion_flutter_pdfviewer: ^27.1.57
@@ -69,6 +71,7 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  flutter_native_splash: ^2.4.4
 
 dev_dependencies:
   flutter_test:
@@ -92,6 +95,21 @@ flutter_icons:
   image_path_ios: "images/tonewood_logo_blaetter_r.png"          # Nur für iOS
   adaptive_icon_background: "#FFFFFF"  # Hintergrundfarbe für adaptive Icons (Android)
   adaptive_icon_foreground: "images/tonewood_logo_blaetter_r.png"  # Vordergrund für adaptive Icons (Android)
+
+flutter_launcher_icons:
+  android: true          # generiert alle dpi-Größen & adaptive Icons
+  ios: true              # generiert alle iOS-Größen
+  image_path: assets/icons/splash.png           # dein zentrales PNG
+  adaptive_icon_foreground: assets/icons/splash.png   # (Android 8+)
+  adaptive_icon_background: '#ffffff'             # solide Farbe ODER PNG
+
+
+flutter_native_splash:
+  color: "#ffffff" # oder Hintergrundfarbe
+  image: assets/images/splash.png
+  android: true
+  ios: true
+  fullscreen: true
 
 # The following section is specific to Flutter packages.
 flutter:
@@ -133,3 +151,5 @@ flutter:
   # see https://flutter.dev/to/font-from-package
   assets:
     - images/
+    - assets/icons/
+    - assets/images/splash.png

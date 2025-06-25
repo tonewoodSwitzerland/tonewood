@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../constants.dart';
+import '../services/icon_helper.dart';
 
 class RoundwoodEntryScreen extends StatefulWidget {
   final bool editMode;
@@ -279,12 +280,35 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
       ),
       filled: true,
       fillColor: Colors.grey[100],
-      prefixIcon: Icon(icon, color: const Color(0xFF0F4A29)),
+      prefixIcon: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: getAdaptiveIcon(
+          iconName: _getIconName(icon),
+          defaultIcon: icon,
+          color: const Color(0xFF0F4A29),
+
+        ),
+      ),
       labelStyle: TextStyle(color: Colors.grey[700]),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     );
   }
+  String _getIconName(IconData icon) {
+    // Mapping von IconData zu String-Namen
+    if (icon == Icons.tag) return 'tag';
+    if (icon == Icons.forest) return 'forest';
+    if (icon == Icons.assignment) return 'assignment';
+    if (icon == Icons.straighten) return 'straighten';
+    if (icon == Icons.star) return 'star';
+    if (icon == Icons.note_add) return 'note_add';
+    if (icon == Icons.calendar_today) return 'calendar_today';
+    if (icon == Icons.color_lens) return 'color_lens';
+    if (icon == Icons.location_on) return 'location_on';
+    if (icon == Icons.add) return 'add';
 
+    // Standardwert für unbekannte Icons
+    return 'circle';
+  }
 // Neue Methode für den Auswahl-Dialog
   void _showPurposeSelectionDialog() {
     showDialog(
@@ -301,10 +325,11 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
                       color: const Color(0xFF0F4A29).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(
-                      Icons.assignment,
-                      color: Color(0xFF0F4A29),
-                    ),
+                    child:getAdaptiveIcon(
+                      iconName: 'assignment',
+                      defaultIcon: Icons.assignment,
+                      color: const Color(0xFF0F4A29),
+                    )
                   ),
                   const SizedBox(width: 8),
                   const Text('Verwendungszwecke',style: smallestHeadline,),
@@ -387,7 +412,11 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.assignment, color: const Color(0xFF0F4A29)),
+                    getAdaptiveIcon(
+                      iconName: 'assignment',
+                      defaultIcon: Icons.assignment,
+                      color: const Color(0xFF0F4A29),
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -398,7 +427,11 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
                         ),
                       ),
                     ),
-                    Icon(Icons.arrow_drop_down, color: Colors.grey[600]),
+                    getAdaptiveIcon(
+                      iconName: 'arrow_drop_down',
+                      defaultIcon: Icons.arrow_drop_down,
+                      color: Colors.grey[600],
+                    )
                   ],
                 ),
                 if (selectedPurposes.isNotEmpty) ...[
@@ -410,7 +443,7 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
                       final name = getNameFromDocs(purposes!, code);
                       return Chip(
                         label: Text(name),
-                        deleteIcon: const Icon(Icons.close, size: 18),
+                        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                         onDeleted: () {
                           setState(() {
                             selectedPurposes.remove(code);
@@ -434,7 +467,7 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
           controller: _purposeController,
           decoration: _getInputDecoration(
             labelText: 'Weitere Verwendungszwecke',
-            icon: Icons.add_circle_outline,
+            icon: Icons.add,
             helperText: 'Zusätzliche Verwendungszwecke hier eingeben',
           ),
           maxLines: 2,
@@ -463,9 +496,12 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
                     color: const Color(0xFF0F4A29).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(
-                    Icons.format_list_numbered,
-                    color: Color(0xFF0F4A29),
+                  child:
+                      getAdaptiveIcon(
+                        iconName: 'format_list_numbered',
+                        defaultIcon: Icons.format_list_numbered,
+                        color: const Color(0xFF0F4A29),
+
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -539,10 +575,11 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
                     color: const Color(0xFF0F4A29).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(
-                    Icons.approval,
-                    color: Color(0xFF0F4A29),
-                  ),
+                  child: getAdaptiveIcon(
+                    iconName: 'approval',
+                    defaultIcon: Icons.approval,
+                    color: const Color(0xFF0F4A29),
+                  )
                 ),
                 const SizedBox(width: 12),
                 const Text(
@@ -557,15 +594,7 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
             ),
             const SizedBox(height: 24),
             _buildPurposeSection(),
-            // TextFormField(
-            //   controller: _purposeController,
-            //   decoration: _getInputDecoration(
-            //     labelText: 'Verwendungszweck',
-            //     icon: Icons.assignment,
-            //   ),
-            //
-            //   maxLines: 2,
-            // ),
+
             const SizedBox(height: 16),
             Container(
               decoration: BoxDecoration(
@@ -583,10 +612,11 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
                 ),
                 value: _isMoonwood,
                 onChanged: (value) => setState(() => _isMoonwood = value),
-                secondary: Icon(
-                  Icons.nightlight_round,
+                secondary: getAdaptiveIcon(
+                  iconName: 'nightlight',
+                  defaultIcon: Icons.nightlight,
                   color: const Color(0xFF0F4A29),
-                ),
+                )
               ),
             ),
             const SizedBox(height: 16),
@@ -628,10 +658,11 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
                     color: const Color(0xFF0F4A29).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(
-                    Icons.more_horiz,
-                    color: Color(0xFF0F4A29),
-                  ),
+                  child:getAdaptiveIcon(
+                    iconName: 'more_horiz',
+                    defaultIcon: Icons.more_horiz,
+                    color: const Color(0xFF0F4A29),
+                  )
                 ),
                 const SizedBox(width: 12),
                 const Text(
@@ -649,7 +680,7 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
               DropdownButtonFormField<String>(
                 decoration: _getInputDecoration(
                   labelText: 'Qualität',
-                  icon: Icons.star_border,
+                  icon: Icons.star,
                 ),
                 value: _selectedQuality,
                 items: qualities!.map((doc) {
@@ -682,8 +713,8 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
                   color: Colors.grey[100],
                 ),
                 child: ListTile(
-                  leading: const Icon(
-                    Icons.calendar_today,
+                  leading:
+                  getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today,
                     color: Color(0xFF0F4A29),
                   ),
                   title: Text(

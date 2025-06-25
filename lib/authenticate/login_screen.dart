@@ -128,7 +128,8 @@ class LoginScreenState extends State<LoginScreen> {
         _buildTextField(
           focusNode: _focusMail,
           hintText: 'mail'.tr,
-          icon: Icons.mail,
+          icon:
+          Icons.mail,
           isPassword: false,
           onChanged: (value) => email = value,
           validator: (value) => value!.isEmpty ? 'emptyMail'.tr : null,

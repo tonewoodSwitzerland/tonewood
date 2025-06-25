@@ -331,7 +331,8 @@
 //               // Nur für Mobile den Filter-Button zeigen
 //               actions: !isDesktopLayout ? [
 //                 IconButton(
-//                   icon: const Icon(Icons.filter_list),
+//                     icon:getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list,),
+
 //                   onPressed: () => _showFilterDialog(),
 //                 ),
 //               ] : null,
@@ -406,7 +407,7 @@
 //               padding: const EdgeInsets.only(right: 8.0),
 //               child: Chip(
 //                 label: Text('${getNameForCode(instruments!, code)} ($code)'),
-//                 deleteIcon: const Icon(Icons.close, size: 18),
+//                 deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
 //                 onDeleted: () {
 //                   setState(() {
 //                     selectedInstrumentCodes.remove(code);
@@ -419,7 +420,7 @@
 //               padding: const EdgeInsets.only(right: 8.0),
 //               child: Chip(
 //                 label: Text('${getNameForCode(parts!, code)} ($code)'),
-//                 deleteIcon: const Icon(Icons.close, size: 18),
+//                 deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
 //                 onDeleted: () {
 //                   setState(() {
 //                     selectedPartCodes.remove(code);
@@ -432,7 +433,7 @@
 //               padding: const EdgeInsets.only(right: 8.0),
 //               child: Chip(
 //                 label: Text('${getNameForCode(woodTypes!, code)} ($code)'),
-//                 deleteIcon: const Icon(Icons.close, size: 18),
+//                 deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
 //                 onDeleted: () {
 //                   setState(() {
 //                     selectedWoodCodes.remove(code);
@@ -445,7 +446,7 @@
 //               padding: const EdgeInsets.only(right: 8.0),
 //               child: Chip(
 //                 label: Text('${getNameForCode(qualities!, code)} ($code)'),
-//                 deleteIcon: const Icon(Icons.close, size: 18),
+//                 deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
 //                 onDeleted: () {
 //                   setState(() {
 //                     selectedQualityCodes.remove(code);
@@ -458,7 +459,7 @@
 //               padding: const EdgeInsets.only(right: 8.0),
 //               child: Chip(
 //                 label: Text('Jahrgang: 20$selectedYear'),
-//                 deleteIcon: const Icon(Icons.close, size: 18),
+//                 deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
 //                 onDeleted: () {
 //                   setState(() {
 //                     selectedYear = null;
@@ -471,7 +472,7 @@
 //               padding: const EdgeInsets.only(right: 8.0),
 //               child: Chip(
 //                 label: Text('Einheit: $selectedUnit'),
-//                 deleteIcon: const Icon(Icons.close, size: 18),
+//                 deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
 //                 onDeleted: () {
 //                   setState(() {
 //                     selectedUnit = null;
@@ -484,7 +485,7 @@
 //               padding: const EdgeInsets.only(right: 8.0),
 //               child: Chip(
 //                 label: const Text('Haselfichte'),
-//                 deleteIcon: const Icon(Icons.close, size: 18),
+//                 deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
 //                 onDeleted: () {
 //                   setState(() {
 //                     haselfichteFilter = false;
@@ -497,7 +498,7 @@
 //               padding: const EdgeInsets.only(right: 8.0),
 //               child: Chip(
 //                 label: const Text('Mondholz'),
-//                 deleteIcon: const Icon(Icons.close, size: 18),
+//                 deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
 //                 onDeleted: () {
 //                   setState(() {
 //                     moonwoodFilter = false;
@@ -510,7 +511,7 @@
 //               padding: const EdgeInsets.only(right: 8.0),
 //               child: Chip(
 //                 label: const Text('Thermobehandelt'),
-//                 deleteIcon: const Icon(Icons.close, size: 18),
+//                 deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
 //                 onDeleted: () {
 //                   setState(() {
 //                     thermallyTreatedFilter = false;
@@ -523,7 +524,7 @@
 //               padding: const EdgeInsets.only(right: 8.0),
 //               child: Chip(
 //                 label: const Text('FSC 100%'),
-//                 deleteIcon: const Icon(Icons.close, size: 18),
+//                 deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
 //                 onDeleted: () {
 //                   setState(() {
 //                     fscFilter = false;
@@ -821,7 +822,7 @@
 //                               ),
 //                             ),
 //                             IconButton(
-//                               icon: const Icon(Icons.close),
+//                               icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
 //                               onPressed: () => Navigator.of(context).pop(),
 //                             ),
 //                           ],

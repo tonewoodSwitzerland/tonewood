@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:tonewood/analytics/production/services/production_service.dart';
 
+import '../../services/icon_helper.dart';
 import 'models/production_filter.dart';
 
 class ProductionBatches extends StatelessWidget {
@@ -392,7 +393,7 @@ class ProductionBatches extends StatelessWidget {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close),
+                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                       onPressed: () => Navigator.of(context).pop(),
                       color: Colors.grey[600],
                     ),

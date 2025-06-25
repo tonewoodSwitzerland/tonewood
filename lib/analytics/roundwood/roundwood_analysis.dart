@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import '../../services/icon_helper.dart';
 import 'models/roundwood_models.dart';
 import 'services/roundwood_service.dart';
 import 'widgets/roundwood_chart_card.dart';
@@ -48,8 +49,8 @@ class RoundwoodAnalysisState extends State<RoundwoodAnalysis> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.analytics,
+                getAdaptiveIcon(iconName: 'analytics', defaultIcon: Icons.analytics,
+
                   size: 64,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -274,6 +275,7 @@ class RoundwoodAnalysisState extends State<RoundwoodAnalysis> {
           child: RoundwoodStatsCard(
 
             value: '${totalVolume.toStringAsFixed(2)} m³',
+            iconName:'straighten',
             icon: Icons.straighten,
           ),
         ),
@@ -282,6 +284,7 @@ class RoundwoodAnalysisState extends State<RoundwoodAnalysis> {
           child: RoundwoodStatsCard(
 
             value: items.length.toString(),
+            iconName:'forest',
             icon: Icons.forest,
           ),
         ),
@@ -290,6 +293,7 @@ class RoundwoodAnalysisState extends State<RoundwoodAnalysis> {
           child: RoundwoodStatsCard(
 
             value: '${(moonwoodCount / items.length * 100).toStringAsFixed(1)}%',
+            iconName:'nightlight',
             icon: Icons.nightlight,
           ),
         ),
@@ -532,7 +536,7 @@ class RoundwoodAnalysisState extends State<RoundwoodAnalysis> {
                           width: double.infinity,
                           child: FilledButton.icon(
                             onPressed: onClearFilter,
-                            icon: const Icon(Icons.clear, size: 16),
+                            icon: getAdaptiveIcon(iconName: 'clear_all', defaultIcon: Icons.clear),
                             label: const Text(
                               'Filter zurücksetzen',
                               style: TextStyle(fontSize: 12),

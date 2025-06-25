@@ -7,24 +7,27 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:tonewood/home/calculator_screen.dart';
 import 'package:tonewood/general_data_screen/general_data_screen.dart';
 import 'package:tonewood/home/printer_screen.dart';
-import 'package:tonewood/home/sales_history_screen.dart';
-import 'package:tonewood/home/stock_entry_screen.dart';
-
+import 'package:tonewood/home/quotes_overview_screen.dart';
+import 'package:tonewood/home/standardized_product_management_screen.dart';
 import '../components/admin_form.dart';
 import '../components/circular_avatar_shadowed.dart';
 import '../components/custom_dialog_box_crew.dart';
 import '../components/feedback_list.dart';
 import '../constants.dart';
+import '../services/customer_export_service.dart';
+import '../services/customer_import_service.dart';
 import '../services/feedback_functions.dart';
 import '../home/settings_form.dart';
 import '../home/warehouse_screen.dart';
 import '../home/product_management_screen.dart';
 import '../home/sales_screen.dart';
-import '../home/product_scanner_screen.dart';
+import '../services/icon_helper.dart';
 import 'analytics_screen2.dart';
+import 'customer_management_screen.dart';
+import 'customer_selection.dart';
+import 'orders_overview_screen.dart';
 
 class StartScreen extends StatefulWidget {
   static String id = 'start_screen';
@@ -42,7 +45,7 @@ class StartScreenState extends State<StartScreen> {
   int _currentIndex = 0;
   int userGroup = 1;
   String name = '';
-
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   @override
   void initState() {
     super.initState();
@@ -86,45 +89,11 @@ class StartScreenState extends State<StartScreen> {
 
   List<BottomNavigationBarItem> _getNavigationItems() {
     return [
-      //if (PlatformInfo.isMobilePlatform)
-      //   const BottomNavigationBarItem(
-      //     icon: Icon(Icons.document_scanner_outlined, color: Colors.black87),
-      //     activeIcon: Icon(Icons.document_scanner_outlined, color: primaryAppColor),
-      //     label: "",
-      //   ),
-      const BottomNavigationBarItem(
-        icon: Icon(Icons.warehouse, color: Colors.black87),
-        activeIcon: Icon(Icons.warehouse, color: primaryAppColor),
-        label: "Lager",
-      ),
-      const BottomNavigationBarItem(
-        icon: FaIcon(FontAwesomeIcons.productHunt),
-        label: "Produkt",
-      ),
-      const BottomNavigationBarItem(
-        icon:  FaIcon(FontAwesomeIcons.cartShopping),
-        label: "Verkauf",
-      ),
-      // const BottomNavigationBarItem(
-      //   icon:  Icon(Icons.settings, color: Colors.black87),
-      //   label: "",
-      // ),
-      const BottomNavigationBarItem(
-        icon:  Icon(Icons.print, color: Colors.black87),
-        label: "Barcodes",
-      ),
-      // const BottomNavigationBarItem(
-      //   icon:  Icon(Icons.history, color: Colors.black87),
-      //   label: "",
-      // ),
-   const BottomNavigationBarItem(
-        icon:  Icon(Icons.analytics_sharp, color: Colors.black87),
-        label: "Analyse",
-      ),
-      // const BottomNavigationBarItem(
-      //   icon:  Icon(Icons.print, color: Colors.black87),
-      //   label: "",
-      // ),
+      BottomNavigationBarItem(icon: getAdaptiveIcon(iconName: 'warehouse', defaultIcon: Icons.warehouse,) ,  label: "Lager",),
+      BottomNavigationBarItem(icon: getAdaptiveIcon(iconName: 'precision_manufacturing', defaultIcon: Icons.precision_manufacturing,), label: "Produkt",),
+      BottomNavigationBarItem(icon: getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart,), label: "Verkauf",),
+      BottomNavigationBarItem(icon: getAdaptiveIcon(iconName: 'print', defaultIcon: Icons.print, color: Colors.black87,), label: "Barcodes",),
+      BottomNavigationBarItem(icon: getAdaptiveIcon(iconName: 'analytics', defaultIcon: Icons.analytics, color: Colors.black87,), label: "Analyse",),
     ];
   }
 
@@ -140,20 +109,15 @@ class StartScreenState extends State<StartScreen> {
           decoration: BoxDecoration(
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(red: 0, green: 0, blue: 0, alpha: 0.1),
                 blurRadius: 4,
                 offset: const Offset(0, -1),
               ),
             ],
           ),
           child: BottomNavigationBar(
-         //   backgroundColor: Colors.white,
+
             type: BottomNavigationBarType.fixed,
-           // unselectedItemColor: lighterBlackColour,
-           // selectedItemColor: primaryAppColor,
-           // showSelectedLabels: false, // Keine Labels anzeigen
-           // showUnselectedLabels: false, // Keine Labels anzeigen
-          //  iconSize: PlatformInfo.getBottomNavIconSize(MediaQuery.of(context).size.width),
             onTap: _onTappedBar,
             currentIndex: _currentIndex,
             items: _getNavigationItems(),
@@ -163,12 +127,6 @@ class StartScreenState extends State<StartScreen> {
     );
   }
 
-  Widget _buildIcon(IconData icon) {
-    return Icon(
-      icon,
-      size: ResponsiveLayout.getIconSize(MediaQuery.of(context).size.width),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -190,8 +148,10 @@ class StartScreenState extends State<StartScreen> {
 
   Widget _buildMainScaffold() {
     return Scaffold(
+      key: _scaffoldKey, // Hier den GlobalKey hinzufügen
       resizeToAvoidBottomInset: false,
       appBar: _buildAppBar(),
+      drawer: _buildDrawer(context),
       body: _getScreens()[_currentIndex],
       bottomNavigationBar: _buildBottomNavigation(),
     );
@@ -228,47 +188,45 @@ class StartScreenState extends State<StartScreen> {
         final photoPic = userData['photoUrl'] as String;
         name = userData['name'] as String;
 
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _buildFeedbackButton(),
-            _buildLogo(),
+        return SizedBox(
+          width: double.infinity,
+          height: kToolbarHeight - 4, // Feste Höhe für den Inhalt, etwas kleiner als die Toolbar
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+             // _buildFeedbackButton(),
+              _buildLogo(),
 
-            Expanded(
-              flex: 2,
-              child: Center(
-                child:
-                    kIsWeb?
-                        GestureDetector(
-
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => GeneralDataScreen(key: UniqueKey()),
-                              ),
-                            );
-                          },
-                            child: Text("Infos",style: smallHeadline,)):
-
-                IconButton(
-                  icon: const Icon(
-                    Icons.settings,
-                    color: Colors.black87,
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => GeneralDataScreen(key: UniqueKey()),
+              // Gruppiere die letzten beiden Elemente in einer eigenen Row ohne Abstand
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 48, // Feste Breite für den IconButton
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: getAdaptiveIcon(
+                        iconName: 'settings',
+                        defaultIcon: Icons.settings,
                       ),
-                    );
-                  },
-                ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => GeneralDataScreen(key: UniqueKey()),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: 60, // Feste Breite für das Avatar-Widget
+                    child: _buildProfileAvatar(photoPic),
+                  ),
+                ],
               ),
-            ),
-            _buildProfileAvatar(photoPic),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -277,49 +235,72 @@ class StartScreenState extends State<StartScreen> {
   Widget _buildFeedbackButton() {
     return Expanded(
       flex: 3,
-      child: GestureDetector(
-        child: const FaIcon(
-          FontAwesomeIcons.solidComment,
-          color: Color(0xFFE6E6E6),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 0,0,0),
+        child: Container(
+          alignment: Alignment.centerLeft, // Richtet den Inhalt links aus
+          child: GestureDetector(
+            child: getAdaptiveIcon(
+              iconName: 'comment',
+              defaultIcon: Icons.comment,
+            ),
+            onLongPress: () => _adminPanel(user.uid),
+            onDoubleTap: () => _feedbackPanel(user.uid),
+            onTap: () => _showFeedbackDialog(),
+          ),
         ),
-        onLongPress: () => _adminPanel(user.uid),
-        onDoubleTap: () => _feedbackPanel(user.uid),
-        onTap: () => _showFeedbackDialog(),
       ),
     );
   }
 
+  // Aktualisiere die _buildLogo Methode, um sie anklickbar zu machen:
+
   Widget _buildLogo() {
+    print(kIsWeb);
     return Expanded(
-      flex: 15,
-      child: SizedBox(
-        height: kToolbarHeight,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Image.asset(
-            'images/tonewood_logo_blaetter.png',
-            fit: BoxFit.contain,
-          ),
+      flex: kIsWeb ? 15 : 4, // Erhöhe den Flex-Wert für mobile Geräte von 2 auf 4
+      child: GestureDetector(
+        onTap: () {
+          // Öffnet den Drawer mit Hilfe des GlobalKey
+          _scaffoldKey.currentState?.openDrawer();
+        },
+        child: Row( // Verwende Row für bessere Kontrolle
+          mainAxisAlignment: MainAxisAlignment.start, // Linksbündige Ausrichtung
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 10, 10), // Mehr Platz auf der linken Seite
+              child: SizedBox(
+                height: kToolbarHeight - 20,
+                child: kIsWeb
+                    ? Image.asset(
+                  'images/tonewood_logo.png',
+                  fit: BoxFit.contain,
+                )
+                    : Image.asset(
+                  'images/tonewood_logo_blaetter.png',
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+            // Fügt Platz nach dem Logo ein
+            Spacer(),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildProfileAvatar(String photoPic) {
-    return Expanded(
-      flex: 4,
-      child: Center(
-        child: GestureDetector(
-          onTap: _showSettingsPanel2,
-          child: Padding(
-            padding: const EdgeInsets.all(15.0),
-            child: CircleAvatarShadowedNoImage(
-              key: UniqueKey(),
-              shadow: 0,
-              w: 350,
-              photoPlayer: photoPic,
-            ),
-          ),
+    // Kein Expanded mehr verwenden, da es in einer SizedBox liegt
+    return GestureDetector(
+      onTap: _showSettingsPanel2,
+      child: Padding(
+        padding: const EdgeInsets.all(8.0), // Reduziertes Padding
+        child: CircleAvatarShadowedNoImage(
+          key: UniqueKey(),
+          shadow: 0,
+          w: 40, // Kleinere feste Größe
+          photoPlayer: photoPic,
         ),
       ),
     );
@@ -407,6 +388,201 @@ class StartScreenState extends State<StartScreen> {
           dialogContextBox: dialogContext,
           contextApp: context,
         ),
+      ),
+    );
+  }
+
+  Widget _buildDrawer(BuildContext context) {
+    return Drawer(
+      child: Column(
+        children: [
+          // Logo und Header-Bereich
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.only(top: 50, bottom: 20),
+            color: Theme.of(context).primaryColor,
+            child: Column(
+              children: [
+                Container(
+                  width: 100,
+                  height: 100,
+                  padding: const EdgeInsets.all(15), // Padding innerhalb des Containers
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                    color: Colors.white, // Hintergrundfarbe
+                  ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      image: DecorationImage(
+                        image: AssetImage('images/logo3.png'),
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
+                const Text(
+                  'Tonewood Switzerland',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Admin-Bereich',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Menüpunkte
+          // Menüpunkte
+          ListTile(
+            leading:
+            getAdaptiveIcon(iconName: 'people', defaultIcon: Icons.people),
+            title: const Text('Kundenverwaltung'),
+            onTap: () {
+              // Schließe das Drawer-Menü
+              Navigator.pop(context);
+
+              // Öffne die Kundenverwaltung im Vollbild-Modus
+              CustomerSelectionSheet.showCustomerManagementScreen(context);
+            },
+          ),
+
+          const Divider(),
+
+          ListTile(
+            leading: getAdaptiveIcon(iconName: 'inventory_2', defaultIcon: Icons.inventory_2),
+            title: const Text('Standardprodukte'),
+            onTap: () {
+              // Schließe das Drawer-Menü
+              Navigator.pop(context);
+
+              // Öffne die Standardproduktverwaltung
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const StandardizedProductManagementScreen(),
+                ),
+              );
+            },
+          ),
+// Nach der Divider nach Standardprodukte
+          const Divider(),
+
+          ListTile(
+            leading: getAdaptiveIcon(iconName: 'request_quote', defaultIcon: Icons.request_quote),
+            title: const Text('Angebote'),
+            subtitle: FutureBuilder<QuerySnapshot>(
+              future: FirebaseFirestore.instance
+                  .collection('quotes')
+                  .where('status', whereNotIn: ['accepted'])
+                  .get(),
+              builder: (context, snapshot) {
+                final count = snapshot.data?.docs.length ?? 0;
+                return Text('$count offene Angebote');
+              },
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const QuotesOverviewScreen(),
+                ),
+              );
+            },
+          ),
+
+          ListTile(
+            leading: getAdaptiveIcon(iconName: 'shopping_bag', defaultIcon: Icons.shopping_bag),
+            title: const Text('Aufträge'),
+            subtitle: FutureBuilder<QuerySnapshot>(
+              future: FirebaseFirestore.instance
+                  .collection('orders')
+                  .where('status', whereNotIn: ['delivered', 'cancelled'])
+                  .get(),
+              builder: (context, snapshot) {
+                final count = snapshot.data?.docs.length ?? 0;
+                return Text('$count aktive Aufträge');
+              },
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const OrdersOverviewScreen(),
+                ),
+              );
+            },
+          ),
+          // const Divider(),
+          //
+          // ListTile(
+          //   leading: getAdaptiveIcon(iconName: 'download', defaultIcon: Icons.download),
+          //   title: const Text('Kundendatenbank exportieren'),
+          //   subtitle: const Text('Als CSV-Datei herunterladen'),
+          //   onTap: () {
+          //     // Schließe das Drawer-Menü
+          //     Navigator.pop(context);
+          //
+          //     // Export starten
+          //     CustomerExportService.exportCustomersCsv(context);
+          //   },
+          // ),
+
+          // const Divider(),
+          // ListTile(
+          //   leading: getAdaptiveIcon(iconName: 'upload', defaultIcon: Icons.upload),
+          //   title: const Text('Kundendatenbank importieren'),
+          //   subtitle: const Text('Aus CSV-Datei'),
+          //   onTap: () {
+          //     // Schließe das Drawer-Menü
+          //     Navigator.pop(context);
+          //
+          //     // Import-Dialog öffnen
+          //     CustomerImportService.showImportDialog(context);
+          //   },
+          // ),
+
+          const Divider(),
+          // Footer mit Version und Copyright
+          const Spacer(),
+          const Divider(),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+            width: double.infinity,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Version 1.0.0',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '© ${DateTime.now().year} Tonewood Switzerland',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

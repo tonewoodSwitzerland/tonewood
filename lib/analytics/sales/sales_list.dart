@@ -7,6 +7,9 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
+import '../../constants.dart';
+import '../../services/icon_helper.dart';
+import 'export_module.dart';
 import 'models/sales_filter.dart';
 
 class SalesList extends StatefulWidget {
@@ -70,7 +73,7 @@ class SalesListState extends State<SalesList> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.point_of_sale, size: 64, color: Colors.grey[400]),
+                getAdaptiveIcon(iconName: 'point_of_sale', defaultIcon: Icons.point_of_sale,size: 64, color: Colors.grey[400]),
                 const SizedBox(height: 16),
                 const Text(
                   'Keine Verkäufe gefunden',
@@ -167,8 +170,7 @@ class SalesListState extends State<SalesList> {
                         Expanded(
                           child: Row(
                             children: [
-                              Icon(
-                                Icons.inventory_2,
+                              getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory,
                                 size: 16,
                                 color: Colors.grey[600],
                               ),
@@ -209,8 +211,8 @@ class SalesListState extends State<SalesList> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(
-                                      Icons.event_available,
+                                  getAdaptiveIcon(iconName: 'event_available', defaultIcon: Icons.event_available,
+
                                       size: 16,
                                       color: Colors.blue[700],
                                     ),
@@ -374,7 +376,7 @@ class SalesListState extends State<SalesList> {
     ],
     ),
     IconButton(
-    icon: const Icon(Icons.close),
+    icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
     onPressed: () => Navigator.pop(context),
     ),
     ],
@@ -394,7 +396,8 @@ class SalesListState extends State<SalesList> {
     children: [
     Row(
     children: [
-    Icon(Icons.business,
+    getAdaptiveIcon(iconName: 'business', defaultIcon: Icons.business,
+
     size: 16,
     color: Theme.of(context).primaryColor),
     const SizedBox(width: 8),
@@ -440,8 +443,7 @@ class SalesListState extends State<SalesList> {
     children: [
     Row(
     children: [
-    Icon(Icons.calendar_today,
-    size: 16,
+    getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today,size: 16,
     color: Theme.of(context).primaryColor),
     const SizedBox(width: 8),
     const Text('Datum',
@@ -482,8 +484,7 @@ class SalesListState extends State<SalesList> {
     children: [
     Row(
     children: [
-    Icon(Icons.shopping_cart,
-    size: 16,
+     getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart,size: 16,
     color: Theme.of(context).primaryColor),
     const SizedBox(width: 8),
     Text(
@@ -515,18 +516,27 @@ class SalesListState extends State<SalesList> {
     ),
 
     // Artikelliste
-    Expanded(
-    child: ListView.builder(
-    itemCount: items.length,
-    itemBuilder: (context, index) {
-    final item = items[index];
-    final quantity = item['quantity'] as int;
-    final pricePerUnit = item['price_per_unit'] as double;
-    final subtotal = quantity * pricePerUnit;
-    final discount = item['discount'] as Map<String, dynamic>?;
-    final discountAmount = item['discount_amount'] as double? ?? 0.0;
-    final total = item['total'] as double? ?? subtotal;
+      Expanded(
+        child: ListView.builder(
+          itemCount: items.length,
+          itemBuilder: (context, index) {
+            final item = items[index];
+            // Use safe parsing to handle both int and double
+            final quantity = item['quantity'] as int;
+            // Parse string to handle both int and double
+            final pricePerUnit = num.parse(item['price_per_unit'].toString()).toDouble();
+            final subtotal = quantity * pricePerUnit;
+            final discount = item['discount'] as Map<String, dynamic>?;
 
+            // Safe parsing for discount_amount
+            final discountAmount = item['discount_amount'] != null
+                ? num.parse(item['discount_amount'].toString()).toDouble()
+                : 0.0;
+
+            // Safe parsing for total
+            final total = item['total'] != null
+                ? num.parse(item['total'].toString()).toDouble()
+                : subtotal;
     return Container(
     padding: const EdgeInsets.symmetric(vertical: 12),
     decoration: BoxDecoration(
@@ -619,6 +629,10 @@ class SalesListState extends State<SalesList> {
     ),
 
       // Summenbereich
+      // Replace the problematic section in the _showSaleDetails method
+// Here's the updated code for the calculations section:
+
+// Summenbereich
       Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -638,7 +652,9 @@ class SalesListState extends State<SalesList> {
                 ),
               ],
             ),
-            if ((calculations['item_discounts'] as double? ?? 0.0) > 0)
+            // Fixed the type casting issue by using num instead of double
+            if ((calculations['item_discounts'] != null) &&
+                (num.parse(calculations['item_discounts'].toString()) > 0))
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Row(
@@ -649,13 +665,15 @@ class SalesListState extends State<SalesList> {
                       style: TextStyle(color: Theme.of(context).colorScheme.error),
                     ),
                     Text(
-                      '- ${calculations['item_discounts'].toStringAsFixed(2)} CHF',
+                      '- ${num.parse(calculations['item_discounts'].toString()).toStringAsFixed(2)} CHF',
                       style: TextStyle(color: Theme.of(context).colorScheme.error),
                     ),
                   ],
                 ),
               ),
-            if ((calculations['total_discount_amount'] as double? ?? 0.0) > 0)
+            // Fixed the same issue here
+            if ((calculations['total_discount_amount'] != null) &&
+                (num.parse(calculations['total_discount_amount'].toString()) > 0))
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Row(
@@ -666,7 +684,7 @@ class SalesListState extends State<SalesList> {
                       style: TextStyle(color: Theme.of(context).colorScheme.error),
                     ),
                     Text(
-                      '- ${calculations['total_discount_amount'].toStringAsFixed(2)} CHF',
+                      '- ${num.parse(calculations['total_discount_amount'].toString()).toStringAsFixed(2)} CHF',
                       style: TextStyle(color: Theme.of(context).colorScheme.error),
                     ),
                   ],
@@ -706,9 +724,11 @@ class SalesListState extends State<SalesList> {
                 ),
               ],
             ),
+
+
           ],
         ),
-      ),
+      )
     ],
     ),
     ),
@@ -716,13 +736,19 @@ class SalesListState extends State<SalesList> {
     ),
 
       // Aktionsbuttons
+
       const SizedBox(height: 16),
-      Row(
+      const Text(
+        'Lieferschein:',
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 4),
+      Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           if (data['pdf_url'] != null && data['pdf_url'].toString().isNotEmpty)
             ElevatedButton.icon(
-              icon: const Icon(Icons.picture_as_pdf),
+              icon:  getAdaptiveIcon(iconName: 'picture_as_pdf', defaultIcon: Icons.picture_as_pdf,),
               label: const Text('PDF Beleg'),
               onPressed: () async {
                 await _shareReceipt(receiptId, data['pdf_url']);
@@ -731,13 +757,138 @@ class SalesListState extends State<SalesList> {
             ),
           const SizedBox(width: 16),
           ElevatedButton.icon(
-            icon: const Icon(Icons.table_chart),
+            icon:  getAdaptiveIcon(iconName: 'table_chart', defaultIcon: Icons.table_chart, color: Colors.blue),
             label: const Text('CSV Export'),
             onPressed: () async {
               await _exportToCsv(receiptId, data);
             },
           ),
         ],
+      ),
+
+
+      // Aktionsbuttons
+      // Aktionsbuttons
+      const SizedBox(height: 16),
+      // Aktionsbuttons für Exportdokumente (Rechnung & Packliste)
+      const SizedBox(height: 16),
+      const Text(
+        'Exportdokumente:',
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 4),
+
+      // Prüfen, ob Exportdokumente in den Daten vorhanden sind
+      FutureBuilder<bool>(
+        future: ExportModule.checkExportDocumentsExist(receiptId),
+        builder: (context, snapshot) {
+          final bool hasExportDocs = snapshot.data ?? false;
+
+          return Column(
+            children: [
+              // Erste Reihe von Buttons
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Exportdokumente erstellen Button
+                  ElevatedButton.icon(
+                    icon: getAdaptiveIcon(iconName: 'add_circle', defaultIcon: Icons.add_circle),
+                    label: Text(hasExportDocs ? 'Neue Exportdokumente' : 'Exportdokumente erstellen'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () async {
+                      Navigator.pop(context); // Dialog schließen
+
+                      // Export-Dokumente-Screen anzeigen
+                      final success = await ExportModule.showExportDocumentsScreen(
+                        context,
+                        receiptId,
+                      );
+
+                      if (success && mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Exportdokumente wurden erfolgreich erstellt'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
+
+              // Zweite Reihe von Buttons (nur wenn Exportdokumente existieren)
+              if (hasExportDocs) ...[
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Handelsrechnung Button
+                    ElevatedButton.icon(
+                      icon: getAdaptiveIcon(iconName: 'receipt', defaultIcon: Icons.receipt),
+                      label: const Text('Handelsrechnung'),
+                      onPressed: () async {
+                        try {
+                          final urls = await ExportModule.getExportDocumentUrls(receiptId);
+                          if (urls != null && urls['invoiceUrl'] != null) {
+                            // PDF herunterladen oder teilen
+                            await _shareReceipt(receiptId, urls['invoiceUrl']!);
+                          } else {
+                            throw Exception('Keine Handelsrechnung gefunden');
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Fehler: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                    ),
+
+                    const SizedBox(width: 16),
+
+                    // Packliste Button
+                    ElevatedButton.icon(
+                      icon: getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory),
+                      label: const Text('Packliste'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue.shade700,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () async {
+                        try {
+                          final urls = await ExportModule.getExportDocumentUrls(receiptId);
+                          if (urls != null && urls['packingListUrl'] != null) {
+                            // PDF herunterladen oder teilen
+                            await _shareReceipt(receiptId, urls['packingListUrl']!);
+                          } else {
+                            throw Exception('Keine Packliste gefunden');
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Fehler: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          );
+        },
       ),
     ],
     ),

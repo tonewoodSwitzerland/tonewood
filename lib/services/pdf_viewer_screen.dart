@@ -22,6 +22,8 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import 'dart:io' if (dart.library.html) 'dart:html' as html;
+
+import 'icon_helper.dart';
 class PDFViewerScreen extends StatefulWidget {
   final String pdfUrl;
   final String receiptId;
@@ -88,23 +90,23 @@ class PDFViewerScreenState extends State<PDFViewerScreen> {
         title: const Text('Lieferschein'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.zoom_in),
+            icon:getAdaptiveIcon(iconName: 'zoom_out', defaultIcon: Icons.zoom_out),
             onPressed: () {
               _pdfViewerController.zoomLevel = _pdfViewerController.zoomLevel + 0.25;
             },
           ),
           IconButton(
-            icon: const Icon(Icons.zoom_out),
+            icon:getAdaptiveIcon(iconName: 'zoom_in', defaultIcon: Icons.zoom_in),
             onPressed: () {
               _pdfViewerController.zoomLevel = _pdfViewerController.zoomLevel - 0.25;
             },
           ),
           IconButton(
-            icon: const Icon(Icons.share),
+            icon: getAdaptiveIcon(iconName: 'share', defaultIcon: Icons.share),
             onPressed: _pdfBytes != null ? () => _sharePdf(_pdfBytes!) : null,
           ),
           IconButton(
-            icon: const Icon(Icons.download),
+            icon:getAdaptiveIcon(iconName: 'download', defaultIcon: Icons.download),
             onPressed: _pdfBytes != null ? () => _downloadPdf(_pdfBytes!) : null,
           ),
         ],

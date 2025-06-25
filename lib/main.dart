@@ -1,12 +1,8 @@
-
 import 'package:cloud_functions/cloud_functions.dart';
-
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:tonewood/services/firebase_options.dart';
-
 import 'package:tonewood/services/languages.dart';
-
 import 'authenticate/forget_screen.dart';
 import 'authenticate/registration_screen.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
@@ -16,58 +12,30 @@ import '/../constants.dart';
 import 'authenticate/login_screen.dart';
 import '/../home/start_screen.dart';
 import 'package:feedback/feedback.dart';
-// Global variable for Functions instance
-// Global variable for Functions instance
+import 'package:flutter_localizations/flutter_localizations.dart';
+//Future<void> main() async {
+  // WidgetsFlutterBinding.ensureInitialized();
+  // await Firebase.initializeApp(
+  //   options: DefaultFirebaseOptions.currentPlatform,
+  // );
+  //  FirebaseFunctions.instanceFor(region: 'europe-west1');
+  //
+  //
+  // runApp(           MyApp()); }
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-   // options: DefaultFirebaseOptions.currentPlatform,
-  );
-   FirebaseFunctions.instanceFor(region: 'europe-west1');
-  //try {q
+  if (kIsWeb) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } else {
+    await Firebase.initializeApp();
+  }
 
-    // if (kDebugMode) {
-    //   final functions = FirebaseFunctions.instanceFor(region: 'europe-west1');
-    //   functions.useFunctionsEmulator('192.168.178.40', 5001);
-    // }
- // } catch (e) {
-  //  print('Initialization error: $e');
- // }
-
- //  WidgetsFlutterBinding.ensureInitialized();
- //   await Firebase.initializeApp();
- // // await Firebase.initializeApp(
- //  // options: DefaultFirebaseOptions.currentPlatform,  );
- //
- //  // Setze die Region für Cloud Functions
- //
- //  FirebaseFunctions.instanceFor(region: 'europe-west1');
- //
- //  if (kDebugMode) {
- //    try {
- //      FirebaseFunctions.instance.useFunctionsEmulator('localhost', 5001);
- //      print('Connected to Firebase Functions emulator');
- //    } catch (e) {
- //      print('Error connecting to emulator: $e');
- //    }
- //  }
-
-
-
-  runApp(           MyApp()); }
-// Future<void> main() async {
-//   WidgetsFlutterBinding.ensureInitialized();
-//   if (kIsWeb) {
-//     await Firebase.initializeApp(
-//       options: DefaultFirebaseOptions.currentPlatform,
-//     );
-//   } else {
-//     await Firebase.initializeApp();
-//   }
-//
-//   runApp(
-//           MyApp());
-// }
+  runApp(
+          MyApp());
+}
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -81,6 +49,20 @@ class MyApp extends StatelessWidget {
             debugShowCheckedModeBanner: false,
             translations: LocalString(),
             locale: _getLocaleBasedOnDeviceSettings(context),
+            // NEU: Füge localizationsDelegates hinzu
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+
+            // NEU: Füge supportedLocales hinzu
+            supportedLocales: const [
+              Locale('en', 'US'),
+              Locale('de', 'DE'),
+              Locale('de', 'CH'),
+              Locale('de', 'AT'),
+            ],
             title: 'Tonewood Switzerland',
             theme: ThemeData(
               scaffoldBackgroundColor: Colors.white,

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:tonewood/analytics/production/services/production_service.dart';
 
+import '../../services/icon_helper.dart';
 import 'models/production_filter.dart';
 
 
@@ -24,7 +25,7 @@ class ProductionOverview extends StatelessWidget {
       builder: (context, totalsSnapshot) {
         try {
           if (totalsSnapshot.hasError) {
-
+            print(totalsSnapshot.error.toString(),);
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -33,6 +34,7 @@ class ProductionOverview extends StatelessWidget {
                   children: [
                     const Text('Ein Fehler ist aufgetreten'),
                     const SizedBox(height: 8),
+
                     if (kDebugMode)
                       Text(
                         totalsSnapshot.error.toString(),
@@ -57,8 +59,8 @@ class ProductionOverview extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(
-                      Icons.warning_amber_rounded,
+                  getAdaptiveIcon(iconName: 'warning', defaultIcon: Icons.warning,
+
                       size: 72,
                       color: Colors.amber,
                     ),
@@ -121,7 +123,7 @@ class ProductionOverview extends StatelessWidget {
             ),
           );
         } catch (e, stackTrace) {
-
+print(e);
           return const Center(child: Text('Ein Fehler ist aufgetreten'));
         }
       },
@@ -247,11 +249,11 @@ class ProductionOverview extends StatelessWidget {
 
   Widget _buildQuantityGrid(BuildContext context, Map<String, int> quantities) {
     final units = {
-      'Stk': (Icons.inventory_2, Colors.blue),
-      'PAL': (Icons.grid_view, Colors.green),
-      'KG': (Icons.scale, Colors.orange),
-      'M3': (Icons.view_in_ar, Colors.purple),
-      'M2': (Icons.square_foot, Colors.teal),
+      'Stk': ('inventory', Icons.inventory_2, Colors.blue),
+      'PAL': ('grid_view', Icons.grid_view, Colors.green),
+      'KG': ('scale', Icons.scale, Colors.orange),
+      'M3': ('view_in_ar', Icons.view_in_ar, Colors.purple),
+      'M2': ('square_foot', Icons.square_foot, Colors.teal),
     };
 
     return GridView.count(
@@ -275,10 +277,15 @@ class ProductionOverview extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: unit.value.$2.withOpacity(0.1),
+                        color: unit.value.$3.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Icon(unit.value.$1, size: 20, color: unit.value.$2),
+                      child: getAdaptiveIcon(
+                        iconName: unit.value.$1,
+                        defaultIcon: unit.value.$2,
+                        size: 20,
+                        color: unit.value.$3,
+                      ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -545,7 +552,8 @@ class ProductionOverview extends StatelessWidget {
                     color: Colors.amber.shade100,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(Icons.star, color: Colors.amber.shade800),
+                  child:
+                  getAdaptiveIcon(iconName: 'star', defaultIcon: Icons.star, color: Colors.amber.shade800),
                 ),
                 const SizedBox(width: 12),
                 const Text(
@@ -597,8 +605,8 @@ class ProductionOverview extends StatelessWidget {
                     color: Colors.green.shade50,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(Icons.payments, color: Colors.green.shade700),
-                ),
+
+                  child: getAdaptiveIcon(iconName: 'payments', defaultIcon: Icons.payments,)),
                 const SizedBox(width: 12),
                 const Text(
                   'Wert',

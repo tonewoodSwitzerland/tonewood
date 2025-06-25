@@ -20,6 +20,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../components/standard_text_field.dart';
 
+
+import 'package:package_info_plus/package_info_plus.dart';
+
+
 Widget getUserGroupIcon(int userGroup) {
   switch (userGroup) {
     case 1:
@@ -58,7 +62,13 @@ class SettingsFormState extends State<SettingsForm> {
   static final _formKey = GlobalKey<FormState>();
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final _auth3 = FirebaseAuth.instance;
-
+  PackageInfo? packageInfo;
+  Future<void> _initPackageInfo() async {
+    final info = await PackageInfo.fromPlatform();
+    setState(() {
+      packageInfo = info;
+    });
+  }
   void showUserManagementDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -165,6 +175,15 @@ class SettingsFormState extends State<SettingsForm> {
   }
 
   @override
+
+  void initState() {
+    super.initState();
+    _initPackageInfo();
+
+  }
+
+
+
   Widget build(BuildContext context) {
     User? user = _auth3.currentUser;
     String? email = user?.email;
@@ -187,7 +206,10 @@ class SettingsFormState extends State<SettingsForm> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // User Info Card
-                Text("1.44",style: smallHeadline,),
+                Text(
+                  'Version: ${packageInfo?.version ?? ""}',
+                  style: smallestHeadline,
+                ),
                 Card(
                   child: Padding(
                     padding: EdgeInsets.all(16),

@@ -3,6 +3,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../constants.dart';
 import 'dart:io';
+
+import '../services/icon_helper.dart';
 class CircleAvatarShadowedNoImage extends StatelessWidget {
   const CircleAvatarShadowedNoImage({ required Key key,required this.w,required this.shadow,required this.photoPlayer}) : super(key: key);
 
@@ -15,7 +17,9 @@ class CircleAvatarShadowedNoImage extends StatelessWidget {
   Widget build(BuildContext context) {
 
     return
-      photoPlayer == ""?const FaIcon(FontAwesomeIcons.userSecret,color:  primaryAppColor,):
+      photoPlayer == ""?
+      getAdaptiveIcon(iconName: 'account_circle', defaultIcon: Icons.account_circle,):
+
       Container(
           decoration: BoxDecoration(color: Colors.white70, shape: BoxShape.circle,
             border: Border.all(color: lighterBlackColour) ,

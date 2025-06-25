@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../../services/icon_helper.dart';
 import '../models/sales_models.dart';
 
 class SalesListItem extends StatelessWidget {
@@ -24,9 +25,8 @@ class SalesListItem extends StatelessWidget {
         onTap: onTap,
         leading: CircleAvatar(
           backgroundColor: theme.colorScheme.primaryContainer,
-          child: Icon(
-            Icons.shopping_cart,
-            color: theme.colorScheme.primary,
+          child:
+              getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart,  color: theme.colorScheme.primary,
           ),
         ),
         title: Row(

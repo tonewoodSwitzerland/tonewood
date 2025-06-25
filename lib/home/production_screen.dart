@@ -1,7 +1,9 @@
 // In lib/screens/production_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../components/filterCategory.dart';
 import '../constants.dart';
+import '../services/icon_helper.dart';
 import 'add_product_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -83,15 +85,16 @@ class ProductionScreenState extends State<ProductionScreen> {
         )
             : const Text('Produktion'),
         actions: [
+
           IconButton(
-            icon: Icon(Icons.filter_list),
+            icon:   getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list,),
             onPressed: () {
               _showFilterDialog();
             },
           ),
           if (widget.isDialog)
             IconButton(
-              icon: const Icon(Icons.close),
+              icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
               onPressed: () => Navigator.pop(context),
             ),
         ],
@@ -123,18 +126,21 @@ class ProductionScreenState extends State<ProductionScreen> {
                 children: [
                   _buildSortButton(
                     icon: Icons.update,
+                    iconName: 'update',
                     label: 'Änderung',
                     isSelected: sortBy == 'last_modified',
                     onTap: () => setState(() => sortBy = 'last_modified'),
                   ),
                   _buildSortButton(
                     icon: Icons.event_note,
+                    iconName: 'event_note',
                     label: 'Erstellt',
                     isSelected: sortBy == 'created_at',
                     onTap: () => setState(() => sortBy = 'created_at'),
                   ),
                   _buildSortButton(
                     icon: Icons.sort,
+                    iconName: 'sort',
                     label: 'A-Z',
                     isSelected: sortBy == 'product_name',
                     onTap: () => setState(() => sortBy = 'product_name'),
@@ -180,7 +186,8 @@ class ProductionScreenState extends State<ProductionScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.search_off, size: 64, color: Colors.grey),
+
+                        getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search,size: 64),
                         const SizedBox(height: 16),
                         const Text('Keine Produkte gefunden'),
                         const SizedBox(height: 24),
@@ -197,7 +204,7 @@ class ProductionScreenState extends State<ProductionScreen> {
                                 ),
                               );
                             },
-                            icon: const Icon(Icons.add),
+                            icon:  getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add,),
                             label: const Text('Neues Produkt anlegen'),
                           ),
                       ],
@@ -318,7 +325,10 @@ class ProductionScreenState extends State<ProductionScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.filter_list, color: Color(0xFF0F4A29), size: 16),
+
+
+              getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list,),
+
               SizedBox(width: 8),
               Text(
                 'Aktive Filter',
@@ -383,6 +393,7 @@ class ProductionScreenState extends State<ProductionScreen> {
     required String label,
     required bool isSelected,
     required VoidCallback onTap,
+    String? iconName, // Neuer Parameter für adaptiveIcon
   }) {
     return Expanded(
       child: InkWell(
@@ -392,7 +403,12 @@ class ProductionScreenState extends State<ProductionScreen> {
           padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           decoration: BoxDecoration(
             color: isSelected
-                ? Color(0xFF0F4A29).withOpacity(0.1)
+                ? Color(0xFF0F4A29).withValues(
+                red: 15,    // 0x0F
+                green: 74,  // 0x4A
+                blue: 41,   // 0x29
+                alpha: 0.1
+            )
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
@@ -405,7 +421,14 @@ class ProductionScreenState extends State<ProductionScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
+              iconName != null
+                  ? getAdaptiveIcon(
+                iconName: iconName,
+                defaultIcon: icon,
+                color: isSelected ? Color(0xFF0F4A29) : Colors.grey[600],
+                size: 18,
+              )
+                  : Icon(
                 icon,
                 color: isSelected ? Color(0xFF0F4A29) : Colors.grey[600],
                 size: 18,
@@ -444,7 +467,9 @@ class ProductionScreenState extends State<ProductionScreen> {
           child: Chip(
             backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
             label: Text('$label: $name'),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon:
+            getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
+
             onDeleted: () {
               setState(() {
                 if (collection == 'instruments') {
@@ -551,29 +576,33 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
                         data: ThemeData(dividerColor: Colors.transparent),
                         child: Column(
                           children: [
-                            _buildFilterCategory(
-                              Icons.piano,
-                              'Instrument',
-                              _buildInstrumentFilter(),
-                              tempFilter.instruments?.isNotEmpty ?? false,
+                            buildFilterCategory(
+                             icon:  Icons.music_note,
+                             iconName: 'music_note',
+                             title:  'Instrument',
+                             child:  _buildInstrumentFilter(),
+                           hasActiveFilters:    tempFilter.instruments?.isNotEmpty ?? false,
                             ),
-                            _buildFilterCategory(
-                              Icons.construction,
-                              'Bauteil',
-                              _buildPartsFilter(),
-                              tempFilter.parts?.isNotEmpty ?? false,
+                            buildFilterCategory(
+                              icon:    Icons.category,
+                              iconName: 'category',
+                              title:   'Bauteil',
+                              child:   _buildPartsFilter(),
+                              hasActiveFilters:   tempFilter.parts?.isNotEmpty ?? false,
                             ),
-                            _buildFilterCategory(
-                              Icons.forest,
-                              'Holzart',
-                              _buildWoodTypeFilter(),
-                              tempFilter.woodTypes?.isNotEmpty ?? false,
+                            buildFilterCategory(
+                              icon:    Icons.forest,
+                              iconName: 'forest',
+                              title:  'Holzart',
+                              child:   _buildWoodTypeFilter(),
+                              hasActiveFilters:  tempFilter.woodTypes?.isNotEmpty ?? false,
                             ),
-                            _buildFilterCategory(
-                              Icons.grade,
-                              'Qualität',
-                              _buildQualityFilter(),
-                              tempFilter.qualities?.isNotEmpty ?? false,
+                             buildFilterCategory(
+                              icon:Icons.star,
+                              iconName: 'star',
+                              title:  'Qualität',
+                              child:  _buildQualityFilter(),
+                              hasActiveFilters:   tempFilter.qualities?.isNotEmpty ?? false,
                             ),
                           ],
                         ),
@@ -615,7 +644,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
                   color: const Color(0xFF0F4A29).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.filter_list, color: Color(0xFF0F4A29)),
+                child:  getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list,),
               ),
               const SizedBox(width: 12),
               const Text(
@@ -631,7 +660,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
           const Spacer(),
           if (_hasActiveFilters())
             TextButton.icon(
-              icon: const Icon(Icons.clear_all),
+              icon: getAdaptiveIcon(iconName: 'clear_all', defaultIcon: Icons.clear_all,),
               label: const Text('Zurücksetzen'),
               onPressed: _resetFilters,
               style: TextButton.styleFrom(
@@ -639,7 +668,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
               ),
             ),
           IconButton(
-            icon: const Icon(Icons.close),
+            icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
             onPressed: () => Navigator.of(context).pop(),
             color: Colors.grey[600],
           ),
@@ -667,41 +696,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
     );
   }
 
-  Widget _buildFilterCategory(
-      IconData icon,
-      String title,
-      Widget child,
-      bool hasActiveFilters,
-      ) {
-    return ExpansionTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: hasActiveFilters
-              ? const Color(0xFF0F4A29).withOpacity(0.1)
-              : Colors.grey.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(
-          icon,
-          color: hasActiveFilters ? const Color(0xFF0F4A29) : Colors.grey,
-        ),
-      ),
-      title: Text(
-        title,
-        style: TextStyle(
-          fontWeight: hasActiveFilters ? FontWeight.bold : FontWeight.normal,
-          color: hasActiveFilters ? const Color(0xFF0F4A29) : Colors.black,
-        ),
-      ),
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: child,
-        ),
-      ],
-    );
-  }
+
 
   Widget _buildInstrumentFilter() {
     return StreamBuilder<QuerySnapshot>(
@@ -849,7 +844,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
           child: Chip(
             backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
             label: Text(name),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 tempFilter = tempFilter.copyWith(
@@ -878,7 +873,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
           child: Chip(
             backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
             label: Text(name),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 tempFilter = tempFilter.copyWith(
@@ -907,7 +902,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
           child: Chip(
             backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
             label: Text(name),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 tempFilter = tempFilter.copyWith(
@@ -936,7 +931,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
           child: Chip(
             backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
             label: Text(name),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 tempFilter = tempFilter.copyWith(

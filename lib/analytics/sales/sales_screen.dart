@@ -7,6 +7,7 @@ import 'package:tonewood/analytics/sales/services/sales_csv_service.dart';
 import 'package:tonewood/analytics/sales/services/sales_pdf_service.dart';
 import 'package:tonewood/analytics/sales/widgets/sales_filter_dialog.dart';
 
+import '../../services/icon_helper.dart';
 import 'constants/constants.dart';
 import 'models/sales_filter.dart';
 import 'sales_overview.dart';
@@ -150,14 +151,16 @@ class SalesScreenState extends State<SalesScreen> with SingleTickerProviderState
                   children: [
                     // Quick Filter Button
                     IconButton(
-                      icon: Icon(
-                        isQuickFilterActive ? Icons.star : Icons.star_outline,
-                        color: isQuickFilterActive ? const Color(0xFF0F4A29) : null,
+                      icon:
+                      isQuickFilterActive ?
+                      getAdaptiveIcon(iconName: 'star_fill', defaultIcon: Icons.star,)
+                          :
+                      getAdaptiveIcon(iconName: 'star',defaultIcon:Icons.star_outline,
                       ),
                       onPressed: _toggleQuickFilter,
                       tooltip: isQuickFilterActive
                           ? 'Schnellfilter deaktivieren'
-                          : 'Schnellfilter für Decken aktivieren',
+                          : 'Schnellfilter aktivieren',
                     ),
                     // Filter Badge
                     Badge(
@@ -165,7 +168,8 @@ class SalesScreenState extends State<SalesScreen> with SingleTickerProviderState
                       label: Text(_activeFilter.toMap().length.toString()),
                       child: IconButton(
                         onPressed: _showFilterDialog,
-                        icon: const Icon(Icons.filter_list),
+                          icon:getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list,),
+
                         tooltip: 'Filter',
                       ),
                     ),
@@ -217,8 +221,8 @@ class SalesScreenState extends State<SalesScreen> with SingleTickerProviderState
                 color: const Color(0xFF0F4A29).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(
-                Icons.download,
+              child:
+               getAdaptiveIcon(iconName: 'download', defaultIcon: Icons.download,
                 color: Color(0xFF0F4A29),
               ),
             ),
@@ -236,7 +240,7 @@ class SalesScreenState extends State<SalesScreen> with SingleTickerProviderState
                   color: Colors.blue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.table_chart, color: Colors.blue),
+                child: getAdaptiveIcon(iconName: 'table_chart', defaultIcon: Icons.table_chart, color: Colors.blue),
               ),
               title: const Text('CSV'),
               subtitle: const Text('Daten im CSV-Format'),
@@ -253,7 +257,7 @@ class SalesScreenState extends State<SalesScreen> with SingleTickerProviderState
                   color: Colors.red.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.picture_as_pdf, color: Colors.red),
+                child:  getAdaptiveIcon(iconName: 'picture_as_pdf', defaultIcon: Icons.picture_as_pdf, color: Colors.red),
               ),
               title: const Text('Als PDF exportieren'),
               subtitle: const Text('Verkaufsliste als PDF'),

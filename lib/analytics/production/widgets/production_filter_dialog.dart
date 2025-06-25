@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import '../../../components/filterCategory.dart';
+import '../../../services/icon_helper.dart';
 import '../models/production_filter.dart';
 import '../constants/production_constants.dart';
 
@@ -60,51 +62,58 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
                         data: ThemeData(dividerColor: Colors.transparent),
                         child: Column(
                           children: [
-                            _buildFilterCategory(
-                              Icons.forest,
-                              'Holzart',
-                              _buildWoodTypeFilter(),
-                              tempFilter.woodTypes?.isNotEmpty ?? false,
+                            buildFilterCategory(
+                            icon:   Icons.forest,
+                            iconName: 'forest',
+                            title:   'Holzart',
+                            child:   _buildWoodTypeFilter(),
+                            hasActiveFilters:   tempFilter.woodTypes?.isNotEmpty ?? false,
                             ),
-                            _buildFilterCategory(
-                             Icons.piano,
-                              'Instrument',
-                              _buildInstrumentsFilter(),
-                              tempFilter.instruments?.isNotEmpty ?? false,
+                            buildFilterCategory(
+                              icon:   Icons.music_note,
+                              iconName: 'music_note',
+                              title:  'Instrument',
+                              child:  _buildInstrumentsFilter(),
+                              hasActiveFilters:  tempFilter.instruments?.isNotEmpty ?? false,
                             ),
-                            _buildFilterCategory(
-                              Icons.construction,
-                              'Bauteil',
-                              _buildPartsFilter(),
-                              tempFilter.parts?.isNotEmpty ?? false,
-                            ),
-
-                            _buildFilterCategory(
-                              Icons.grade,
-                              'Qualität',
-                              _buildQualityFilter(),
-                              tempFilter.qualities?.isNotEmpty ?? false,
+                            buildFilterCategory(
+                              icon:    Icons.category,
+                              iconName: 'category',
+                              title:    'Bauteil',
+                              child:   _buildPartsFilter(),
+                              hasActiveFilters: tempFilter.parts?.isNotEmpty ?? false,
                             ),
 
-
-                            _buildFilterCategory(
-                              Icons.date_range,
-                              'Jahrgang',
-                              _buildYearsFilter(),
-                              tempFilter.years?.isNotEmpty ?? false,
+                            buildFilterCategory(
+                              icon:    Icons.star,
+                              iconName: 'star',
+                              title:    'Qualität',
+                              child:  _buildQualityFilter(),
+                              hasActiveFilters:  tempFilter.qualities?.isNotEmpty ?? false,
                             ),
 
-                            _buildFilterCategory(
-                              Icons.calendar_today,
-                              'Zeitraum',
-                              _buildDateFilter(),
-                              tempFilter.timeRange != null || tempFilter.startDate != null,
+
+                            buildFilterCategory(
+                              icon:   Icons.date_range,
+                              iconName: 'date_range',
+                              title:   'Jahrgang',
+                              child:  _buildYearsFilter(),
+                              hasActiveFilters:   tempFilter.years?.isNotEmpty ?? false,
                             ),
-                            _buildFilterCategory(
-                              Icons.nightlight,
-                              'Spezielle Filter',
-                              _buildSpecialFilters(),
-                              tempFilter.isMoonwood ?? false,
+
+                            buildFilterCategory(
+                              icon:Icons.calendar_today,
+                              iconName: 'calendar_today',
+                              title:    'Zeitraum',
+                              child:   _buildDateFilter(),
+                              hasActiveFilters:   tempFilter.timeRange != null || tempFilter.startDate != null,
+                            ),
+                            buildFilterCategory(
+                              icon:    Icons.nightlight,
+                              iconName: 'nightlight',
+                              title:    'Spezielle Filter',
+                              child:   _buildSpecialFilters(),
+                              hasActiveFilters:   tempFilter.isMoonwood ?? false,
                             ),
                           ],
                         )
@@ -146,7 +155,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
                   color: const Color(0xFF0F4A29).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.filter_list, color: Color(0xFF0F4A29)),
+                child: getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list, color: Color(0xFF0F4A29)),
               ),
               const SizedBox(width: 12),
               const Text(
@@ -162,7 +171,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
           const Spacer(),
           if (_hasActiveFilters())
             TextButton.icon(
-              icon: const Icon(Icons.clear_all),
+              icon: getAdaptiveIcon(iconName: 'clear_all', defaultIcon: Icons.clear_all,),
               label: const Text('Zurücksetzen'),
               onPressed: _resetFilters,
               style: TextButton.styleFrom(
@@ -170,7 +179,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
               ),
             ),
           IconButton(
-            icon: const Icon(Icons.close),
+            icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
             onPressed: () => Navigator.of(context).pop(),
             color: Colors.grey[600],
           ),
@@ -288,7 +297,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
           return Chip(
             backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
             label: Text('$name ($code)'),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 tempFilter = tempFilter.copyWith(
@@ -317,7 +326,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
           return Chip(
             backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
             label: Text('$name ($code)'),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 tempFilter = tempFilter.copyWith(
@@ -346,7 +355,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
           return Chip(
             backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
             label: Text('$name ($code)'),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 tempFilter = tempFilter.copyWith(
@@ -366,7 +375,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
       child: Chip(
         backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
         label: Text('$year'),
-        deleteIcon: const Icon(Icons.close, size: 18),
+        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
         onDeleted: () {
           setState(() {
             tempFilter = tempFilter.copyWith(
@@ -393,7 +402,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
           return Chip(
             backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
             label: Text('$name ($code)'),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 tempFilter = tempFilter.copyWith(
@@ -435,47 +444,13 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
       child: Chip(
         backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
         label: Text('Zeitraum: $timeText'),
-        deleteIcon: const Icon(Icons.close, size: 18),
+        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
         onDeleted: () => _resetTimeFilter(),
       ),
     );
   }
 
-  Widget _buildFilterCategory(
-      IconData icon,
-      String title,
-      Widget child,
-      bool hasActiveFilters,
-      ) {
-    return ExpansionTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: hasActiveFilters
-              ? const Color(0xFF0F4A29).withOpacity(0.1)
-              : Colors.grey.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(
-          icon,
-          color: hasActiveFilters ? const Color(0xFF0F4A29) : Colors.grey,
-        ),
-      ),
-      title: Text(
-        title,
-        style: TextStyle(
-          fontWeight: hasActiveFilters ? FontWeight.bold : FontWeight.normal,
-          color: hasActiveFilters ? const Color(0xFF0F4A29) : Colors.black,
-        ),
-      ),
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: child,
-        ),
-      ],
-    );
-  }
+
 
 
 
@@ -691,7 +666,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  suffixIcon: const Icon(Icons.calendar_today),
+                  suffixIcon: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
                 ),
                 readOnly: true,
                 controller: TextEditingController(
@@ -725,7 +700,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  suffixIcon: const Icon(Icons.calendar_today),
+                  suffixIcon: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
                 ),
                 readOnly: true,
                 controller: TextEditingController(
@@ -939,7 +914,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
           label,
           style: TextStyle(color: color),
         ),
-        deleteIcon: const Icon(Icons.close, size: 18),
+        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
         onDeleted: onRemove,
       ),
     );
@@ -996,7 +971,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
       child: Chip(
         backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
         label: const Text('Mondholz'),
-        deleteIcon: const Icon(Icons.close, size: 18),
+        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
         onDeleted: () => setState(() {
           tempFilter = tempFilter.copyWith(isMoonwood: false);
         }),

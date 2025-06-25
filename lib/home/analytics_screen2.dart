@@ -3,6 +3,7 @@ import 'package:tonewood/analytics/production/production_screen.dart';
 import 'package:tonewood/analytics/sales/sales_screen.dart';
 import '../analytics/roundwood/roundwood_screen.dart';
 import '../constants.dart';
+import '../services/icon_helper.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({Key? key}) : super(key: key);
@@ -36,17 +37,19 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
         toolbarHeight: 0, // Entfernt den oberen Teil der AppBar
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
+          tabs:  [
             Tab(
-              icon: Icon(Icons.forest),
+              icon:
+              getAdaptiveIcon(iconName: 'forest', defaultIcon: Icons.forest,),
               text: 'Rundholz',
             ),
             Tab(
-              icon: Icon(Icons.shopping_cart),
+              icon:   getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart,),
+
               text: 'Verkauf',
             ),
             Tab(
-              icon: Icon(Icons.precision_manufacturing),
+            icon:  getAdaptiveIcon(iconName: 'precision_manufacturing', defaultIcon: Icons.precision_manufacturing,),
               text: 'Produktion',
             ),
           ],

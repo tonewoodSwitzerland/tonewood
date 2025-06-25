@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../components/filterCategory.dart';
 import '../constants.dart';
 import 'dart:convert';
 
@@ -29,6 +30,7 @@ import '../services/download_helper_mobile.dart' if (dart.library.html) '../serv
 import 'package:csv/csv.dart';
 import 'dart:math' as math;
 
+import '../services/icon_helper.dart';
 import '../services/production_analytics_service.dart';
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({Key? key}) : super(key: key);
@@ -369,8 +371,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                                   color: const Color(0xFF0F4A29).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                child: const Icon(
-                                  Icons.filter_list,
+                                child:  getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list,
                                   color: Color(0xFF0F4A29),
                                 ),
                               ),
@@ -386,7 +387,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                             ],
                           ),
                           IconButton(
-                            icon: const Icon(Icons.close),
+                            icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                             onPressed: () => Navigator.of(context).pop(),
                             color: Colors.grey[600],
                           ),
@@ -403,7 +404,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               // Holzart Filter
-                              _buildFilterCategory(
+                              buildFilterCategory(
+                                iconName: 'forest',
                                 icon: Icons.forest,
                                 title: 'Holzart',
                                 child: StreamBuilder<QuerySnapshot>(
@@ -430,7 +432,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                               const SizedBox(height: 24),
 
                               // Qualität Filter
-                              _buildFilterCategory(
+                              buildFilterCategory(
+                                iconName: 'stars',
                                 icon: Icons.stars,
                                 title: 'Qualität',
                                 child: StreamBuilder<QuerySnapshot>(
@@ -457,7 +460,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                               const SizedBox(height: 24),
 
                               // Verwendungszweck Filter
-                              _buildFilterCategory(
+                              buildFilterCategory(
+                                iconName: 'assignment',
                                 icon: Icons.assignment,
                                 title: 'Verwendungszweck',
                                 child: StreamBuilder<QuerySnapshot>(
@@ -484,8 +488,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                               const SizedBox(height: 24),
 
                               // Zusätzlicher Verwendungszweck
-                              _buildFilterCategory(
-                                icon: Icons.add_circle_outline,
+                              buildFilterCategory(
+                                iconName: 'add',
+                                icon: Icons.add,
                                 title: 'Zusätzlicher Verwendungszweck',
                                 child: TextFormField(
                                   controller: tempAdditionalPurpose,
@@ -500,7 +505,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                               const SizedBox(height: 24),
 
                               // Herkunft Filter
-                              _buildFilterCategory(
+                              buildFilterCategory(
+                                iconName: 'location',
                                 icon: Icons.location_on,
                                 title: 'Herkunft',
                                 child: TextFormField(
@@ -525,7 +531,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                               const SizedBox(height: 16),
 
                               // Volumen Range Filter
-                              _buildFilterCategory(
+                              buildFilterCategory(
+                                iconName: 'straighten',
                                 icon: Icons.straighten,
                                 title: 'Volumen',
                                 child: Row(
@@ -579,7 +586,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                               const SizedBox(height: 16),
 
                               // Mondholz Filter
-                              _buildFilterCategory(
+                              buildFilterCategory(
+                                iconName: 'nightlight',
                                 icon: Icons.nightlight,
                                 title: 'Spezielle Filter',
                                 child: Container(
@@ -602,8 +610,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                                   ),
                                 ),
                               ),
-                              _buildFilterCategory(
-                                icon: Icons.calendar_today,
+                              buildFilterCategory(
+                                iconName: 'calendar_today',
+                                icon:getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
                                 title: 'Zeitraum',
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -711,7 +720,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                                               border: OutlineInputBorder(
                                                 borderRadius: BorderRadius.circular(8),
                                               ),
-                                              suffixIcon: const Icon(Icons.calendar_today),
+                                              suffixIcon:   getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today,),
                                             ),
                                             readOnly: true,
                                             controller: TextEditingController(
@@ -746,7 +755,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                                               border: OutlineInputBorder(
                                                 borderRadius: BorderRadius.circular(8),
                                               ),
-                                              suffixIcon: const Icon(Icons.calendar_today),
+                                              suffixIcon:     getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today,),
                                             ),
                                             readOnly: true,
                                             controller: TextEditingController(
@@ -795,7 +804,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                                       ),
                                     ),
                                     TextButton.icon(
-                                      icon: const Icon(Icons.clear_all),
+                                      icon: getAdaptiveIcon(iconName: 'clear_all', defaultIcon: Icons.clear_all,),
                                       label: const Text('Zurücksetzen'),
                                       onPressed: () {
                                         setState(() {
@@ -882,40 +891,40 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _buildFilterCategory({
-    required IconData icon,
-    required String title,
-    required Widget child,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F4A29).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: const Color(0xFF0F4A29)),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0F4A29),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        child,
-      ],
-    );
-  }
+  // Widget _buildFilterCategory({
+  //   required IconData icon,
+  //   required String title,
+  //   required Widget child,
+  // }) {
+  //   return Column(
+  //     crossAxisAlignment: CrossAxisAlignment.start,
+  //     children: [
+  //       Row(
+  //         children: [
+  //           Container(
+  //             padding: const EdgeInsets.all(8),
+  //             decoration: BoxDecoration(
+  //               color: const Color(0xFF0F4A29).withOpacity(0.1),
+  //               borderRadius: BorderRadius.circular(8),
+  //             ),
+  //             child: Icon(icon, color: const Color(0xFF0F4A29)),
+  //           ),
+  //           const SizedBox(width: 12),
+  //           Text(
+  //             title,
+  //             style: const TextStyle(
+  //               fontSize: 16,
+  //               fontWeight: FontWeight.bold,
+  //               color: Color(0xFF0F4A29),
+  //             ),
+  //           ),
+  //         ],
+  //       ),
+  //       const SizedBox(height: 12),
+  //       child,
+  //     ],
+  //   );
+  // }
 
   Widget _buildMultiSelectDropdown({
     required String label,
@@ -995,7 +1004,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                 final data = snapshot.data!.data() as Map<String, dynamic>;
                 return Chip(
                   label: Text('Holzart: ${data['name']}'),
-                  deleteIcon: const Icon(Icons.close, size: 18),
+                  deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                   onDeleted: () {
                     setState(() {
                       final list = List<String>.from(tempFilters['wood_types']);
@@ -1026,7 +1035,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                 final data = snapshot.data!.data() as Map<String, dynamic>;
                 return Chip(
                   label: Text('Qualität: ${data['name']}'),
-                  deleteIcon: const Icon(Icons.close, size: 18),
+                  deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                   onDeleted: () {
                     setState(() {
                       final list = List<String>.from(activeFilters['qualities']);
@@ -1046,15 +1055,15 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
 
         if (activeFilters['timeRange'] != null)
           Chip(
-            avatar: Icon(
-              Icons.calendar_today,
+            avatar:
+            getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today,
               size: 18,
               color: Theme.of(context).colorScheme.primary,
             ),
             label: Text(
               'Zeitraum: ${_getTimeRangeText2(activeFilters['timeRange'])}',
             ),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 activeFilters.remove('timeRange');
@@ -1074,7 +1083,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
             label: Text(
               'Zeitraum: ${DateFormat('dd.MM.yyyy').format(activeFilters['customStartDate'])} - ${DateFormat('dd.MM.yyyy').format(activeFilters['customEndDate'])}',
             ),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 activeFilters.remove('customStartDate');
@@ -1094,7 +1103,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
               final data = snapshot.data!.data() as Map<String, dynamic>;
               return Chip(
                 label: Text('Verwendung: ${data['name']}'),
-                deleteIcon: const Icon(Icons.close, size: 18),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                 onDeleted: () {
                   setState(() {
                     selectedPurposeCodes.remove(purposeId);
@@ -1109,7 +1118,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
         if (activeFilters['origin'] != null)
           Chip(
             label: Text('Herkunft: ${activeFilters['origin']}'),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 activeFilters.remove('origin');
@@ -1120,7 +1129,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
         if (activeFilters['volume_min'] != null)
           Chip(
             label: Text('Min. Volumen: ${activeFilters['volume_min']} m³'),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 activeFilters.remove('volume_min');
@@ -1131,7 +1140,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
         if (activeFilters['volume_max'] != null)
           Chip(
             label: Text('Max. Volumen: ${activeFilters['volume_max']} m³'),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 activeFilters.remove('volume_max');
@@ -1142,7 +1151,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
         if (activeFilters['is_moonwood'] == true)
           Chip(
             label: const Text('Nur Mondholz'),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 activeFilters.remove('is_moonwood');
@@ -1770,30 +1779,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
       }
     }
   }
-// Füge diese Hilfsmethode hinzu
-  IconData _getFilterIcon(String filterKey) {
-    switch (filterKey) {
-      case 'wood_type':
-        return Icons.forest;
-      case 'quality':
-        return Icons.grade;
-      case 'origin':
-        return Icons.place;
-      case 'purpose':
-        return Icons.category;
-      case 'volume_min':
-      case 'volume_max':
-        return Icons.straighten;
-      case 'is_moonwood':
-        return Icons.nightlight;
-      case 'color':
-        return Icons.color_lens;
-      case 'year':
-        return Icons.calendar_today;
-      default:
-        return Icons.filter_alt;
-    }
-  }
+
 
   Widget _buildRoundwoodList() {
     return SizedBox(
@@ -1810,7 +1796,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                   label: Text(activeFilters.length.toString()),
                   child: IconButton(
                     onPressed: _showFilterDialog,
-                    icon: const Icon(Icons.filter_list),
+                      icon:getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list,),
+
                     tooltip: 'Filter',
                   ),
                 ),
@@ -1824,7 +1811,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                       await _sharePdf(pdfBytes);
                     }
                   },
-                  icon: const Icon(Icons.picture_as_pdf),
+                  icon:  getAdaptiveIcon(iconName: 'picture_as_pdf', defaultIcon: Icons.picture_as_pdf,),
                   tooltip: 'Als PDF teilen',
                 ),
                 const SizedBox(width: 8),
@@ -1837,7 +1824,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                       await _shareCsv(csvBytes);
                     }
                   },
-                  icon: const Icon(Icons.table_chart),
+                  icon:  getAdaptiveIcon(iconName: 'table_chart', defaultIcon: Icons.table_chart, color: Colors.blue),
                   tooltip: 'Als CSV teilen',
                 ),
               ],
@@ -2173,6 +2160,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                         ),
                         Icons.inventory,
                         Theme.of(context).colorScheme.primary,
+                      iconName:   'inventory',
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -2188,6 +2176,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                         ),
                         Icons.layers,
                         Theme.of(context).colorScheme.secondary,
+                        iconName:   'layers',
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -2353,6 +2342,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                     '${stats['haselfichte_total']} Produkte',
                     Icons.park,
                     Theme.of(context).colorScheme.secondary,
+                    iconName:   'park',
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -2362,6 +2352,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                     '${stats['moonwood_total']} Produkte',
                     Icons.nightlight,
                     Theme.of(context).colorScheme.tertiary,
+                    iconName:   'nighlight',
                   ),
                 ),
               ],
@@ -2431,6 +2422,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                     ),
                     Icons.timer,
                     Theme.of(context).colorScheme.primary,
+                    iconName:   'timer',
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -2445,6 +2437,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                       ),
                     ),
                     Icons.layers,
+                    iconName:   'layers',
                     Theme.of(context).colorScheme.secondary,
                   ),
                 ),
@@ -2847,6 +2840,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
               stats['fsc_total'].toString(),
               Icons.eco,
               Theme.of(context).colorScheme.primary,
+              iconName:   'eco',
             ),
             const SizedBox(height: 24),
 
@@ -3594,6 +3588,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                   },
                 ),
                 Icons.attach_money,
+                iconName:   'attach_money',
                 colorScheme.primary,
                 subtitle: 'Gesamter Zeitraum',
               ),
@@ -3616,6 +3611,8 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                   },
                 ),
                 Icons.shopping_cart,
+                iconName:   'shopping_cart',
+
                 colorScheme.secondary,
                 subtitle: 'Abgeschlossene Bestellungen',
               ),
@@ -3653,6 +3650,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                   },
                 ),
                 Icons.analytics,
+                iconName:   'analytics',
                 colorScheme.tertiary,
                 subtitle: 'Pro Bestellung',
               ),
@@ -3817,13 +3815,13 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-// Neue StatCard-Widget-Methode
   Widget _buildStatCard(
       String title,
       dynamic value,
       IconData icon,
       Color color,
-      {String? subtitle}
+      {String? subtitle,
+        String? iconName} // Neuer Parameter für adaptiveIcon
       ) {
     return Card(
       elevation: 0,
@@ -3833,7 +3831,12 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(
+              red: 0,
+              green:0,
+              blue: 0,
+              alpha: 0.1
+          ),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -3845,10 +3848,22 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(
+                        red: 0,
+                        green: 0,
+                        blue: 0,
+                        alpha: 0.1
+                    ),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(icon, color: color, size: 20),
+                  child: iconName != null
+                      ? getAdaptiveIcon(
+                    iconName: iconName,
+                    defaultIcon: icon,
+                    color: color,
+                    size: 20,
+                  )
+                      : Icon(icon, color: color, size: 20),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -4154,8 +4169,9 @@ ${data['wood_name']} - ${data['quality_name']}''',
                                   locale: 'de_CH',
                                   symbol: 'CHF',
                                 ).format(totalSales / snapshot.data!.docs.length),
-                                Icons.shopping_cart,
-                                Colors.green,
+                                 Icons.shopping_cart,
+                                iconName:   'shopping_cart',
+                    Colors.green,
                               ),
                             ),
                           ],
@@ -4688,6 +4704,7 @@ ${fairData['orders']} Bestellungen, ${customers.length} Kunden''',
       String value,
       IconData icon,
       Color color,
+      {String? iconName} // Neuer Parameter für adaptiveIcon
       ) {
     return Card(
       child: Padding(
@@ -4697,7 +4714,14 @@ ${fairData['orders']} Bestellungen, ${customers.length} Kunden''',
           children: [
             Row(
               children: [
-                Icon(icon, color: color),
+                iconName != null
+                    ? getAdaptiveIcon(
+                  iconName: iconName,
+                  defaultIcon: icon,
+                  color: color,
+                  size: 24,
+                )
+                    : Icon(icon, color: color),
                 const SizedBox(width: 8),
                 Text(
                   title,
@@ -4725,7 +4749,6 @@ ${fairData['orders']} Bestellungen, ${customers.length} Kunden''',
 
 
 
-
 // Für alle drei KPI-Cards einen eigenen Stream-Builder mit Zeitfilter
   Widget _buildKpiSection() {
     return Wrap(
@@ -4738,7 +4761,7 @@ ${fairData['orders']} Bestellungen, ${customers.length} Kunden''',
           child: _buildStatCard(
             'Gesamtumsatz',
             StreamBuilder<QuerySnapshot>(
-              stream: _getSalesStream(), // Der Stream berücksichtigt bereits selectedTimeRange
+              stream: _getSalesStream(),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const SizedBox(

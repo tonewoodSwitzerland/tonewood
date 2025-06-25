@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:tonewood/home/quote_order_flow_screen.dart';
 
 import 'package:tonewood/home/warehouse_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -12,12 +13,17 @@ import 'dart:convert';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../components/manual_product_dialog.dart';
+import '../services/additional_text_manager.dart';
+import '../services/document_selection_manager.dart';
 
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
 import 'package:share_plus/share_plus.dart';
+import '../analytics/sales/export_documents_integration.dart';
+import '../analytics/sales/export_module.dart';
 import '../constants.dart';
 import '../services/cost_center.dart';
 import '../services/customer.dart';
@@ -38,6 +44,9 @@ import '../services/fairs.dart';
 
 import 'package:csv/csv.dart';
 
+import '../services/icon_helper.dart';
+import 'customer_selection.dart';
+import '../services/shipping_costs_manager.dart';
 
 enum TaxOption {
   standard,  // Normales System mit Netto/Steuer/Brutto
@@ -55,6 +64,16 @@ SalesScreenState createState() => SalesScreenState();
 class SalesScreenState extends State<SalesScreen> {
   Fair? selectedFair;
   final ValueNotifier<TaxOption> _taxOptionNotifier = ValueNotifier<TaxOption>(TaxOption.standard);
+  final ValueNotifier<bool> _documentSelectionCompleteNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _additionalTextsSelectedNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _shippingCostsConfiguredNotifier = ValueNotifier<bool>(false);
+
+  // Sprache für Dokumente
+  final ValueNotifier<String> _documentLanguageNotifier = ValueNotifier<String>('DE');
+
+  final ValueNotifier<double> _vatRateNotifier = ValueNotifier<double>(8.1);
+// In der SalesScreenState Klasse, bei den anderen State-Variablen:
+  bool _isDetailExpanded = false;
 
   final ValueNotifier<Fair?> _selectedFairNotifier = ValueNotifier<Fair?>(null);
 bool isLoading = false;
@@ -92,8 +111,14 @@ Stream<QuerySnapshot> get _basketStream => FirebaseFirestore.instance
   @override
   void initState() {
     super.initState();
+    _checkDocumentSelection();
+    _loadCurrencySettings();
+    _checkAdditionalTexts();
+    _loadCustomerLanguage();
+    _checkShippingCosts();
+    _loadTemporaryDiscounts();
+    _loadTemporaryTax();
 
-    _loadCurrencySettings(); // Neue Zeile
   }
 
 @override
@@ -108,51 +133,50 @@ return Scaffold(
         mainAxisSize: MainAxisSize.min,
         children: [
           // Kunde - mit roter "Kunde wählen" Anzeige wenn kein Kunde ausgewählt
-          StreamBuilder<Customer?>(
-            stream: _temporaryCustomerStream,
-            builder: (context, snapshot) {
-              final customer = snapshot.data;
-
-              return GestureDetector(
-                onTap: _showCustomerSelection,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: customer != null
-                        ? Theme.of(context).colorScheme.secondaryContainer
-                        : Theme.of(context).colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.person,
-                        size: 14,
-                        color: customer != null
-                            ? Theme.of(context).colorScheme.onSecondaryContainer
-                            : Theme.of(context).colorScheme.onErrorContainer,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        customer != null
-                            ? customer.company.substring(0, min(2, customer.company.length)).toUpperCase()
-                            : 'Kunde wählen',
-                        style: TextStyle(
-                          color: customer != null
-                              ? Theme.of(context).colorScheme.onSecondaryContainer
-                              : Theme.of(context).colorScheme.onErrorContainer,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          const SizedBox(width: 6),
+          // StreamBuilder<Customer?>(
+          //   stream: _temporaryCustomerStream,
+          //   builder: (context, snapshot) {
+          //     final customer = snapshot.data;
+          //
+          //     return Column(
+          //       children: [
+          //         GestureDetector(
+          //           onTap: _showCustomerSelection,
+          //           child: Container(
+          //             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          //             decoration: BoxDecoration(
+          //               color: customer != null
+          //                   ? Theme.of(context).colorScheme.secondaryContainer
+          //                   : Theme.of(context).colorScheme.errorContainer,
+          //               borderRadius: BorderRadius.circular(12),
+          //             ),
+          //             child: Row(
+          //               mainAxisSize: MainAxisSize.min,
+          //               children: [
+          //                 getAdaptiveIcon(iconName: 'person', defaultIcon: Icons.person,),
+          //                 const SizedBox(width: 4),
+          //                 Text(
+          //                   customer != null
+          //                       ? customer.company.substring(0, min(2, customer.company.length)).toUpperCase()
+          //                       : 'Kunde wählen',
+          //                   style: TextStyle(
+          //                     color: customer != null
+          //                         ? Theme.of(context).colorScheme.onSecondaryContainer
+          //                         : Theme.of(context).colorScheme.onErrorContainer,
+          //                     fontWeight: FontWeight.bold,
+          //                     fontSize: 13,
+          //                   ),
+          //                 ),
+          //               ],
+          //             ),
+          //           ),
+          //         ),
+          //
+          //       ],
+          //     );
+          //   },
+          // ),
+          // const SizedBox(width: 6),
 
           // Kostenstelle - bleibt unverändert
           StreamBuilder<CostCenter?>(
@@ -173,13 +197,9 @@ return Scaffold(
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.account_balance,
-                        size: 14,
-                        color: costCenter != null
-                            ? Theme.of(context).colorScheme.onPrimaryContainer
-                            : Theme.of(context).colorScheme.onErrorContainer,
-                      ),
+                      getAdaptiveIcon(iconName: 'account_balance', defaultIcon: Icons.account_balance,),
+
+
                       const SizedBox(width: 4),
                       if (costCenter != null)
                         Tooltip(
@@ -219,11 +239,8 @@ return Scaffold(
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.event,
-                        size: 14,
-                        color: Theme.of(context).colorScheme.onTertiaryContainer,
-                      ),
+                      getAdaptiveIcon(iconName: 'event', defaultIcon: Icons.event,),
+
                       const SizedBox(width: 4),
                       Tooltip(
                         message: fair.name,
@@ -249,14 +266,15 @@ return Scaffold(
         Tooltip(
           message: 'Messe',
           child: IconButton(
-            icon: const Icon(Icons.event),
+            icon:    getAdaptiveIcon(iconName: 'event', defaultIcon: Icons.event,),
             onPressed: _showFairSelection,
           ),
         ),
 
         // Email-Icon
         IconButton(
-          icon: const Icon(Icons.email),
+          icon:    getAdaptiveIcon(iconName: 'mail', defaultIcon: Icons.mail,),
+
           tooltip: 'Email-Konfiguration',
           onPressed: _showEmailConfigDialog,
         ),
@@ -269,7 +287,8 @@ return Scaffold(
               icon: Stack(
                 alignment: Alignment.bottomRight,
                 children: [
-                  const Icon(Icons.currency_exchange),
+                  getAdaptiveIcon(iconName: 'currency_exchange', defaultIcon: Icons.currency_exchange,),
+
                   Container(
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.primaryContainer,
@@ -292,200 +311,27 @@ return Scaffold(
             );
           },
         ),
+
+        IconButton(
+          icon: getAdaptiveIcon(
+            iconName: 'delete_forever',
+            defaultIcon: Icons.delete_forever,
+          ),
+          tooltip: 'Warenkorb leeren',
+          onPressed: _showClearCartDialog,
+        ),
+        IconButton(
+          icon: getAdaptiveIcon(iconName: 'sell', defaultIcon: Icons.sell,),
+          tooltip: 'Rabatt',
+          onPressed: _showTotalDiscountDialog,
+        ),
+
+
+
+
       ],
 
     ),
-    // AppBar(
-    //   title: Row(
-    //     mainAxisSize: MainAxisSize.min,
-    //     children: [
-    //       // Kunde
-    //       StreamBuilder<Customer?>(
-    //         stream: _temporaryCustomerStream,
-    //         builder: (context, snapshot) {
-    //           final customer = snapshot.data;
-    //           if (customer == null) return const SizedBox.shrink();
-    //
-    //           return GestureDetector(
-    //             onTap: _showCustomerSelection,
-    //             child: Container(
-    //               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-    //               decoration: BoxDecoration(
-    //                 color: Theme.of(context).colorScheme.secondaryContainer,
-    //                 borderRadius: BorderRadius.circular(12),
-    //               ),
-    //               child: Row(
-    //                 mainAxisSize: MainAxisSize.min,
-    //                 children: [
-    //                   Icon(
-    //                     Icons.person,
-    //                     size: 14,
-    //                     color: Theme.of(context).colorScheme.onSecondaryContainer,
-    //                   ),
-    //                   const SizedBox(width: 4),
-    //                   Tooltip(
-    //                     message: customer.company,
-    //                     child: Text(
-    //                       customer.company.substring(0, min(2, customer.company.length)).toUpperCase(),
-    //                       style: TextStyle(
-    //                         color: Theme.of(context).colorScheme.onSecondaryContainer,
-    //                         fontWeight: FontWeight.bold,
-    //                         fontSize: 13,
-    //                       ),
-    //                     ),
-    //                   ),
-    //                 ],
-    //               ),
-    //             ),
-    //           );
-    //         },
-    //       ),
-    //       const SizedBox(width: 6),
-    //
-    //       StreamBuilder<CostCenter?>(
-    //         stream: _temporaryCostCenterStream,
-    //         builder: (context, snapshot) {
-    //           final costCenter = snapshot.data;
-    //
-    //           return GestureDetector(
-    //             onTap: _showCostCenterSelection,
-    //             child: Container(
-    //               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-    //               decoration: BoxDecoration(
-    //                 color: costCenter != null
-    //                     ? Theme.of(context).colorScheme.primaryContainer
-    //                     : Theme.of(context).colorScheme.errorContainer,
-    //                 borderRadius: BorderRadius.circular(12),
-    //               ),
-    //               child: Row(
-    //                 mainAxisSize: MainAxisSize.min,
-    //                 children: [
-    //                   Icon(
-    //                     Icons.account_balance,
-    //                     size: 14,
-    //                     color: costCenter != null
-    //                         ? Theme.of(context).colorScheme.onPrimaryContainer
-    //                         : Theme.of(context).colorScheme.onErrorContainer,
-    //                   ),
-    //                   const SizedBox(width: 4),
-    //                   if (costCenter != null)
-    //                     Tooltip(
-    //                       message: '${costCenter.code} - ${costCenter.name}',
-    //                       child: Text(
-    //                         costCenter.code,
-    //                         style: TextStyle(
-    //                           color: Theme.of(context).colorScheme.onPrimaryContainer,
-    //                           fontSize: 11,
-    //                           fontWeight: FontWeight.bold,
-    //                         ),
-    //                       ),
-    //                     ),
-    //                 ],
-    //               ),
-    //             ),
-    //           );
-    //         },
-    //       ),
-    //       const SizedBox(width: 6),
-    //
-    //       StreamBuilder<Fair?>(
-    //         stream: _temporaryFairStream,
-    //         builder: (context, snapshot) {
-    //           final fair = snapshot.data;
-    //           if (fair == null) return const SizedBox.shrink();
-    //
-    //           return GestureDetector(
-    //             onTap: _showFairSelection,
-    //             child: Container(
-    //               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-    //               decoration: BoxDecoration(
-    //                 color: Theme.of(context).colorScheme.tertiaryContainer,
-    //                 borderRadius: BorderRadius.circular(12),
-    //               ),
-    //               child: Row(
-    //                 mainAxisSize: MainAxisSize.min,
-    //                 children: [
-    //                   Icon(
-    //                     Icons.event,
-    //                     size: 14,
-    //                     color: Theme.of(context).colorScheme.onTertiaryContainer,
-    //                   ),
-    //                   const SizedBox(width: 4),
-    //                   Tooltip(
-    //                     message: fair.name,
-    //                     child: Text(
-    //                       fair.name.substring(0, min(2, fair.name.length)).toUpperCase(),
-    //                       style: TextStyle(
-    //                         color: Theme.of(context).colorScheme.onTertiaryContainer,
-    //                         fontWeight: FontWeight.bold,
-    //                         fontSize: 13,
-    //                       ),
-    //                     ),
-    //                   ),
-    //                 ],
-    //               ),
-    //             ),
-    //           );
-    //         },
-    //       ),
-    //     ],
-    //   ),
-    //   actions: [
-    //     if (!isDesktopLayout)
-    //       StreamBuilder<Customer?>(
-    //         stream: _temporaryCustomerStream,
-    //         builder: (context, snapshot) {
-    //           final hasCustomer = snapshot.hasData;
-    //           return Tooltip(
-    //             message: hasCustomer ? 'Kunde ändern' : 'Kunde auswählen',
-    //             child: IconButton(
-    //               icon: Icon(
-    //                 hasCustomer ? Icons.person : Icons.person_add,
-    //                 color: hasCustomer
-    //                     ? Theme.of(context).colorScheme.primary
-    //                     : null,
-    //               ),
-    //               onPressed: _showCustomerSelection,
-    //             ),
-    //           );
-    //         },
-    //       ),
-    //
-    //     StreamBuilder<CostCenter?>(
-    //       stream: _temporaryCostCenterStream,
-    //       builder: (context, snapshot) {
-    //         final hasCostCenter = snapshot.hasData;
-    //         return Tooltip(
-    //           message: 'Kostenstelle auswählen',
-    //           child: IconButton(
-    //             icon: Icon(
-    //               Icons.account_balance,
-    //               color: !hasCostCenter
-    //                   ? Theme.of(context).colorScheme.error
-    //                   : Theme.of(context).colorScheme.primary,
-    //             ),
-    //             onPressed: _showCostCenterSelection,
-    //           ),
-    //         );
-    //       },
-    //     ),
-    //
-    //     Tooltip(
-    //       message: 'Messe auswählen',
-    //       child: IconButton(
-    //         icon: const Icon(Icons.event),
-    //         onPressed: _showFairSelection,
-    //       ),
-    //     ),
-    //
-    //
-    //       IconButton(
-    //         icon: const Icon(Icons.email),
-    //         tooltip: 'Email-Konfiguration',
-    //         onPressed: _showEmailConfigDialog,
-    //       ),
-    //   ],
-    // ),
 
 
   body: isDesktopLayout ? _buildDesktopLayout() : _buildMobileLayout(),
@@ -506,6 +352,163 @@ return Scaffold(
       .map((snapshot) => snapshot.data() ?? {});
 
 
+  // Nach den anderen Load-Methoden hinzufügen:
+  Future<void> _loadTemporaryTax() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('temporary_tax')
+          .doc('current_tax')
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        _vatRateNotifier.value = (data['vat_rate'] as num?)?.toDouble() ?? 8.1;
+
+        // Falls auch die Steueroption gespeichert werden soll
+        if (data.containsKey('tax_option')) {
+          final taxOptionIndex = data['tax_option'] as int? ?? 0;
+          if (taxOptionIndex >= 0 && taxOptionIndex < TaxOption.values.length) {
+            _taxOptionNotifier.value = TaxOption.values[taxOptionIndex];
+          }
+        }
+
+        print('Steuereinstellungen geladen: ${_vatRate}%, Option: ${_taxOptionNotifier.value}');
+      } else {
+        // Standardwerte setzen
+        _vatRateNotifier.value = 8.1;
+        print('Keine temporären Steuereinstellungen gefunden, verwende Standardwerte');
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Steuereinstellungen: $e');
+      // Fallback auf Standardwerte
+      _vatRateNotifier.value = 8.1;
+    }
+  }
+
+  Future<void> _saveTemporaryTax() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('temporary_tax')
+          .doc('current_tax')
+          .set({
+        'vat_rate': _vatRate,
+        'tax_option': _taxOptionNotifier.value.index,
+        'last_updated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      print('Steuereinstellungen gespeichert: ${_vatRate}%, Option: ${_taxOptionNotifier.value}');
+    } catch (e) {
+      print('Fehler beim Speichern der Steuereinstellungen: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Speichern der Steuereinstellungen: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearTemporaryTax() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('temporary_tax')
+          .doc('current_tax')
+          .delete();
+
+      print('Temporäre Steuereinstellungen gelöscht');
+    } catch (e) {
+      print('Fehler beim Löschen der temporären Steuereinstellungen: $e');
+    }
+  }
+
+  Future<void> _loadTemporaryDiscounts() async {
+    // Lade Gesamtrabatt
+    await _loadTemporaryTotalDiscount();
+
+    // Lade Item-Rabatte aus dem Warenkorb
+    final basketSnapshot = await FirebaseFirestore.instance
+        .collection('temporary_basket')
+        .get();
+
+    final Map<String, Discount> loadedDiscounts = {};
+
+    for (final doc in basketSnapshot.docs) {
+      final data = doc.data();
+      if (data['discount'] != null) {
+        final discountData = data['discount'] as Map<String, dynamic>;
+        loadedDiscounts[doc.id] = Discount(
+          percentage: discountData['percentage'] ?? 0.0,
+          absolute: discountData['absolute'] ?? 0.0,
+        );
+      }
+    }
+
+    setState(() {
+      _itemDiscounts = loadedDiscounts;
+    });
+  }
+// Füge diese Methode zur SalesScreenState-Klasse hinzu
+  Future<void> _checkAdditionalTexts() async {
+    final hasTexts = await AdditionalTextsManager.hasTextsSelected();
+    _additionalTextsSelectedNotifier.value = hasTexts;
+  }
+
+// Füge diese Methode zur SalesScreenState-Klasse hinzu
+  void _showAdditionalTextsDialog() {
+    showAdditionalTextsBottomSheet(
+      context,
+      textsSelectedNotifier: _additionalTextsSelectedNotifier,
+    );
+  }
+
+// Füge diese Methode zur SalesScreenState-Klasse hinzu
+  Future<void> _checkDocumentSelection() async {
+    final selection = await DocumentSelectionManager.loadDocumentSelection();
+    final hasSelection = selection.values.any((selected) => selected == true);
+    _documentSelectionCompleteNotifier.value = hasSelection;
+  }
+  Future<void> _checkShippingCosts() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('temporary_shipping_costs')
+          .doc('current_costs')
+          .get();
+
+      _shippingCostsConfiguredNotifier.value = doc.exists;
+    } catch (e) {
+      print('Fehler beim Prüfen der Versandkosten: $e');
+    }
+  }
+// Lade die Sprache aus dem temporären Kunden beim Start
+  Future<void> _loadCustomerLanguage() async {
+    try {
+      final tempCustomerDoc = await FirebaseFirestore.instance
+          .collection('temporary_customer')
+          .limit(1)
+          .get();
+
+      if (tempCustomerDoc.docs.isNotEmpty) {
+        final customerData = tempCustomerDoc.docs.first.data();
+        final language = customerData['language'] ?? 'DE';
+
+        setState(() {
+          _documentLanguageNotifier.value = language;
+        });
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Kundensprache: $e');
+    }
+  }
+// Füge diese Methode zur SalesScreenState-Klasse hinzu
+  void _showDocumentTypeSelection() {
+    showDocumentSelectionBottomSheet(
+      context,
+      selectionCompleteNotifier: _documentSelectionCompleteNotifier,
+      documentLanguageNotifier: _documentLanguageNotifier,
+    );
+  }
   // Füge diese Methode zur SalesScreenState-Klasse hinzu
   void _showEmailConfigDialog() {
     showDialog(
@@ -537,7 +540,7 @@ return Scaffold(
                         // Header - Fixed at top
                         Row(
                           children: [
-                            const Icon(Icons.email, size: 24),
+                         getAdaptiveIcon(iconName: 'mail', defaultIcon: Icons.mail,),
                             const SizedBox(width: 8),
                             Text(
                               'Email',
@@ -546,7 +549,7 @@ return Scaffold(
                             const Spacer(),
                             IconButton(
                               onPressed: () => Navigator.pop(context),
-                              icon: const Icon(Icons.close),
+                              icon:    getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                             ),
                           ],
                         ),
@@ -636,7 +639,7 @@ return Scaffold(
                                                 child: Text(snapshot.data ?? 'Lädt...'),
                                               ),
                                               IconButton(
-                                                icon: const Icon(Icons.edit),
+                                                icon: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit,),
                                                 onPressed: () => _showEditOfficeEmailDialog(context),
                                                 tooltip: 'Büro-Email bearbeiten',
                                               ),
@@ -700,125 +703,434 @@ return Scaffold(
     );
   }
 
+  void _showClearCartDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            getAdaptiveIcon(
+              iconName: 'warning',
+              defaultIcon: Icons.warning,
+              color: Colors.orange,
+            ),
+            const SizedBox(width: 8),
+            const Text('Alles löschen?'),
+          ],
+        ),
+        content: const Text(
+          'Möchten Sie wirklich den gesamten Warenkorb und alle Einstellungen löschen?\n\n'
+              'Dies entfernt:\n'
+              '• Alle Artikel im Warenkorb\n'
+              '• Kundenauswahl\n'
+              '• Kostenstelle\n'
+              '• Messe\n'
+              '• Dokumentenauswahl\n'
+              '• Zusatztexte\n'
+              '• Versandkosten\n'
+              '• Rabatte\n'
+              '• Steuereinstellungen',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _clearAllTemporaryData();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Alles löschen'),
+          ),
+        ],
+      ),
+    );
+  }
+  Future<void> _clearAllTemporaryData() async {
+    setState(() => isLoading = true);
 
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+
+      // 1. Warenkorb leeren
+      final basketDocs = await FirebaseFirestore.instance
+          .collection('temporary_basket')
+          .get();
+      for (var doc in basketDocs.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // 2. Kunde löschen
+      final customerDocs = await FirebaseFirestore.instance
+          .collection('temporary_customer')
+          .get();
+      for (var doc in customerDocs.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // 3. Kostenstelle löschen
+      final costCenterDocs = await FirebaseFirestore.instance
+          .collection('temporary_cost_center')
+          .get();
+      for (var doc in costCenterDocs.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // 4. Messe löschen
+      final fairDocs = await FirebaseFirestore.instance
+          .collection('temporary_fair')
+          .get();
+      for (var doc in fairDocs.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // 5. Rabatte löschen
+      final discountDoc = await FirebaseFirestore.instance
+          .collection('temporary_discounts')
+          .doc('total_discount')
+          .get();
+      if (discountDoc.exists) {
+        batch.delete(discountDoc.reference);
+      }
+
+      // Führe alle Löschungen aus
+      await batch.commit();
+
+      // 6. Dokumentenauswahl löschen
+      await DocumentSelectionManager.clearSelection();
+
+      // 7. Zusatztexte löschen
+      await AdditionalTextsManager.clearAdditionalTexts();
+
+      // 8. Versandkosten löschen
+      await ShippingCostsManager.clearShippingCosts();
+
+      // 9. Steuereinstellungen löschen
+      await _clearTemporaryTax();
+
+      // 10. Lokale States zurücksetzen
+      setState(() {
+        selectedProduct = null;
+        _totalDiscount = const Discount();
+        _itemDiscounts = {};
+        _documentSelectionCompleteNotifier.value = false;
+        _additionalTextsSelectedNotifier.value = false;
+        _shippingCostsConfiguredNotifier.value = false;
+        _documentLanguageNotifier.value = 'DE';
+        isLoading = false;
+      });
+
+      // Bestätigung anzeigen
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Warenkorb und alle Einstellungen wurden gelöscht'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Löschen: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 // Methode zum Anzeigen des Steueroptionen-Dialogs
   void _showTaxOptionsDialog() {
     TaxOption selectedOption = _taxOptionNotifier.value;
+    double selectedVatRate = _vatRate;
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
-          return AlertDialog(
-            title: Row(
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.85,
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 10,
+                  spreadRadius: 0,
+                  offset: Offset(0, -1),
+                ),
+              ],
+            ),
+            child: Column(
               children: [
+                // Drag Handle
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  margin: EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  child: Icon(
-                    Icons.settings,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Text('Steuer'),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Option 1: Standard
-                RadioListTile<TaxOption>(
-                  title: const Text('Standard'),
-                  subtitle: const Text('Netto, MwSt und Brutto separat ausgewiesen'),
-                  value: TaxOption.standard,
-                  groupValue: selectedOption,
-                  onChanged: (value) {
-                    setState(() => selectedOption = value!);
-                  },
                 ),
 
-                // Steuersatz-Eingabe (nur für Standard)
-                if (selectedOption == TaxOption.standard)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 32.0, right: 16.0, top: 8.0),
-                    child: TextFormField(
-                      initialValue: _vatRate.toString(),
-                      decoration: const InputDecoration(
-                        labelText: 'MwSt-Satz',
-                        suffixText: '%',
-                        border: OutlineInputBorder(),
+                // Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings),
                       ),
-                      keyboardType: TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
-                      ],
-                      onChanged: (value) {
-                        final String normalizedInput = value.replaceAll(',', '.');
-                        final newRate = double.tryParse(normalizedInput);
-                        if (newRate != null) {
-                          _vatRate = newRate;
-                        }
-                      },
-                    ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Steuer',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
                   ),
-
-                const Divider(height: 24),
-
-                // Option 2: Ohne Steuer
-                RadioListTile<TaxOption>(
-                  title: const Text('Ohne MwSt'),
-                  subtitle: const Text('Nur Nettobetrag, keine Steuer'),
-                  value: TaxOption.noTax,
-                  groupValue: selectedOption,
-                  onChanged: (value) {
-                    setState(() => selectedOption = value!);
-                  },
                 ),
 
-                const Divider(height: 24),
+                Divider(height: 1),
 
-                // Option 3: Nur Bruttobetrag
-                RadioListTile<TaxOption>(
-                  title: const Text('Gesamt inkl. MwSt'),
-                  subtitle: const Text('Bruttobetrag ohne separate Steuer'),
-                  value: TaxOption.totalOnly,
-                  groupValue: selectedOption,
-                  onChanged: (value) {
-                    setState(() => selectedOption = value!);
-                  },
+                // Scrollbarer Inhalt
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Option 1: Standard
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: selectedOption == TaxOption.standard
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.grey.shade300,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            color: selectedOption == TaxOption.standard
+                                ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.1)
+                                : null,
+                          ),
+                          child: RadioListTile<TaxOption>(
+                            title: const Text('Standard'),
+                            subtitle: const Text('Netto, MwSt und Brutto separat ausgewiesen',style: TextStyle(fontSize: 10),),
+                            value: TaxOption.standard,
+                            groupValue: selectedOption,
+                            onChanged: (value) {
+                              setState(() => selectedOption = value!);
+                            },
+                          ),
+                        ),
+
+                        // Steuersatz-Eingabe (nur für Standard)
+                        if (selectedOption == TaxOption.standard) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'MwSt-Satz anpassen',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  initialValue: selectedVatRate.toString(),
+                                  decoration: InputDecoration(
+                                    labelText: 'MwSt-Satz',
+                                    suffixText: '%',
+                                    border: const OutlineInputBorder(),
+                                    filled: true,
+                                    prefixIcon: getAdaptiveIcon(iconName: 'percent', defaultIcon: Icons.percent),
+                                  ),
+                                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                                  ],
+                                  onChanged: (value) {
+                                    final String normalizedInput = value.replaceAll(',', '.');
+                                    final newRate = double.tryParse(normalizedInput);
+                                    if (newRate != null) {
+                                      selectedVatRate = newRate;
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 24),
+
+                        // Option 2: Ohne Steuer
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: selectedOption == TaxOption.noTax
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.grey.shade300,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            color: selectedOption == TaxOption.noTax
+                                ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.1)
+                                : null,
+                          ),
+                          child: RadioListTile<TaxOption>(
+                            title: const Text('Ohne MwSt'),
+                            subtitle: const Text('Nur Nettobetrag, keine Steuer'),
+                            value: TaxOption.noTax,
+                            groupValue: selectedOption,
+                            onChanged: (value) {
+                              setState(() => selectedOption = value!);
+                            },
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Option 3: Nur Bruttobetrag
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: selectedOption == TaxOption.totalOnly
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.grey.shade300,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            color: selectedOption == TaxOption.totalOnly
+                                ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.1)
+                                : null,
+                          ),
+                          child: RadioListTile<TaxOption>(
+                            title: const Text('Gesamt inkl. MwSt'),
+                            subtitle: const Text('Bruttobetrag ohne separate Steuer'),
+                            value: TaxOption.totalOnly,
+                            groupValue: selectedOption,
+                            onChanged: (value) {
+                              setState(() => selectedOption = value!);
+                            },
+                          ),
+                        ),
+
+                       
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Action Buttons
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        spreadRadius: 0,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
+                  ),
+                  child: SafeArea(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => Navigator.pop(context),
+                            icon: getAdaptiveIcon(iconName: 'cancel', defaultIcon: Icons.cancel),
+                            label: const Text('Abbrechen'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              // Aktualisiere die Werte
+                              this.setState(() {
+                                _taxOptionNotifier.value = selectedOption;
+                                _vatRateNotifier.value = selectedVatRate;
+                              });
+
+                              // Speichere in Firebase
+                              await _saveTemporaryTax();
+
+                              Navigator.pop(context);
+
+                              // Bestätigung anzeigen
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Steuereinstellungen aktualisiert'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            },
+                            icon: getAdaptiveIcon(iconName: 'check', defaultIcon: Icons.check),
+                            label: const Text('Übernehmen'),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              backgroundColor: Theme.of(context).colorScheme.primary,
+                              foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Abbrechen'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  _taxOptionNotifier.value = selectedOption;
-                  Navigator.pop(context);
-
-                  // Optionaler Toast zur Bestätigung
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Steuereinstellungen aktualisiert'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                },
-                child: const Text('Übernehmen'),
-              ),
-            ],
           );
         },
       ),
     );
+  }
+
+// Hilfsmethode für die Vorschau
+  String _getPreviewText(TaxOption option, double vatRate) {
+    switch (option) {
+      case TaxOption.standard:
+        return 'Es wird ein MwSt-Satz von ${vatRate.toStringAsFixed(1)}% berechnet und separat ausgewiesen.';
+      case TaxOption.noTax:
+        return 'Es wird keine Mehrwertsteuer berechnet oder ausgewiesen.';
+      case TaxOption.totalOnly:
+        return 'Der Gesamtbetrag wird als "inkl. MwSt" angezeigt, ohne separate Steuerausweisung.';
+    }
   }
 // Diese Methode lädt die Währungseinstellungen aus Firebase
   Future<void> _loadCurrencySettings() async {
@@ -942,8 +1254,21 @@ return Scaffold(
     }
   }
 
-
-
+  Future<void> _saveTemporaryDiscounts() async {
+    try {
+      // Nur den Gesamtrabatt speichern
+      await FirebaseFirestore.instance
+          .collection('temporary_discounts')
+          .doc('total_discount')
+          .set({
+        'percentage': _totalDiscount.percentage,
+        'absolute': _totalDiscount.absolute,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Fehler beim Speichern des Gesamtrabatts: $e');
+    }
+  }
 // Hilfsmethode zur Formatierung von Preisen
   String _formatPrice(double amount) {
     // Konvertiere von CHF in die ausgewählte Währung
@@ -990,7 +1315,9 @@ return Scaffold(
                       ),
                       const Spacer(),
                       IconButton(
-                        icon: const Icon(Icons.close),
+
+                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
+
                         onPressed: () => Navigator.pop(context),
                       ),
                     ],
@@ -1047,10 +1374,10 @@ return Scaffold(
                           // EUR Umrechnungsfaktor
                           TextFormField(
                             controller: eurRateController,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'EUR Faktor',
                               border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.euro),
+                              prefixIcon:getAdaptiveIcon(iconName: 'euro', defaultIcon: Icons.euro,),
                               helperText: '1 CHF = x EUR',
                             ),
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -1065,10 +1392,10 @@ return Scaffold(
                           // USD Umrechnungsfaktor
                           TextFormField(
                             controller: usdRateController,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'USD Faktor',
                               border: OutlineInputBorder(),
-                              prefixIcon: Icon(Icons.attach_money),
+                              prefixIcon: getAdaptiveIcon(iconName: 'attach_money', defaultIcon: Icons.attach_money,),
                               helperText: '1 CHF = x USD',
                             ),
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -1151,7 +1478,7 @@ return Scaffold(
                                 );
                               }
                             },
-                            icon: const Icon(Icons.check),
+                            icon: getAdaptiveIcon(iconName: 'check', defaultIcon: Icons.check,),
                             label: const Text('Übernehmen'),
                             style: ElevatedButton.styleFrom(
                               minimumSize: const Size(double.infinity, 45),
@@ -1167,7 +1494,7 @@ return Scaffold(
                               await _fetchLatestExchangeRates();
                               _showCurrencyConverterDialog(); // Dialog erneut öffnen mit neuen Kursen
                             },
-                            icon: const Icon(Icons.refresh),
+                            icon: getAdaptiveIcon(iconName: 'refresh', defaultIcon: Icons.refresh,),
                             label: const Text('Aktuelle Kurse abrufen'),
                             style: ElevatedButton.styleFrom(
                               minimumSize: const Size(double.infinity, 45),
@@ -1533,7 +1860,7 @@ return Scaffold(
                       const Spacer(),
                       IconButton(
                         onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close),
+                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                       ),
                     ],
                   ),
@@ -1542,7 +1869,7 @@ return Scaffold(
                     controller: searchController,
                     decoration: InputDecoration(
                       labelText: 'Suchen',
-                      prefixIcon: const Icon(Icons.search),
+                      prefixIcon: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search,),
                       border: const OutlineInputBorder(),
                       filled: true,
                       fillColor: Theme.of(context).colorScheme.surface,
@@ -1565,11 +1892,8 @@ return Scaffold(
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  Icons.error_outline,
-                                  size: 48,
-                                  color: Theme.of(context).colorScheme.error,
-                                ),
+                                getAdaptiveIcon(iconName: 'error', defaultIcon: Icons.error,size: 48),
+
                                 const SizedBox(height: 16),
                                 Text(
                                   'Fehler beim Laden der Messen',
@@ -1602,11 +1926,8 @@ return Scaffold(
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  Icons.event_busy,
-                                  size: 48,
-                                  color: Theme.of(context).colorScheme.outline,
-                                ),
+                                getAdaptiveIcon(iconName: 'event_busy', defaultIcon: Icons.event_busy,size: 48),
+
                                 const SizedBox(height: 16),
                                 Text(
                                   'Keine aktiven Messen gefunden',
@@ -1639,12 +1960,8 @@ return Scaffold(
                                       backgroundColor: isSelected
                                           ? Theme.of(context).colorScheme.primary
                                           : Theme.of(context).colorScheme.surfaceContainerHighest,
-                                      child: Icon(
-                                        Icons.event,
-                                        color: isSelected
-                                            ? Theme.of(context).colorScheme.onPrimary
-                                            : Theme.of(context).colorScheme.onSurfaceVariant,
-                                      ),
+                                      child:   getAdaptiveIcon(iconName: 'event', defaultIcon: Icons.event,size: 48),
+
                                     ),
                                     title: Text(
                                       fair.name,
@@ -1706,7 +2023,8 @@ return Scaffold(
                               ),
                             );
                           },
-                          icon: const Icon(Icons.settings),
+                          icon:    getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
+
                           label: const Text('Messen verwalten'),
                         ),
                         Row(
@@ -1767,88 +2085,162 @@ return Scaffold(
     );
   });
   void _showWarehouseDialog() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.9,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black26,
-                blurRadius: 10,
-                spreadRadius: 0,
-                offset: Offset(0, -1),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              // Drag Handle oben
-              Container(
-                margin: EdgeInsets.only(top: 12, bottom: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
+    final isWeb = kIsWeb;
+    final screenWidth = MediaQuery.of(context).size.width;
 
-              // Titel mit Schließen-Button
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: Colors.grey.shade200,
-                      width: 1,
-                    ),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.warehouse),
-                    SizedBox(width: 12),
-                    Text(
-                      'Lager durchsuchen',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+    // Web mit großem Bildschirm: Dialog mit begrenzter Breite
+    if (isWeb && screenWidth > 600) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return Dialog(
+            insetPadding: EdgeInsets.symmetric(
+              horizontal: screenWidth * 0.1, // 10% Abstand an beiden Seiten
+              vertical: 20,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Container(
+              width: screenWidth * 0.8, // 80% der Bildschirmbreite
+              height: MediaQuery.of(context).size.height * 0.9,
+              child: Column(
+                children: [
+                  // Titel mit Schließen-Button
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Colors.grey.shade200,
+                          width: 1,
+                        ),
                       ),
                     ),
-                    Spacer(),
-                    IconButton(
-                      icon: Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
+                    child: Row(
+                      children: [
+                        getAdaptiveIcon(iconName: 'warehouse', defaultIcon: Icons.warehouse),
+                        SizedBox(width: 12),
+                        Text(
+                          'Lager durchsuchen',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Spacer(),
+                        IconButton(
+                          icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
 
-              // Hauptinhalt
-              Expanded(
-                child: WarehouseScreen(
-                  key: UniqueKey(),
-                  isDialog: true,
-                  mode: 'shopping',
-                  onBarcodeSelected: (barcode) {
-                    print("bc:$barcode");
-                    Navigator.pop(context);
-                   // _checkAndHandleOnlineShopItem(barcode);
-                    _fetchProductAndShowQuantityDialog(barcode);
-                  },
-                ),
+                  // Hauptinhalt
+                  Expanded(
+                    child: WarehouseScreen(
+                      key: UniqueKey(),
+                      isDialog: true,
+                      mode: 'shopping',
+                      onBarcodeSelected: (barcode) {
+                        print("bc:$barcode");
+                        Navigator.pop(context);
+                        _fetchProductAndShowQuantityDialog(barcode);
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        );
-      },
-    );
+            ),
+          );
+        },
+      );
+    }
+    // Mobile oder kleine Bildschirme: Standard ModalBottomSheet
+    else {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (BuildContext context) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.9,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 10,
+                  spreadRadius: 0,
+                  offset: Offset(0, -1),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                // Drag Handle oben
+                Container(
+                  margin: EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+
+                // Titel mit Schließen-Button
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: Colors.grey.shade200,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      getAdaptiveIcon(iconName: 'warehouse', defaultIcon: Icons.warehouse),
+                      SizedBox(width: 12),
+                      Text(
+                        'Lager durchsuchen',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Spacer(),
+                      IconButton(
+                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Hauptinhalt
+                Expanded(
+                  child: WarehouseScreen(
+                    key: UniqueKey(),
+                    isDialog: true,
+                    mode: 'shopping',
+                    onBarcodeSelected: (barcode) {
+                      print("bc:$barcode");
+                      Navigator.pop(context);
+                      _fetchProductAndShowQuantityDialog(barcode);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    }
   }
 
   // Future<void> _checkAndHandleOnlineShopItem(String barcode) async {
@@ -1957,7 +2349,7 @@ return Scaffold(
                       const Spacer(),
                       IconButton(
                         onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close),
+                       icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                       ),
                     ],
                   ),
@@ -1966,7 +2358,7 @@ return Scaffold(
                     controller: searchController,
                     decoration: InputDecoration(
                       labelText: 'Suchen',
-                      prefixIcon: const Icon(Icons.search),
+                      prefixIcon:    getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search,),
                       border: const OutlineInputBorder(),
                       filled: true,
                       fillColor: Theme.of(context).colorScheme.surface,
@@ -2009,11 +2401,9 @@ return Scaffold(
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  Icons.account_balance,
-                                  size: 48,
-                                  color: Theme.of(context).colorScheme.outline,
-                                ),
+
+                                   getAdaptiveIcon(iconName: 'account_balance', defaultIcon: Icons.account_balance,size: 48),
+
                                 const SizedBox(height: 16),
                                 Text(
                                   'Keine Kostenstellen gefunden',
@@ -2091,7 +2481,8 @@ return Scaffold(
                             Navigator.pop(context);
                             _showNewCostCenterDialog();
                           },
-                          icon: const Icon(Icons.add),
+                          icon:    getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add,),
+
                           label: const Text('Neue Kostenstelle'),
                         ),
 
@@ -2136,7 +2527,9 @@ return Scaffold(
                         const Spacer(),
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close),
+
+                          icon:    getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
+
                         ),
                       ],
                     ),
@@ -2247,7 +2640,8 @@ return Scaffold(
                                   }
                                 }
                               },
-                              icon: const Icon(Icons.save),
+                              icon:   getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save,),
+
                               label: const Text('Speichern'),
                             ),
                           ],
@@ -2298,10 +2692,13 @@ return Scaffold(
 
 // Desktop Layout
   Widget _buildDesktopLayout() {
+    final bool hasSelectedProduct = selectedProduct != null;
+
     return Row(
       children: [
+        // Linke Seite - kompaktere Produktauswahl
         Container(
-          width: 400,
+          width: 320, // Reduzierte Breite
           decoration: BoxDecoration(
             border: Border(
               right: BorderSide(
@@ -2311,28 +2708,166 @@ return Scaffold(
             ),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildCustomerSection(),
-              _buildProductInput(),
-              if (selectedProduct != null) _buildSelectedProductInfo(),
-              const Spacer(),
-              _buildCheckoutButton(),
+              // Header mit kompakterem Padding
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  children: [
+                    getAdaptiveIcon(
+                      iconName: 'shopping_cart',
+                      defaultIcon: Icons.shopping_cart,
+                      color: primaryAppColor,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Produkt hinzufügen',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Kompakteres Eingabefeld
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: barcodeController,
+                        decoration: const InputDecoration(
+                          labelText: 'Barcode',
+                          isDense: true, // Kompaktere Darstellung
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      ),
+                    ),
+
+
+                  ],
+                ),
+              ),
+              SizedBox(
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: () {
+                    if (barcodeController.text.isNotEmpty) {
+                      _fetchProductAndShowQuantityDialog(barcodeController.text);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.all(8),
+                  ),
+                  child: getAdaptiveIcon(
+                    iconName: 'barcode',
+                    defaultIcon: Icons.qr_code,
+
+                  ),
+                ),
+              ),
+              // Search button in horizontal layout
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 32, 16, 8),
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    _showWarehouseDialog();
+                  },
+                  icon: getAdaptiveIcon(
+                    iconName: 'search',
+                    defaultIcon: Icons.search,
+                  ),
+                  label: const Text('Produkt suchen'),
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 40), // Kleinere Höhe
+                  ),
+                ),
+              ),
+// NEUER BUTTON FÜR MANUELLE PRODUKTE
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: OutlinedButton.icon(
+                  onPressed: _showManualProductDialog,
+                  icon: getAdaptiveIcon(
+                    iconName: 'add_circle_outline',
+                    defaultIcon: Icons.add_circle_outline,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  label: const Text('Manuelles Produkt'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 40),
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ),
+              // Separator
+              Divider(height: 16, thickness: 1, color: Colors.grey.shade200),
+
+              // Ausgewähltes Produkt oder Hilfetext
+              Expanded(
+                child: hasSelectedProduct
+                    ? _buildSelectedProductInfo()
+                    : Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'inventory',
+                          defaultIcon: Icons.inventory,
+                          size: 48,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Scanne einen Barcode oder suche ein Produkt aus dem Lager',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
+
+        // Rechte Seite - Warenkorb
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text(
-                  'Warenkorb',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    getAdaptiveIcon(
+                      iconName: 'shopping_cart',
+                      defaultIcon: Icons.shopping_cart,
+                      color: primaryAppColor,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Warenkorb',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Expanded(child: _buildCartList()),
@@ -2378,7 +2913,7 @@ return Scaffold(
                         const Spacer(),
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close),
+                          icon:    getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                         ),
                       ],
                     ),
@@ -2634,673 +3169,125 @@ return Scaffold(
       ),
     );
   }
-  Widget _buildCustomerListTile(Customer customer, bool isSelected) {
-    return Card(
-      elevation: isSelected ? 2 : 0,
-      color: isSelected
-          ? Theme.of(context).colorScheme.primaryContainer
-          : null,
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: isSelected
-              ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: Text(
-            customer.company.substring(0, 1).toUpperCase(),
-            style: TextStyle(
-              color: isSelected
-                  ? Theme.of(context).colorScheme.onPrimary
-                  : Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        title: Text(
-          customer.company,
-          style: TextStyle(
-            fontWeight: isSelected ? FontWeight.bold : null,
 
-            fontSize: 14,),
-          overflow: TextOverflow.ellipsis,
-          maxLines:1,
-        ),
-        // subtitle: Text(
-        //   '${customer.fullName}\n${customer.city}' ),
-        subtitle: Text(
-            '${customer.city}' ),
-        trailing: IconButton(
-          icon: const Icon(Icons.edit),
-          onPressed: () => _showEditCustomerDialog(customer),
-        ),
-        isThreeLine: false,
-        onTap: () => _onCustomerSelected(customer),
-      ),
-    );
-  }
 // Mobile Layout
-Widget _buildMobileLayout() {
-return Column(
-children: [
-_buildMobileActions(),
-Expanded(
-child: _buildCartList(),
-),
-_buildTotalBar(),
-],
-);
-}
+  Widget _buildMobileLayout() {
+    return Column(
+      children: [
+        // Neue Kundenanzeige als oberste Zeile
+        StreamBuilder<Customer?>(
+          stream: _temporaryCustomerStream,
+          builder: (context, snapshot) {
+            final customer = snapshot.data;
 
-// Produkteingabe Widget
-Widget _buildProductInput() {
-return Padding(
-padding: const EdgeInsets.all(16.0),
-child: Column(
-crossAxisAlignment: CrossAxisAlignment.start,
-children: [
-const Text(
-'Produkt hinzufügen',
-style: TextStyle(
-fontSize: 20,
-fontWeight: FontWeight.bold,
-),
-),
-const SizedBox(height: 24),
-TextFormField(
-controller: barcodeController,
-decoration: const InputDecoration(
-labelText: 'Barcode',
-border: OutlineInputBorder(),
-helperText: 'Gib den Barcode des Produkts ein',
-),
-keyboardType: TextInputType.number,
-inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-onFieldSubmitted: (value) {
-if (value.isNotEmpty) {
-_fetchProductAndShowQuantityDialog(value);
-}
-},
-),
-const SizedBox(height: 16),
-ElevatedButton.icon(
-onPressed: () {
-if (barcodeController.text.isNotEmpty) {
-_fetchProductAndShowQuantityDialog(barcodeController.text);
-}
-},
-icon: const Icon(Icons.search),
-label: const Text('Produkt suchen'),
-style: ElevatedButton.styleFrom(
-minimumSize: const Size(double.infinity, 48),
-),
-),
-],
-),
-);
-}
-  // Verbesserte Kundenanzeige Widget
-  Widget _buildCustomerSection() {
-    return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: selectedCustomer != null
-              ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
-              : Theme.of(context).colorScheme.outline.withOpacity(0.2),
+            return GestureDetector(
+              onTap: _showCustomerSelection,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                decoration: BoxDecoration(
+                  color: customer != null
+                      ? Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.3)
+                      : Theme.of(context).colorScheme.errorContainer.withOpacity(0.3),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: customer != null
+                          ? Theme.of(context).colorScheme.secondary
+                          : Theme.of(context).colorScheme.error,
+                      width: 2,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    getAdaptiveIcon(
+                      iconName: 'person',
+                      defaultIcon: Icons.person,
+                      color: customer != null
+                          ? Theme.of(context).colorScheme.onSecondaryContainer
+                          : Theme.of(context).colorScheme.onErrorContainer,
+                    ),
+                    const SizedBox(width: 12),
+                    customer != null
+                        ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          customer.company.isNotEmpty ? customer.company : customer.fullName,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Theme.of(context).colorScheme.onSecondaryContainer,
+                          ),
+                        ),
+                        // Nur Subtitle zeigen wenn Firma vorhanden ist
+                        if (customer.company.isNotEmpty)
+                          Text(
+                            ' • ${customer.fullName} • ${customer.city}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.onSecondaryContainer.withOpacity(0.7),
+                            ),
+                          )
+                        else
+                          Text(
+                            ' • ${customer.city}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.onSecondaryContainer.withOpacity(0.7),
+                            ),
+                          )
+                      ],
+                    )
+                        : Text(
+                      'Bitte Kunde auswählen',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onErrorContainer,
+                      ),
+                    ),
+
+                  ],
+                ),
+              ),
+            );
+          },
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.person,
-                color: selectedCustomer != null
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.outline,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Kunde',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: selectedCustomer != null
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.outline,
-                ),
-              ),
-              const Spacer(),
-              ElevatedButton.icon(
-                onPressed: _showCustomerSelection,
-                icon: Icon(selectedCustomer != null ? Icons.edit : Icons.add),
-                label: Text(selectedCustomer != null ? 'Ändern' : 'Auswählen'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: selectedCustomer != null
-                      ? Theme.of(context).colorScheme.primaryContainer
-                      : Theme.of(context).colorScheme.primary,
-                  foregroundColor: selectedCustomer != null
-                      ? Theme.of(context).colorScheme.onPrimaryContainer
-                      : Theme.of(context).colorScheme.onPrimary,
-                ),
-              ),
-            ],
-          ),
-          if (selectedCustomer != null) ...[
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    selectedCustomer!.company,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(selectedCustomer!.fullName),
-                  const SizedBox(height: 2),
-                  Text(
-                    selectedCustomer!.fullAddress,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    selectedCustomer!.email,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ] else
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24.0),
-              child: Center(
-                child: Text(
-                  'Kein Kunde ausgewählt',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.outline,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+        _buildMobileActions(),
+        Expanded(
+          child: _buildCartList(),
+        ),
+        _buildTotalBar(),
+      ],
     );
   }
 
-  void _onCustomerSelected(Customer customer) async {
-    await _saveTemporaryCustomer(customer);
-    if (mounted) {
-      Navigator.pop(context);
+
+  void _showCustomerSelection() async {
+    // Zeige das Customer Selection Sheet an und warte auf das Ergebnis
+    final selectedCustomer = await CustomerSelectionSheet.show(context);
+
+    // Wenn ein Kunde ausgewählt wurde, speichere ihn
+    if (selectedCustomer != null) {
+      await _saveTemporaryCustomer(selectedCustomer);
+      // Sprache aus Kundendaten setzen
+      setState(() {
+        _documentLanguageNotifier.value = selectedCustomer.language ?? 'DE';
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Kunde ausgewählt'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     }
   }
 
-// Verbessertes Kundenauswahlformular
-  void _showCustomerSelection() {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 600,
-            maxHeight: MediaQuery.of(context).size.height * 0.7,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Scaffold(
-              resizeToAvoidBottomInset: false,
-              body: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'Kunde',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: customerSearchController,
-                    decoration: InputDecoration(
-                      labelText: 'Suchen',
-                      prefixIcon: const Icon(Icons.search),
-                      border: const OutlineInputBorder(),
-                      filled: true,
-                      fillColor: Theme.of(context).colorScheme.surface,
-                    ),
-                    onChanged: (value) {
-                      setState(() {});
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('customers')
-                          .orderBy('company')
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        if (snapshot.hasError) {
-                          return const Center(
-                            child: Text('Ein Fehler ist aufgetreten'),
-                          );
-                        }
 
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
-                        }
 
-                        final customers = snapshot.data?.docs ?? [];
-                        final searchTerm = customerSearchController.text.toLowerCase();
-
-                        final filteredCustomers = customers.where((doc) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          return data['company'].toString().toLowerCase().contains(searchTerm) ||
-                              data['firstName'].toString().toLowerCase().contains(searchTerm) ||
-                              data['lastName'].toString().toLowerCase().contains(searchTerm);
-                        }).toList();
-
-                        if (filteredCustomers.isEmpty) {
-                          return Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.search_off,
-                                  size: 48,
-                                  color: Theme.of(context).colorScheme.outline,
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'Keine Kunden gefunden',
-                                  style: TextStyle(
-                                    color: Theme.of(context).colorScheme.outline,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-
-                        return StreamBuilder<Customer?>(
-                          stream: _temporaryCustomerStream,
-                          builder: (context, selectedSnapshot) {
-                            final selectedCustomer = selectedSnapshot.data;
-
-                            return ListView.builder(
-                              itemCount: filteredCustomers.length,
-                              itemBuilder: (context, index) {
-                                final doc = filteredCustomers[index];
-                                final customer = Customer.fromMap(
-                                  doc.data() as Map<String, dynamic>,
-                                  doc.id,
-                                );
-
-                                final isSelected = selectedCustomer?.id == customer.id;
-
-                                return _buildCustomerListTile(customer, isSelected);
-                              },
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SafeArea(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-
-                        ElevatedButton.icon(
-                          onPressed: _showNewCustomerDialog,
-                          icon: const Icon(Icons.add),
-                          label: const Text('Neuer Kunde'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-// Verbessertes Formular für neue Kunden
-  void _showNewCustomerDialog() {
-    final formKey = GlobalKey<FormState>();
-
-    final companyController = TextEditingController();
-    final firstNameController = TextEditingController();
-    final lastNameController = TextEditingController();
-    final streetController = TextEditingController();
-    final houseNumberController = TextEditingController();
-    final zipCodeController = TextEditingController();
-    final cityController = TextEditingController();
-    final countryController = TextEditingController(text: 'Schweiz');  // Default
-    final emailController = TextEditingController();
-
-    showDialog(
-        context: context,
-        builder: (context) => Dialog(
-            child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Form(
-                        key: formKey,
-                        child: SingleChildScrollView(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                          Row(
-                          children: [
-                          Text(
-                          'Neuer Kunde',
-                            style: Theme.of(context).textTheme.headlineSmall,
-                          ),
-                          const Spacer(),
-                          IconButton(
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(Icons.close),
-                          ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Unternehmensdaten',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              const SizedBox(height: 16),
-                              TextFormField(
-                                controller: companyController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Firma *',
-                                  border: OutlineInputBorder(),
-                                  filled: true,
-                                ),
-                                validator: (value) =>
-                                value?.isEmpty == true ? 'Bitte Firma eingeben' : null,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Kontaktperson',
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: firstNameController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Vorname *',
-                                        border: OutlineInputBorder(),
-                                        filled: true,
-                                      ),
-                                      validator: (value) =>
-                                      value?.isEmpty == true ? 'Bitte Vorname eingeben' : null,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: lastNameController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Nachname *',
-                                        border: OutlineInputBorder(),
-                                        filled: true,
-                                      ),
-                                      validator: (value) =>
-                                      value?.isEmpty == true ? 'Bitte Nachname eingeben' : null,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              TextFormField(
-                                controller: emailController,
-                                decoration: const InputDecoration(
-                                  labelText: 'E-Mail *',
-                                  border: OutlineInputBorder(),
-                                  filled: true,
-                                ),
-                                validator: (value) {
-                                  if (value?.isEmpty == true) {
-                                    return 'Bitte E-Mail eingeben';
-                                  }
-                                  if (!value!.contains('@')) {
-                                    return 'Bitte gültige E-Mail eingeben';
-                                  }
-                                  return null;
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                              Text(
-                              'Adresse',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                              Expanded(
-                              flex: 3,
-                              child: TextFormField(
-                                controller: streetController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Straße *',
-                                  border: OutlineInputBorder(),
-                                  filled: true,
-                                ),
-                                validator: (value) =>
-                                value?.isEmpty == true ? 'Bitte Straße eingeben' : null,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                                child: TextFormField(
-                                    controller: houseNumberController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Nr. *',
-                                    border: OutlineInputBorder(),
-                                    filled: true,
-                                  ),
-                                  validator: (value) =>
-                                  value?.isEmpty == true ? 'Bitte Nr. eingeben' : null,
-                                ),
-                            ),
-                              ],
-                            ),
-                                const SizedBox(height: 16),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: TextFormField(
-                                        controller: zipCodeController,
-                                        decoration: const InputDecoration(
-                                          labelText: 'PLZ *',
-                                          border: OutlineInputBorder(),
-                                          filled: true,
-                                        ),
-                                        validator: (value) =>
-                                        value?.isEmpty == true ? 'Bitte PLZ eingeben' : null,
-                                        keyboardType: TextInputType.number,
-                                        inputFormatters: [
-                                          FilteringTextInputFormatter.digitsOnly,
-                                          LengthLimitingTextInputFormatter(5),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      flex: 3,
-                                      child: TextFormField(
-                                        controller: cityController,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Ort *',
-                                          border: OutlineInputBorder(),
-                                          filled: true,
-                                        ),
-                                        validator: (value) =>
-                                        value?.isEmpty == true ? 'Bitte Ort eingeben' : null,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                TextFormField(
-                                  controller: countryController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Land *',
-                                    border: OutlineInputBorder(),
-                                    filled: true,
-                                  ),
-                                  validator: (value) =>
-                                  value?.isEmpty == true ? 'Bitte Land eingeben' : null,
-                                ),
-                              ],
-                            ),
-                        ),
-                              const SizedBox(height: 24),
-                              Column(
-                                children: [
-                                  Text(
-                                    '* Pflichtfelder',
-                                    style: TextStyle(
-                                      color: Theme.of(context).colorScheme.outline,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  Row(
-                                    children: [
-
-                                      const Spacer(),
-                                      TextButton(
-                                        onPressed: () {
-                                          Navigator.pop(context);
-                                        },
-                                        child: const Text('Abbrechen'),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton.icon(
-                                        onPressed: () async {
-                                          if (formKey.currentState?.validate() == true) {
-                                            try {
-                                              final newCustomer = Customer(
-                                                id: '',
-                                                name: companyController.text.trim(),
-                                                company: companyController.text.trim(),
-                                                firstName: firstNameController.text.trim(),
-                                                lastName: lastNameController.text.trim(),
-                                                street: streetController.text.trim(),
-                                                houseNumber: houseNumberController.text.trim(),
-                                                zipCode: zipCodeController.text.trim(),
-                                                city: cityController.text.trim(),
-                                                country: countryController.text.trim(),
-                                                email: emailController.text.trim(),
-                                              );
-
-                                              final docRef = await FirebaseFirestore.instance
-                                                  .collection('customers')
-                                                  .add(newCustomer.toMap());
-
-                                              setState(() {
-                                                selectedCustomer = Customer.fromMap(
-                                                  newCustomer.toMap(),
-                                                  docRef.id,
-                                                );
-                                              });
-
-                                              if (mounted) {
-                                                Navigator.pop(context); // Schließe Neukunden-Dialog
-                                            //    Navigator.pop(context); // Schließe Kundenauswahl-Dialog
-                                                AppToast.show(message: 'Kunde wurde erfolgreich angelegt', height: h);
-
-                                              }
-                                            } catch (e) {
-                                              if (mounted) {
-                                                AppToast.show(message: 'Fehler beim Anlegen: $e', height: h);
-
-                                              }
-                                            }
-                                          }
-                                        },
-                                        icon: const Icon(Icons.save),
-                                        label: const Text('Speichern'),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    );
-  }
 
 
 
@@ -3349,38 +3336,81 @@ minimumSize: const Size(double.infinity, 48),
 // Mobile Aktionsbuttons
   Widget _buildMobileActions() {
     return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Row(
+      padding: const EdgeInsets.all(8.0),
+      child: Column(
         children: [
-          // Neuer Suchen-Button
-          Expanded(
-            child: ElevatedButton(
-              onPressed: _showWarehouseDialog,
-              child:const Icon(Icons.search),
-
-
-            ),
+          // Erste Reihe mit bestehenden Buttons
+          Row(
+            children: [
+              // Neuer Suchen-Button
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _showManualProductDialog,
+                  child: getAdaptiveIcon(iconName: 'add_circle_outline', defaultIcon: Icons.add_circle_outline),
+                ),
+              ),
+              const SizedBox(width: 6),
+              // Neuer Suchen-Button
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _showWarehouseDialog,
+                  child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
+                ),
+              ),
+              const SizedBox(width: 6),
+              // Bestehender Scan-Button
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _scanProduct,
+                  child: getAdaptiveIcon(iconName: 'qr_code', defaultIcon: Icons.qr_code),
+                ),
+              ),
+              const SizedBox(width: 6),
+              // Bestehender Eingabe-Button
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _showBarcodeInputDialog,
+                  child: getAdaptiveIcon(iconName: 'keyboard', defaultIcon: Icons.keyboard),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          // Bestehender Scan-Button
-          Expanded(
-            child: ElevatedButton(
-              onPressed: _scanProduct,
-             child: const Icon(Icons.qr_code_scanner),
 
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Bestehender Eingabe-Button
-          Expanded(
-            child: ElevatedButton(
-              onPressed: _showBarcodeInputDialog,
-             child: const Icon(Icons.keyboard),
-
-            ),
-          ),
         ],
       ),
+    );
+  }
+
+
+  void _showManualProductDialog() {
+    ManualProductSheet.show(
+      context,
+      onProductAdded: (manualProductData) async {
+        try {
+          // Füge das manuelle Produkt direkt zum Warenkorb hinzu
+          await FirebaseFirestore.instance
+              .collection('temporary_basket')
+              .add(manualProductData);
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Manuelles Produkt wurde hinzugefügt'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Fehler beim Hinzufügen: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      },
     );
   }
 
@@ -3411,11 +3441,29 @@ minimumSize: const Size(double.infinity, 48),
             final doc = basketItems[index];
             final item = doc.data() as Map<String, dynamic>;
             final itemId = doc.id;
+
+            final Discount itemDiscount;
+            if (item['discount'] != null) {
+              final discountData = item['discount'] as Map<String, dynamic>;
+              itemDiscount = Discount(
+                percentage: discountData['percentage'] ?? 0.0,
+                absolute: discountData['absolute'] ?? 0.0,
+              );
+              // Synchronisiere mit lokalem State
+              if (!_itemDiscounts.containsKey(itemId)) {
+                _itemDiscounts[itemId] = itemDiscount;
+              }
+            } else {
+              itemDiscount = _itemDiscounts[itemId] ?? const Discount();
+            }
+
+
+
             final quantity = item['quantity'] as int;
            // final pricePerUnit = (item['price_per_unit'] as num).toDouble();
             final pricePerUnit = ((item['custom_price_per_unit'] ?? item['price_per_unit']) as num).toDouble();
             final subtotal = quantity * pricePerUnit;
-            final itemDiscount = _itemDiscounts[itemId] ?? const Discount();
+
             final discountAmount = itemDiscount.calculateDiscount(subtotal);
 
             return GestureDetector(
@@ -3435,6 +3483,29 @@ minimumSize: const Size(double.infinity, 48),
                                   children: [
                                     Row(
                                       children: [
+
+                if (item['is_manual_product'] == true) ...[
+              Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.purple.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: Colors.purple.withOpacity(0.3),
+                ),
+              ),
+              child: Text(
+                'M',
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.purple[700],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+                ],
+
                                         Text(
                                           item['instrument_name'] ?? 'N/A',
                                           style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
@@ -3525,15 +3596,14 @@ minimumSize: const Size(double.infinity, 48),
                               children: [
 
                                 IconButton(
-                                  icon: Icon(
-                                    Icons.discount,
-                                    color: itemDiscount.hasDiscount ?
-                                    Theme.of(context).colorScheme.primary : null,
-                                  ),
+                                  icon:
+                                    getAdaptiveIcon(iconName: 'sell', defaultIcon: Icons.sell,),
+
                                   onPressed: () => _showItemDiscountDialog(itemId, subtotal),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete),
+                                  icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete,),
+
                                   onPressed: () => _removeFromBasket(doc.id),
                                 ),
                               ],
@@ -3543,23 +3613,28 @@ minimumSize: const Size(double.infinity, 48),
                         if (itemDiscount.hasDiscount)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Rabatt: ${itemDiscount.percentage > 0 ? '${itemDiscount.percentage}% ' : ''}'
-                                      '${itemDiscount.absolute > 0 ? '${itemDiscount.absolute} CHF' : ''}',
-                                  style: TextStyle(
-                                    color: Theme.of(context).colorScheme.primary,
-                                  ),
-                                ),
-                                Text(
-                                  '- ${discountAmount.toStringAsFixed(2)} CHF',
-                                  style: TextStyle(
-                                    color: Theme.of(context).colorScheme.primary,
-                                  ),
-                                ),
-                              ],
+                            child: ValueListenableBuilder<String>(
+                              valueListenable: _currencyNotifier,
+                              builder: (context, currency, child) {
+                                return Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Rabatt: ${itemDiscount.percentage > 0 ? '${itemDiscount.percentage}% ' : ''}'
+                                          '${itemDiscount.absolute > 0 ? _formatPrice(itemDiscount.absolute) : ''}',
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.primary,
+                                      ),
+                                    ),
+                                    Text(
+                                      '- ${_formatPrice(discountAmount)}',
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.primary,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
                           ),
                       ],
@@ -3580,11 +3655,8 @@ minimumSize: const Size(double.infinity, 48),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
-                                Icons.shopping_cart,
-                                color: Colors.white,
-                                size: 14,
-                              ),
+                             getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart,),
+
                               SizedBox(width: 4),
                               Text(
                                 'Shop - ${item['online_shop_barcode']}',
@@ -3608,7 +3680,12 @@ minimumSize: const Size(double.infinity, 48),
       },
     );
   }
-
+  void _showShippingCostsDialog() {
+    showShippingCostsBottomSheet(
+      context,
+      costsConfiguredNotifier: _shippingCostsConfiguredNotifier,
+    );
+  }
   Widget _buildTotalBar() {
     return ValueListenableBuilder<String>(
       valueListenable: _currencyNotifier,
@@ -3619,284 +3696,561 @@ minimumSize: const Size(double.infinity, 48),
             return ValueListenableBuilder<TaxOption>(
               valueListenable: _taxOptionNotifier,
               builder: (context, taxOption, _) {
-                return StreamBuilder<QuerySnapshot>(
-                  stream: _basketStream,
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const SizedBox.shrink();
+                return ValueListenableBuilder<double>( // NEU hinzufügen
+                    valueListenable: _vatRateNotifier,
+                    builder: (context, vatRate, _) {
+                    return StreamBuilder<QuerySnapshot>(
+                      stream: _basketStream,
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) return const SizedBox.shrink();
 
-                    final basketItems = snapshot.data!.docs;
+                        final basketItems = snapshot.data!.docs;
 
-                    // Berechne Zwischensummen
-                    double subtotal = 0.0;
-                    double itemDiscounts = 0.0;
+                        // Berechne Zwischensummen
+                        double subtotal = 0.0;
+                        double itemDiscounts = 0.0;
 
-                    for (var doc in basketItems) {
-                      final data = doc.data() as Map<String, dynamic>;
+                        for (var doc in basketItems) {
+                          final data = doc.data() as Map<String, dynamic>;
 
-                      // Hier den korrekten Preis verwenden (custom oder standard)
-                      final customPriceValue = data['custom_price_per_unit'];
-                      final pricePerUnit = customPriceValue != null
-                          ? (customPriceValue as num).toDouble()
-                          : (data['price_per_unit'] as num).toDouble();
+                          // Hier den korrekten Preis verwenden (custom oder standard)
+                          final customPriceValue = data['custom_price_per_unit'];
+                          final pricePerUnit = customPriceValue != null
+                              ? (customPriceValue as num).toDouble()
+                              : (data['price_per_unit'] as num).toDouble();
 
-                      final itemSubtotal = (data['quantity'] as int) * pricePerUnit;
-                      subtotal += itemSubtotal;
+                          final itemSubtotal = (data['quantity'] as int) * pricePerUnit;
+                          subtotal += itemSubtotal;
 
-                      final itemDiscount = _itemDiscounts[doc.id] ?? const Discount();
-                      itemDiscounts += itemDiscount.calculateDiscount(
-                          itemSubtotal,
+                          final itemDiscount = _itemDiscounts[doc.id] ?? const Discount();
+                          itemDiscounts += itemDiscount.calculateDiscount(
+                            itemSubtotal,
+                          );
+                        }
 
-                      );
-                    }
+                        final afterItemDiscounts = subtotal - itemDiscounts;
+                        final totalDiscountAmount = _totalDiscount.calculateDiscount(
+                          afterItemDiscounts,
+                        );
+                        final netAmount = afterItemDiscounts - totalDiscountAmount;
 
-                    final afterItemDiscounts = subtotal - itemDiscounts;
-                    final totalDiscountAmount = _totalDiscount.calculateDiscount(
-                        afterItemDiscounts,
+                        // MwSt nur berechnen, wenn es Standard-Option ist
+                        double vatAmount = 0.0;
+                        double total = netAmount;
 
-                    );
-                    final netAmount = afterItemDiscounts - totalDiscountAmount;
+                        if (taxOption == TaxOption.standard) {
+                          vatAmount = netAmount * (_vatRate / 100);
+                          total = netAmount + vatAmount;
+                        }
 
-                    // MwSt nur berechnen, wenn es Standard-Option ist
-                    double vatAmount = 0.0;
-                    double total = netAmount;
-
-                    if (taxOption == TaxOption.standard) {
-                      vatAmount = netAmount * (_vatRate / 100);
-                      total = netAmount + vatAmount;
-                    }
-
-                    return Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).cardColor,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 4,
-                            offset: const Offset(0, -2),
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).cardColor,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, -2),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      child: SafeArea(
-                        child: Column(
-                          children: [
-                            // Zwischensumme
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          child: SafeArea(
+                            child: Column(
                               children: [
-                                const Text('Zwischensumme'),
-                                Text(_formatPrice(subtotal)),
-                              ],
-                            ),
-
-                            // Positionsrabatte
-                            if (itemDiscounts > 0) ...[
-                              const SizedBox(height: 4),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text('Positionsrabatte'),
-                                  Text(
-                                    '- ${_formatPrice(itemDiscounts)}',
-                                    style: TextStyle(
-                                      color: Theme.of(context).colorScheme.primary,
+                                // Zwischensumme
+                                Container(
+                                  alignment: Alignment.centerRight,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                      borderRadius: const BorderRadius.all(Radius.circular(8)),
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        // Details-Toggle und Gesamtbetrag in einer Zeile
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            // Toggle-Button links
+                                            GestureDetector(
+                                              onTap: () {
+                                                setState(() {
+                                                  _isDetailExpanded = !_isDetailExpanded;
+                                                });
+                                              },
+                                              child: Container(
+                                                padding: const EdgeInsets.all(4),
+                                                child: Icon(
+                                                  _isDetailExpanded
+                                                      ? Icons.expand_less
+                                                      : Icons.expand_more,
+                                                  size: 20,
+                                                  color: Theme.of(context).colorScheme.primary,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 16),
 
-                            // Gesamtrabatt
-                            if (_totalDiscount.hasDiscount) ...[
-                              const SizedBox(height: 4),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                      'Gesamtrabatt '
-                                          '${_totalDiscount.percentage > 0 ? '(${_totalDiscount.percentage}%)' : ''}'
-                                          '${_totalDiscount.absolute > 0 ? ' ${_formatPrice(_totalDiscount.absolute)}' : ''}'
-                                  ),
-                                  Text(
-                                    '- ${_formatPrice(totalDiscountAmount)}',
-                                    style: TextStyle(
-                                      color: Theme.of(context).colorScheme.primary,
+                                            // Gesamtbetrag rechts
+                                            Expanded(
+                                              child: Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    taxOption == TaxOption.standard
+                                                        ? 'Gesamtbetrag:'
+                                                        : taxOption == TaxOption.noTax
+                                                        ? 'Nettobetrag:'
+                                                        : 'Gesamtbetrag inkl. MwSt:',
+                                                    style: const TextStyle(
+                                                      fontSize: 18,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    _formatPrice(taxOption == TaxOption.standard ? total : netAmount),
+                                                    style: const TextStyle(
+                                                      fontSize: 18,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+
+                                        // Details nur wenn expanded
+                                        if (_isDetailExpanded) ...[
+                                          const Divider(height: 16),
+
+                                          // Zwischensumme
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              const Text('Zwischensumme'),
+                                              Text(_formatPrice(subtotal)),
+                                            ],
+                                          ),
+
+                                          // Positionsrabatte
+                                          if (itemDiscounts > 0) ...[
+                                            const SizedBox(height: 4),
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                const Text('Positionsrabatte'),
+                                                Text(
+                                                  '- ${_formatPrice(itemDiscounts)}',
+                                                  style: TextStyle(
+                                                    color: Theme.of(context).colorScheme.primary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+
+                                          // Gesamtrabatt
+                                          if (_totalDiscount.hasDiscount) ...[
+                                            const SizedBox(height: 4),
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Text(
+                                                    'Gesamtrabatt '
+                                                        '${_totalDiscount.percentage > 0 ? '(${_totalDiscount.percentage}%)' : ''}'
+                                                        '${_totalDiscount.absolute > 0 ? ' ${_formatPrice(_totalDiscount.absolute)}' : ''}'
+                                                ),
+                                                Text(
+                                                  '- ${_formatPrice(totalDiscountAmount)}',
+                                                  style: TextStyle(
+                                                    color: Theme.of(context).colorScheme.primary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+
+                                          // MwSt-Bereich basierend auf gewählter Option
+                                          if (taxOption == TaxOption.standard) ...[
+                                            const SizedBox(height: 4),
+                                            // Nettobetrag
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                const Text('Nettobetrag'),
+                                                Text(_formatPrice(netAmount)),
+                                              ],
+                                            ),
+
+                                            const SizedBox(height: 4),
+
+                                            // MwSt mit Einstellungsrad
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Text('MwSt ($_vatRate%)'),
+                                                Row(
+                                                  children: [
+                                                    IconButton(
+                                                      icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
+                                                      onPressed: _showTaxOptionsDialog,
+                                                      tooltip: 'Steuereinstellungen ändern',
+                                                    ),
+                                                    Text(_formatPrice(vatAmount)),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ] else if (taxOption == TaxOption.noTax) ...[
+                                            const SizedBox(height: 4),
+                                            // Einstellungs-Button
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.end,
+                                              children: [
+                                                IconButton(
+                                                  icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
+                                                  onPressed: _showTaxOptionsDialog,
+                                                  tooltip: 'Steuereinstellungen ändern',
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'Es wird keine Mehrwertsteuer berechnet.',
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                fontStyle: FontStyle.italic,
+                                                color: Colors.grey[700],
+                                              ),
+                                            ),
+                                          ] else ...[
+                                            // totalOnly
+                                            const SizedBox(height: 4),
+                                            // Einstellungs-Button
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.end,
+                                              children: [
+                                                IconButton(
+                                                  icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
+                                                  onPressed: _showTaxOptionsDialog,
+                                                  tooltip: 'Steuereinstellungen ändern',
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ],
+                                      ],
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ],
-
-                            // MwSt-Bereich basierend auf gewählter Option
-                            if (taxOption == TaxOption.standard) ...[
-                              const SizedBox(height: 4),
-                              // Nettobetrag
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text('Nettobetrag'),
-                                  Text(_formatPrice(netAmount)),
-                                ],
-                              ),
-
-                              const SizedBox(height: 4),
-
-                              // MwSt mit Einstellungsrad
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text('MwSt ($_vatRate%)'),
-                                  Row(
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.settings, size: 16),
-                                        onPressed: _showTaxOptionsDialog,
-                                        tooltip: 'Steuereinstellungen ändern',
-                                      ),
-                                      Text(_formatPrice(vatAmount)),
-                                    ],
-                                  ),
-                                ],
-                              ),
-
-                              const Divider(height: 16),
-
-                              // Gesamtbetrag
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text(
-                                    'Gesamtbetrag',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    _formatPrice(total),
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ] else if (taxOption == TaxOption.noTax) ...[
-                              const SizedBox(height: 4),
-                              // Einstellungs-Button
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.settings, size: 16),
-                                    onPressed: _showTaxOptionsDialog,
-                                    tooltip: 'Steuereinstellungen ändern',
-                                  ),
-                                ],
-                              ),
-
-                              const Divider(height: 16),
-
-                              // Nettobetrag
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text(
-                                    'Nettobetrag',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    _formatPrice(netAmount),
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ] else ...[
-                              // totalOnly - Nur Gesamtbetrag, keine MwSt
-                              const SizedBox(height: 4),
-                              // Einstellungs-Button
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.settings, size: 16),
-                                    onPressed: _showTaxOptionsDialog,
-                                    tooltip: 'Steuereinstellungen ändern',
-                                  ),
-                                ],
-                              ),
-
-                              const Divider(height: 16),
-
-                              // Bruttobetrag (= Nettobetrag, keine MwSt)
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text(
-                                    'Gesamtbetrag inkl. MwSt',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    _formatPrice(netAmount), // Hier nehmen wir direkt den Nettobetrag
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-
-                            const SizedBox(height: 16),
-
-                            // Aktionsbuttons
-                            Row(
-                              children: [
-                                // Rabatt-Button
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: basketItems.isEmpty ? null : _showTotalDiscountDialog,
-                                    icon: Icon(
-                                      Icons.discount,
-                                      color: _totalDiscount.hasDiscount ?
-                                      Theme.of(context).colorScheme.primary : null,
-                                    ),
-                                    label: const Text('Gesamtrabatt'),
                                   ),
                                 ),
-                                const SizedBox(width: 16),
-                                // Abschließen-Button
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: basketItems.isEmpty || isLoading
-                                        ? null
-                                        : _processTransaction,
-                                    icon: isLoading
-                                        ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    )
-                                        : const Icon(Icons.check),
-                                    label: const Text('Abschließen'),
-                                  ),
+                                const SizedBox(height: 12),
+
+                                // Sprache
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+
+                                    ValueListenableBuilder<bool>(
+                                      valueListenable: _documentSelectionCompleteNotifier,
+                                      builder: (context, isComplete, child) {
+                                        return ValueListenableBuilder<String>(
+                                          valueListenable: _documentLanguageNotifier,
+                                          builder: (context, language, child) {
+                                            return Container(
+                                              decoration: BoxDecoration(
+                                                border: Border.all(
+                                                  color: isComplete ? Colors.green : Colors.red.shade300,
+                                                ),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Material(
+                                                color: Colors.transparent,
+                                                child: InkWell(
+                                                  onTap: _showDocumentTypeSelection,
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        // Sprach-Toggle
+                                                        GestureDetector(
+                                                          onTap: () {
+                                                            _documentLanguageNotifier.value =
+                                                            _documentLanguageNotifier.value == 'DE' ? 'EN' : 'DE';
+                                                          },
+                                                          child: Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                            decoration: BoxDecoration(
+                                                              color: Theme.of(context).colorScheme.primary,
+                                                              borderRadius: BorderRadius.circular(4),
+                                                            ),
+                                                            child: Text(
+                                                              language,
+                                                              style: TextStyle(
+                                                                color: Theme.of(context).colorScheme.onPrimary,
+                                                                fontSize: 10,
+                                                                fontWeight: FontWeight.bold,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 8),
+                                                        Icon(
+                                                          isComplete
+                                                              ? Icons.check_circle_outline
+                                                              : Icons.error_outline,
+                                                          size: 18,
+                                                          color: isComplete ? Colors.green : Colors.red,
+                                                        ),
+                                                        const SizedBox(width: 8),
+                                                        const Text(
+                                                          'Dok.',
+                                                          style: TextStyle(fontSize: 12),
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        Icon(
+                                                          Icons.arrow_drop_down,
+                                                          size: 18,
+                                                          color: Colors.grey.shade700,
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        );
+                                      },
+                                    ),
+
+                                    // Zusatztexte Button
+                                    ValueListenableBuilder<bool>(
+                                      valueListenable: _additionalTextsSelectedNotifier,
+                                      builder: (context, hasTexts, child) {
+                                        return Container(
+                                          decoration: BoxDecoration(
+                                            border: Border.all(
+                                              color: hasTexts ? Colors.green : Colors.red,
+                                            ),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Material(
+                                            color: Colors.transparent,
+                                            child: InkWell(
+                                              onTap: _showAdditionalTextsDialog,
+                                              borderRadius: BorderRadius.circular(4),
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      hasTexts
+                                                          ? Icons.text_fields
+                                                          : Icons.text_fields_outlined,
+                                                      size: 18,
+                                                      color: hasTexts ? Colors.green : Colors.red,
+                                                    ),
+
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+
+                                    // Nach dem Zusatztexte Button
+
+                    // Versandkosten Button
+                                    ValueListenableBuilder<bool>(
+                                      valueListenable: _shippingCostsConfiguredNotifier,
+                                      builder: (context, hasShippingCosts, child) {
+                                        return Container(
+                                          decoration: BoxDecoration(
+                                            border: Border.all(
+                                              color: hasShippingCosts ? Colors.green : Colors.red.shade300,
+                                            ),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Material(
+                                            color: Colors.transparent,
+                                            child: InkWell(
+                                              onTap: _showShippingCostsDialog,
+                                              borderRadius: BorderRadius.circular(4),
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      hasShippingCosts
+                                                          ? Icons.local_shipping
+                                                          : Icons.local_shipping_outlined,
+                                                      size: 18,
+                                                      color: hasShippingCosts ? Colors.green : Colors.red,
+                                                    ),
+
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+
+
+
+                                    ValueListenableBuilder<bool>(
+                                      valueListenable: _documentSelectionCompleteNotifier,
+                                      builder: (context, isDocSelectionComplete, child) {
+                                        return ValueListenableBuilder<bool>(
+                                          valueListenable: _additionalTextsSelectedNotifier,
+                                          builder: (context, hasTexts, child) {
+                                            return ValueListenableBuilder<bool>(
+                                              valueListenable: _shippingCostsConfiguredNotifier,
+                                              builder: (context, hasShipping, child) {
+                                                return StreamBuilder<Customer?>(
+                                                  stream: _temporaryCustomerStream,
+                                                  builder: (context, customerSnapshot) {
+                                                    return StreamBuilder<CostCenter?>(
+                                                      stream: _temporaryCostCenterStream,
+                                                      builder: (context, costCenterSnapshot) {
+                                                        // Prüfe alle Bedingungen
+                                                        final hasCustomer = customerSnapshot.data != null;
+                                                        final hasCostCenter = costCenterSnapshot.data != null;
+                                                        final allConfigured = isDocSelectionComplete &&
+                                                            hasTexts &&
+                                                            hasShipping &&
+                                                            hasCustomer &&
+                                                            hasCostCenter;
+
+                                                        final canProceed = basketItems.isNotEmpty &&
+                                                            !isLoading &&
+                                                            allConfigured;
+
+                                                        return Container(
+                                                          decoration: BoxDecoration(
+                                                            border: Border.all(
+                                                              color: allConfigured
+                                                                  ? Colors.green
+                                                                  : Colors.red.shade300,
+                                                            ),
+                                                            borderRadius: BorderRadius.circular(4),
+                                                          ),
+                                                          child: Material(
+                                                            color: allConfigured
+                                                                ? Theme.of(context).colorScheme.primary
+                                                                : Colors.red,
+                                                            borderRadius: BorderRadius.circular(3),
+                                                            child: InkWell(
+                                                              onTap: canProceed ? _processTransaction : null,
+                                                              borderRadius: BorderRadius.circular(3),
+                                                              child: Padding(
+                                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                                child: isLoading
+                                                                    ? const SizedBox(
+                                                                  width: 18,
+                                                                  height: 18,
+                                                                  child: CircularProgressIndicator(
+                                                                    strokeWidth: 2,
+                                                                    color: Colors.white,
+                                                                  ),
+                                                                )
+                                                                    : Icon(
+                                                                  allConfigured
+                                                                      ? Icons.check
+                                                                      : Icons.warning_outlined,
+                                                                  size: 18,
+                                                                  color: Colors.white,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        );
+                                                      },
+                                                    );
+                                                  },
+                                                );
+                                              },
+                                            );
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  ],
                                 ),
+
+
+                                // const SizedBox(height: 12),
+                                //
+                                // // Aktionsbuttons
+                                // Row(
+                                //   children: [
+                                //     // Rabatt-Button
+                                //     Expanded(
+                                //       child: ElevatedButton.icon(
+                                //         onPressed: basketItems.isEmpty ? null : _showTotalDiscountDialog,
+                                //         icon: getAdaptiveIcon(iconName: 'sell', defaultIcon: Icons.sell,),
+                                //         label: const Text('Rabatt'),
+                                //       ),
+                                //     ),
+                                //     const SizedBox(width: 16),
+                                //     // Abschließen-Button
+                                //     Expanded(
+                                //       child: ValueListenableBuilder<bool>(
+                                //         valueListenable: _documentSelectionCompleteNotifier,
+                                //         builder: (context, isDocSelectionComplete, child) {
+                                //           final canProceed = basketItems.isNotEmpty &&
+                                //               !isLoading &&
+                                //               isDocSelectionComplete;
+                                //
+                                //           final String buttonText = isDocSelectionComplete
+                                //               ? 'Abschließen'
+                                //               : '-';
+                                //
+                                //           return ElevatedButton.icon(
+                                //             onPressed: canProceed
+                                //                 ? _processTransaction
+                                //                 : isDocSelectionComplete
+                                //                 ? null  // Wenn Dokumente ausgewählt aber Warenkorb leer
+                                //                 : _showDocumentTypeSelection,  // Dokumente auswählen
+                                //             icon: isLoading
+                                //                 ? const SizedBox(
+                                //               width: 20,
+                                //               height: 20,
+                                //               child: CircularProgressIndicator(strokeWidth: 2),
+                                //             )
+                                //                 : isDocSelectionComplete
+                                //                 ? getAdaptiveIcon(iconName: 'check', defaultIcon: Icons.check,)
+                                //                 : getAdaptiveIcon(iconName: 'description', defaultIcon: Icons.description,),
+                                //             label: Text(buttonText),
+                                //             style: ElevatedButton.styleFrom(
+                                //               backgroundColor: isDocSelectionComplete
+                                //                   ? null  // Standard-Farbe
+                                //                   : Colors.amber,  // Hervorgehobene Farbe für Dokumentenauswahl
+                                //             ),
+                                //           );
+                                //         },
+                                //       ),
+                                //     ),
+                                //   ],
+                                // ),
                               ],
                             ),
-                          ],
-                        ),
-                      ),
+                          ),
+                        );
+                      },
                     );
-                  },
+                  }
                 );
               },
             );
@@ -3916,13 +4270,13 @@ minimumSize: const Size(double.infinity, 48),
 
       final currentStock = (inventoryDoc.data()?['quantity'] ?? 0) as int;
 
-      // Temporär gebuchte Menge abrufen
-      final tempBasketDoc = await FirebaseFirestore.instance
+      // Temporär gebuchte Menge abrufen - HIER IST DAS PROBLEM
+      final tempBasketDocs = await FirebaseFirestore.instance
           .collection('temporary_basket')
           .where('product_id', isEqualTo: shortBarcode)
           .get();
 
-      final reservedQuantity = tempBasketDoc.docs.fold<int>(
+      final reservedQuantity = tempBasketDocs.docs.fold<int>(
         0,
             (sum, doc) => sum + (doc.data()['quantity'] as int),
       );
@@ -3933,6 +4287,7 @@ minimumSize: const Size(double.infinity, 48),
       return 0;
     }
   }
+
 
   void _showPriceEditDialog(String basketItemId, Map<String, dynamic> itemData) {
     // Sicheres Konvertieren von int oder double nach double
@@ -3952,123 +4307,425 @@ minimumSize: const Size(double.infinity, 48),
 
     final priceController = TextEditingController(text: displayPrice.toStringAsFixed(2));
 
-    showDialog(
+    // Controller für die Maße - mit bestehenden Werten oder leer
+    final lengthController = TextEditingController(
+        text: itemData['custom_length']?.toString() ?? ''
+    );
+    final widthController = TextEditingController(
+        text: itemData['custom_width']?.toString() ?? ''
+    );
+    final thicknessController = TextEditingController(
+        text: itemData['custom_thickness']?.toString() ?? ''
+    );
+
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Preis anpassen'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Artikel: ${itemData['product_name']}',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text('Originalpreis: ${NumberFormat.currency(locale: 'de_CH', symbol: 'CHF').format(originalPrice)}'),
-            if (currentPriceInCHF != originalPrice)
-              Text(
-                'Aktueller Preis: ${NumberFormat.currency(locale: 'de_CH', symbol: 'CHF').format(currentPriceInCHF)}',
-                style: TextStyle(color: Colors.green[700]),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 10,
+                spreadRadius: 0,
+                offset: Offset(0, -1),
               ),
-            const SizedBox(height: 12),
-            ValueListenableBuilder<String>(
-              valueListenable: _currencyNotifier,
-              builder: (context, currency, child) {
-                return Text(
-                    'Neuer Preis in $_selectedCurrency:',
-                    style: TextStyle(fontWeight: FontWeight.bold)
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: priceController,
-              decoration: InputDecoration(
-                labelText: 'Neuer Preis',
-                suffixText: _selectedCurrency,
-                border: const OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
-              ],
-            ),
-
-          ],
-        ),
-        actions: [
-
-          // Option zum Zurücksetzen auf Originalpreis, falls bereits angepasst
-          if (currentPriceInCHF != originalPrice)
-            TextButton(
-              onPressed: () async {
-                await FirebaseFirestore.instance
-                    .collection('temporary_basket')
-                    .doc(basketItemId)
-                    .update({
-                  'custom_price_per_unit': FieldValue.delete(),
-                  'is_price_customized': false,
-                });
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Preis wurde auf Original zurückgesetzt'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-              child: const Text('Zurücksetzen'),
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-            ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                // Neuen Preis parsen (Komma oder Punkt akzeptieren)
-                final String normalizedInput = priceController.text.replaceAll(',', '.');
-                final newPrice = double.tryParse(normalizedInput) ?? 0.0;
-                if (newPrice <= 0) {
-                  throw Exception('Bitte gib einen gültigen Preis ein');
-                }
-
-                // Umrechnen in CHF für die Speicherung
-                double priceInCHF = newPrice;
-                if (_selectedCurrency != 'CHF') {
-                  priceInCHF = newPrice / _exchangeRates[_selectedCurrency]!;
-                }
-
-                // Speichere den angepassten Preis, nicht den Originalpreis überschreiben
-                await FirebaseFirestore.instance
-                    .collection('temporary_basket')
-                    .doc(basketItemId)
-                    .update({
-                  'custom_price_per_unit': priceInCHF,
-                  'is_price_customized': true,
-                });
-
-                Navigator.pop(context);
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Preis wurde aktualisiert'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Fehler: $e'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            child: const Text('Speichern'),
+            ],
           ),
-        ],
-      ),
+          child: Column(
+            children: [
+              // Drag Handle
+              Container(
+                margin: EdgeInsets.only(top: 12, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+
+              // Header
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                child: Row(
+                  children: [
+                    getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Artikel anpassen',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+
+              Divider(height: 1),
+
+              // Scrollbarer Inhalt
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Produktinfo
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Artikel: ${itemData['product_name']}',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            const SizedBox(height: 8),
+                            Text('Originalpreis: ${NumberFormat.currency(locale: 'de_CH', symbol: 'CHF').format(originalPrice)}'),
+                            if (currentPriceInCHF != originalPrice)
+                              Text(
+                                'Aktueller Preis: ${NumberFormat.currency(locale: 'de_CH', symbol: 'CHF').format(currentPriceInCHF)}',
+                                style: TextStyle(color: Colors.green[700]),
+                              ),
+                            const SizedBox(height: 8),
+                            Text('Menge: ${itemData['quantity']} ${itemData['unit'] ?? 'Stück'}'),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Preis anpassen
+                      Text(
+                        'Preis anpassen',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      ValueListenableBuilder<String>(
+                        valueListenable: _currencyNotifier,
+                        builder: (context, currency, child) {
+                          return TextFormField(
+                            controller: priceController,
+                            decoration: InputDecoration(
+                              labelText: 'Neuer Preis in $_selectedCurrency',
+                              suffixText: _selectedCurrency,
+                              border: const OutlineInputBorder(),
+                              filled: true,
+                              fillColor: Theme.of(context).colorScheme.surface,
+                              prefixIcon: getAdaptiveIcon(iconName: 'euro', defaultIcon: Icons.euro),
+                            ),
+                            keyboardType: TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                            ],
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // FSC-Auswahl
+                      Text(
+                        'FSC-Zertifizierung',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // FSC Status Dropdown
+                      DropdownButtonFormField<String>(
+                        decoration: InputDecoration(
+                          labelText: 'FSC-Status',
+                          border: const OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Theme.of(context).colorScheme.surface,
+                          prefixIcon: getAdaptiveIcon(iconName: 'eco', defaultIcon: Icons.eco),
+                        ),
+                        value: itemData['fsc_status'] as String? ?? '100%',
+                        items: const [
+                          DropdownMenuItem(value: '100%', child: Text('100% FSC')),
+                          DropdownMenuItem(value: 'Mix', child: Text('FSC Mix')),
+                          DropdownMenuItem(value: 'Recycled', child: Text('FSC Recycled')),
+                          DropdownMenuItem(value: 'Controlled', child: Text('FSC Controlled Wood')),
+                          DropdownMenuItem(value: '-', child: Text('Kein FSC')),
+                        ],
+                        onChanged: (value) {
+                          // Temporär speichern für später
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Maße anpassen
+                      Text(
+                        'Maße anpassen',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Maß-Eingabefelder
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: lengthController,
+                              decoration: InputDecoration(
+                                labelText: 'Länge (mm)',
+                                border: const OutlineInputBorder(),
+                                filled: true,
+                                fillColor: Theme.of(context).colorScheme.surface,
+                                prefixIcon: Icon(Icons.straighten, size: 20),
+                              ),
+                              keyboardType: TextInputType.numberWithOptions(decimal: true),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: widthController,
+                              decoration: InputDecoration(
+                                labelText: 'Breite (mm)',
+                                border: const OutlineInputBorder(),
+                                filled: true,
+                                fillColor: Theme.of(context).colorScheme.surface,
+                                prefixIcon: Icon(Icons.swap_horiz, size: 20),
+                              ),
+                              keyboardType: TextInputType.numberWithOptions(decimal: true),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: thicknessController,
+                        decoration: InputDecoration(
+                          labelText: 'Dicke (mm)',
+                          border: const OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Theme.of(context).colorScheme.surface,
+                          prefixIcon: Icon(Icons.layers, size: 20),
+                        ),
+                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                        ],
+                      ),
+
+                      const SizedBox(height: 16),
+                      Text(
+                        'Maße sind optional und werden nur gespeichert, wenn sie eingegeben werden.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Action Buttons
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      spreadRadius: 0,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
+                ),
+                child: SafeArea(
+                  child: Row(
+                    children: [
+                      // Zurücksetzen Button (falls bereits angepasst)
+                      if (currentPriceInCHF != originalPrice ||
+                          itemData['custom_length'] != null ||
+                          itemData['custom_width'] != null ||
+                          itemData['custom_thickness'] != null)
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              try {
+                                await FirebaseFirestore.instance
+                                    .collection('temporary_basket')
+                                    .doc(basketItemId)
+                                    .update({
+                                  'custom_price_per_unit': FieldValue.delete(),
+                                  'is_price_customized': false,
+                                  'custom_length': FieldValue.delete(),
+                                  'custom_width': FieldValue.delete(),
+                                  'custom_thickness': FieldValue.delete(),
+                                });
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Artikel wurde auf Original zurückgesetzt'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Fehler beim Zurücksetzen: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            },
+                            icon: getAdaptiveIcon(iconName: 'refresh', defaultIcon: Icons.refresh),
+                            label: const Text('Zurücksetzen'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+
+                      if (currentPriceInCHF != originalPrice ||
+                          itemData['custom_length'] != null ||
+                          itemData['custom_width'] != null ||
+                          itemData['custom_thickness'] != null)
+                        const SizedBox(width: 16),
+
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            try {
+                              // Neuen Preis parsen (Komma oder Punkt akzeptieren)
+                              final String normalizedInput = priceController.text.replaceAll(',', '.');
+                              final newPrice = double.tryParse(normalizedInput) ?? 0.0;
+                              if (newPrice <= 0) {
+                                throw Exception('Bitte gib einen gültigen Preis ein');
+                              }
+
+                              // Umrechnen in CHF für die Speicherung
+                              double priceInCHF = newPrice;
+                              if (_selectedCurrency != 'CHF') {
+                                priceInCHF = newPrice / _exchangeRates[_selectedCurrency]!;
+                              }
+
+                              // Update-Map vorbereiten
+                              Map<String, dynamic> updateData = {
+                                'custom_price_per_unit': priceInCHF,
+                                'is_price_customized': true,
+                              };
+
+                              // Maße hinzufügen, wenn sie eingegeben wurden
+                              if (lengthController.text.isNotEmpty) {
+                                final length = double.tryParse(lengthController.text.replaceAll(',', '.'));
+                                if (length != null && length > 0) {
+                                  updateData['custom_length'] = length;
+                                }
+                              } else {
+                                updateData['custom_length'] = FieldValue.delete();
+                              }
+
+                              if (widthController.text.isNotEmpty) {
+                                final width = double.tryParse(widthController.text.replaceAll(',', '.'));
+                                if (width != null && width > 0) {
+                                  updateData['custom_width'] = width;
+                                }
+                              } else {
+                                updateData['custom_width'] = FieldValue.delete();
+                              }
+
+                              if (thicknessController.text.isNotEmpty) {
+                                final thickness = double.tryParse(thicknessController.text.replaceAll(',', '.'));
+                                if (thickness != null && thickness > 0) {
+                                  updateData['custom_thickness'] = thickness;
+                                }
+                              } else {
+                                updateData['custom_thickness'] = FieldValue.delete();
+                              }
+
+                              // FSC-Status hinzufügen
+                              // TODO: Hier den ausgewählten FSC-Status hinzufügen
+                              // updateData['fsc_status'] = selectedFscStatus;
+
+                              // Speichere die Änderungen
+                              await FirebaseFirestore.instance
+                                  .collection('temporary_basket')
+                                  .doc(basketItemId)
+                                  .update(updateData);
+
+                              Navigator.pop(context);
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Artikel wurde aktualisiert'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Fehler: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          },
+                          icon: getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save),
+                          label: const Text('Speichern'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            backgroundColor: Theme.of(context).colorScheme.primary,
+                            foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
+
+
+// Erweiterte _addToTemporaryBasket Methode in sales_screen.dart
+
   Future<void> _addToTemporaryBasket(String shortBarcode, Map<String, dynamic> productData, int quantity, String? onlineShopBarcode) async {
     await FirebaseFirestore.instance
         .collection('temporary_basket')
@@ -4091,82 +4748,456 @@ minimumSize: const Size(double.infinity, 48),
       // Füge das Feld nur hinzu, wenn es gesetzt ist
       if (onlineShopBarcode != null) 'online_shop_barcode': onlineShopBarcode,
       if (onlineShopBarcode != null) 'is_online_shop_item': true,
+
+      // Maße hinzufügen, falls sie in productData vorhanden sind
+      if (productData.containsKey('custom_length') && productData['custom_length'] != null)
+        'custom_length': productData['custom_length'],
+      if (productData.containsKey('custom_width') && productData['custom_width'] != null)
+        'custom_width': productData['custom_width'],
+      if (productData.containsKey('custom_thickness') && productData['custom_thickness'] != null)
+        'custom_thickness': productData['custom_thickness'],
+
+      // FSC-Status hinzufügen
+      if (productData.containsKey('fsc_status') && productData['fsc_status'] != null)
+        'fsc_status': productData['fsc_status'],
     });
   }
 
-Future<void> _removeFromBasket(String basketItemId) async {
+  Future<void> _removeFromBasket(String basketItemId) async {
 await FirebaseFirestore.instance
     .collection('temporary_basket')
     .doc(basketItemId)
     .delete();
 }
 
-void _showQuantityDialog(String barcode, Map<String, dynamic> productData) {
-quantityController.clear();
-showDialog(
+  // Ergänzung für _showQuantityDialog in sales_screen.dart
 
-context: context,
-builder: (BuildContext context) {
-return AlertDialog(
-title: const Text('Menge'),
-content: Column(
-mainAxisSize: MainAxisSize.min,
-crossAxisAlignment: CrossAxisAlignment.start,
-children: [
-  Text('Produkt:',style: TextStyle(fontWeight: FontWeight.bold),),
-Text('${productData['instrument_name'] ?? 'N/A'} -  ${productData['part_name'] ?? 'N/A'}'),
-  Text('${productData['wood_name'] ?? 'N/A'} - ${productData['quality_name'] ?? 'N/A'}'),
-FutureBuilder<int>(
-future: _getAvailableQuantity(barcode),
-builder: (context, snapshot) {
-if (snapshot.hasData) {
-return Text(
-'Verfügbar: ${snapshot.data} ${productData['unit'] ?? 'Stück'}',
-);
-}
-return const CircularProgressIndicator();
-},
-),
-const SizedBox(height: 16),
-TextFormField(
-controller: quantityController,
-decoration: const InputDecoration(
-labelText: 'Menge',
-border: OutlineInputBorder(),
-),
-keyboardType: TextInputType.number,
-inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-autofocus: true,
-),
-],
-),
-actions: [
-ElevatedButton(
-onPressed: () => Navigator.pop(context),
-child: const Text('X'),
-),
-ElevatedButton(
-onPressed: () async {
-if (quantityController.text.isNotEmpty) {
-final quantity = int.parse(quantityController.text);
-final availableQuantity = await _getAvailableQuantity(barcode);
+  void _showQuantityDialog(String barcode, Map<String, dynamic> productData) {
+    quantityController.clear();
 
-if (quantity <= availableQuantity) {
-await _addToTemporaryBasket(barcode, productData, quantity,null);
-Navigator.pop(context);
-} else {
-  AppToast.show(message: "Nicht genügend Bestand verfügbar", height: h);
+    // Controller für die Maße
+    final lengthController = TextEditingController();
+    final widthController = TextEditingController();
+    final thicknessController = TextEditingController();
 
-}
-}
-},
-child: const Text('Hinzufügen'),
-),
-],
-);
-},
-);
-}
+    // FSC-Status Variable
+    String selectedFscStatus = '100%'; // Standard
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.8,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 10,
+                      spreadRadius: 0,
+                      offset: Offset(0, -1),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    // Drag Handle
+                    Container(
+                      margin: EdgeInsets.only(top: 12, bottom: 8),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      child: Row(
+                        children: [
+                          Text(
+                            'Produkt hinzufügen',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    Divider(height: 1),
+
+                    // Scrollbarer Inhalt
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Produktinfo
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Produkt:', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 4),
+                                  Text('${productData['instrument_name'] ?? 'N/A'} - ${productData['part_name'] ?? 'N/A'}'),
+                                  Text('${productData['wood_name'] ?? 'N/A'} - ${productData['quality_name'] ?? 'N/A'}'),
+                                  const SizedBox(height: 8),
+                                  FutureBuilder<int>(
+                                    future: _getAvailableQuantity(barcode),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.hasData) {
+                                        return Text(
+                                          'Verfügbar: ${snapshot.data} ${productData['unit'] ?? 'Stück'}',
+                                          style: TextStyle(
+                                            color: snapshot.data! > 0 ? Colors.green : Colors.red,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        );
+                                      }
+                                      return const CircularProgressIndicator();
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // Menge
+                            Text(
+                              'Menge',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              controller: quantityController,
+                              decoration: InputDecoration(
+                                labelText: 'Menge',
+                                border: const OutlineInputBorder(),
+                                filled: true,
+                                fillColor: Theme.of(context).colorScheme.surface,
+                                prefixIcon: getAdaptiveIcon(iconName: 'numbers', defaultIcon: Icons.numbers),
+                              ),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                              autofocus: true,
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // FSC-Auswahl
+                            Text(
+                              'FSC-Zertifizierung',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<String>(
+                              decoration: InputDecoration(
+                                labelText: 'FSC-Status',
+                                border: const OutlineInputBorder(),
+                                filled: true,
+                                fillColor: Theme.of(context).colorScheme.surface,
+                                prefixIcon: getAdaptiveIcon(iconName: 'eco', defaultIcon: Icons.eco),
+                              ),
+                              value: selectedFscStatus,
+                              items: const [
+                                DropdownMenuItem(value: '100%', child: Text('100% FSC')),
+                                DropdownMenuItem(value: 'Mix', child: Text('FSC Mix')),
+                                DropdownMenuItem(value: 'Recycled', child: Text('FSC Recycled')),
+                                DropdownMenuItem(value: 'Controlled', child: Text('FSC Controlled Wood')),
+                                DropdownMenuItem(value: '-', child: Text('Kein FSC')),
+                              ],
+                              onChanged: (value) {
+                                setState(() {
+                                  selectedFscStatus = value ?? '100%';
+                                });
+                              },
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // Maße - mit FutureBuilder für Standardmaße
+                            FutureBuilder<Map<String, dynamic>?>(
+                              future: _getStandardMeasurements(productData),
+                              builder: (context, snapshot) {
+                                // Einmalig die Standardwerte setzen, aber nur wenn Controller leer sind
+                                if (snapshot.connectionState == ConnectionState.done &&
+                                    snapshot.hasData &&
+                                    snapshot.data != null) {
+
+                                  final standardMeasures = snapshot.data!;
+
+                                  // Verwende WidgetsBinding um sicherzustellen, dass es nur einmal gesetzt wird
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    if (lengthController.text.isEmpty && standardMeasures['length'] != null) {
+                                      lengthController.text = standardMeasures['length']?.toString() ?? '';
+                                    }
+                                    if (widthController.text.isEmpty && standardMeasures['width'] != null) {
+                                      widthController.text = standardMeasures['width']?.toString() ?? '';
+                                    }
+                                    if (thicknessController.text.isEmpty && standardMeasures['thickness'] != null) {
+                                      thicknessController.text = standardMeasures['thickness']?.toString() ?? '';
+                                    }
+                                  });
+                                }
+
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          'Maße',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Theme.of(context).colorScheme.primary,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        if (snapshot.hasData && snapshot.data != null)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context).colorScheme.primaryContainer,
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            child: Text(
+                                              'Standardmaße',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+
+                                    // Maß-Eingabefelder - User-Eingaben haben Vorrang
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: TextFormField(
+                                            controller: lengthController,
+                                            decoration: InputDecoration(
+                                              labelText: 'Länge (mm)',
+                                              border: const OutlineInputBorder(),
+                                              filled: true,
+                                              fillColor: Theme.of(context).colorScheme.surface,
+                                              prefixIcon: Icon(Icons.straighten, size: 20),
+                                            ),
+                                            keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                            onChanged: (value) {
+                                              setState(() {});
+                                            },
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: TextFormField(
+                                            controller: widthController,
+                                            decoration: InputDecoration(
+                                              labelText: 'Breite (mm)',
+                                              border: const OutlineInputBorder(),
+                                              filled: true,
+                                              fillColor: Theme.of(context).colorScheme.surface,
+                                              prefixIcon: Icon(Icons.swap_horiz, size: 20),
+                                            ),
+                                            keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                            onChanged: (value) {
+                                              setState(() {});
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    TextFormField(
+                                      controller: thicknessController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Dicke (mm)',
+                                        border: const OutlineInputBorder(),
+                                        filled: true,
+                                        fillColor: Theme.of(context).colorScheme.surface,
+                                        prefixIcon: Icon(Icons.layers, size: 20),
+                                      ),
+                                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                      onChanged: (value) {
+                                        setState(() {});
+                                      },
+                                    ),
+
+                                    if (snapshot.hasData && snapshot.data != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 8),
+                                        child: Text(
+                                          'Die Standardmaße können individuell angepasst werden',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontStyle: FontStyle.italic,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Action Buttons
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 10,
+                            spreadRadius: 0,
+                            offset: const Offset(0, -2),
+                          ),
+                        ],
+                      ),
+                      child: SafeArea(
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Abbrechen'),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: () async {
+                                  if (quantityController.text.isNotEmpty) {
+                                    final quantity = int.parse(quantityController.text);
+                                    final availableQuantity = await _getAvailableQuantity(barcode);
+
+                                    if (quantity <= availableQuantity) {
+                                      // Erweitere productData um die Maße und FSC
+                                      final updatedProductData = Map<String, dynamic>.from(productData);
+
+                                      // Füge Maße hinzu, wenn sie eingegeben wurden
+                                      if (lengthController.text.isNotEmpty) {
+                                        updatedProductData['custom_length'] = double.tryParse(lengthController.text.replaceAll(',', '.')) ?? 0.0;
+                                      }
+                                      if (widthController.text.isNotEmpty) {
+                                        updatedProductData['custom_width'] = double.tryParse(widthController.text.replaceAll(',', '.')) ?? 0.0;
+                                      }
+                                      if (thicknessController.text.isNotEmpty) {
+                                        updatedProductData['custom_thickness'] = double.tryParse(thicknessController.text.replaceAll(',', '.')) ?? 0.0;
+                                      }
+
+                                      // Füge FSC-Status hinzu
+                                      updatedProductData['fsc_status'] = selectedFscStatus;
+
+                                      await _addToTemporaryBasket(barcode, updatedProductData, quantity, null);
+                                      Navigator.pop(context);
+                                    } else {
+                                      AppToast.show(message: "Nicht genügend Bestand verfügbar", height: h);
+                                    }
+                                  }
+                                },
+                                child: const Text('Hinzufügen'),
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  backgroundColor: Theme.of(context).colorScheme.primary,
+                                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+// Neue Hilfsmethode zum Abrufen der Standardmaße
+  Future<Map<String, dynamic>?> _getStandardMeasurements(Map<String, dynamic> productData) async {
+    try {
+      // Erstelle die Artikelnummer aus Instrument- und Bauteil-Code
+      final instrumentCode = productData['instrument_code'] as String?;
+      final partCode = productData['part_code'] as String?;
+
+      if (instrumentCode == null || partCode == null) {
+        return null;
+      }
+
+      final articleNumber = instrumentCode + partCode;
+
+      // Suche in der standardized_products Collection
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('standardized_products')
+          .where('articleNumber', isEqualTo: articleNumber)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        final standardProduct = querySnapshot.docs.first.data();
+
+        // Extrahiere die Standardmaße (ohne Zumaß)
+        return {
+          'length': standardProduct['dimensions']?['length']?['standard'],
+          'width': standardProduct['dimensions']?['width']?['standard'],
+          'thickness': standardProduct['dimensions']?['thickness']?['value'],
+        };
+      }
+
+      return null;
+    } catch (e) {
+      print('Fehler beim Abrufen der Standardmaße: $e');
+      return null;
+    }
+  }
 
   Future<void> _fetchProductAndShowQuantityDialog(String barcode) async {
     try {
@@ -4305,340 +5336,14 @@ backgroundColor: Colors.red,
 }
 }
 
-  // Korrigierte _processTransaction Methode
   Future<void> _processTransaction() async {
-    setState(() => isLoading = true);
-
-    try {
-      // Aktuelle Steueroption abrufen
-      final TaxOption taxOption = _taxOptionNotifier.value;
-
-      // Prüfe ob Kostenstelle ausgewählt wurde
-      final costCenterSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_cost_center')
-          .limit(1)
-          .get();
-
-      if (costCenterSnapshot.docs.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bitte wähle eine Kostenstelle aus'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
-
-      // Hole die nächste Lieferscheinnummer
-      final receiptNumber = await _getNextReceiptNumber();
-
-      // Erstelle eine neue Referenz mit der Nummer als ID
-      final receiptRef = FirebaseFirestore.instance
-          .collection('sales_receipts')
-          .doc('LS-$receiptNumber');
-
-      // 1. Prüfe Kundenauswahl
-      final customerSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_customer')
-          .limit(1)
-          .get();
-
-      if (customerSnapshot.docs.isEmpty) {
-        setState(() => isLoading = false);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Bitte wähle einen Kunden aus'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
-      }
-
-      final customerData = customerSnapshot.docs.first.data();
-      final customer = Customer.fromMap(customerData, customerSnapshot.docs.first.id);
-
-      // 2. Hole die aktuelle Messe
-      final fairSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_fair')
-          .limit(1)
-          .get();
-
-      final fair = fairSnapshot.docs.isEmpty
-          ? null
-          : Fair.fromMap(
-        fairSnapshot.docs.first.data(),
-        fairSnapshot.docs.first.id,
-      );
-
-      // 3. Prüfe Warenkorb
-      final basketSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_basket')
-          .get();
-
-      if (basketSnapshot.docs.isEmpty) {
-        setState(() => isLoading = false);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Der Warenkorb ist leer'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
-      }
-
-      // 4. Prüfe Verfügbarkeit
-      for (final item in basketSnapshot.docs) {
-        final itemData = item.data();
-        final availableQuantity = await _getAvailableQuantity(itemData['product_id']);
-
-        if (availableQuantity<0) {
-          print("test");
-          setState(() => isLoading = false);
-          if (mounted) {
-            AppToast.show(message:  'Nicht genügend Bestand für ${itemData['product_name']}. '
-                'Verfügbar: $availableQuantity ${itemData['unit']}', height: h);
-
-          }
-          return;
-        }
-      }
-
-      // 5. Berechne alle Summen
-      double subtotal = 0.0;
-      double itemDiscounts = 0.0;
-      final items = basketSnapshot.docs.map((doc) {
-        final data = doc.data();
-
-        // Angepasster Preis
-        final customPriceValue = data['custom_price_per_unit'];
-        final pricePerUnit = customPriceValue != null
-            ? (customPriceValue as num).toDouble()
-            : (data['price_per_unit'] as num).toDouble();
-
-        final itemSubtotal = (data['quantity'] as int) * pricePerUnit;
-        subtotal += itemSubtotal;
-
-        final itemDiscount = _itemDiscounts[doc.id] ?? const Discount();
-        final discountAmount = itemDiscount.calculateDiscount(itemSubtotal);
-        itemDiscounts += discountAmount;
-
-        return {
-          ...data,
-          'price_per_unit': pricePerUnit, // Speichere den tatsächlich verwendeten Preis
-          'original_price_per_unit': data['price_per_unit'], // Speichere den Originalpreis zur Referenz
-          'is_price_customized': data['is_price_customized'] ?? false,
-          'subtotal': itemSubtotal,
-          'discount': itemDiscount.toMap(),
-          'discount_amount': discountAmount,
-          'total': itemSubtotal - discountAmount,
-        };
-      }).toList();
-
-      final afterItemDiscounts = subtotal - itemDiscounts;
-      final totalDiscountAmount = _totalDiscount.calculateDiscount(afterItemDiscounts);
-      final netAmount = afterItemDiscounts - totalDiscountAmount;
-      final vatAmount = netAmount * (_vatRate / 100);
-      final total = netAmount + vatAmount;
-
-      // 6. Erstelle Verkaufsbeleg
-      final batch = FirebaseFirestore.instance.batch();
-     // final receiptRef = FirebaseFirestore.instance.collection('sales_receipts').doc();
-
-      // 7. Speichere Verkaufsbeleg
-      batch.set(receiptRef, {
-        'receiptNumber': receiptNumber,
-        'customer': {
-          'id': customer.id,
-          'company': customer.company,
-          'firstName': customer.firstName,
-          'lastName': customer.lastName,
-          'fullName': customer.fullName,
-          'street': customer.street,
-          'houseNumber': customer.houseNumber,
-          'zipCode': customer.zipCode,
-          'city': customer.city,
-          'country': customer.country,
-          'email': customer.email,
-        },
-        'fair': fair == null ? null : {
-          'id': fair.id,
-          'name': fair.name,
-          'location': fair.location,
-          'city': fair.city,
-          'country': fair.country,
-          'costCenterCode': fair.costCenterCode,
-          'startDate': fair.startDate.toIso8601String(),
-          'endDate': fair.endDate.toIso8601String(),
-        },
-        'items': items,
-        'calculations': {
-          'subtotal': subtotal,
-          'item_discounts': itemDiscounts,
-          'total_discount': _totalDiscount.toMap(),
-          'total_discount_amount': totalDiscountAmount,
-          'net_amount': netAmount,
-          'vat_rate': _vatRate,
-
-          'vat_amount': taxOption == TaxOption.standard ? vatAmount : 0, // Je nach Option
-          'total': taxOption == TaxOption.standard ? total : netAmount, // Je nach Option
-
-        },
-        'metadata': {
-          'tax_option': _taxOptionNotifier.value.index, // Speichern der Steueroption
-
-          'fairId': fair?.id,
-          'fairName': fair?.name,
-          'fairCostCenter': fair?.costCenterCode,
-          'timestamp': FieldValue.serverTimestamp(),
-          'has_discounts': itemDiscounts > 0 || totalDiscountAmount > 0,
-        }
-      });
-
-      // 8. Aktualisiere Lagerbestand
-      for (final doc in basketSnapshot.docs) {
-        final data = doc.data();
-        final inventoryRef = FirebaseFirestore.instance
-            .collection('inventory')
-            .doc(data['product_id']);
-
-        // Reduziere Bestand
-        batch.update(inventoryRef, {
-          'quantity': FieldValue.increment(-(data['quantity'] as int)),
-          'last_modified': FieldValue.serverTimestamp(),
-        });
-
-        // Erstelle Stock Entry
-        final stockEntryRef = FirebaseFirestore.instance
-            .collection('stock_entries')
-            .doc();
-
-        batch.set(stockEntryRef, {
-          'product_id': data['product_id'],
-          'product_name': data['product_name'],
-          'quantity_change': -(data['quantity'] as int),
-          'type': 'sale',
-          'sale_receipt_id': receiptRef.id,
-          'timestamp': FieldValue.serverTimestamp(),
-        });
-
-        // Lösche Warenkorb-Eintrag
-        batch.delete(doc.reference);
-      }
-
-      // 9. Lösche temporäre Daten
-      batch.delete(customerSnapshot.docs.first.reference);
-      if (fair != null) {
-        batch.delete(fairSnapshot.docs.first.reference);
-      }
-
-      // 10. Führe alle Änderungen durch
-      await batch.commit();
-
-      // 11. Generiere und speichere PDF
-      final pdfBytes = await _generateEnhancedPdf(receiptRef.id);
-      final storage = FirebaseStorage.instance;
-      final pdfRef = storage.ref().child('receipts/${receiptRef.id}.pdf');
-      await pdfRef.putData(pdfBytes);
-      final pdfUrl = await pdfRef.getDownloadURL();
-
-      // 12. Aktualisiere Beleg mit PDF-URL
-      await receiptRef.update({'pdf_url': pdfUrl});
-
-      // 13. Generiere CSV wenn nötig
-      Uint8List? csvBytes;
-
-        csvBytes = await _generateCsv(receiptRef.id);
-        final csvRef = storage.ref().child('receipts/${receiptRef.id}.csv');
-        await csvRef.putData(csvBytes);
-        final csvUrl = await csvRef.getDownloadURL();
-        await receiptRef.update({'csv_url': csvUrl});
-
-
-
-      if (mounted) {
-        // Stelle sicher, dass csvBytes nicht null ist, wenn es verwendet wird
-        final Uint8List? finalCsvBytes = csvBytes != null ? csvBytes : null;
-
-        await _sendConfiguredEmails(
-          receiptRef.id,
-          pdfBytes,
-          finalCsvBytes,
-          (await receiptRef.get()).data()!,
-        );
-      }
-      setState(() => isLoading = false);
-
-      // 14. Zeige Erfolgsbestätigung
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Verkauf erfolgreich'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Der Verkauf wurde erfolgreich abgeschlossen.'),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () => _shareReceipt(
-                          receiptRef.id,
-                          pdfBytes,
-                        ),
-                        icon: const Icon(Icons.picture_as_pdf),
-                        label: const Text('PDF teilen'),
-                      ),
-                    ),
-                  ],
-                ),
-                if ( csvBytes != null) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _shareCsv(
-                            receiptRef.id,
-                            csvBytes,
-                          ),
-                          icon: const Icon(Icons.table_chart),
-                          label: const Text('CSV teilen'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Schließen'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      print('Error in _processTransaction: $e');
-      setState(() => isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Verarbeiten: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-
-
-    }
+    // Navigiere zum neuen Flow
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const QuoteOrderFlowScreen(),
+      ),
+    );
   }
 
 
@@ -4988,6 +5693,56 @@ backgroundColor: Colors.red,
   //   return pdf.save();
   // }
 // 2. Erweiterte PDF-Generierung
+
+  Future<Map<String, String>> _getReceiptAdditionalTexts(String receiptId) async {
+    try {
+      final receiptDoc = await FirebaseFirestore.instance
+          .collection('sales_receipts')
+          .doc(receiptId)
+          .get();
+
+      if (!receiptDoc.exists) return {};
+
+      final data = receiptDoc.data();
+      if (data == null || !data.containsKey('additional_texts')) return {};
+
+      final texts = data['additional_texts'] as Map<String, dynamic>;
+
+      final result = <String, String>{};
+
+      // Legende
+      if (texts['legend']?['selected'] == true) {
+        final legendSettings = texts['legend'] as Map<String, dynamic>;
+        result['legend'] = AdditionalTextsManager.getTextContent(legendSettings, 'legend');
+      }
+
+      // FSC
+      if (texts['fsc']?['selected'] == true) {
+        final fscSettings = texts['fsc'] as Map<String, dynamic>;
+        result['fsc'] = AdditionalTextsManager.getTextContent(fscSettings, 'fsc');
+      }
+
+      // Naturprodukt
+      if (texts['natural_product']?['selected'] == true) {
+        final naturalProductSettings = texts['natural_product'] as Map<String, dynamic>;
+        result['natural_product'] = AdditionalTextsManager.getTextContent(naturalProductSettings, 'natural_product');
+      }
+
+      // Bankverbindung
+      if (texts['bank_info']?['selected'] == true) {
+        final bankInfoSettings = texts['bank_info'] as Map<String, dynamic>;
+        result['bank_info'] = AdditionalTextsManager.getTextContent(bankInfoSettings, 'bank_info');
+      }
+
+      return result;
+    } catch (e) {
+      print('Fehler beim Laden der Zusatztexte für den Beleg: $e');
+      return {};
+    }
+  }
+
+
+
   Future<Uint8List> _generateEnhancedPdf(String receiptId) async {
     final pdf = pw.Document();
     final receiptDoc = await FirebaseFirestore.instance
@@ -5422,6 +6177,170 @@ print(TaxOption.values);
       ),
     );
 
+
+
+
+    // Zusatztexte im Footer
+    final additionalTexts = await _getReceiptAdditionalTexts(receiptId);
+
+    if (additionalTexts.isNotEmpty) {
+      pdf.addPage(
+        pw.Page(
+          margin: const pw.EdgeInsets.all(40),
+          build: (pw.Context context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                // Titel
+                pw.Text(
+                  'Zusätzliche Informationen',
+                  style: pw.TextStyle(
+                    fontSize: 18,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.blueGrey800,
+                  ),
+                ),
+                pw.SizedBox(height: 20),
+
+                // Legende
+                if (additionalTexts.containsKey('legend') && additionalTexts['legend']!.isNotEmpty) ...[
+                  pw.Container(
+                    padding: const pw.EdgeInsets.all(12),
+                    decoration: pw.BoxDecoration(
+                      color: PdfColors.grey100,
+                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                    ),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'Legende',
+                          style: pw.TextStyle(
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColors.blueGrey800,
+                          ),
+                        ),
+                        pw.SizedBox(height: 6),
+                        pw.Text(
+                          additionalTexts['legend']!,
+                          style: const pw.TextStyle(fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                  pw.SizedBox(height: 12),
+                ],
+
+                // FSC
+                if (additionalTexts.containsKey('fsc') && additionalTexts['fsc']!.isNotEmpty) ...[
+                  pw.Container(
+                    padding: const pw.EdgeInsets.all(12),
+                    decoration: pw.BoxDecoration(
+                      color: PdfColors.grey100,
+                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                    ),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'FSC-Zertifizierung',
+                          style: pw.TextStyle(
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColors.blueGrey800,
+                          ),
+                        ),
+                        pw.SizedBox(height: 6),
+                        pw.Text(
+                          additionalTexts['fsc']!,
+                          style: const pw.TextStyle(fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                  pw.SizedBox(height: 12),
+                ],
+
+                // Naturprodukt
+                if (additionalTexts.containsKey('natural_product') && additionalTexts['natural_product']!.isNotEmpty) ...[
+                  pw.Container(
+                    padding: const pw.EdgeInsets.all(12),
+                    decoration: pw.BoxDecoration(
+                      color: PdfColors.grey100,
+                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                    ),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'Naturprodukt',
+                          style: pw.TextStyle(
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColors.blueGrey800,
+                          ),
+                        ),
+                        pw.SizedBox(height: 6),
+                        pw.Text(
+                          additionalTexts['natural_product']!,
+                          style: const pw.TextStyle(fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                  pw.SizedBox(height: 12),
+                ],
+
+                // Bankverbindung
+                if (additionalTexts.containsKey('bank_info') && additionalTexts['bank_info']!.isNotEmpty) ...[
+                  pw.Container(
+                    padding: const pw.EdgeInsets.all(12),
+                    decoration: pw.BoxDecoration(
+                      color: PdfColors.grey100,
+                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+                    ),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'Bankverbindung',
+                          style: pw.TextStyle(
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColors.blueGrey800,
+                          ),
+                        ),
+                        pw.SizedBox(height: 6),
+                        pw.Text(
+                          additionalTexts['bank_info']!,
+                          style: const pw.TextStyle(fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                pw.Expanded(child: pw.SizedBox()),
+
+                // Fußzeile
+                pw.Container(
+                  alignment: pw.Alignment.center,
+                  child: pw.Text(
+                    'Seite 2/2',
+                    style: pw.TextStyle(
+                      fontSize: 10,
+                      color: PdfColors.grey,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    }
+
     return pdf.save();
   }
   pw.Widget _buildTotalRowWithCurrency(
@@ -5642,57 +6561,96 @@ Ihr Team''';
     }
   }
 
-  // Share-Funktion
-  Future<void> _shareCsv(String receiptId, Uint8List? csvBytes) async {
+
+  // Replace the existing _shareReceipt method with this one
+  Future<void> _shareReceipt(String receiptId, Uint8List pdfBytes) async {
     try {
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/Bestellung_$receiptId.csv');
-      await tempFile.writeAsBytes(csvBytes!);
+      if (kIsWeb) {
+        // For web, use the DownloadHelper class (which should handle web downloads)
+        final fileName = 'Lieferschein_$receiptId.pdf';
+        await DownloadHelper.downloadFile(pdfBytes, fileName);
 
-      await Share.shareXFiles(
-        [XFile(tempFile.path)],
-        subject: 'Bestellung CSV',
-      );
-
-      // Optional: Lösche die temporäre Datei nach einer Weile
-      Future.delayed(const Duration(minutes: 5), () async {
-        if (await tempFile.exists()) {
-          await tempFile.delete();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('PDF wird heruntergeladen...'),
+              backgroundColor: Colors.green,
+            ),
+          );
         }
-      });
+      } else {
+        // For mobile, use the Share.shareXFiles method
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/Lieferschein_$receiptId.pdf');
+        await tempFile.writeAsBytes(pdfBytes);
+
+        await Share.shareXFiles(
+          [XFile(tempFile.path)],
+          subject: 'Lieferschein',
+        );
+
+        // Optional: Lösche die temporäre Datei nach einer Weile
+        Future.delayed(const Duration(minutes: 5), () async {
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+          }
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Fehler beim Teilen der CSV: $e'),
+            content: Text('Fehler beim Teilen: $e'),
             backgroundColor: Colors.red,
           ),
         );
       }
     }
   }
-  Future<void> _shareReceipt(String receiptId, Uint8List pdfBytes) async {
+
+// Replace the existing _shareCsv method with this one
+  Future<void> _shareCsv(String receiptId, Uint8List? csvBytes) async {
     try {
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/Lieferschein_$receiptId.pdf');
-      await tempFile.writeAsBytes(pdfBytes);
+      if (csvBytes == null) {
+        throw Exception('CSV-Daten sind nicht verfügbar');
+      }
 
-      await Share.shareXFiles(
-        [XFile(tempFile.path)],
-        subject: 'Lieferschein',
-      );
+      if (kIsWeb) {
+        // For web, use the DownloadHelper class
+        final fileName = 'Bestellung_$receiptId.csv';
+        await DownloadHelper.downloadFile(csvBytes, fileName);
 
-      // Optional: Lösche die temporäre Datei nach einer Weile
-      Future.delayed(const Duration(minutes: 5), () async {
-        if (await tempFile.exists()) {
-          await tempFile.delete();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('CSV wird heruntergeladen...'),
+              backgroundColor: Colors.green,
+            ),
+          );
         }
-      });
+      } else {
+        // For mobile, use the Share.shareXFiles method
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/Bestellung_$receiptId.csv');
+        await tempFile.writeAsBytes(csvBytes);
+
+        await Share.shareXFiles(
+          [XFile(tempFile.path)],
+          subject: 'Bestellung CSV',
+        );
+
+        // Optional: Lösche die temporäre Datei nach einer Weile
+        Future.delayed(const Duration(minutes: 5), () async {
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+          }
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Fehler beim Teilen: $e'),
+            content: Text('Fehler beim Teilen der CSV: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -5777,37 +6735,48 @@ Widget _buildSelectedProductInfo() {
   );
 }
 
-Widget _buildCheckoutButton() {
-  return StreamBuilder<QuerySnapshot>(
-    stream: _basketStream,
-    builder: (context, snapshot) {
-      final hasItems = snapshot.hasData && snapshot.data!.docs.isNotEmpty;
 
-      return Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ElevatedButton.icon(
-          onPressed: !hasItems || isLoading ? null : _processTransaction,
-          icon: isLoading
-              ? const SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-              : const Icon(Icons.check),
-          label: const Text('Verkauf abschließen'),
-          style: ElevatedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 48),
-          ),
-        ),
-      );
-    },
-  );
-}
+// Neue Methode zum Speichern des Gesamtrabatts
+  Future<void> _saveTemporaryTotalDiscount() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('temporary_discounts')
+          .doc('total_discount')
+          .set({
+        'percentage': _totalDiscount.percentage,
+        'absolute': _totalDiscount.absolute,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Fehler beim Speichern des Gesamtrabatts: $e');
+    }
+  }
 
+// Neue Methode zum Laden des Gesamtrabatts
+  Future<void> _loadTemporaryTotalDiscount() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('temporary_discounts')
+          .doc('total_discount')
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        setState(() {
+          _totalDiscount = Discount(
+            percentage: data['percentage'] ?? 0.0,
+            absolute: data['absolute'] ?? 0.0,
+          );
+        });
+      }
+    } catch (e) {
+      print('Fehler beim Laden des Gesamtrabatts: $e');
+    }
+  }
 
 
 // Neue Zustandsvariablen für die Klasse
-  double _vatRate = 8.1;
+  double get _vatRate => _vatRateNotifier.value;
   Discount _totalDiscount = const Discount();
   Map<String, Discount> _itemDiscounts = {};
 
@@ -5894,7 +6863,8 @@ Widget _buildCheckoutButton() {
             valueListenable: _currencyNotifier,
             builder: (context, currency, child) {
               return ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
+
                   // Konvertiere den absoluten Rabatt in CHF, wenn eine andere Währung ausgewählt ist
                   double absoluteValue = double.tryParse(absoluteController.text) ?? 0;
                   if (currency != 'CHF') {
@@ -5907,6 +6877,18 @@ Widget _buildCheckoutButton() {
                       absolute: absoluteValue, // Immer in CHF speichern
                     );
                   });
+
+                  await FirebaseFirestore.instance
+                      .collection('temporary_basket')
+                      .doc(itemId)
+                      .update({
+                    'discount': {
+                      'percentage': double.tryParse(percentageController.text) ?? 0,
+                      'absolute': absoluteValue,
+                    },
+                    'discount_timestamp': FieldValue.serverTimestamp(),
+                  });
+
                   Navigator.pop(context);
                 },
                 child: const Text('Übernehmen'),
@@ -5928,6 +6910,7 @@ Widget _buildCheckoutButton() {
   }
 
 // Methode für den Gesamtrabatt
+  // Methode für den Gesamtrabatt
   void _showTotalDiscountDialog() {
     // Konvertiere den absoluten Wert von CHF in die aktuelle Währung für die Anzeige
     double displayAbsolute = _totalDiscount.absolute;
@@ -5941,172 +6924,477 @@ Widget _buildCheckoutButton() {
     final absoluteController = TextEditingController(
         text: displayAbsolute.toStringAsFixed(2)
     );
+    final targetTotalController = TextEditingController(); // Neu: Controller für Zielbetrag
 
-    showDialog(
+    // Temporäre Variablen für den aktuellen Status
+    double tempPercentage = _totalDiscount.percentage;
+    double tempAbsolute = _totalDiscount.absolute;
+
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Gesamtrabatt'),
-        content: ValueListenableBuilder<String>(
-          valueListenable: _currencyNotifier,
-          builder: (context, currency, child) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: percentageController,
-                        decoration: const InputDecoration(
-                          labelText: 'Rabatt %',
-                          suffixText: '%',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: TextFormField(
-                        controller: absoluteController,
-                        decoration: InputDecoration(
-                          labelText: 'Rabatt $currency',
-                          suffixText: currency,
-                          border: const OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                        ],
-                      ),
-                    ),
-                  ],
+      isScrollControlled: true, // Wichtig für anpassbare Höhe
+      backgroundColor: Colors.transparent, // Transparenter Hintergrund für abgerundete Ecken
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.95, // 80% der Bildschirmhöhe
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 10,
+                  spreadRadius: 0,
+                  offset: Offset(0, -1),
                 ),
-                const SizedBox(height: 16),
-                StreamBuilder<double>(
-                  stream: _basketStream.map((snapshot) {
-                    final subtotal = snapshot.docs.fold<double>(
-                      0.0,
-                          (sum, doc) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        return sum + (data['quantity'] as int) *
-                            (data['price_per_unit'] as double);
-                      },
-                    );
-                    final percentage = double.tryParse(percentageController.text) ?? 0;
-
-                    // Konvertiere den absoluten Rabatt zurück zu CHF wenn nötig
-                    double absolute = double.tryParse(absoluteController.text) ?? 0;
-                    if (currency != 'CHF') {
-                      absolute = absolute / _exchangeRates[currency]!;
-                    }
-
-                    return (subtotal * (percentage / 100)) + absolute;
-                  }),
-                  builder: (context, snapshot) {
-                    final discount = snapshot.data ?? 0.0;
-                    return Text(
-                      'Rabattbetrag: ${_formatPrice(discount)}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    );
-                  },
-                ),
-              ],
-            );
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Abbrechen'),
-          ),
-          ValueListenableBuilder<String>(
-            valueListenable: _currencyNotifier,
-            builder: (context, currency, child) {
-              return ElevatedButton(
-                onPressed: () {
-                  // Konvertiere den absoluten Rabatt in CHF, wenn eine andere Währung ausgewählt ist
-                  double absoluteValue = double.tryParse(absoluteController.text) ?? 0;
-                  if (currency != 'CHF') {
-                    absoluteValue = absoluteValue / _exchangeRates[currency]!;
-                  }
-
-                  setState(() {
-                    _totalDiscount = Discount(
-                      percentage: double.tryParse(percentageController.text) ?? 0,
-                      absolute: absoluteValue, // Immer in CHF speichern
-                    );
-                  });
-                  Navigator.pop(context);
-                },
-                child: const Text('Übernehmen'),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-// MwSt-Satz Dialog
-  void _showVatRateDialog() {
-    final vatController = TextEditingController(text: _vatRate.toString());
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('MwSt-Satz ändern'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: vatController,
-              decoration: const InputDecoration(
-                labelText: 'MwSt-Satz',
-                suffixText: '%',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
               ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Abbrechen'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final newRate = double.tryParse(vatController.text) ?? 7.7;
-              setState(() => _vatRate = newRate);
+            child: Column(
+              children: [
+                // Drag-Handle oben
+                Container(
+                  margin: EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
 
-              // Optional: Als neuen Standard-Satz speichern
-              try {
-                await FirebaseFirestore.instance
-                    .collection('settings')
-                    .doc('default_vat')
-                    .set({
-                  'rate': newRate,
-                  'last_modified': FieldValue.serverTimestamp(),
-                }, SetOptions(merge: true));
-              } catch (e) {
-                print('Fehler beim Speichern des MwSt-Satzes: $e');
-              }
+                // Titel
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Row(
+                    children: [
+                      getAdaptiveIcon(iconName: 'sell', defaultIcon: Icons.sell),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Gesamtrabatt anpassen',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      Spacer(),
+                      IconButton(
+                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
 
-              if (mounted) Navigator.pop(context);
-            },
-            child: const Text('Speichern'),
-          ),
-        ],
+                Divider(),
+
+                // Scrollbarer Inhalt
+                Expanded(
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: _currencyNotifier,
+                    builder: (context, currency, child) {
+                      return StreamBuilder<QuerySnapshot>(
+                        stream: _basketStream,
+                        builder: (context, basketSnapshot) {
+                          // Berechne den aktuellen Nettobetrag und Gesamtbetrag mit Steuern
+                          double subtotal = 0.0;
+                          double itemDiscounts = 0.0;
+
+                          if (basketSnapshot.hasData) {
+                            for (var doc in basketSnapshot.data!.docs) {
+                              final data = doc.data() as Map<String, dynamic>;
+
+                              // Hier den korrekten Preis verwenden (custom oder standard)
+                              final customPriceValue = data['custom_price_per_unit'];
+                              final pricePerUnit = customPriceValue != null
+                                  ? (customPriceValue as num).toDouble()
+                                  : (data['price_per_unit'] as num).toDouble();
+
+                              final itemSubtotal = (data['quantity'] as int) * pricePerUnit;
+                              subtotal += itemSubtotal;
+
+                              final itemDiscount = _itemDiscounts[doc.id] ?? const Discount();
+                              itemDiscounts += itemDiscount.calculateDiscount(itemSubtotal);
+                            }
+                          }
+
+                          final afterItemDiscounts = subtotal - itemDiscounts;
+
+                          // Aktueller Prozent- und absoluter Rabatt aus den Controllern
+                          final percentage = double.tryParse(percentageController.text.replaceAll(',', '.')) ?? 0;
+                          double absolute = double.tryParse(absoluteController.text.replaceAll(',', '.')) ?? 0;
+                          if (currency != 'CHF') {
+                            absolute = absolute / _exchangeRates[currency]!;
+                          }
+
+                          // Gesamtrabatt berechnen
+                          final totalDiscountAmount = (afterItemDiscounts * (percentage / 100)) + absolute;
+                          final netAmount = afterItemDiscounts - totalDiscountAmount;
+
+                          // MwSt und Gesamtbetrag berechnen basierend auf aktueller Steueroption
+                          double vatAmount = 0.0;
+                          double totalAmount = netAmount;
+
+                          // Steuerberechnung entsprechend der gewählten Steueroption
+                          if (_taxOptionNotifier.value == TaxOption.standard) {
+                            vatAmount = netAmount * (_vatRate / 100);
+                            totalAmount = netAmount + vatAmount;
+                          }
+
+                          // Funktionen für die Umrechnung
+                          void calculateTargetTotal() {
+                            final targetTotal = double.tryParse(targetTotalController.text.replaceAll(',', '.')) ?? 0;
+                            if (targetTotal <= 0 || afterItemDiscounts <= 0) return;
+
+                            // Je nach Steueroption unterschiedlich berechnen
+                            double targetNetAmount;
+                            if (_taxOptionNotifier.value == TaxOption.standard) {
+                              // Bei Standardsteuer: Zielbetrag enthält MwSt
+                              targetNetAmount = targetTotal / (1 + (_vatRate / 100));
+                            } else {
+                              // Bei anderen Optionen: Zielbetrag ist direkt der Nettobetrag
+                              targetNetAmount = targetTotal;
+                            }
+
+                            // Berechne benötigten Rabatt
+                            final neededDiscount = afterItemDiscounts - targetNetAmount;
+
+                            // Setze den Rabatt als absoluten Wert (Prozent auf 0)
+                            if (neededDiscount >= 0) {
+                              setState(() {
+                                percentageController.text = '0';
+
+                                // Wenn eine andere Währung als CHF ausgewählt ist, umrechnen
+                                double displayDiscount = neededDiscount;
+                                if (currency != 'CHF') {
+                                  displayDiscount = neededDiscount * _exchangeRates[currency]!;
+                                }
+
+                                absoluteController.text = displayDiscount.toStringAsFixed(2);
+
+                                // Speichere auch in den temporären Variablen
+                                tempPercentage = 0;
+                                tempAbsolute = neededDiscount;
+                              });
+                            }
+                          }
+
+                          return SingleChildScrollView(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Aktuelle Beträge anzeigen
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Aktuelle Beträge',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                          color: Theme.of(context).colorScheme.primary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text('Nettobetrag:'),
+                                          Text(
+                                            _formatPrice(afterItemDiscounts),
+                                            style: TextStyle(fontWeight: FontWeight.bold),
+                                          ),
+                                        ],
+                                      ),
+                                      if (_taxOptionNotifier.value == TaxOption.standard) ...[
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text('MwSt (${_vatRate.toStringAsFixed(1)}%):'),
+                                            Text(_formatPrice(afterItemDiscounts * _vatRate / 100)),
+                                          ],
+                                        ),
+                                      ],
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text('Gesamtbetrag:'),
+                                          Text(
+                                            _formatPrice(_taxOptionNotifier.value == TaxOption.standard ?
+                                            afterItemDiscounts * (1 + _vatRate / 100) : afterItemDiscounts),
+                                            style: TextStyle(fontWeight: FontWeight.bold),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+
+                                // Rabatt-Optionen
+                                Text(
+                                  'Rabatt anpassen',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+
+                                // Rabatt Prozentual
+                                TextFormField(
+                                  controller: percentageController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Rabatt %',
+                                    suffixText: '%',
+                                    border: OutlineInputBorder(),
+                                    filled: true,
+                                    prefixIcon: getAdaptiveIcon(iconName: 'percent', defaultIcon: Icons.percent),
+                                  ),
+                                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                                  ],
+                                  onChanged: (value) {
+                                    // Leere den Zielbetrag, wenn Prozent geändert wird
+                                    setState(() {
+                                      targetTotalController.text = '';
+                                      tempPercentage = double.tryParse(value.replaceAll(',', '.')) ?? 0;
+                                    });
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+
+                                // Rabatt Absolut
+                                TextFormField(
+                                  controller: absoluteController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Rabatt $currency',
+                                    suffixText: currency,
+                                    border: OutlineInputBorder(),
+                                    filled: true,
+                                    prefixIcon: getAdaptiveIcon(iconName: 'money_off', defaultIcon: Icons.money_off),
+                                  ),
+                                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                                  ],
+                                  onChanged: (value) {
+                                    // Leere den Zielbetrag, wenn absoluter Rabatt geändert wird
+                                    setState(() {
+                                      targetTotalController.text = '';
+
+                                      // In CHF umrechnen und speichern
+                                      double absoluteValue = double.tryParse(value.replaceAll(',', '.')) ?? 0;
+                                      if (currency != 'CHF') {
+                                        absoluteValue = absoluteValue / _exchangeRates[currency]!;
+                                      }
+                                      tempAbsolute = absoluteValue;
+                                    });
+                                  },
+                                ),
+                                const SizedBox(height: 20),
+
+                                // ODER-Trennlinie
+                                Row(
+                                  children: [
+                                    Expanded(child: Divider()),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      child: Text(
+                                        'ODER',
+                                        style: TextStyle(
+                                          color: Colors.grey,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(child: Divider()),
+                                  ],
+                                ),
+                                const SizedBox(height: 20),
+
+                                // Zielpreis-Option
+                                Text(
+                                  'Gewünschten Endbetrag eingeben',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+
+                                // NEU: Gewünschter Endbetrag
+                                TextFormField(
+                                  controller: targetTotalController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Gewünschter Endbetrag',
+                                    suffixText: currency,
+                                    border: OutlineInputBorder(),
+                                    filled: true,
+                                    prefixIcon: getAdaptiveIcon(iconName: 'price_check', defaultIcon: Icons.price_check),
+                                    helperText: _taxOptionNotifier.value == TaxOption.standard
+                                        ? 'Gewünschter Endbetrag inkl. MwSt'
+                                        : 'Gewünschter Endbetrag',
+                                  ),
+                                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                                  ],
+                                  onChanged: (_) => calculateTargetTotal(),
+                                ),
+                                const SizedBox(height: 24),
+
+                                // Vorschau der Effekte
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.4),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Vorschau der Änderungen',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                          color: Theme.of(context).colorScheme.primary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text('Rabattbetrag:'),
+                                          Text(
+                                            '-${_formatPrice(totalDiscountAmount)}',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.red,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text('Nettobetrag nach Rabatt:'),
+                                          Text(
+                                            _formatPrice(netAmount),
+                                            style: TextStyle(fontWeight: FontWeight.bold),
+                                          ),
+                                        ],
+                                      ),
+                                      if (_taxOptionNotifier.value == TaxOption.standard) ...[
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text('MwSt nach Rabatt:'),
+                                            Text(_formatPrice(vatAmount)),
+                                          ],
+                                        ),
+                                      ],
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text('Gesamtbetrag nach Rabatt:'),
+                                          Text(
+                                            _formatPrice(totalAmount),
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                              color: Theme.of(context).colorScheme.primary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+
+                // Buttons unten
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => Navigator.pop(context),
+                          icon: getAdaptiveIcon(iconName: 'cancel', defaultIcon: Icons.cancel),
+                          label: const Text('Abbrechen'),
+                        ),
+                        const SizedBox(width: 16),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            // Sichere die temporären Werte in der Hauptklasse
+                            double absoluteValue = tempAbsolute;
+                            double percentageValue = tempPercentage;
+
+                            // Aktualisiere die Gesamtrabatt-Instanz im SalesScreenState
+                            this.setState(() {
+                              _totalDiscount = Discount(
+                                percentage: percentageValue,
+                                absolute: absoluteValue,
+                              );
+                            });
+                            await _saveTemporaryTotalDiscount();
+                            Navigator.pop(context);
+
+                            // Zeige Bestätigung
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Rabatt angewendet'),
+                                backgroundColor: Colors.green,
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          icon: getAdaptiveIcon(iconName: 'check', defaultIcon: Icons.check),
+                          label: const Text('Übernehmen'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).colorScheme.primary,
+                            foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
+
+
+
 
 
 
@@ -6117,10 +7405,15 @@ void dispose() {
   _exchangeRatesNotifier.dispose();
   _taxOptionNotifier.dispose();
   _isLoading.dispose();
+  _vatRateNotifier.dispose();
   _selectedFairNotifier.dispose();
   customerSearchController.dispose();
+  _documentSelectionCompleteNotifier.dispose();
+  _additionalTextsSelectedNotifier.dispose();
   barcodeController.dispose();
   quantityController.dispose();
+  _documentLanguageNotifier.dispose();
+  _shippingCostsConfiguredNotifier.dispose();
   super.dispose();
 }
 }

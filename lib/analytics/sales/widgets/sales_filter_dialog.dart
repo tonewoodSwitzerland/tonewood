@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import '../../../components/filterCategory.dart';
+import '../../../services/icon_helper.dart';
 import '../models/sales_filter.dart';
 
 class SalesFilterDialog extends StatefulWidget {
@@ -70,59 +72,68 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
                         data: ThemeData(dividerColor: Colors.transparent),
                         child: Column(
                           children: [
-                            _buildFilterCategory(
-                              Icons.calendar_today,
-                              'Zeitraum',
-                              _buildDateFilter(),
-                              tempFilter.timeRange != null || tempFilter.startDate != null,
+                            buildFilterCategory(
+                              icon: Icons.calendar_today,
+                             iconName: 'calendar_today',
+                             title:  'Zeitraum',
+                              child:   _buildDateFilter(),
+                             hasActiveFilters:  tempFilter.timeRange != null || tempFilter.startDate != null,
                             ),
-                            _buildFilterCategory(
-                              Icons.attach_money,
-                              'Betrag',
-                              _buildAmountFilter(),
-                              tempFilter.minAmount != null || tempFilter.maxAmount != null,
+                            buildFilterCategory(
+                              icon:  Icons.attach_money,
+                              iconName: 'attach_money',
+                              title:     'Betrag',
+                              child:   _buildAmountFilter(),
+                              hasActiveFilters:   tempFilter.minAmount != null || tempFilter.maxAmount != null,
                             ),
-                            _buildFilterCategory(
-                              Icons.event,
-                              'Messe',
-                              _buildFairFilter(),
-                              tempFilter.selectedFairs != null,
+                            buildFilterCategory(
+                              icon: Icons.event,
+                              iconName: 'event',
+                              title:    'Messe',
+                              child:   _buildFairFilter(),
+                              hasActiveFilters:    tempFilter.selectedFairs != null,
                             ),
-                            _buildFilterCategory(
-                              Icons.inventory_2,
-                              'Artikel',
-                              _buildProductFilter(),
-                              tempFilter.selectedProducts != null,
+                            buildFilterCategory(
+                              icon:  Icons.inventory,
+                              iconName: 'inventory',
+                              title:    'Artikel',
+                              child:    _buildProductFilter(),
+                              hasActiveFilters:    tempFilter.selectedProducts != null,
                             ),
-                            _buildFilterCategory(
-                              Icons.forest,
-                              'Holzart',
-                              _buildWoodTypeFilter(),
-                              tempFilter.woodTypes?.isNotEmpty ?? false,
+                            buildFilterCategory(
+                              icon:   Icons.forest,
+                              iconName: 'forest',
+                              title:   'Holzart',
+                              child:  _buildWoodTypeFilter(),
+                              hasActiveFilters:    tempFilter.woodTypes?.isNotEmpty ?? false,
                             ),
-                            _buildFilterCategory(
-                              Icons.construction,
-                              'Bauteil',
-                              _buildPartsFilter(),
-                              tempFilter.parts?.isNotEmpty ?? false,
+                            buildFilterCategory(
+                              icon:  Icons.category,
+                              iconName: 'category',
+                              title:     'Bauteil',
+                              child:   _buildPartsFilter(),
+                              hasActiveFilters:   tempFilter.parts?.isNotEmpty ?? false,
                             ),
-                            _buildFilterCategory(
-                              Icons.piano,  // Passendes Icon für Instrumente
-                              'Instrument',
-                              _buildInstrumentFilter(),
-                              tempFilter.instruments?.isNotEmpty ?? false,
+                            buildFilterCategory(
+                              icon:   Icons.music_note,
+                              iconName: 'music_note',
+                              title:   'Instrument',
+                              child:  _buildInstrumentFilter(),
+                              hasActiveFilters:    tempFilter.instruments?.isNotEmpty ?? false,
                             ),
-                            _buildFilterCategory(
-                              Icons.grade,
-                              'Qualität',
-                              _buildQualityFilter(),
-                              tempFilter.qualities?.isNotEmpty ?? false,
+                            buildFilterCategory(
+                            icon:   Icons.star,
+                              iconName: 'star',
+                              title:    'Qualität',
+                              child:    _buildQualityFilter(),
+                              hasActiveFilters:   tempFilter.qualities?.isNotEmpty ?? false,
                             ),
-                            _buildFilterCategory(
-                              Icons.person,
-                              'Kunde',
-                              _buildCustomerFilter(),
-                              tempFilter.selectedCustomers != null,
+                            buildFilterCategory(
+                              icon:  Icons.person,
+                              iconName: 'person',
+                              title:    'Kunde',
+                             child: _buildCustomerFilter(),
+                              hasActiveFilters:   tempFilter.selectedCustomers != null,
                             )
                           ],
                         )
@@ -164,7 +175,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
                   color: const Color(0xFF0F4A29).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.filter_list, color: Color(0xFF0F4A29)),
+                child:  getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list, color: Color(0xFF0F4A29)),
               ),
               const SizedBox(width: 12),
               const Text(
@@ -180,7 +191,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
           const Spacer(),
           if (_hasActiveFilters())
             TextButton.icon(
-              icon: const Icon(Icons.clear_all),
+              icon: getAdaptiveIcon(iconName: 'clear_all', defaultIcon: Icons.clear_all,),
               label: const Text('Zurücksetzen'),
               onPressed: _resetFilters,
               style: TextButton.styleFrom(
@@ -188,7 +199,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
               ),
             ),
           IconButton(
-            icon: const Icon(Icons.close),
+            icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
             onPressed: () => Navigator.of(context).pop(),
             color: Colors.grey[600],
           ),
@@ -225,41 +236,41 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
       ),
     );
   }
-  Widget _buildFilterCategory(
-      IconData icon,
-      String title,
-      Widget child,
-      bool hasActiveFilters,
-      ) {
-    return ExpansionTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: hasActiveFilters
-              ? const Color(0xFF0F4A29).withOpacity(0.1)
-              : Colors.grey.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(
-          icon,
-          color: hasActiveFilters ? const Color(0xFF0F4A29) : Colors.grey,
-        ),
-      ),
-      title: Text(
-        title,
-        style: TextStyle(
-          fontWeight: hasActiveFilters ? FontWeight.bold : FontWeight.normal,
-          color: hasActiveFilters ? const Color(0xFF0F4A29) : Colors.black,
-        ),
-      ),
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: child,
-        ),
-      ],
-    );
-  }
+  // Widget _buildFilterCategory(
+  //     IconData icon,
+  //     String title,
+  //     Widget child,
+  //     bool hasActiveFilters,
+  //     ) {
+  //   return ExpansionTile(
+  //     leading: Container(
+  //       padding: const EdgeInsets.all(8),
+  //       decoration: BoxDecoration(
+  //         color: hasActiveFilters
+  //             ? const Color(0xFF0F4A29).withOpacity(0.1)
+  //             : Colors.grey.withOpacity(0.1),
+  //         borderRadius: BorderRadius.circular(8),
+  //       ),
+  //       child: Icon(
+  //         icon,
+  //         color: hasActiveFilters ? const Color(0xFF0F4A29) : Colors.grey,
+  //       ),
+  //     ),
+  //     title: Text(
+  //       title,
+  //       style: TextStyle(
+  //         fontWeight: hasActiveFilters ? FontWeight.bold : FontWeight.normal,
+  //         color: hasActiveFilters ? const Color(0xFF0F4A29) : Colors.black,
+  //       ),
+  //     ),
+  //     children: [
+  //       Padding(
+  //         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+  //         child: child,
+  //       ),
+  //     ],
+  //   );
+  // }
 
   Widget _buildDateFilter() {
     return Column(
@@ -340,7 +351,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  suffixIcon: const Icon(Icons.calendar_today),
+                  suffixIcon: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
                 ),
                 readOnly: true,
                 controller: TextEditingController(
@@ -374,7 +385,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  suffixIcon: const Icon(Icons.calendar_today),
+                  suffixIcon: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
                 ),
                 readOnly: true,
                 controller: TextEditingController(
@@ -709,7 +720,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
           child: Chip(
             backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
             label: Text(name),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 tempFilter = tempFilter.copyWith(
@@ -749,7 +760,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
       child: Chip(
         backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
         label: Text('Zeitraum: $timeText'),
-        deleteIcon: const Icon(Icons.close, size: 18),
+        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
         onDeleted: () => setState(() {
           tempFilter = tempFilter.copyWith(
             timeRange: null,
@@ -775,7 +786,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
           child: Chip(
             backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
             label: Text(name),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 tempFilter = tempFilter.copyWith(
@@ -803,7 +814,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
       child: Chip(
         backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
         label: Text('Betrag: $amountText'),
-        deleteIcon: const Icon(Icons.close, size: 18),
+        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
         onDeleted: () => setState(() {
           tempFilter = tempFilter.copyWith(
             minAmount: null,
@@ -830,7 +841,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
           child: Chip(
             backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
             label: Text(name),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 tempFilter = tempFilter.copyWith(
@@ -859,7 +870,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
           child: Chip(
             backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
             label: Text(name),
-            deleteIcon: const Icon(Icons.close, size: 18),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
             onDeleted: () {
               setState(() {
                 tempFilter = tempFilter.copyWith(
@@ -895,7 +906,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
               child: Chip(
                 backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
                 label: Text('Firma: $name'),
-                deleteIcon: const Icon(Icons.close, size: 18),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                 onDeleted: () => setState(() {
                   tempFilter = tempFilter.copyWith(
                     selectedCustomers: tempFilter.selectedCustomers!
@@ -932,7 +943,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
               child: Chip(
                 backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
                 label: Text('Messe: $name'),
-                deleteIcon: const Icon(Icons.close, size: 18),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                 onDeleted: () => setState(() {
                   tempFilter = tempFilter.copyWith(
                     selectedFairs: tempFilter.selectedFairs!
@@ -971,7 +982,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
               child: Chip(
                 backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
                 label: Text('Artikel: $name'),
-                deleteIcon: const Icon(Icons.close, size: 18),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                 onDeleted: () => setState(() {
                   tempFilter = tempFilter.copyWith(
                     selectedProducts: tempFilter.selectedProducts!

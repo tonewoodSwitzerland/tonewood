@@ -5,6 +5,7 @@ import 'package:tonewood/analytics/roundwood/services/roundwood_csv_service.dart
 import 'package:tonewood/analytics/roundwood/services/roundwood_export_service.dart';
 import 'package:tonewood/analytics/roundwood/services/roundwood_pdf_service.dart';
 import '../../constants.dart';
+import '../../services/icon_helper.dart';
 import 'models/roundwood_models.dart';
 import 'services/roundwood_service.dart';
 import 'widgets/roundwood_filter_dialog.dart';
@@ -58,8 +59,7 @@ class RoundwoodListState extends State<RoundwoodList> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.search_off,
+                      getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search,
                         size: 48,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -74,7 +74,9 @@ class RoundwoodListState extends State<RoundwoodList> {
                         const SizedBox(height: 8),
                         TextButton.icon(
                           onPressed: () => widget.onFilterChanged(RoundwoodFilter()),
-                          icon: const Icon(Icons.filter_list_off),
+
+                          icon:  getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list,),
+
                           label: const Text('Filter zurücksetzen'),
                         ),
                       ],
@@ -120,7 +122,8 @@ class RoundwoodListState extends State<RoundwoodList> {
             label: Text(widget.filter.toMap().length.toString()),
             child: IconButton(
               onPressed: _showFilterDialog,
-              icon: const Icon(Icons.filter_list),
+                icon:getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list,),
+
               tooltip: 'Filter',
             ),
           ),
@@ -143,13 +146,13 @@ class RoundwoodListState extends State<RoundwoodList> {
           const Spacer(),
           IconButton(
             onPressed: _exportPdf,
-            icon: const Icon(Icons.picture_as_pdf),
+            icon:  getAdaptiveIcon(iconName: 'picture_as_pdf', defaultIcon: Icons.picture_as_pdf,),
             tooltip: 'Als PDF exportieren',
           ),
           const SizedBox(width: 8),
           IconButton(
             onPressed: _exportCsv,
-            icon: const Icon(Icons.table_chart),
+            icon:getAdaptiveIcon(iconName: 'table_chart', defaultIcon: Icons.table_chart),
             tooltip: 'Als CSV exportieren',
           ),
         ],

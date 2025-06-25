@@ -9,6 +9,7 @@ import 'package:tonewood/analytics/production/services/production_pdf_service.da
 import 'package:tonewood/analytics/production/services/production_service.dart';
 import 'package:tonewood/analytics/production/widgets/production_filter_dialog.dart';
 import '../../constants.dart';
+import '../../services/icon_helper.dart';
 import 'constants/production_constants.dart';
 import 'models/production_filter.dart';
 import 'models/production_models.dart';
@@ -159,8 +160,8 @@ class ProductionScreenState extends State<ProductionScreen> with SingleTickerPro
                 color: const Color(0xFF0F4A29).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(
-                Icons.download,
+              child:
+               getAdaptiveIcon(iconName: 'download', defaultIcon: Icons.download,
                 color: Color(0xFF0F4A29),
               ),
             ),
@@ -179,7 +180,7 @@ class ProductionScreenState extends State<ProductionScreen> with SingleTickerPro
                   color: Colors.blue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.table_chart, color: Colors.blue),
+                child: getAdaptiveIcon(iconName: 'table_chart', defaultIcon: Icons.table_chart, color: Colors.blue),
               ),
               title: const Text('CSV'),
               subtitle: const Text('Daten im CSV-Format'),
@@ -197,7 +198,7 @@ class ProductionScreenState extends State<ProductionScreen> with SingleTickerPro
                   color: Colors.red.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.picture_as_pdf, color: Colors.red),
+                child:  getAdaptiveIcon(iconName: 'picture_as_pdf', defaultIcon: Icons.picture_as_pdf, color: Colors.red),
               ),
               title: const Text('Als PDF exportieren'),
               subtitle: const Text('Chargenliste als PDF'),
@@ -353,14 +354,16 @@ class ProductionScreenState extends State<ProductionScreen> with SingleTickerPro
                 child: Row(
                   children: [
                     IconButton(
-                      icon: Icon(
-                        isQuickFilterActive ? Icons.star : Icons.star_outline,
-                        color: isQuickFilterActive ? const Color(0xFF0F4A29) : null,
+                      icon:
+                      isQuickFilterActive ?
+                      getAdaptiveIcon(iconName: 'star_fill', defaultIcon: Icons.star,)
+                          :
+                      getAdaptiveIcon(iconName: 'star',defaultIcon:Icons.star_outline,
                       ),
                       onPressed: _toggleQuickFilter,
                       tooltip: isQuickFilterActive
                           ? 'Schnellfilter deaktivieren'
-                          : 'Schnellfilter für Decken aktivieren',
+                          : 'Schnellfilter aktivieren',
                     ),
                     // Filter Badge
                     Badge(
@@ -368,7 +371,8 @@ class ProductionScreenState extends State<ProductionScreen> with SingleTickerPro
                       label: Text(_activeFilter.toMap().length.toString()),
                       child: IconButton(
                         onPressed: _showFilterDialog,
-                        icon: const Icon(Icons.filter_list),
+                          icon:getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list,),
+
                         tooltip: 'Filter',
                       ),
                     ),

@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import '../constants.dart';
+import '../services/icon_helper.dart';
 
 class SalesFilter {
 DateTime? startDate;
@@ -78,7 +79,8 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
         actions: [
           if (!isDesktopLayout)
             IconButton(
-              icon: const Icon(Icons.filter_list),
+                icon:getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list,),
+
               onPressed: _showFilterDialog,
             ),
         ],
@@ -242,7 +244,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
           children: [
             Expanded(
               child: TextButton.icon(
-                icon: const Icon(Icons.calendar_today),
+                icon: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
                 label: Text(
                   activeFilter.startDate != null
                       ? DateFormat('dd.MM.yyyy').format(activeFilter.startDate!)
@@ -264,7 +266,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
             const SizedBox(width: 8),
             Expanded(
               child: TextButton.icon(
-                icon: const Icon(Icons.calendar_today),
+                icon: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
                 label: Text(
                   activeFilter.endDate != null
                       ? DateFormat('dd.MM.yyyy').format(activeFilter.endDate!)
@@ -424,7 +426,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
               padding: const EdgeInsets.only(right: 8),
               child: Chip(
                 label: Text('Von: ${DateFormat('dd.MM.yyyy').format(activeFilter.startDate!)}'),
-                deleteIcon: const Icon(Icons.close, size: 18),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                 onDeleted: () {
                   setState(() {
                     activeFilter.startDate = null;
@@ -439,7 +441,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
               padding: const EdgeInsets.only(right: 8),
               child: Chip(
                 label: Text('Bis: ${DateFormat('dd.MM.yyyy').format(activeFilter.endDate!)}'),
-                deleteIcon: const Icon(Icons.close, size: 18),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                 onDeleted: () {
                   setState(() {
                     activeFilter.endDate = null;
@@ -454,7 +456,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
               padding: const EdgeInsets.only(right: 8),
               child: Chip(
                 label: Text('Min: ${activeFilter.minAmount!.toStringAsFixed(2)} CHF'),
-                deleteIcon: const Icon(Icons.close, size: 18),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                 onDeleted: () {
                   setState(() {
                     activeFilter.minAmount = null;
@@ -469,7 +471,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
               padding: const EdgeInsets.only(right: 8),
               child: Chip(
                 label: Text('Max: ${activeFilter.maxAmount!.toStringAsFixed(2)} CHF'),
-                deleteIcon: const Icon(Icons.close, size: 18),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                 onDeleted: () {
                   setState(() {
                     activeFilter.maxAmount = null;
@@ -494,7 +496,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
                   padding: const EdgeInsets.only(right: 8),
                   child: Chip(
                     label: Text('Kunde: ${customerData['company']}'),
-                    deleteIcon: const Icon(Icons.close, size: 18),
+                    deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                     onDeleted: () {
                       setState(() {
                         activeFilter.selectedCustomer = null;
@@ -521,7 +523,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
                   padding: const EdgeInsets.only(right: 8),
                   child: Chip(
                     label: Text('Instrument: ${instrumentData['name']}'),
-                    deleteIcon: const Icon(Icons.close, size: 18),
+                    deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                     onDeleted: () {
                       setState(() {
                         activeFilter.selectedInstrument = null;
@@ -548,7 +550,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
                   padding: const EdgeInsets.only(right: 8),
                   child: Chip(
                     label: Text('Messe: ${fairData['name']}'),
-                    deleteIcon: const Icon(Icons.close, size: 18),
+                    deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                     onDeleted: () {
                       setState(() {
                         activeFilter.selectedFair = null;
@@ -575,7 +577,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
                   padding: const EdgeInsets.only(right: 8),
                   child: Chip(
                     label: Text('Artikel: ${productData['product_name']}'),
-                    deleteIcon: const Icon(Icons.close, size: 18),
+                    deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
                     onDeleted: () {
                       setState(() {
                         activeFilter.selectedProduct = null;
@@ -592,7 +594,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
               padding: const EdgeInsets.only(right: 8),
               child: Chip(
                 label: const Text('Alle Filter zurücksetzen'),
-                deleteIcon: const Icon(Icons.refresh, size: 18),
+                deleteIcon:   getAdaptiveIcon(iconName: 'refresh', defaultIcon: Icons.refresh,size: 18),
                 onDeleted: () {
                   setState(() {
                     activeFilter = SalesFilter();
@@ -770,7 +772,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.close),
+                          icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                           onPressed: () => Navigator.pop(context),
                         ),
                       ],
@@ -803,7 +805,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
                                     children: [
                                       Expanded(
                                         child: TextButton.icon(
-                                          icon: const Icon(Icons.calendar_today),
+                                          icon:    getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
                                           label: Text(
                                             tempFilter.startDate != null
                                                 ? DateFormat('dd.MM.yyyy').format(tempFilter.startDate!)
@@ -827,7 +829,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
                                       const SizedBox(width: 8),
                                       Expanded(
                                         child: TextButton.icon(
-                                          icon: const Icon(Icons.calendar_today),
+                                          icon: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
                                           label: Text(
                                             tempFilter.endDate != null
                                                 ? DateFormat('dd.MM.yyyy').format(tempFilter.endDate!)
@@ -1090,7 +1092,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
                       ],
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close),
+                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                       onPressed: () => Navigator.pop(context),
                     ),
                   ],
@@ -1111,7 +1113,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
                             children: [
                               Row(
                                 children: [
-                                  Icon(Icons.business,
+                                  getAdaptiveIcon(iconName: 'business', defaultIcon: Icons.business,
                                       size: 16,
                                       color: Theme.of(context).primaryColor),
                                   const SizedBox(width: 8),
@@ -1158,8 +1160,8 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
                             children: [
                               Row(
                                 children: [
-                                  Icon(Icons.calendar_today,
-                                      size: 16,
+                                  
+                                  getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today,size: 16,
                                       color: Theme.of(context).primaryColor),
                                   const SizedBox(width: 8),
                                   const Text('Datum',
@@ -1201,9 +1203,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
                           // Artikellisten-Header
                           Row(
                             children: [
-                              Icon(Icons.shopping_cart,
-                                  size: 16,
-                                  color: Theme.of(context).primaryColor),
+                               getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart, size: 16),
                               const SizedBox(width: 8),
                               Text(
                                 'Artikel (${items.length})',
@@ -1443,7 +1443,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     ElevatedButton.icon(
-                      icon: const Icon(Icons.share),
+                      icon: getAdaptiveIcon(iconName: 'share', defaultIcon: Icons.share),
                       label: const Text('PDF Beleg'),
                       onPressed: () async {
                         await _shareReceipt(receiptId, data['pdf_url']);
@@ -1453,7 +1453,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
                     const SizedBox(width: 16),  // Abstand zwischen den Buttons
                     if (data['csv_url'] != null)  // Nur anzeigen wenn CSV verfügbar
                       ElevatedButton.icon(
-                        icon: const Icon(Icons.table_chart),
+                        icon:  getAdaptiveIcon(iconName: 'table_chart', defaultIcon: Icons.table_chart, color: Colors.blue),
                         label: const Text('CSV Export'),
                         onPressed: () async {
                           await _shareReceipt(receiptId, data['csv_url']);

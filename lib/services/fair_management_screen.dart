@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 import 'fairs.dart';
+import 'icon_helper.dart';
 
 
 
@@ -25,7 +26,7 @@ class FairManagementScreenState extends State<FairManagementScreen> {
         title: const Text('Messeverwaltung'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add),
+            icon:  getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add,),
             onPressed: _showAddFairDialog,
           ),
         ],
@@ -38,7 +39,7 @@ class FairManagementScreenState extends State<FairManagementScreen> {
               controller: searchController,
               decoration: InputDecoration(
                 labelText: 'Messe suchen',
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search,),
                 border: const OutlineInputBorder(),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.clear),
@@ -126,7 +127,7 @@ class FairManagementScreenState extends State<FairManagementScreen> {
                               onPressed: () => _showEditFairDialog(fair),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.delete),
+                              icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete,),
                               onPressed: () => _showDeleteFairDialog(fair),
                             ),
                           ],
@@ -181,7 +182,7 @@ class FairManagementScreenState extends State<FairManagementScreen> {
                         const Spacer(),
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close),
+                          icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                         ),
                       ],
                     ),
@@ -245,8 +246,8 @@ class FairManagementScreenState extends State<FairManagementScreen> {
                                       labelText: 'Startdatum *',
                                       border: const OutlineInputBorder(),
                                       filled: true,
-                                      prefixIcon: Icon(
-                                        Icons.calendar_today,
+                                      prefixIcon:
+                                      getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today,
                                         color: Theme.of(context).colorScheme.primary,
                                       ),
                                     ),
@@ -276,8 +277,7 @@ class FairManagementScreenState extends State<FairManagementScreen> {
                                       labelText: 'Enddatum *',
                                       border: const OutlineInputBorder(),
                                       filled: true,
-                                      prefixIcon: Icon(
-                                        Icons.calendar_today,
+                                      prefixIcon:  getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today,
                                         color: Theme.of(context).colorScheme.primary,
                                       ),
                                     ),
@@ -452,7 +452,7 @@ class FairManagementScreenState extends State<FairManagementScreen> {
                                   }
                                 }
                               },
-                              icon: const Icon(Icons.save),
+                              icon: getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save,),
                               label: const Text('Speichern'),
                             ),
                           ],
@@ -511,7 +511,7 @@ class FairManagementScreenState extends State<FairManagementScreen> {
                         const Spacer(),
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close),
+                          icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                         ),
                       ],
                     ),
@@ -573,8 +573,8 @@ class FairManagementScreenState extends State<FairManagementScreen> {
                                       labelText: 'Startdatum *',
                                       border: const OutlineInputBorder(),
                                       filled: true,
-                                      prefixIcon: Icon(
-                                        Icons.calendar_today,
+                                      prefixIcon:
+                                      getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today,
                                         color: Theme.of(context).colorScheme.primary,
                                       ),
                                     ),
@@ -604,8 +604,8 @@ class FairManagementScreenState extends State<FairManagementScreen> {
                                       labelText: 'Enddatum *',
                                       border: const OutlineInputBorder(),
                                       filled: true,
-                                      prefixIcon: Icon(
-                                        Icons.calendar_today,
+                                      prefixIcon:
+                                      getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today,
                                         color: Theme.of(context).colorScheme.primary,
                                       ),
                                     ),
@@ -779,7 +779,7 @@ class FairManagementScreenState extends State<FairManagementScreen> {
                                   }
                                 }
                               },
-                              icon: const Icon(Icons.save),
+                              icon: getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save,),
                               label: const Text('Speichern'),
                             ),
                           ],
@@ -818,7 +818,7 @@ class FairManagementScreenState extends State<FairManagementScreen> {
                     ),
                     IconButton(
                       onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
+                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                     ),
                   ],
                 ),
@@ -946,7 +946,7 @@ class FairManagementScreenState extends State<FairManagementScreen> {
                 }
               }
             },
-            icon: const Icon(Icons.delete),
+            icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete,),
             label: const Text('Löschen'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,

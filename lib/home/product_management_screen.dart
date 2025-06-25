@@ -8,9 +8,13 @@ import 'package:tonewood/home/production_screen.dart';
 import 'package:tonewood/home/roundwood_entry_screen.dart';
 import 'package:tonewood/home/warehouse_screen.dart';
 import '../constants.dart';
+import '../services/icon_helper.dart';
 import 'add_product_screen.dart';
 import 'package:intl/intl.dart';
-
+enum BarcodeType {
+  sales,
+  production,
+}
 class ProductManagementScreen extends StatefulWidget {
   const ProductManagementScreen({Key? key}) : super(key: key);
 
@@ -21,9 +25,13 @@ class ProductManagementScreen extends StatefulWidget {
 class ProductManagementScreenState extends State<ProductManagementScreen> {
   final TextEditingController quantityController = TextEditingController();
   final TextEditingController barcodeController = TextEditingController();
+
+  // Neue Controller für die Teile der Artikelnummer
+  final TextEditingController partOneController = TextEditingController();
+  final TextEditingController partTwoController = TextEditingController();
   Map<String, dynamic>? selectedProduct;  // Hinzugefügt
   String? selectedBarcode;
-
+  BarcodeType selectedBarcodeType = BarcodeType.sales;
 
 
 
@@ -584,19 +592,22 @@ print("sB:$searchBarcode");
 
   void _navigateToNewProduct(BuildContext context) {
     if (kIsWeb) {
-      // Für Web: Verwende verzögerte Navigation
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => Scaffold(
-              body: AddProductScreen(
-                editMode: false,
-                isProduction: true,
-              ),
-            ),
-          ),
-        );
+      setState(() {
+        selectedAction = 'neu';
       });
+      // // Für Web: Verwende verzögerte Navigation
+      // WidgetsBinding.instance.addPostFrameCallback((_) {
+      //   Navigator.of(context).push(
+      //     MaterialPageRoute(
+      //       builder: (context) => Scaffold(
+      //         body: AddProductScreen(
+      //           editMode: false,
+      //           isProduction: true,
+      //         ),
+      //       ),
+      //     ),
+      //   );
+      // });
     } else {
       // Für mobile Plattformen: Direkte Navigation
       Navigator.push(
@@ -642,13 +653,15 @@ print("sB:$searchBarcode");
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
                   children: [
                     _buildActionButton(
-                      icon: Icons.add_shopping_cart,
+                      icon: Icons.precision_manufacturing,
+                      iconName: 'precision_manufacturing',
                       title: 'Produktionseingang buchen',
                       subtitle: 'Neue Produktion dem Bestand hinzufügen',
                       onTap: () => setState(() => selectedAction = 'wareneingang'),
                       isSelected: selectedAction == 'wareneingang',
                     ),
                     _buildActionButton(
+                      iconName: 'edit',
                       icon: Icons.edit,
                       title: 'Preis / Bestand bearbeiten',
                       subtitle: 'Produktdaten ändern',
@@ -656,13 +669,15 @@ print("sB:$searchBarcode");
                       isSelected: selectedAction == 'bearbeiten',
                     ),
                 _buildActionButton(
-                  icon: Icons.add_circle_outline,
+                  iconName: 'add',
+                  icon: Icons.add,
                   title: 'Neues Produkt',
                   subtitle: 'Produkt erstellen',
                   onTap: () => _navigateToNewProduct(context),
                   isSelected: selectedAction == 'neu',
                 ),
                     _buildActionButton(
+                      iconName: 'forest',
                       icon: Icons.forest,
                       title: 'Einschnitt Rundholz',
                       subtitle: 'Rundholz erfassen und bearbeiten',
@@ -689,6 +704,7 @@ print("sB:$searchBarcode");
     required String subtitle,
     required VoidCallback onTap,
     required bool isSelected,
+    String? iconName,  // Neuer Parameter für adaptive Icons
   }) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
@@ -702,9 +718,18 @@ print("sB:$searchBarcode");
             padding: const EdgeInsets.all(16.0),
             child: Row(
               children: [
-                Icon(icon,
+                iconName != null
+                    ? getAdaptiveIcon(
+                  iconName: iconName,
+                  defaultIcon: icon,
+                  size: 24,
+                  color: isSelected ? primaryAppColor : Colors.grey.shade700,
+                )
+                    : Icon(
+                    icon,
                     size: 24,
-                    color: isSelected ? primaryAppColor : Colors.grey.shade700),
+                    color: isSelected ? primaryAppColor : Colors.grey.shade700
+                ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -739,26 +764,21 @@ print("sB:$searchBarcode");
   Widget _buildRightPanel() {
     switch (selectedAction) {
       case 'neu':
-        return SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: AddProductScreen(
-              isProduction: true,
-              editMode: false,
-              onSave: () {
-                setState(() {
-                  selectedAction = '';
-                });
-              },
-            ),
-          ),
+        return AddProductScreen(
+          isProduction: true,
+          editMode: false,
+          onSave: () {
+            setState(() {
+              selectedAction = '';
+            });
+          },
         );
       case 'wareneingang':
         return _buildWareneingangPanel();
       case 'bearbeiten':
         return _buildBearbeitenPanel();
       case 'rundholz':
-        return _buildRundholzPanel();
+        return RoundwoodEntryScreen();
       default:
         return const Center(
           child: Text('Bitte wähle eine Aktion aus'),
@@ -767,62 +787,121 @@ print("sB:$searchBarcode");
   }
   Widget _buildWareneingangPanel() {
     return Padding(
-      padding: const EdgeInsets.all(24.0),
+      padding: const EdgeInsets.all(32.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Produktion buchen',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Produktion buchen',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF0F4A29),
+                ),
+              ),
+              IconButton(
+                icon: getAdaptiveIcon(
+                  iconName: 'help',
+                  defaultIcon: Icons.help,
+                  color: Colors.grey[600],
+                ),
+                onPressed: () {
+                  // Show help dialog or information
+                },
+              ),
+            ],
           ),
           const SizedBox(height: 24),
           Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: Padding(
-              padding: const EdgeInsets.all(24.0),
+              padding: const EdgeInsets.all(32.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: barcodeController,
-                          decoration: const InputDecoration(
-                            labelText: 'Barcode',
-                            border: OutlineInputBorder(),
-                            helperText: 'Gib den Barcode des Produkts ein',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Column(
+                  Text(
+                    'Wie möchtest du die Produktion buchen?',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Wähle eine der folgenden Optionen',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final isWideScreen = constraints.maxWidth > 800;
+
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // IconButton(
-                          //   onPressed: () => _scanBarcode(),
-                          //   icon: const Icon(Icons.qr_code_scanner),
-                          //   tooltip: 'Barcode scannen',
-                          // ),
-                          IconButton(
-                            onPressed: _showProductionSearchDialog,
-                            icon: const Icon(Icons.search),
-                            tooltip: 'Produkte durchsuchen',
+                          _buildOptionButton(
+                            icon: getAdaptiveIcon(
+                              iconName: 'search',
+                              defaultIcon: Icons.search,
+                              color: Colors.white,
+                            ),
+                            label: 'Produktion suchen',
+                            onPressed: _showProductionDialog,
+                            isWideScreen: isWideScreen,
+                            color: const Color(0xFF0F4A29),
+                          ),
+                          SizedBox(width: isWideScreen ? 48 : 24),
+                          _buildOptionButton(
+                            icon: getAdaptiveIcon(
+                              iconName: 'keyboard',
+                              defaultIcon: Icons.keyboard,
+                              color: Colors.white,
+                            ),
+                            label: 'Barcode eingeben',
+                            onPressed: _showBarcodeInputDialog,
+                            isWideScreen: isWideScreen,
+                            color: const Color(0xFF0F4A29).withOpacity(0.8),
                           ),
                         ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      if (barcodeController.text.isNotEmpty) {
-                        _checkProductAndShowQuantity(barcodeController.text);
-                      }
+                      );
                     },
-                    child: const Text('Produkt suchen'),
+                  ),
+                  const SizedBox(height: 32),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F4A29).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF0F4A29).withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'info',
+                          defaultIcon: Icons.info,
+                          color: const Color(0xFF0F4A29),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Hier kannst du neue Produktion in den Lagerbestand buchen. Wähle aus der Produktionsliste oder gib einen Produktions-Barcode ein.',
+                            style: TextStyle(
+                              color: const Color(0xFF0F4A29),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -833,7 +912,52 @@ print("sB:$searchBarcode");
     );
   }
 
-  void _showProductionSearchDialog() {
+// Verbesserte Methode für die Option-Buttons
+  Widget _buildOptionButton({
+    required Widget icon,
+    required String label,
+    required VoidCallback onPressed,
+    required bool isWideScreen,
+    Color color = const Color(0xFF0F4A29),
+  }) {
+    return ElevatedButton(
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: Colors.white,
+        padding: EdgeInsets.symmetric(
+          horizontal: isWideScreen ? 32 : 24,
+          vertical: isWideScreen ? 20 : 16,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        elevation: 4,
+      ),
+      child: Container(
+        width: isWideScreen ? 160 : 120,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            icon,
+            const SizedBox(height: 12),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: isWideScreen ? 16 : 14,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+// Helper method to create consistent option buttons
+
+  void _showProductsSearchDialog() {
     final searchController = TextEditingController();
     String searchTerm = '';
 
@@ -858,7 +982,7 @@ print("sB:$searchBarcode");
                         ),
                         const Spacer(),
                         IconButton(
-                          icon: const Icon(Icons.close),
+                          icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                           onPressed: () => Navigator.pop(context),
                         ),
                       ],
@@ -981,72 +1105,213 @@ print("sB:$searchBarcode");
   }
 
   Widget _buildBearbeitenPanel() {
+    // Controller für die zwei Teile der Artikelnummer
+
+
+    // Wenn ein bestehender Barcode vorhanden ist, aufteilen
+    if (barcodeController.text.isNotEmpty) {
+      final parts = barcodeController.text.split('.');
+      if (parts.length >= 2) {
+        partOneController.text = parts[0];
+        partTwoController.text = parts[1];
+      }
+    }
+
+    // Funktion zum Kombinieren der beiden Teile und Suchen
+    void combineAndSearch() {
+      if (partOneController.text.isNotEmpty && partTwoController.text.isNotEmpty) {
+        final combinedBarcode = "${partOneController.text}.${partTwoController.text}";
+        barcodeController.text = combinedBarcode; // Wichtig: Den kombinierten Wert speichern
+        _searchProduct(combinedBarcode);
+      } else {
+        AppToast.show(message: "Bitte beide Teile der Artikelnummer eingeben", height: h);
+      }
+    }
+
     return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(  // Kein Container oder SingleChildScrollView mehr auf dieser Ebene
+      padding: const EdgeInsets.all(32.0),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Preis / Bestand bearbeiten',
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 28,
               fontWeight: FontWeight.bold,
+              color: const Color(0xFF0F4A29),
             ),
           ),
           const SizedBox(height: 24),
           Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: Padding(
-              padding: const EdgeInsets.all(24.0),
+              padding: const EdgeInsets.all(32.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  TextFormField(
-                    controller: barcodeController,
-                    decoration: const InputDecoration(
-                      labelText: 'Barcode',
-                      border: OutlineInputBorder(),
-                      helperText: 'Gib den Barcode des zu bearbeitenden Produkts ein',
+                  Text(
+                    'Artikelnummer eingeben',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
                     ),
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Gib die Artikelnummer im Format IIPP.HHQQ ein',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      if (barcodeController.text.isNotEmpty) {
-                        _searchProduct(barcodeController.text);
-                      }
-                    },
-                    child: const Text('Produkt suchen'),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 120, // Kleinere Breite für die Eingabefelder
+                        child: TextFormField(
+                          controller: partOneController,
+                          decoration: InputDecoration(
+                            labelText: 'IIPP',
+
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                            fillColor: Colors.grey[50],
+                            filled: true,
+                          ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(4), // Beschränkt auf 4 Zeichen
+                          ],
+                          onChanged: (value) {
+                            // Automatisch zum nächsten Feld wechseln, wenn 4 Ziffern eingegeben wurden
+                            if (value.length == 4) {
+                              FocusScope.of(context).nextFocus();
+                            }
+                          },
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          '.',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF0F4A29),
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 120, // Kleinere Breite für die Eingabefelder
+                        child: TextFormField(
+                          controller: partTwoController,
+                          decoration: InputDecoration(
+                            labelText: 'HHQQ',
+
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                            fillColor: Colors.grey[50],
+                            filled: true,
+                          ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(4), // Beschränkt auf 4 Zeichen
+                          ],
+                          onEditingComplete: combineAndSearch, // Bei Enter direkt suchen
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      ElevatedButton(
+                        onPressed: combineAndSearch,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0F4A29),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: getAdaptiveIcon(
+                          iconName: 'search',
+                          defaultIcon: Icons.search,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 300, // Begrenze die Breite auf einen vernünftigeren Wert
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            _showProductSearchDialog();
+                          },
+                          icon: getAdaptiveIcon(
+                            iconName: 'inventory',
+                            defaultIcon: Icons.inventory,
+                            color: Colors.white,
+                          ),
+                          label: const Text('Produktliste durchsuchen'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0F4A29),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F4A29).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF0F4A29).withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'info',
+                          defaultIcon: Icons.info,
+                          color: const Color(0xFF0F4A29),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Hier kannst du vorhandene Produkte bearbeiten. Gib die Artikelnummer im Format IIPP.HHQQ ein oder verwende die Produktliste, um ein Produkt auszuwählen.',
+                            style: TextStyle(
+                              color: const Color(0xFF0F4A29),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          if (selectedProduct != null) ...[
-            const SizedBox(height: 24),
-            Expanded(  // Expanded für den AddProductScreen
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: AddProductScreen(
-                    isProduction: true,
-                    editMode: true,
-                    productData: selectedProduct!,
-                    barcode: selectedBarcode!,
-                    onSave: () {
-                      setState(() {
-                        selectedProduct = null;
-                        selectedBarcode = null;
-                        barcodeController.clear();
-                      });
-                    },
-                  ),
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -1058,7 +1323,97 @@ print("sB:$searchBarcode");
 
 
 
+  void _showProductSearchDialog() {
 
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (BuildContext context) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.9,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 10,
+                  spreadRadius: 0,
+                  offset: Offset(0, -1),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                // Drag Handle oben
+                Container(
+                  margin: EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+
+                // Titel mit Schließen-Button
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: Colors.grey.shade200,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      getAdaptiveIcon(iconName: 'warehouse', defaultIcon: Icons.warehouse,),
+
+                      SizedBox(width: 12),
+                      Text(
+                        'Verkaufsliste',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: primaryAppColor,
+                        ),
+                      ),
+                      Spacer(),
+                      IconButton(
+                        icon:   getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
+                        onPressed: () => Navigator.pop(context),
+                        color: Colors.grey[600],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Hauptinhalt
+                Expanded(
+                  child: WarehouseScreen(
+                    mode: 'lookup',
+                    isDialog: true,
+                    onBarcodeSelected: (barcode) async {
+                      print("trest");
+                      Navigator.pop(context);
+                      _searchProduct(barcode);
+                      //await _fetchProductData(barcode);
+                    },
+                    key: UniqueKey(),
+                  ),
+                ),
+
+
+              ],
+            ),
+          );
+        },
+      );
+
+  }
 
 
 
@@ -1082,7 +1437,7 @@ print("sB:$searchBarcode");
           context,
           MaterialPageRoute(
             builder: (context) => AddProductScreen(
-              isProduction: true,
+              isProduction: false,
               editMode: true,
               barcode: barcode,
               productData: productData,
@@ -1156,7 +1511,7 @@ print("sB:$searchBarcode");
                         ),
                       );
                     },
-                    icon: const Icon(Icons.add),
+                    icon:  getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add,),
                     label: const Text('Neuer Eintrag'),
                   ),
                 ],
@@ -1229,7 +1584,7 @@ print("sB:$searchBarcode");
                                         },
                                       ),
                                       IconButton(
-                                        icon: const Icon(Icons.delete),
+                                        icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete,),
                                         onPressed: () {
                                           _showDeleteConfirmationDialog(doc.id);
                                         },
@@ -1315,13 +1670,7 @@ print("sB:$searchBarcode");
   }
 
 
-// Optional: Eine spezifische Methode für die Bearbeitung
-  Future<void> _searchProductForEdit(String barcode) async {
-    await _searchProduct(barcode);
-    if (selectedProduct != null) {
-      // Hier könnten noch spezifische Vorbereitungen für die Bearbeitung stattfinden
-    }
-  }
+
   Widget _buildMobileLayout() {
     return LayoutBuilder(
         builder: (context, constraints) {
@@ -1365,7 +1714,7 @@ print("sB:$searchBarcode");
                                 vertical: 12,
                               ),
                             ),
-                            child: const Icon(Icons.search),
+                            child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search,),
 
                           ),
                           ElevatedButton(
@@ -1387,7 +1736,7 @@ print("sB:$searchBarcode");
                                 vertical: 12,
                               ),
                             ),
-                            child: const Icon(Icons.keyboard),
+                            child: getAdaptiveIcon(iconName: 'keyboard', defaultIcon: Icons.keyboard,),
 
                           ),
                         ],
