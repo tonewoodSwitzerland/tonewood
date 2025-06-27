@@ -9,7 +9,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../components/order_model.dart';
 import '../services/icon_helper.dart';
-
+import '../services/orders_document_manager.dart';
+import '../services/order_document_preview_manager.dart';
 // Zentrale Farbdefinitionen
 class OrderColors {
   static const pending = Color(0xFFEF9A3C);      // Warmes Gelb-Orange
@@ -788,29 +789,15 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                 item['product_name']?.toString() ?? 'Unbekanntes Produkt',
                                 style: const TextStyle(fontWeight: FontWeight.bold),
                               ),
-                              const SizedBox(height: 4),
-                              Text('Menge: $quantity ${item['unit']?.toString() ?? 'Stück'}'),
-                              Text('Preis: CHF ${pricePerUnit.toStringAsFixed(2)}'),
-                              Text('Gesamt: CHF ${total.toStringAsFixed(2)}'),
+
                             ],
                           ),
                         ),
                       );
                     }),
 
-                    const SizedBox(height: 20),
 
-                    // Berechnungen
-                    _buildInfoSection('Berechnungen', [
-                      _buildInfoRow('Zwischensumme:', 'CHF ${(order.calculations['subtotal'] as num? ?? 0).toStringAsFixed(2)}'),
-                      if ((order.calculations['item_discounts'] as num? ?? 0) > 0)
-                        _buildInfoRow('Positionsrabatte:', 'CHF -${(order.calculations['item_discounts'] as num? ?? 0).toStringAsFixed(2)}'),
-                      if ((order.calculations['total_discount_amount'] as num? ?? 0) > 0)
-                        _buildInfoRow('Gesamtrabatt:', 'CHF -${(order.calculations['total_discount_amount'] as num? ?? 0).toStringAsFixed(2)}'),
-                      _buildInfoRow('Nettobetrag:', 'CHF ${(order.calculations['net_amount'] as num? ?? 0).toStringAsFixed(2)}'),
-                      _buildInfoRow('MwSt:', 'CHF ${(order.calculations['vat_amount'] as num? ?? 0).toStringAsFixed(2)}'),
-                      _buildInfoRow('Gesamtbetrag:', 'CHF ${(order.calculations['total'] as num? ?? 0).toStringAsFixed(2)}', isTotal: true),
-                    ]),
+
                   ],
                 ),
               ),
@@ -1405,116 +1392,146 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            // Drag Handle
-            Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(2),
-              ),
+      builder: (context) => StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('orders')
+            .doc(order.id)
+            .snapshots(),
+        builder: (context, snapshot) {
+          final currentOrder = snapshot.hasData && snapshot.data!.exists
+              ? OrderX.fromFirestore(snapshot.data!)
+              : order;
+
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.7,
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             ),
-
-            // Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: Row(
-                children: [
-                  getAdaptiveIcon(iconName: 'folder_open', defaultIcon: Icons.folder_open),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Dokumente - ${order.orderNumber}',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+            child: Column(
+              children: [
+                // Drag Handle
+                Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  IconButton(
-                    icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-
-            const Divider(),
-
-            // Content
-            Expanded(
-              child: order.documents.isEmpty
-                  ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.description_outlined,
-                      size: 48,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Keine Dokumente verfügbar',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                      ),
-                    ),
-                  ],
                 ),
-              )
-                  : ListView.builder(
-                padding: const EdgeInsets.all(20),
-                itemCount: order.documents.length,
-                itemBuilder: (context, index) {
-                  final entry = order.documents.entries.elementAt(index);
-                  final docType = entry.key;
-                  final docUrl = entry.value;
 
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: _getDocumentTypeColor(docType).withOpacity(0.1),
-                        child: Icon(
-                          _getDocumentTypeIcon(docType),
-                          color: _getDocumentTypeColor(docType),
+                // Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Row(
+                    children: [
+                      getAdaptiveIcon(iconName: 'folder_open', defaultIcon: Icons.folder_open),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Dokumente - ${currentOrder.orderNumber}',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      title: Text(_getDocumentTypeName(docType)),
-                      subtitle: Text(_getDocumentTypeDescription(docType)),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.visibility, size: 20),
-                            onPressed: () => _openDocument(docUrl),
-                            tooltip: 'Öffnen',
+                      IconButton(
+                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const Divider(),
+
+                // Content
+                Expanded(
+                  child: currentOrder.documents.isEmpty
+                      ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.description_outlined,
+                          size: 48,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Keine Dokumente verfügbar',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.share, size: 20),
-                            onPressed: () => _shareDocument(docUrl, docType, order.orderNumber),
-                            tooltip: 'Weiterleiten',
+                        ),
+                      ],
+                    ),
+                  )
+                      : ListView.builder(
+                    padding: const EdgeInsets.all(20),
+                    itemCount: currentOrder.documents.length,
+                    itemBuilder: (context, index) {
+                      final entry = currentOrder.documents.entries.elementAt(index);
+                      final docType = entry.key;
+                      final docUrl = entry.value;
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: _getDocumentTypeColor(docType).withOpacity(0.1),
+                            child: Icon(
+                              _getDocumentTypeIcon(docType),
+                              color: _getDocumentTypeColor(docType),
+                            ),
                           ),
-                        ],
+                          title: Text(_getDocumentTypeName(docType)),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.visibility, size: 20),
+                                onPressed: () => _openDocument(docUrl),
+                                tooltip: 'Öffnen',
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.share, size: 20),
+                                onPressed: () => _shareDocument(docUrl, docType, currentOrder.orderNumber),
+                                tooltip: 'Weiterleiten',
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                // Button zum Erstellen weiterer Dokumente
+                if (!currentOrder.documents.containsKey('invoice_pdf') ||
+                    !currentOrder.documents.containsKey('delivery_note_pdf') ||
+                    !currentOrder.documents.containsKey('commercial_invoice_pdf') ||
+                    !currentOrder.documents.containsKey('packing_list_pdf'))
+                  Padding(
+                    padding: const EdgeInsets.all(40),
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        await OrderDocumentManager.showCreateDocumentsDialog(context, currentOrder);
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text('Dokumente erstellen'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
                       ),
                     ),
-                  );
-                },
-              ),
+                  )
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -1539,11 +1556,12 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
         return 'Angebot';
       case 'invoice_pdf':
         return 'Rechnung';
-      case 'delivery-note_pdf':
+      case 'delivery_note_pdf':
         return 'Lieferschein';
-      case 'commercial-invoice_pdf':
+
+      case 'commercial_invoice_pdf':
         return 'Handelsrechnung';
-      case 'packing-list_pdf':
+      case 'packing_list_pdf':
         return 'Packliste';
       default:
         return docType.replaceAll('_', ' ').replaceAll('-', ' ');

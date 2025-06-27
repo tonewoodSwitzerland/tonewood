@@ -495,7 +495,7 @@ class InvoiceGenerator extends BasePdfGenerator {
     return pw.Container(
       alignment: pw.Alignment.centerRight,
       child: pw.Container(
-        width: 300,
+        width: 400,
         padding: const pw.EdgeInsets.all(10),
         decoration: pw.BoxDecoration(
           color: PdfColors.blueGrey50,
@@ -508,8 +508,8 @@ class InvoiceGenerator extends BasePdfGenerator {
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                pw.Text(language == 'EN' ? 'Subtotal' : 'Subtotal'),
-                pw.Text(BasePdfGenerator.formatCurrency(subtotal, currency, exchangeRates)),
+                pw.Text(language == 'EN' ? 'Subtotal' : 'Subtotal' ,style: const pw.TextStyle(fontSize: 9),),
+                pw.Text(BasePdfGenerator.formatCurrency(subtotal, currency, exchangeRates) ,style: const pw.TextStyle(fontSize: 9),),
               ],
             ),
 
@@ -519,8 +519,8 @@ class InvoiceGenerator extends BasePdfGenerator {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(language == 'EN' ? 'Item discounts' : 'Positionsrabatte'),
-                  pw.Text('- ${BasePdfGenerator.formatCurrency(itemDiscounts, currency, exchangeRates)}'),
+                  pw.Text(language == 'EN' ? 'Item discounts' : 'Positionsrabatte' ,style: const pw.TextStyle(fontSize: 9),),
+                  pw.Text('- ${BasePdfGenerator.formatCurrency(itemDiscounts, currency, exchangeRates)}' ,style: const pw.TextStyle(fontSize: 9),),
                 ],
               ),
             ],
@@ -531,8 +531,8 @@ class InvoiceGenerator extends BasePdfGenerator {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(language == 'EN' ? 'Total discount' : 'Gesamtrabatt'),
-                  pw.Text('- ${BasePdfGenerator.formatCurrency(totalDiscountAmount, currency, exchangeRates)}'),
+                  pw.Text(language == 'EN' ? 'Total discount' : 'Gesamtrabatt' ,style: const pw.TextStyle(fontSize: 9),),
+                  pw.Text('- ${BasePdfGenerator.formatCurrency(totalDiscountAmount, currency, exchangeRates)}' ,style: const pw.TextStyle(fontSize: 9),),
                 ],
               ),
             ],
@@ -543,8 +543,8 @@ class InvoiceGenerator extends BasePdfGenerator {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(language == 'EN' ? 'Phytosanitary certificate' : 'Pflanzenschutzzeugniss'),
-                  pw.Text(BasePdfGenerator.formatCurrency(plantCertificate, currency, exchangeRates)),
+                  pw.Text(language == 'EN' ? 'Phytosanitary certificate' : 'Pflanzenschutzzeugniss' ,style: const pw.TextStyle(fontSize: 9),),
+                  pw.Text(BasePdfGenerator.formatCurrency(plantCertificate, currency, exchangeRates) ,style: const pw.TextStyle(fontSize: 9),),
                 ],
               ),
             ],
@@ -559,8 +559,8 @@ class InvoiceGenerator extends BasePdfGenerator {
                       language == 'EN'
                           ? 'Packing & Freight costs ($carrier)'
                           : 'Verpackungs- & Frachtkosten ($carrier)'
-                  ),
-                  pw.Text(BasePdfGenerator.formatCurrency(packagingCost + freightCost, currency, exchangeRates)),
+                    ,style: const pw.TextStyle(fontSize: 9),),
+                  pw.Text(BasePdfGenerator.formatCurrency(packagingCost + freightCost, currency, exchangeRates) ,style: const pw.TextStyle(fontSize: 9),),
                 ],
               ),
             ] else ...[
@@ -569,8 +569,8 @@ class InvoiceGenerator extends BasePdfGenerator {
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text(language == 'EN' ? 'Packing costs' : 'Verpackungskosten'),
-                    pw.Text(BasePdfGenerator.formatCurrency(packagingCost, currency, exchangeRates)),
+                    pw.Text(language == 'EN' ? 'Packing costs' : 'Verpackungskosten' ,style: const pw.TextStyle(fontSize: 9),),
+                    pw.Text(BasePdfGenerator.formatCurrency(packagingCost, currency, exchangeRates) ,style: const pw.TextStyle(fontSize: 9),),
                   ],
                 ),
               ],
@@ -583,8 +583,8 @@ class InvoiceGenerator extends BasePdfGenerator {
                         language == 'EN'
                             ? 'Freight costs ($carrier)'
                             : 'Frachtkosten ($carrier)'
-                    ),
-                    pw.Text(BasePdfGenerator.formatCurrency(freightCost, currency, exchangeRates)),
+                      ,style: const pw.TextStyle(fontSize: 9), ),
+                    pw.Text(BasePdfGenerator.formatCurrency(freightCost, currency, exchangeRates) ,style: const pw.TextStyle(fontSize: 9),),
                   ],
                 ),
               ],
@@ -598,8 +598,8 @@ class InvoiceGenerator extends BasePdfGenerator {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(language == 'EN' ? 'Net amount' : 'Nettobetrag'),
-                  pw.Text(BasePdfGenerator.formatCurrency(netAmount, currency, exchangeRates)),
+                  pw.Text(language == 'EN' ? 'Net amount' : 'Nettobetrag' ,style: const pw.TextStyle(fontSize: 9),),
+                  pw.Text(BasePdfGenerator.formatCurrency(netAmount, currency, exchangeRates) ,style: const pw.TextStyle(fontSize: 9),),
                 ],
               ),
 
@@ -613,8 +613,8 @@ class InvoiceGenerator extends BasePdfGenerator {
                       language == 'EN'
                           ? 'VAT (${vatRate.toStringAsFixed(1)}%)'
                           : 'MwSt (${vatRate.toStringAsFixed(1)}%)'
-                  ),
-                  pw.Text(BasePdfGenerator.formatCurrency(vatAmount, currency, exchangeRates)),
+                    ,style: const pw.TextStyle(fontSize: 9),),
+                  pw.Text(BasePdfGenerator.formatCurrency(vatAmount, currency, exchangeRates) ,style: const pw.TextStyle(fontSize: 9),),
                 ],
               ),
 
@@ -626,11 +626,11 @@ class InvoiceGenerator extends BasePdfGenerator {
                 children: [
                   pw.Text(
                     'Total',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                   ),
                   pw.Text(
                     BasePdfGenerator.formatCurrency(totalWithTax, currency, exchangeRates),
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                   ),
                 ],
               ),
@@ -644,11 +644,11 @@ class InvoiceGenerator extends BasePdfGenerator {
                 children: [
                   pw.Text(
                     language == 'EN' ? 'Net amount' : 'Nettobetrag',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                   ),
                   pw.Text(
                     BasePdfGenerator.formatCurrency(netAmount, currency, exchangeRates),
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                   ),
                 ],
               ),
@@ -676,11 +676,11 @@ class InvoiceGenerator extends BasePdfGenerator {
                     language == 'EN'
                         ? 'Total incl. VAT'
                         : 'Gesamtbetrag inkl. MwSt',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                   ),
                   pw.Text(
                     BasePdfGenerator.formatCurrency(netAmount, currency, exchangeRates),
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11),
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                   ),
                 ],
               ),

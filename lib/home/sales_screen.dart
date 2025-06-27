@@ -271,13 +271,13 @@ return Scaffold(
           ),
         ),
 
-        // Email-Icon
-        IconButton(
-          icon:    getAdaptiveIcon(iconName: 'mail', defaultIcon: Icons.mail,),
-
-          tooltip: 'Email-Konfiguration',
-          onPressed: _showEmailConfigDialog,
-        ),
+        // // Email-Icon
+        // IconButton(
+        //   icon:    getAdaptiveIcon(iconName: 'mail', defaultIcon: Icons.mail,),
+        //
+        //   tooltip: 'Email-Konfiguration',
+        //   onPressed: _showEmailConfigDialog,
+        // ),
         // Währungsumrechner-Icon
 
         ValueListenableBuilder<String>(
@@ -3734,220 +3734,330 @@ return Scaffold(
                         );
                         final netAmount = afterItemDiscounts - totalDiscountAmount;
 
-                        // MwSt nur berechnen, wenn es Standard-Option ist
-                        double vatAmount = 0.0;
-                        double total = netAmount;
+                        // NEU: StreamBuilder für Versandkosten
+                        return StreamBuilder<DocumentSnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('temporary_shipping_costs')
+                              .doc('current_costs')
+                              .snapshots(),
+                          builder: (context, shippingSnapshot) {
+                            double freightCost = 0.0;
+                            double phytosanitaryCost = 0.0;
 
-                        if (taxOption == TaxOption.standard) {
-                          vatAmount = netAmount * (_vatRate / 100);
-                          total = netAmount + vatAmount;
-                        }
+                            if (shippingSnapshot.hasData && shippingSnapshot.data!.exists) {
+                              final shippingData = shippingSnapshot.data!.data() as Map<String, dynamic>;
+                              freightCost = (shippingData['amount'] as num?)?.toDouble() ?? 0.0;
+                              phytosanitaryCost = (shippingData['phytosanitaryCertificate'] as num?)?.toDouble() ?? 0.0;
+                            }
 
-                        return Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).cardColor,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 4,
-                                offset: const Offset(0, -2),
+                            // Berechne neuen Total mit Versandkosten
+                            final netWithShipping = netAmount + freightCost + phytosanitaryCost;
+
+                            // MwSt nur berechnen, wenn es Standard-Option ist
+                            double vatAmount = 0.0;
+                            double total = netWithShipping;
+
+                            if (taxOption == TaxOption.standard) {
+                              vatAmount = netWithShipping * (_vatRate / 100);
+                              total = netWithShipping + vatAmount;
+                            }
+
+                            return Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).cardColor,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.1),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, -2),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                          child: SafeArea(
-                            child: Column(
-                              children: [
-                                // Zwischensumme
-                                Container(
-                                  alignment: Alignment.centerRight,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                                      borderRadius: const BorderRadius.all(Radius.circular(8)),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                      children: [
-                                        // Details-Toggle und Gesamtbetrag in einer Zeile
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              child: SafeArea(
+                                child: Column(
+                                  children: [
+                                    // Zwischensumme
+                                    Container(
+                                      alignment: Alignment.centerRight,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                          borderRadius: const BorderRadius.all(Radius.circular(8)),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.end,
                                           children: [
-                                            // Toggle-Button links
-                                            GestureDetector(
-                                              onTap: () {
-                                                setState(() {
-                                                  _isDetailExpanded = !_isDetailExpanded;
-                                                });
-                                              },
-                                              child: Container(
-                                                padding: const EdgeInsets.all(4),
-                                                child: Icon(
-                                                  _isDetailExpanded
-                                                      ? Icons.expand_less
-                                                      : Icons.expand_more,
-                                                  size: 20,
-                                                  color: Theme.of(context).colorScheme.primary,
+                                            // Details-Toggle und Gesamtbetrag in einer Zeile
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                // Toggle-Button links
+                                                GestureDetector(
+                                                  onTap: () {
+                                                    setState(() {
+                                                      _isDetailExpanded = !_isDetailExpanded;
+                                                    });
+                                                  },
+                                                  child: Container(
+                                                    padding: const EdgeInsets.all(4),
+                                                    child: Icon(
+                                                      _isDetailExpanded
+                                                          ? Icons.expand_less
+                                                          : Icons.expand_more,
+                                                      size: 20,
+                                                      color: Theme.of(context).colorScheme.primary,
+                                                    ),
+                                                  ),
                                                 ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 16),
+                                                const SizedBox(width: 16),
 
-                                            // Gesamtbetrag rechts
-                                            Expanded(
-                                              child: Row(
+                                                // Gesamtbetrag rechts
+                                                Expanded(
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      Text(
+                                                        taxOption == TaxOption.standard
+                                                            ? 'Gesamtbetrag:'
+                                                            : taxOption == TaxOption.noTax
+                                                            ? 'Nettobetrag:'
+                                                            : 'Gesamtbetrag inkl. MwSt:',
+                                                        style: const TextStyle(
+                                                          fontSize: 18,
+                                                          fontWeight: FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                      Text(
+                                                        _formatPrice(taxOption == TaxOption.standard ? total : netWithShipping),
+                                                        style: const TextStyle(
+                                                          fontSize: 18,
+                                                          fontWeight: FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+
+                                            // Details nur wenn expanded
+                                            if (_isDetailExpanded) ...[
+                                              const Divider(height: 16),
+
+                                              // Zwischensumme
+                                              Row(
                                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                 children: [
-                                                  Text(
-                                                    taxOption == TaxOption.standard
-                                                        ? 'Gesamtbetrag:'
-                                                        : taxOption == TaxOption.noTax
-                                                        ? 'Nettobetrag:'
-                                                        : 'Gesamtbetrag inkl. MwSt:',
-                                                    style: const TextStyle(
-                                                      fontSize: 18,
-                                                      fontWeight: FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    _formatPrice(taxOption == TaxOption.standard ? total : netAmount),
-                                                    style: const TextStyle(
-                                                      fontSize: 18,
-                                                      fontWeight: FontWeight.bold,
-                                                    ),
-                                                  ),
+                                                  const Text('Zwischensumme'),
+                                                  Text(_formatPrice(subtotal)),
                                                 ],
                                               ),
-                                            ),
-                                          ],
-                                        ),
 
-                                        // Details nur wenn expanded
-                                        if (_isDetailExpanded) ...[
-                                          const Divider(height: 16),
-
-                                          // Zwischensumme
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              const Text('Zwischensumme'),
-                                              Text(_formatPrice(subtotal)),
-                                            ],
-                                          ),
-
-                                          // Positionsrabatte
-                                          if (itemDiscounts > 0) ...[
-                                            const SizedBox(height: 4),
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                const Text('Positionsrabatte'),
-                                                Text(
-                                                  '- ${_formatPrice(itemDiscounts)}',
-                                                  style: TextStyle(
-                                                    color: Theme.of(context).colorScheme.primary,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-
-                                          // Gesamtrabatt
-                                          if (_totalDiscount.hasDiscount) ...[
-                                            const SizedBox(height: 4),
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Text(
-                                                    'Gesamtrabatt '
-                                                        '${_totalDiscount.percentage > 0 ? '(${_totalDiscount.percentage}%)' : ''}'
-                                                        '${_totalDiscount.absolute > 0 ? ' ${_formatPrice(_totalDiscount.absolute)}' : ''}'
-                                                ),
-                                                Text(
-                                                  '- ${_formatPrice(totalDiscountAmount)}',
-                                                  style: TextStyle(
-                                                    color: Theme.of(context).colorScheme.primary,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-
-                                          // MwSt-Bereich basierend auf gewählter Option
-                                          if (taxOption == TaxOption.standard) ...[
-                                            const SizedBox(height: 4),
-                                            // Nettobetrag
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                const Text('Nettobetrag'),
-                                                Text(_formatPrice(netAmount)),
-                                              ],
-                                            ),
-
-                                            const SizedBox(height: 4),
-
-                                            // MwSt mit Einstellungsrad
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Text('MwSt ($_vatRate%)'),
+                                              // Positionsrabatte
+                                              if (itemDiscounts > 0) ...[
+                                                const SizedBox(height: 4),
                                                 Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    const Text('Positionsrabatte'),
+                                                    Text(
+                                                      '- ${_formatPrice(itemDiscounts)}',
+                                                      style: TextStyle(
+                                                        color: Theme.of(context).colorScheme.primary,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+
+                                              // Gesamtrabatt
+                                              if (_totalDiscount.hasDiscount) ...[
+                                                const SizedBox(height: 4),
+                                                Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Text(
+                                                        'Gesamtrabatt '
+                                                            '${_totalDiscount.percentage > 0 ? '(${_totalDiscount.percentage}%)' : ''}'
+                                                            '${_totalDiscount.absolute > 0 ? ' ${_formatPrice(_totalDiscount.absolute)}' : ''}'
+                                                    ),
+                                                    Text(
+                                                      '- ${_formatPrice(totalDiscountAmount)}',
+                                                      style: TextStyle(
+                                                        color: Theme.of(context).colorScheme.primary,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+
+                                              // MwSt-Bereich basierend auf gewählter Option
+                                              if (taxOption == TaxOption.standard) ...[
+                                                const SizedBox(height: 4),
+                                                // Nettobetrag
+                                                Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    const Text('Nettobetrag'),
+                                                    Text(_formatPrice(netAmount)),
+                                                  ],
+                                                ),
+
+                                                // NEU: Versandkosten anzeigen
+                                                if (freightCost > 0) ...[
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      const Text('Verpackung & Fracht'),
+                                                      Text(_formatPrice(freightCost)),
+                                                    ],
+                                                  ),
+                                                ],
+
+                                                if (phytosanitaryCost > 0) ...[
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      const Text('Pflanzenschutzzeugnisse'),
+                                                      Text(_formatPrice(phytosanitaryCost)),
+                                                    ],
+                                                  ),
+                                                ],
+
+                                                const SizedBox(height: 4),
+
+                                                // MwSt mit Einstellungsrad
+                                                Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Text('MwSt ($_vatRate%)'),
+                                                    Row(
+                                                      children: [
+                                                        IconButton(
+                                                          icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
+                                                          onPressed: _showTaxOptionsDialog,
+                                                          tooltip: 'Steuereinstellungen ändern',
+                                                        ),
+                                                        Text(_formatPrice(vatAmount)),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+                                              ] else if (taxOption == TaxOption.noTax) ...[
+                                                const SizedBox(height: 4),
+
+                                                // NEU: Auch bei noTax die Versandkosten anzeigen
+                                                if (freightCost > 0 || phytosanitaryCost > 0) ...[
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      const Text('Nettobetrag'),
+                                                      Text(_formatPrice(netAmount)),
+                                                    ],
+                                                  ),
+                                                ],
+
+                                                if (freightCost > 0) ...[
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      const Text('Verpackung & Fracht'),
+                                                      Text(_formatPrice(freightCost)),
+                                                    ],
+                                                  ),
+                                                ],
+
+                                                if (phytosanitaryCost > 0) ...[
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      const Text('Pflanzenschutzzeugnisse'),
+                                                      Text(_formatPrice(phytosanitaryCost)),
+                                                    ],
+                                                  ),
+                                                ],
+
+                                                // Einstellungs-Button
+                                                Row(
+                                                  mainAxisAlignment: MainAxisAlignment.end,
                                                   children: [
                                                     IconButton(
                                                       icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
                                                       onPressed: _showTaxOptionsDialog,
                                                       tooltip: 'Steuereinstellungen ändern',
                                                     ),
-                                                    Text(_formatPrice(vatAmount)),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  'Es wird keine Mehrwertsteuer berechnet.',
+                                                  style: TextStyle(
+                                                    fontSize: 9,
+                                                    fontStyle: FontStyle.italic,
+                                                    color: Colors.grey[700],
+                                                  ),
+                                                ),
+                                              ] else ...[
+                                                // totalOnly
+                                                const SizedBox(height: 4),
+
+                                                // NEU: Auch bei totalOnly die Versandkosten anzeigen
+                                                if (freightCost > 0 || phytosanitaryCost > 0) ...[
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      const Text('Warenwert'),
+                                                      Text(_formatPrice(netAmount)),
+                                                    ],
+                                                  ),
+                                                ],
+
+                                                if (freightCost > 0) ...[
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      const Text('Verpackung & Fracht'),
+                                                      Text(_formatPrice(freightCost)),
+                                                    ],
+                                                  ),
+                                                ],
+
+                                                if (phytosanitaryCost > 0) ...[
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      const Text('Pflanzenschutzzeugnisse'),
+                                                      Text(_formatPrice(phytosanitaryCost)),
+                                                    ],
+                                                  ),
+                                                ],
+
+                                                // Einstellungs-Button
+                                                Row(
+                                                  mainAxisAlignment: MainAxisAlignment.end,
+                                                  children: [
+                                                    IconButton(
+                                                      icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
+                                                      onPressed: _showTaxOptionsDialog,
+                                                      tooltip: 'Steuereinstellungen ändern',
+                                                    ),
                                                   ],
                                                 ),
                                               ],
-                                            ),
-                                          ] else if (taxOption == TaxOption.noTax) ...[
-                                            const SizedBox(height: 4),
-                                            // Einstellungs-Button
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.end,
-                                              children: [
-                                                IconButton(
-                                                  icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
-                                                  onPressed: _showTaxOptionsDialog,
-                                                  tooltip: 'Steuereinstellungen ändern',
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              'Es wird keine Mehrwertsteuer berechnet.',
-                                              style: TextStyle(
-                                                fontSize: 9,
-                                                fontStyle: FontStyle.italic,
-                                                color: Colors.grey[700],
-                                              ),
-                                            ),
-                                          ] else ...[
-                                            // totalOnly
-                                            const SizedBox(height: 4),
-                                            // Einstellungs-Button
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.end,
-                                              children: [
-                                                IconButton(
-                                                  icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
-                                                  onPressed: _showTaxOptionsDialog,
-                                                  tooltip: 'Steuereinstellungen ändern',
-                                                ),
-                                              ],
-                                            ),
+                                            ],
                                           ],
-                                        ],
-                                      ],
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
+                                    const SizedBox(height: 12),
 
                                 // Sprache
                                 Row(
@@ -4190,67 +4300,16 @@ return Scaffold(
                                 ),
 
 
-                                // const SizedBox(height: 12),
-                                //
-                                // // Aktionsbuttons
-                                // Row(
-                                //   children: [
-                                //     // Rabatt-Button
-                                //     Expanded(
-                                //       child: ElevatedButton.icon(
-                                //         onPressed: basketItems.isEmpty ? null : _showTotalDiscountDialog,
-                                //         icon: getAdaptiveIcon(iconName: 'sell', defaultIcon: Icons.sell,),
-                                //         label: const Text('Rabatt'),
-                                //       ),
-                                //     ),
-                                //     const SizedBox(width: 16),
-                                //     // Abschließen-Button
-                                //     Expanded(
-                                //       child: ValueListenableBuilder<bool>(
-                                //         valueListenable: _documentSelectionCompleteNotifier,
-                                //         builder: (context, isDocSelectionComplete, child) {
-                                //           final canProceed = basketItems.isNotEmpty &&
-                                //               !isLoading &&
-                                //               isDocSelectionComplete;
-                                //
-                                //           final String buttonText = isDocSelectionComplete
-                                //               ? 'Abschließen'
-                                //               : '-';
-                                //
-                                //           return ElevatedButton.icon(
-                                //             onPressed: canProceed
-                                //                 ? _processTransaction
-                                //                 : isDocSelectionComplete
-                                //                 ? null  // Wenn Dokumente ausgewählt aber Warenkorb leer
-                                //                 : _showDocumentTypeSelection,  // Dokumente auswählen
-                                //             icon: isLoading
-                                //                 ? const SizedBox(
-                                //               width: 20,
-                                //               height: 20,
-                                //               child: CircularProgressIndicator(strokeWidth: 2),
-                                //             )
-                                //                 : isDocSelectionComplete
-                                //                 ? getAdaptiveIcon(iconName: 'check', defaultIcon: Icons.check,)
-                                //                 : getAdaptiveIcon(iconName: 'description', defaultIcon: Icons.description,),
-                                //             label: Text(buttonText),
-                                //             style: ElevatedButton.styleFrom(
-                                //               backgroundColor: isDocSelectionComplete
-                                //                   ? null  // Standard-Farbe
-                                //                   : Colors.amber,  // Hervorgehobene Farbe für Dokumentenauswahl
-                                //             ),
-                                //           );
-                                //         },
-                                //       ),
-                                //     ),
-                                //   ],
-                                // ),
-                              ],
+
+                                ],
+                              ),
                             ),
-                          ),
+                            );
+                          },
                         );
                       },
                     );
-                  }
+                    }
                 );
               },
             );
@@ -4879,6 +4938,32 @@ await FirebaseFirestore.instance
                                       }
                                       return const CircularProgressIndicator();
                                     },
+                                  ),
+                                  // In der Produktinfo Container, nach der Verfügbarkeitsanzeige:
+                                  const SizedBox(height: 8),
+                                  Divider(color: Colors.grey.shade300),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Preis pro ${productData['unit'] ?? 'Stück'}:',
+                                        style: TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                      ValueListenableBuilder<String>(
+                                        valueListenable: _currencyNotifier,
+                                        builder: (context, currency, child) {
+                                          return Text(
+                                            _formatPrice((productData['price_CHF'] as num).toDouble()),
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                              color: Theme.of(context).colorScheme.primary,
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),

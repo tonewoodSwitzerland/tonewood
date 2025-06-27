@@ -159,20 +159,20 @@ abstract class BasePdfGenerator {
             customerData['country'] ?? '',
             style: const pw.TextStyle(color: PdfColors.blueGrey700),
           ),
-          pw.SizedBox(height: 10),
-          pw.Text(
-            'per mail an:',
-            style: pw.TextStyle(
-              fontSize: 8,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.blueGrey800,
-            ),
-          ),
-          pw.SizedBox(height: 4),
-          pw.Text(
-            customerData['email'] ?? '',
-            style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 8),
-          ),
+          // pw.SizedBox(height: 10),
+          // pw.Text(
+          //   'per mail an:',
+          //   style: pw.TextStyle(
+          //     fontSize: 8,
+          //     fontWeight: pw.FontWeight.bold,
+          //     color: PdfColors.blueGrey800,
+          //   ),
+          // ),
+          // pw.SizedBox(height: 4),
+          // pw.Text(
+          //   customerData['email'] ?? '',
+          //   style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 8),
+          // ),
         ],
       ),
     );

@@ -41,7 +41,6 @@ class QuoteService {
     }
   }
 
-  // Erstelle neues Angebot
   static Future<Quote> createQuote({
     required Map<String, dynamic> customerData,
     required Map<String, dynamic>? costCenter,
@@ -55,6 +54,39 @@ class QuoteService {
       final quoteNumber = await getNextQuoteNumber();
       final quoteId = 'Q-$quoteNumber';
 
+      // Berechne finalen Total mit allen Aufschlägen
+      final finalCalculations = Map<String, dynamic>.from(calculations);
+
+      // Hole Aufschläge aus metadata
+      final shippingCosts = metadata['shippingCosts'] ?? {};
+      final freightCost = (shippingCosts['amount'] as num?)?.toDouble() ?? 0.0;
+      final phytosanitaryCost = (shippingCosts['phytosanitaryCertificate'] as num?)?.toDouble() ?? 0.0;
+
+      // Hole Steuerdaten aus metadata
+      final taxOption = metadata['taxOption'] ?? 0;
+      final vatRate = (metadata['vatRate'] ?? 8.1).toDouble();
+
+// Berechne neuen Total vor Steuern
+      final netAmountBeforeShipping = (calculations['net_amount'] as num?)?.toDouble() ?? 0.0;
+      final netAmountWithShipping = netAmountBeforeShipping + freightCost + phytosanitaryCost;
+
+// Berechne MwSt neu basierend auf dem Total inkl. Versandkosten
+      double newVatAmount = 0.0;
+      double newTotal = netAmountWithShipping;
+
+      if (taxOption == 0) { // Standard mit MwSt
+        newVatAmount = netAmountWithShipping * (vatRate / 100);
+        newTotal = netAmountWithShipping + newVatAmount;
+      }
+
+// Aktualisiere calculations mit korrekten Werten
+      finalCalculations['subtotal'] = (calculations['subtotal'] as num?)?.toDouble() ?? 0.0;
+      finalCalculations['net_amount'] = netAmountWithShipping;
+      finalCalculations['freight'] = freightCost;
+      finalCalculations['phytosanitary'] = phytosanitaryCost;
+      finalCalculations['vat_amount'] = newVatAmount;
+      finalCalculations['total'] = newTotal;
+
       final quote = Quote(
         id: quoteId,
         quoteNumber: quoteNumber,
@@ -63,7 +95,7 @@ class QuoteService {
         costCenter: costCenter,
         fair: fair,
         items: items,
-        calculations: calculations,
+        calculations: finalCalculations,  // Verwende die aktualisierten Berechnungen
         createdAt: DateTime.now(),
         validUntil: DateTime.now().add(const Duration(days: 14)),
         documents: {},

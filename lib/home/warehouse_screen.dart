@@ -10,7 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-
+import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
 import '../services/icon_helper.dart';
 
 class WarehouseScreen extends StatefulWidget {
@@ -241,307 +241,255 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       return;
     }
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
         return StreamBuilder<bool>(
-            stream: _itemInCartStream(data['barcode']),
-            builder: (context, isInCartSnapshot) {
-              final bool isInCart = isInCartSnapshot.data ?? false;
+          stream: _itemInCartStream(data['barcode']),
+          builder: (context, isInCartSnapshot) {
+            final bool isInCart = isInCartSnapshot.data ?? false;
 
-              return Dialog(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: 600,
-                    maxHeight: MediaQuery.of(context).size.height * 0.9,
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.9,
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 10,
+                    spreadRadius: 0,
+                    offset: Offset(0, -1),
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Header (unverändert)
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 1,
-                              blurRadius: 3,
-                              offset: const Offset(0, 1),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF0F4A29).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child:
-                                  getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart,
-                                color: Color(0xFF0F4A29),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                data['product_name']?.toString() ?? 'Produktdetails',
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF0F4A29),
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            IconButton(
-                              icon:getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
-                              onPressed: () => Navigator.of(context).pop(),
-                              color: Colors.grey[600],
-                            ),
-                          ],
-                        ),
-                      ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  // Drag Handle
+                  Container(
+                    margin: EdgeInsets.only(top: 12, bottom: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
 
-                      // Content (unverändert, nur Warenkorb-Status hinzugefügt)
-                      Flexible(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildDetailSection(
-                                title: 'Barcode',
-                                iconName: 'qr_code',
-                                icon: Icons.qr_code,
-                                content: Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[100],
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.tag, color: Colors.grey[600], size: 20),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        data['barcode']?.toString() ?? 'N/A',
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(height: 16),
-
-                              // Warenkorb-Status hinzufügen
-                              if (isInCart)
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  margin: const EdgeInsets.only(bottom: 16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.orange.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                                  ),
-                                  child: Row(
-                                    children: [
-
-                                          getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart,
-                                        color: Colors.orange,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: const [
-                                            Text(
-                                              'Artikel ist im Warenkorb',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.orange,
-                                              ),
-                                            ),
-                                            Text(
-                                              'Dieser Artikel kann erst als verkauft markiert werden, wenn er aus dem Warenkorb entfernt wurde.',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.orange,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-
-                              _buildDetailSection(
-                                title: 'Status',
-iconName: 'info',
-                                icon: Icons.info,
-                                content: Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: (data['sold'] == true ? Colors.red : Colors.green).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        data['sold'] == true ? Icons.sell : Icons.store,
-                                        color: data['sold'] == true ? Colors.red : Colors.green,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        data['sold'] == true ? 'Verkauft' : 'Im Shop',
-                                        style: TextStyle(
-                                          color: data['sold'] == true ? Colors.red : Colors.green,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(height: 16),
-
-                              _buildDetailSection(
-                                title: 'Produktinformationen',
-                                iconName: 'info',
-                                icon: Icons.info,
-                                content: Column(
-                                  children: [
-                                    _buildDetailRow(
-                                      'Instrument',
-                                      '${data['instrument_name']} (${data['instrument_code']})',
-                                      icon: Icons.music_note,
-                                        iconName: 'music_note'
-                                    ),
-                                    _buildDetailRow(
-                                      'Bauteil',
-                                      '${data['part_name']} (${data['part_code']})',
-                                      icon: Icons.category,
-                                        iconName: 'category'
-                                    ),
-                                    _buildDetailRow(
-                                      'Holzart',
-                                      '${data['wood_name']} (${data['wood_code']})',
-                                      icon: Icons.forest,
-                                        iconName: 'forest'
-                                    ),
-                                    _buildDetailRow(
-                                      'Qualität',
-                                      '${data['quality_name']} (${data['quality_code']})',
-                                      icon: Icons.star,
-                                      iconName: 'star'
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F4A29).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: getAdaptiveIcon(
+                            iconName: 'shopping_cart',
+                            defaultIcon: Icons.shopping_cart,
+                            color: Color(0xFF0F4A29),
                           ),
                         ),
-                      ),
-
-                      // Footer mit Aktionsbuttons - Hier die Änderungen berücksichtigen
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
-                              spreadRadius: 1,
-                              blurRadius: 3,
-                              offset: const Offset(0, -1),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            data['product_name']?.toString() ?? 'Produktdetails',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F4A29),
                             ),
-                          ],
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            if (!data['sold'])
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: isInCart ? null : () async {
-                                    // Sicherheitsdialog (unverändert)
-                                    final bool? confirmDelete = await showDialog<bool>(
-                                      context: context,
-                                      builder: (context) => AlertDialog(
-                                        title: Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.all(8),
-                                              decoration: BoxDecoration(
-                                                color: Colors.red.withOpacity(0.1),
-                                                borderRadius: BorderRadius.circular(8),
-                                              ),
-                                              child: const Icon(
-                                                Icons.warning,
-                                                color: Colors.red,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            const Text('Produkt entfernen'),
-                                          ],
-                                        ),
-                                        content: Text(
-                                          'Möchtest du das Produkt "${data['product_name']}" wirklich aus dem Online-Shop entfernen? Der Eintrag wird gelöscht, der normale Warenbestand um +1 erhöht.',
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(context, false),
-                                            child: const Text('Abbrechen'),
-                                          ),
-                                          FilledButton.icon(
-                                            onPressed: () => Navigator.pop(context, true),
-                                            style: FilledButton.styleFrom(
-                                              backgroundColor: Colors.red,
-                                            ),
-                                            icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete,),
-                                            label: const Text('Entfernen'),
-                                          ),
-                                        ],
-                                      ),
-                                    );
+                        IconButton(
+                          icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                          onPressed: () => Navigator.of(context).pop(),
+                          color: Colors.grey[600],
+                        ),
+                      ],
+                    ),
+                  ),
 
-                                    // Nur wenn bestätigt wurde
-                                    if (confirmDelete == true) {
-                                      await _removeFromOnlineShop(data);
-                                      Navigator.of(context).pop();
-                                    }
-                                  },
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.red,
-                                    side: const BorderSide(color: Colors.red),
-                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                    // Deaktivierte Farbe ändern
-                                    disabledForegroundColor: Colors.grey.withOpacity(0.5),
-                                    disabledBackgroundColor: Colors.grey.withOpacity(0.1),
-                                  ),
-                                  icon: const Icon(Icons.remove_shopping_cart),
-                                  label: Text(isInCart ? 'Im Warenkorb' : 'Entfernen'),
-                                ),
+                  Divider(height: 1),
+
+                  // Content
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildDetailSection(
+                            title: 'Barcode',
+                            iconName: 'qr_code',
+                            icon: Icons.qr_code,
+                            content: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[100],
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                            if (!data['sold'])
-                              const SizedBox(width: 12),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.tag, color: Colors.grey[600], size: 20),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    data['barcode']?.toString() ?? 'N/A',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // Warenkorb-Status hinzufügen
+                          if (isInCart)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              margin: const EdgeInsets.only(bottom: 16),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                              ),
+                              child: Row(
+                                children: [
+                                  getAdaptiveIcon(
+                                    iconName: 'shopping_cart',
+                                    defaultIcon: Icons.shopping_cart,
+                                    color: Colors.orange,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: const [
+                                        Text(
+                                          'Artikel ist im Warenkorb',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.orange,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Dieser Artikel kann erst als verkauft markiert werden, wenn er aus dem Warenkorb entfernt wurde.',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.orange,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                          _buildDetailSection(
+                            title: 'Status',
+                            iconName: 'info',
+                            icon: Icons.info,
+                            content: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: (data['sold'] == true ? Colors.red : Colors.green).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    data['sold'] == true ? Icons.sell : Icons.store,
+                                    color: data['sold'] == true ? Colors.red : Colors.green,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    data['sold'] == true ? 'Verkauft' : 'Im Shop',
+                                    style: TextStyle(
+                                      color: data['sold'] == true ? Colors.red : Colors.green,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          _buildDetailSection(
+                            title: 'Produktinformationen',
+                            iconName: 'info',
+                            icon: Icons.info,
+                            content: Column(
+                              children: [
+                                _buildDetailRow(
+                                    'Instrument',
+                                    '${data['instrument_name']} (${data['instrument_code']})',
+                                    icon: Icons.music_note,
+                                    iconName: 'music_note'
+                                ),
+                                _buildDetailRow(
+                                    'Bauteil',
+                                    '${data['part_name']} (${data['part_code']})',
+                                    icon: Icons.category,
+                                    iconName: 'category'
+                                ),
+                                _buildDetailRow(
+                                    'Holzart',
+                                    '${data['wood_name']} (${data['wood_code']})',
+                                    icon: Icons.forest,
+                                    iconName: 'forest'
+                                ),
+                                _buildDetailRow(
+                                    'Qualität',
+                                    '${data['quality_name']} (${data['quality_code']})',
+                                    icon: Icons.star,
+                                    iconName: 'star'
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Footer mit Aktionsbuttons
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          spreadRadius: 0,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
+                    ),
+                    child: SafeArea(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          if (!data['sold'])
                             Expanded(
-                              child: FilledButton.icon(
-                                onPressed: (data['sold'] || isInCart) ? null : () async {
-                                  // Sicherheitsdialog (unverändert)
-                                  final bool? confirmSold = await showDialog<bool>(
+                              child: OutlinedButton.icon(
+                                onPressed: isInCart ? null : () async {
+                                  // Sicherheitsdialog
+                                  final bool? confirmDelete = await showDialog<bool>(
                                     context: context,
                                     builder: (context) => AlertDialog(
                                       title: Row(
@@ -549,20 +497,20 @@ iconName: 'info',
                                           Container(
                                             padding: const EdgeInsets.all(8),
                                             decoration: BoxDecoration(
-                                              color: const Color(0xFF0F4A29).withOpacity(0.1),
+                                              color: Colors.red.withOpacity(0.1),
                                               borderRadius: BorderRadius.circular(8),
                                             ),
                                             child: const Icon(
-                                              Icons.sell,
-                                              color: Color(0xFF0F4A29),
+                                              Icons.warning,
+                                              color: Colors.red,
                                             ),
                                           ),
                                           const SizedBox(width: 12),
-                                          const Text('Verkaufen'),
+                                          const Text('Produkt entfernen'),
                                         ],
                                       ),
                                       content: Text(
-                                        'Möchtest du das Produkt "${data['product_name']}" wirklich als verkauft markieren?',
+                                        'Möchtest du das Produkt "${data['product_name']}" wirklich aus dem Online-Shop entfernen? Der Eintrag wird gelöscht, der normale Warenbestand um +1 erhöht.',
                                       ),
                                       actions: [
                                         TextButton(
@@ -572,46 +520,115 @@ iconName: 'info',
                                         FilledButton.icon(
                                           onPressed: () => Navigator.pop(context, true),
                                           style: FilledButton.styleFrom(
-                                            backgroundColor: const Color(0xFF0F4A29),
+                                            backgroundColor: Colors.red,
                                           ),
-                                          icon: const Icon(Icons.check),
-                                          label: const Text('Als verkauft markieren'),
+                                          icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete),
+                                          label: const Text('Entfernen'),
                                         ),
                                       ],
                                     ),
                                   );
 
                                   // Nur wenn bestätigt wurde
-                                  if (confirmSold == true) {
-                                    await _markAsSold(data);
+                                  if (confirmDelete == true) {
+                                    await _removeFromOnlineShop(data);
                                     Navigator.of(context).pop();
                                   }
                                 },
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFF0F4A29),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  side: const BorderSide(color: Colors.red),
                                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                  // Deaktivierte Farbe ändern
-                                  disabledBackgroundColor: Colors.grey[300],
+                                  disabledForegroundColor: Colors.grey.withOpacity(0.5),
+                                  disabledBackgroundColor: Colors.grey.withOpacity(0.1),
                                 ),
-                                icon: const Icon(Icons.sell),
-                                label: Text(
-                                    isInCart ? 'Im Warenkorb - nicht verfügbar' :
-                                    data['sold'] ? 'Bereits verkauft' : 'Als verkauft markieren'
-                                ),
+                                icon: const Icon(Icons.remove_shopping_cart),
+                                label: Text(isInCart ? 'Im Warenkorb' : 'Entfernen'),
                               ),
                             ),
-                          ],
-                        ),
+                          if (!data['sold'])
+                            const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: (data['sold'] || isInCart) ? null : () async {
+                                // Sicherheitsdialog
+                                final bool? confirmSold = await showDialog<bool>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF0F4A29).withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Icon(
+                                            Icons.sell,
+                                            color: Color(0xFF0F4A29),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        const Text('Verkaufen'),
+                                      ],
+                                    ),
+                                    content: Text(
+                                      'Möchtest du das Produkt "${data['product_name']}" wirklich als verkauft markieren?',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context, false),
+                                        child: const Text('Abbrechen'),
+                                      ),
+                                      FilledButton.icon(
+                                        onPressed: () => Navigator.pop(context, true),
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: const Color(0xFF0F4A29),
+                                        ),
+                                        icon: const Icon(Icons.check),
+                                        label: const Text('Als verkauft markieren'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+
+                                // Nur wenn bestätigt wurde
+                                if (confirmSold == true) {
+                                  await _markAsSold(data);
+                                  Navigator.of(context).pop();
+                                }
+                              },
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF0F4A29),
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                disabledBackgroundColor: Colors.grey[300],
+                              ),
+                              icon: const Icon(Icons.sell),
+                              label: Text(
+                                  isInCart ? 'Im Warenkorb - nicht verfügbar' :
+                                  data['sold'] ? 'Bereits verkauft' : 'Als verkauft markieren'
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              );
-            }
+                ],
+              ),
+            );
+          },
         );
       },
     );
   }
+
+
+
+
+
+
+
   Future<void> _addOnlineShopItemToBasket(Map<String, dynamic> data) async {
     // Für Online-Shop Items muss eine andere ID-Struktur verwendet werden
     // Wir verwenden den vollständigen Barcode als Produkt-ID
@@ -736,7 +753,6 @@ iconName: 'info',
   }
 
   void _showProductDetails(Map<String, dynamic> data) {
-  //  print("produkt:${widget.isDialog}");
     if (widget.isDialog && widget.onBarcodeSelected != null) {
       widget.onBarcodeSelected!(data['short_barcode']);
       return;
@@ -744,340 +760,341 @@ iconName: 'info',
 
     TextEditingController quantityController = TextEditingController();
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return Dialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.9,
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 10,
+                spreadRadius: 0,
+                offset: Offset(0, -1),
+              ),
+            ],
           ),
-          child: Container(
-            width: MediaQuery.of(context).size.width * 0.9,
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.9,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
-                        spreadRadius: 1,
-                        blurRadius: 3,
-                        offset: const Offset(0, 1),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0F4A29).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child:
-                        getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory),
-
-
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          data['product_name']?.toString() ?? 'Produktdetails',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF0F4A29),
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      IconButton(
-                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
-                        onPressed: () => Navigator.of(context).pop(),
-                        color: Colors.grey[600],
-                      ),
-                    ],
-                  ),
+          child: Column(
+            children: [
+              // Drag Handle
+              Container(
+                margin: EdgeInsets.only(top: 12, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
                 ),
+              ),
 
-                // Content
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Artikelnummer Sektion
-                        _buildDetailSection(
-                          title: 'Artikelnummer',
-                          iconName: 'qr_code',
-                          icon: Icons.qr_code,
-                          content: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                getAdaptiveIcon(
-                                  iconName: 'tag',
-                                  defaultIcon: Icons.tag,
-                                ),
-
-                                const SizedBox(width: 8),
-                                Text(
-                                  data['short_barcode']?.toString() ?? 'N/A',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // Produktinformationen
-                        _buildDetailSection(
-                          title: 'Produktinformationen',
-                          iconName: 'info',
-                          icon: Icons.info,
-                          content: Column(
-                            children: [
-                              _buildDetailRow(
-                                'Instrument',
-                                '${data['instrument_name']} (${data['instrument_code']})',
-                                iconName: 'music_note',
-                                icon: Icons.music_note,
-                              ),
-                              _buildDetailRow(
-                                'Bauteil',
-                                '${data['part_name']} (${data['part_code']})',
-                                iconName: 'category',
-                                icon: Icons.category,
-                              ),
-                              _buildDetailRow(
-                                'Holzart',
-                                '${data['wood_name']} (${data['wood_code']})',
-                                iconName: 'forest',
-                                icon: Icons.forest,
-                              ),
-                              _buildDetailRow(
-                                'Qualität',
-                                '${data['quality_name']} (${data['quality_code']})',
-                                iconName: 'star',
-                                icon: Icons.star,
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // Bestand und Preis
-                        _buildDetailSection(
-                          title: 'Bestand & Preis',
-                          iconName: 'inventory',
-                          icon: Icons.inventory,
-                          content: Column(
-                            children: [
-                              // Bestandsanzeige
-                              FutureBuilder<int>(
-                                future: _getAvailableQuantity(data['short_barcode']),
-                                builder: (context, snapshot) {
-                                  return Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF0F4A29).withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          'Verfügbarer Bestand:',
-                                          style: TextStyle(
-                                            color: Colors.grey[700],
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        Text(
-                                          snapshot.hasData
-                                              ? '${snapshot.data} ${data['unit'] ?? 'Stück'}'
-                                              : 'Wird geladen...',
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFF0F4A29),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                              const SizedBox(height: 12),
-                              // Preisanzeige
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[100],
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      'Preis pro ${data['unit'] ?? 'Stück'}:',
-                                      style: TextStyle(
-                                        color: Colors.grey[700],
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Text(
-                                      NumberFormat.currency(
-                                          locale: 'de_DE',
-                                          symbol: 'CHF',
-                                          decimalDigits: 2
-                                      ).format(data['price_CHF'] ?? 0.00),
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          data: data,
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        // Warenkorb Sektion
-                        _buildDetailSection(
-                          title: 'In den Warenkorb',
-iconName: 'shopping_cart',
-                          icon: Icons.shopping_cart,
-                          content: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              TextFormField(
-                                controller: quantityController,
-                                decoration: InputDecoration(
-                                  labelText: 'Menge',
-                                  border: const OutlineInputBorder(),
-                                  hintText: 'Menge eingeben',
-                                  suffixText: data['unit'] ?? 'Stück',
-                                  filled: true,
-                                  fillColor: Colors.grey[100],
-                                ),
-                                keyboardType: TextInputType.number,
-                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+              // Header
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0F4A29).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory),
                     ),
-                  ),
-                ),
-
-                // Footer
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
-                        spreadRadius: 1,
-                        blurRadius: 3,
-                        offset: const Offset(0, -1),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        data['product_name']?.toString() ?? 'Produktdetails',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F4A29),
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    ),
+                    IconButton(
+                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+
+              Divider(height: 1),
+
+              // Scrollbarer Inhalt
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.grey[700],
-                          side: BorderSide(color: Colors.grey[300]!),
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      // Artikelnummer Sektion
+                      _buildDetailSection(
+                        title: 'Artikelnummer',
+                        iconName: 'qr_code',
+                        icon: Icons.qr_code,
+                        content: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              getAdaptiveIcon(
+                                iconName: 'tag',
+                                defaultIcon: Icons.tag,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                data['short_barcode']?.toString() ?? 'N/A',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        child: const Text('X'),
                       ),
-                      const SizedBox(width: 24),
-                      ElevatedButton.icon(
-                        icon: getAdaptiveIcon(
-                          color: Colors.white,
-                          iconName: 'shopping_cart',
-                          defaultIcon: Icons.shopping_cart,
-                        ),
 
-                        label: const Text('Warenkorb'),
-                        onPressed: () async {
-                          if (quantityController.text.isEmpty) return;
+                      const SizedBox(height: 16),
 
-                          final quantity = int.parse(quantityController.text);
-                          final availableQuantity = await _getAvailableQuantity(data['short_barcode']);
-
-                          if (quantity <= 0) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Bitte gib eine gültige Menge ein'),
-                                backgroundColor: Colors.orange,
-                              ),
-                            );
-                            return;
-                          }
-
-                          if (quantity > availableQuantity) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Nicht genügend Bestand verfügbar'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                            return;
-                          }
-
-                          await _addToTemporaryBasket(data, quantity);
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Produkt wurde dem Warenkorb hinzugefügt'),
-                              backgroundColor: Colors.green,
+                      // Produktinformationen
+                      _buildDetailSection(
+                        title: 'Produktinformationen',
+                        iconName: 'info',
+                        icon: Icons.info,
+                        content: Column(
+                          children: [
+                            _buildDetailRow(
+                              'Instrument',
+                              '${data['instrument_name']} (${data['instrument_code']})',
+                              iconName: 'music_note',
+                              icon: Icons.music_note,
                             ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0F4A29),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            _buildDetailRow(
+                              'Bauteil',
+                              '${data['part_name']} (${data['part_code']})',
+                              iconName: 'category',
+                              icon: Icons.category,
+                            ),
+                            _buildDetailRow(
+                              'Holzart',
+                              '${data['wood_name']} (${data['wood_code']})',
+                              iconName: 'forest',
+                              icon: Icons.forest,
+                            ),
+                            _buildDetailRow(
+                              'Qualität',
+                              '${data['quality_name']} (${data['quality_code']})',
+                              iconName: 'star',
+                              icon: Icons.star,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Bestand und Preis
+                      _buildDetailSection(
+                        title: 'Bestand & Preis',
+                        iconName: 'inventory',
+                        icon: Icons.inventory,
+                        content: Column(
+                          children: [
+                            // Bestandsanzeige
+                            FutureBuilder<int>(
+                              future: _getAvailableQuantity(data['short_barcode']),
+                              builder: (context, snapshot) {
+                                return Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF0F4A29).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Verfügbarer Bestand:',
+                                        style: TextStyle(
+                                          color: Colors.grey[700],
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Text(
+                                        snapshot.hasData
+                                            ? '${snapshot.data} ${data['unit'] ?? 'Stück'}'
+                                            : 'Wird geladen...',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF0F4A29),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            // Preisanzeige
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[100],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Preis pro ${data['unit'] ?? 'Stück'}:',
+                                    style: TextStyle(
+                                      color: Colors.grey[700],
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    NumberFormat.currency(
+                                        locale: 'de_DE',
+                                        symbol: 'CHF',
+                                        decimalDigits: 2
+                                    ).format(data['price_CHF'] ?? 0.00),
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        data: data,
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Warenkorb Sektion
+                      _buildDetailSection(
+                        title: 'In den Warenkorb',
+                        iconName: 'shopping_cart',
+                        icon: Icons.shopping_cart,
+                        content: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            TextFormField(
+                              controller: quantityController,
+                              decoration: InputDecoration(
+                                labelText: 'Menge',
+                                border: const OutlineInputBorder(),
+                                hintText: 'Menge eingeben',
+                                suffixText: data['unit'] ?? 'Stück',
+                                filled: true,
+                                fillColor: Colors.grey[100],
+                              ),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
+              ),
+
+              // Action Buttons
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      spreadRadius: 0,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
+                ),
+                child: SafeArea(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Abbrechen'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: getAdaptiveIcon(
+                            color: Colors.white,
+                            iconName: 'shopping_cart',
+                            defaultIcon: Icons.shopping_cart,
+                          ),
+                          label: const Text('In den Warenkorb'),
+                          onPressed: () async {
+                            if (quantityController.text.isEmpty) return;
+
+                            final quantity = int.parse(quantityController.text);
+                            final availableQuantity = await _getAvailableQuantity(data['short_barcode']);
+
+                            if (quantity <= 0) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Bitte gib eine gültige Menge ein'),
+                                  backgroundColor: Colors.orange,
+                                ),
+                              );
+                              return;
+                            }
+
+                            if (quantity > availableQuantity) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Nicht genügend Bestand verfügbar'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                              return;
+                            }
+
+                            await _addToTemporaryBasket(data, quantity);
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Produkt wurde dem Warenkorb hinzugefügt'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            backgroundColor: const Color(0xFF0F4A29),
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -1603,6 +1620,11 @@ iconName: 'shopping_cart',
              // centerTitle: true,
               actions: [
                 if (!isDesktopLayout) ...[
+                  IconButton(
+                    icon: getAdaptiveIcon(iconName: 'qr_code_scanner', defaultIcon: Icons.qr_code_scanner),
+                    onPressed: _scanAndShowProduct,
+                    tooltip: 'Produkt scannen',
+                  ),
 
                   IconButton(
                     icon:getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list,),
@@ -1640,7 +1662,61 @@ iconName: 'shopping_cart',
         }
     );
   }
+  Future<void> _scanAndShowProduct() async {
+    try {
+      String barcodeResult = await FlutterBarcodeScanner.scanBarcode(
+        '#ff6666',
+        'Abbrechen',
+        true,
+        ScanMode.BARCODE,
+      );
 
+      if (barcodeResult != '-1') {
+        // Prüfe ob es ein Online-Shop Item ist
+        if (_isOnlineShopView) {
+          final onlineShopDoc = await FirebaseFirestore.instance
+              .collection('onlineshop')
+              .doc(barcodeResult)
+              .get();
+
+          if (onlineShopDoc.exists) {
+            _showOnlineShopDetails(onlineShopDoc.data()!);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Produkt nicht im Online-Shop gefunden'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        } else {
+          // Normales Lagerprodukt
+          final inventoryDoc = await FirebaseFirestore.instance
+              .collection('inventory')
+              .doc(barcodeResult)
+              .get();
+
+          if (inventoryDoc.exists) {
+            _showProductDetails(inventoryDoc.data()!);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Produkt nicht im Lager gefunden'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
+      }
+    } on PlatformException {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Fehler beim Scannen'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
   Widget _buildDesktopLayout() {
     return Row(
       children: [

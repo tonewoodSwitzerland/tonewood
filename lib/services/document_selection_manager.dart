@@ -22,7 +22,6 @@ import 'package:intl/intl.dart';
 
 
 class DocumentSelectionManager {
-
   // Dokumenttypen
   static const List<String> documentTypes = [
     'Offerte',

@@ -1080,7 +1080,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                     '• Ein neuer Auftrag wird erstellt\n'
                         '• Das Angebot wird als "Angenommen" markiert\n'
                         '• Lagerbestände werden reserviert\n'
-                        '• Sie werden zum neuen Auftrag weitergeleitet',
+                        '• Dokumente müssen im Auftragsmenü erstellt werden!',
                     style: TextStyle(fontSize: 12),
                   ),
                 ],

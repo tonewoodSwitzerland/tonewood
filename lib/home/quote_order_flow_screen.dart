@@ -320,8 +320,8 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
           _showSuccessDialog(
             'Auftrag erfolgreich erstellt',
             'Auftragsnummer: ${order.orderNumber}\n'
-                'Angebotsnummer: ${quote.quoteNumber}\n\n'
-                '${createdDocuments.length} Dokumente wurden erstellt.',
+                'Angebotsnummer: ${quote.quoteNumber}\n\n',
+                // '${createdDocuments.length} Dokumente wurden erstellt.',
             order.id,
           );
         }
@@ -559,16 +559,16 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(message),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                // Navigiere zur Auftragsübersicht
-                Navigator.pushReplacementNamed(context, '/orders_overview');
-              },
-              icon: getAdaptiveIcon(iconName: 'list', defaultIcon: Icons.list),
-              label: const Text('Zur Auftragsübersicht'),
-            ),
+            // const SizedBox(height: 16),
+            // ElevatedButton.icon(
+            //   onPressed: () {
+            //     Navigator.pop(context);
+            //     // Navigiere zur Auftragsübersicht
+            //     Navigator.pushReplacementNamed(context, '/orders_overview');
+            //   },
+            //   icon: getAdaptiveIcon(iconName: 'list', defaultIcon: Icons.list),
+            //   label: const Text('Zur Auftragsübersicht'),
+            // ),
           ],
         ),
         actions: [

@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../services/icon_helper.dart';
 
 class ShippingCostsManager {
@@ -15,20 +14,74 @@ class ShippingCostsManager {
   static const double DEFAULT_FREIGHT = 50.0;
   static const String DEFAULT_CARRIER = 'Swiss Post';
 
-  // Lade aktuelle Einstellungen
-  // Lade aus lokalem Storage
+  // Lade aus Firebase
   static Future<Map<String, dynamic>> loadShippingCosts() async {
-    return await LocalShippingStorage.loadShippingCosts();
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection(COLLECTION_NAME)
+          .doc(DOCUMENT_ID)
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        print('Geladene Firebase Versandkosten: $data'); // Debug
+        return data;
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Firebase Versandkosten: $e');
+    }
+
+    print('Verwende Standard-Versandkosten'); // Debug
+    return {
+      'plant_certificate_enabled': false,
+      'plant_certificate_cost': DEFAULT_PLANT_CERTIFICATE,
+      'shipping_combined': true,
+      'packaging_cost': DEFAULT_PACKAGING,
+      'freight_cost': DEFAULT_FREIGHT,
+      'carrier': DEFAULT_CARRIER,
+    };
   }
 
-  // Speichere in lokalem Storage
+  // Speichere in Firebase
   static Future<void> saveShippingCosts(Map<String, dynamic> costs) async {
-    await LocalShippingStorage.saveShippingCosts(costs);
+    try {
+      print('Speichere Firebase Versandkosten: $costs'); // Debug
+
+      // Berechne den kombinierten Betrag für amount
+      final double amount = (costs['packaging_cost'] ?? 0.0) + (costs['freight_cost'] ?? 0.0);
+      final double phytosanitary = costs['plant_certificate_enabled'] == true
+          ? (costs['plant_certificate_cost'] ?? 0.0)
+          : 0.0;
+
+      // Füge die berechneten Felder hinzu
+      final dataToSave = {
+        ...costs,
+        'amount': amount, // Kombinierter Betrag für Verpackung & Fracht
+        'phytosanitaryCertificate': phytosanitary, // Pflanzenschutzzeugnisse
+        'timestamp': FieldValue.serverTimestamp(),
+      };
+
+      await FirebaseFirestore.instance
+          .collection(COLLECTION_NAME)
+          .doc(DOCUMENT_ID)
+          .set(dataToSave, SetOptions(merge: true));
+    } catch (e) {
+      print('Fehler beim Speichern der Firebase Versandkosten: $e');
+      rethrow;
+    }
   }
 
-  // Lösche aus lokalem Storage
+  // Lösche aus Firebase
   static Future<void> clearShippingCosts() async {
-    await LocalShippingStorage.clearShippingCosts();
+    try {
+      await FirebaseFirestore.instance
+          .collection(COLLECTION_NAME)
+          .doc(DOCUMENT_ID)
+          .delete();
+    } catch (e) {
+      print('Fehler beim Löschen der Firebase Versandkosten: $e');
+      rethrow;
+    }
   }
 }
 
@@ -369,30 +422,41 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                     const Spacer(),
                     ElevatedButton.icon(
                       onPressed: () async {
-                        // Speichere die finalen Werte
-                        final finalConfig = {
-                          'plant_certificate_enabled': shippingConfig['plant_certificate_enabled'] ?? false,
-                          'plant_certificate_cost': double.tryParse(plantCertificateController.text) ?? 50.0,
-                          'shipping_combined': shippingConfig['shipping_combined'] ?? true,
-                          'packaging_cost': double.tryParse(packagingController.text) ?? 50.0,
-                          'freight_cost': double.tryParse(freightController.text) ?? 50.0,
-                          'carrier': carrierController.text.isNotEmpty ? carrierController.text : 'Swiss Post',
-                        };
+                        try {
+                          // Speichere die finalen Werte
+                          final finalConfig = {
+                            'plant_certificate_enabled': shippingConfig['plant_certificate_enabled'] ?? false,
+                            'plant_certificate_cost': double.tryParse(plantCertificateController.text) ?? 50.0,
+                            'shipping_combined': shippingConfig['shipping_combined'] ?? true,
+                            'packaging_cost': double.tryParse(packagingController.text) ?? 50.0,
+                            'freight_cost': double.tryParse(freightController.text) ?? 50.0,
+                            'carrier': carrierController.text.isNotEmpty ? carrierController.text : 'Swiss Post',
+                          };
 
-                        // Speichere die Konfiguration
-                        await ShippingCostsManager.saveShippingCosts(finalConfig);
+                          // Speichere die Konfiguration in Firebase
+                          await ShippingCostsManager.saveShippingCosts(finalConfig);
 
-                        // Setze den Notifier
-                        widget.costsConfiguredNotifier.value = true;
+                          // Setze den Notifier
+                          widget.costsConfiguredNotifier.value = true;
 
-                        if (mounted) {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Versandkosten gespeichert'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
+                          if (mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Versandkosten gespeichert'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Fehler beim Speichern: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
                         }
                       },
                       icon: getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save),
@@ -410,53 +474,5 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
         ),
       ),
     );
-  }
-}
-
-class LocalShippingStorage {
-  static const String _key = 'shipping_costs_config';
-
-  static Future<Map<String, dynamic>> loadShippingCosts() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonString = prefs.getString(_key);
-
-      if (jsonString != null) {
-        print('Geladene lokale Versandkosten: $jsonString'); // Debug
-        return Map<String, dynamic>.from(json.decode(jsonString));
-      }
-    } catch (e) {
-      print('Fehler beim Laden der lokalen Versandkosten: $e');
-    }
-
-    print('Verwende Standard-Versandkosten'); // Debug
-    return {
-      'plant_certificate_enabled': false,
-      'plant_certificate_cost': 50.0,
-      'shipping_combined': true,
-      'packaging_cost': 50.0,
-      'freight_cost': 50.0,
-      'carrier': 'Swiss Post',
-    };
-  }
-
-  static Future<void> saveShippingCosts(Map<String, dynamic> costs) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonString = json.encode(costs);
-      print('Speichere lokale Versandkosten: $jsonString'); // Debug
-      await prefs.setString(_key, jsonString);
-    } catch (e) {
-      print('Fehler beim Speichern der lokalen Versandkosten: $e');
-    }
-  }
-
-  static Future<void> clearShippingCosts() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_key);
-    } catch (e) {
-      print('Fehler beim Löschen der lokalen Versandkosten: $e');
-    }
   }
 }
