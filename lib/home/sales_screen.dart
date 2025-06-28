@@ -3475,160 +3475,210 @@ return Scaffold(
                     Column(
                       children: [
                         ListTile(
-                          title: Row(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          title: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
+                              // Hauptzeile mit allen Produktinfos und Preis
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Linke Seite: Produktinfos
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
+                                        // Erste Zeile: Badge + Instrument + Holz
+                                        Row(
+                                          children: [
+                                            if (item['is_manual_product'] == true) ...[
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.purple.withOpacity(0.1),
+                                                  borderRadius: BorderRadius.circular(3),
+                                                  border: Border.all(
+                                                    color: Colors.purple.withOpacity(0.3),
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  'M',
+                                                  style: TextStyle(
+                                                    fontSize: 8,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.purple[700],
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                            ],
+                                            Expanded(
+                                              child: Text(
+                                                '${item['instrument_name'] ?? 'N/A'} - ${item['wood_name'] ?? 'N/A'}',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 12,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                                maxLines: 1,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 2),
 
-                if (item['is_manual_product'] == true) ...[
-              Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.purple.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(
-                  color: Colors.purple.withOpacity(0.3),
-                ),
-              ),
-              child: Text(
-                'M',
-                style: TextStyle(
-                  fontSize: 8,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.purple[700],
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-                ],
-
+                                        // Zweite Zeile: Part + Quality
                                         Text(
-                                          item['instrument_name'] ?? 'N/A',
-                                          style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
-                                        ),
-                                        Text(
-                                          ' - ',
-                                          style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
-                                        ),
-                                        Text(
-                                          item['wood_name'] ?? 'N/A',
-                                          style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
-                                        ),
-                                      ],
-                                    ),
-                                    Row(
-                                      children: [
-                                        Text(
-                                          item['part_name'] ?? 'N/A',
-                                          style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
-                                        ),
-                                        Text(
-                                          ' - ',
-                                          style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
-                                        ),
-                                        Text(
-                                          item['quality_name'] ?? 'N/A',
-                                          style: const TextStyle(fontWeight: FontWeight.bold,   fontSize: 12,),
-                                        ),
-                                      ],
-                                    ),
-
-                                    ValueListenableBuilder<String>(
-                                      valueListenable: _currencyNotifier,
-                                      builder: (context, currency, child) {
-                                        return Text(
-                                          '${quantity} ${item['unit']} × ${_formatPrice(pricePerUnit)}${item['is_price_customized'] == true ? ' *' : ''}',
+                                          '${item['part_name'] ?? 'N/A'} - ${item['quality_name'] ?? 'N/A'}',
                                           style: TextStyle(
                                             fontSize: 11,
-                                            fontStyle: item['is_price_customized'] == true ? FontStyle.italic : FontStyle.normal,
-                                            color: item['is_price_customized'] == true ? Colors.green[700] : null,
+                                            color: Colors.grey[700],
                                           ),
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  ValueListenableBuilder<String>(
-                                    valueListenable: _currencyNotifier,
-                                    builder: (context, currency, child) {
-                                      return Text(
-                                        _formatPrice(subtotal),
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          decoration: discountAmount > 0 ?
-                                          TextDecoration.lineThrough : null,
-                                          color: discountAmount > 0 ?
-                                          Colors.grey : null,
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
                                         ),
-                                      );
-                                    },
-                                  ),
-                                  if (discountAmount > 0)
-                                    ValueListenableBuilder<String>(
-                                      valueListenable: _currencyNotifier,
-                                      builder: (context, currency, child) {
-                                        return Text(
-                                          _formatPrice(subtotal - discountAmount),
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.green,
-                                          ),
-                                        );
-                                      },
+                                        const SizedBox(height: 4),
+
+                                        // Dritte Zeile: Menge × Preis
+                                        ValueListenableBuilder<String>(
+                                          valueListenable: _currencyNotifier,
+                                          builder: (context, currency, child) {
+                                            return Text(
+                                              '${quantity} ${item['unit']} × ${_formatPrice(pricePerUnit)}${item['is_price_customized'] == true ? ' *' : ''}',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontStyle: item['is_price_customized'] == true
+                                                    ? FontStyle.italic
+                                                    : FontStyle.normal,
+                                                color: item['is_price_customized'] == true
+                                                    ? Colors.green[700]
+                                                    : Colors.grey[600],
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ],
                                     ),
+                                  ),
+
+                                  // Mitte: Preisspalte
+                                  SizedBox(
+                                    width: 85,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        ValueListenableBuilder<String>(
+                                          valueListenable: _currencyNotifier,
+                                          builder: (context, currency, child) {
+                                            return Text(
+                                              _formatPrice(subtotal),
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                decoration: discountAmount > 0
+                                                    ? TextDecoration.lineThrough
+                                                    : null,
+                                                color: discountAmount > 0
+                                                    ? Colors.grey
+                                                    : Colors.black87,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            );
+                                          },
+                                        ),
+                                        if (discountAmount > 0) ...[
+                                          const SizedBox(height: 2),
+                                          ValueListenableBuilder<String>(
+                                            valueListenable: _currencyNotifier,
+                                            builder: (context, currency, child) {
+                                              return Text(
+                                                _formatPrice(subtotal - discountAmount),
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.green,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              );
+                                            },
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+
+                                  // Rechte Seite: Aktions-Buttons
+                                  SizedBox(
+                                    width: 80,
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        SizedBox(
+                                          width: 36,
+                                          height: 36,
+                                          child: IconButton(
+                                            padding: EdgeInsets.zero,
+                                            iconSize: 20,
+                                            icon: getAdaptiveIcon(
+                                              iconName: 'sell',
+                                              defaultIcon: Icons.sell,
+                                            ),
+                                            onPressed: () => _showItemDiscountDialog(itemId, subtotal),
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 36,
+                                          height: 36,
+                                          child: IconButton(
+                                            padding: EdgeInsets.zero,
+                                            iconSize: 20,
+                                            icon: getAdaptiveIcon(
+                                              iconName: 'delete',
+                                              defaultIcon: Icons.delete,
+                                            ),
+                                            onPressed: () => _removeFromBasket(doc.id),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ],
                               ),
                             ],
                           ),
-                          trailing: Padding(
-                            padding: const EdgeInsets.fromLTRB(0, 4,0,0),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-
-                                IconButton(
-                                  icon:
-                                    getAdaptiveIcon(iconName: 'sell', defaultIcon: Icons.sell,),
-
-                                  onPressed: () => _showItemDiscountDialog(itemId, subtotal),
-                                ),
-                                IconButton(
-                                  icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete,),
-
-                                  onPressed: () => _removeFromBasket(doc.id),
-                                ),
-                              ],
-                            ),
-                          ),
                         ),
+
+                        // Rabatt-Zeile (wenn vorhanden)
                         if (itemDiscount.hasDiscount)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
                             child: ValueListenableBuilder<String>(
                               valueListenable: _currencyNotifier,
                               builder: (context, currency, child) {
                                 return Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(
-                                      'Rabatt: ${itemDiscount.percentage > 0 ? '${itemDiscount.percentage}% ' : ''}'
-                                          '${itemDiscount.absolute > 0 ? _formatPrice(itemDiscount.absolute) : ''}',
-                                      style: TextStyle(
-                                        color: Theme.of(context).colorScheme.primary,
+                                    Icon(
+                                      Icons.discount_outlined,
+                                      size: 14,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        'Rabatt: ${itemDiscount.percentage > 0 ? '${itemDiscount.percentage}% ' : ''}'
+                                            '${itemDiscount.absolute > 0 ? _formatPrice(itemDiscount.absolute) : ''}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Theme.of(context).colorScheme.primary,
+                                        ),
                                       ),
                                     ),
                                     Text(
                                       '- ${_formatPrice(discountAmount)}',
                                       style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
                                         color: Theme.of(context).colorScheme.primary,
                                       ),
                                     ),
@@ -3639,12 +3689,15 @@ return Scaffold(
                           ),
                       ],
                     ),
+
+                    // Online Shop Badge (oben rechts)
                     if (item['is_online_shop_item'] == true)
                       Positioned(
                         top: 0,
                         right: 0,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          constraints: const BoxConstraints(maxWidth: 140),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                           decoration: BoxDecoration(
                             color: Colors.blue.shade700,
                             borderRadius: const BorderRadius.only(
@@ -3655,15 +3708,22 @@ return Scaffold(
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                             getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart,),
-
-                              SizedBox(width: 4),
-                              Text(
-                                'Shop - ${item['online_shop_barcode']}',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
+                              Icon(
+                                Icons.shopping_cart,
+                                color: Colors.white,
+                                size: 12,
+                              ),
+                              const SizedBox(width: 3),
+                              Flexible(
+                                child: Text(
+                                  'Shop - ${item['online_shop_barcode']}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
                               ),
                             ],
@@ -3672,7 +3732,6 @@ return Scaffold(
                       ),
                   ],
                 ),
-
               ),
             );
           },
@@ -4347,6 +4406,7 @@ return Scaffold(
     }
   }
 
+// Ersetze die _showPriceEditDialog Methode in sales_screen.dart
 
   void _showPriceEditDialog(String basketItemId, Map<String, dynamic> itemData) {
     // Sicheres Konvertieren von int oder double nach double
@@ -4376,6 +4436,12 @@ return Scaffold(
     final thicknessController = TextEditingController(
         text: itemData['custom_thickness']?.toString() ?? ''
     );
+
+    // NEU: Controller für Volumen - mit Standard-Volumen initialisieren falls leer
+    final volumeController = TextEditingController();
+
+    // Variable um zu verfolgen ob Standardwerte gesetzt wurden
+    bool standardValuesLoaded = false;
 
     showModalBottomSheet(
       context: context,
@@ -4538,86 +4604,154 @@ return Scaffold(
 
                       const SizedBox(height: 24),
 
-                      // Maße anpassen
-                      Text(
-                        'Maße anpassen',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
+                      // Maße anpassen - JETZT MIT FutureBuilder für Standard-Volumen
+                      FutureBuilder<Map<String, dynamic>?>(
+                        future: _getStandardVolumeForItem(itemData),
+                        builder: (context, snapshot) {
+                          // Standardwerte nur einmal setzen
+                          if (snapshot.connectionState == ConnectionState.done &&
+                              !standardValuesLoaded) {
 
-                      // Maß-Eingabefelder
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: lengthController,
-                              decoration: InputDecoration(
-                                labelText: 'Länge (mm)',
-                                border: const OutlineInputBorder(),
-                                filled: true,
-                                fillColor: Theme.of(context).colorScheme.surface,
-                                prefixIcon: Icon(Icons.straighten, size: 20),
-                              ),
-                              keyboardType: TextInputType.numberWithOptions(decimal: true),
-                              inputFormatters: [
-                                FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextFormField(
-                              controller: widthController,
-                              decoration: InputDecoration(
-                                labelText: 'Breite (mm)',
-                                border: const OutlineInputBorder(),
-                                filled: true,
-                                fillColor: Theme.of(context).colorScheme.surface,
-                                prefixIcon: Icon(Icons.swap_horiz, size: 20),
-                              ),
-                              keyboardType: TextInputType.numberWithOptions(decimal: true),
-                              inputFormatters: [
-                                FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: thicknessController,
-                        decoration: InputDecoration(
-                          labelText: 'Dicke (mm)',
-                          border: const OutlineInputBorder(),
-                          filled: true,
-                          fillColor: Theme.of(context).colorScheme.surface,
-                          prefixIcon: Icon(Icons.layers, size: 20),
-                        ),
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
-                        ],
-                      ),
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              // Setze vorhandene custom_volume oder Standard-Volumen
+                              if (itemData['custom_volume'] != null) {
+                                volumeController.text = itemData['custom_volume'].toString();
+                              } else if (snapshot.hasData && snapshot.data != null) {
+                                final standardVolume = snapshot.data!['volume'] ?? 0.0;
+                                if (standardVolume > 0) {
+                                  volumeController.text = standardVolume.toStringAsFixed(5);
+                                }
+                              }
+                              standardValuesLoaded = true;
+                            });
+                          }
 
-                      const SizedBox(height: 16),
-                      Text(
-                        'Maße sind optional und werden nur gespeichert, wenn sie eingegeben werden.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontStyle: FontStyle.italic,
-                          color: Colors.grey[600],
-                        ),
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    'Maße anpassen',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  if (snapshot.hasData && snapshot.data != null)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.primaryContainer,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        'Standardwerte',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+
+                              // Maß-Eingabefelder
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: lengthController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Länge (mm)',
+                                        border: const OutlineInputBorder(),
+                                        filled: true,
+                                        fillColor: Theme.of(context).colorScheme.surface,
+                                        prefixIcon: Icon(Icons.straighten, size: 20),
+                                      ),
+                                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: widthController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Breite (mm)',
+                                        border: const OutlineInputBorder(),
+                                        filled: true,
+                                        fillColor: Theme.of(context).colorScheme.surface,
+                                        prefixIcon: Icon(Icons.swap_horiz, size: 20),
+                                      ),
+                                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: thicknessController,
+                                decoration: InputDecoration(
+                                  labelText: 'Dicke (mm)',
+                                  border: const OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: Theme.of(context).colorScheme.surface,
+                                  prefixIcon: Icon(Icons.layers, size: 20),
+                                ),
+                                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                                ],
+                              ),
+
+                              // Volumen-Feld mit Standard-Volumen
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: volumeController,
+                                decoration: InputDecoration(
+                                  labelText: 'Volumen (m³)',
+                                  border: const OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: Theme.of(context).colorScheme.surface,
+                                  prefixIcon: Icon(Icons.view_in_ar, size: 20),
+                                  helperText: snapshot.hasData && snapshot.data != null
+                                      ? 'Standardvolumen geladen - kann angepasst werden'
+                                      : 'Optional: Manuelles Volumen überschreibt berechneten Wert',
+                                ),
+                                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,5}')),
+                                ],
+                              ),
+
+                              const SizedBox(height: 16),
+                              Text(
+                                'Maße sind optional und werden nur gespeichert, wenn sie eingegeben werden.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontStyle: FontStyle.italic,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ],
                   ),
                 ),
               ),
 
-              // Action Buttons
+              // Action Buttons (bleibt unverändert)
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -4638,7 +4772,8 @@ return Scaffold(
                       if (currentPriceInCHF != originalPrice ||
                           itemData['custom_length'] != null ||
                           itemData['custom_width'] != null ||
-                          itemData['custom_thickness'] != null)
+                          itemData['custom_thickness'] != null ||
+                          itemData['custom_volume'] != null)
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: () async {
@@ -4652,6 +4787,7 @@ return Scaffold(
                                   'custom_length': FieldValue.delete(),
                                   'custom_width': FieldValue.delete(),
                                   'custom_thickness': FieldValue.delete(),
+                                  'custom_volume': FieldValue.delete(),
                                 });
                                 Navigator.pop(context);
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -4681,7 +4817,8 @@ return Scaffold(
                       if (currentPriceInCHF != originalPrice ||
                           itemData['custom_length'] != null ||
                           itemData['custom_width'] != null ||
-                          itemData['custom_thickness'] != null)
+                          itemData['custom_thickness'] != null ||
+                          itemData['custom_volume'] != null)
                         const SizedBox(width: 16),
 
                       Expanded(
@@ -4735,9 +4872,15 @@ return Scaffold(
                                 updateData['custom_thickness'] = FieldValue.delete();
                               }
 
-                              // FSC-Status hinzufügen
-                              // TODO: Hier den ausgewählten FSC-Status hinzufügen
-                              // updateData['fsc_status'] = selectedFscStatus;
+                              // Volumen hinzufügen
+                              if (volumeController.text.isNotEmpty) {
+                                final volume = double.tryParse(volumeController.text.replaceAll(',', '.'));
+                                if (volume != null && volume > 0) {
+                                  updateData['custom_volume'] = volume;
+                                }
+                              } else {
+                                updateData['custom_volume'] = FieldValue.delete();
+                              }
 
                               // Speichere die Änderungen
                               await FirebaseFirestore.instance
@@ -4780,6 +4923,58 @@ return Scaffold(
         );
       },
     );
+  }
+
+// NEU: Hilfsmethode zum Laden des Standard-Volumens für einen bestimmten Artikel
+  Future<Map<String, dynamic>?> _getStandardVolumeForItem(Map<String, dynamic> itemData) async {
+    try {
+      final instrumentCode = itemData['instrument_code'] as String?;
+      final partCode = itemData['part_code'] as String?;
+
+      if (instrumentCode == null || partCode == null) {
+        return null;
+      }
+
+      final articleNumber = instrumentCode + partCode;
+
+      // Suche in der standardized_products Collection
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('standardized_products')
+          .where('articleNumber', isEqualTo: articleNumber)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        final standardProduct = querySnapshot.docs.first.data();
+
+        // Versuche verschiedene Volumen-Felder
+        final mm3Volume = standardProduct['volume']?['mm3_standard'];
+        final dm3Volume = standardProduct['volume']?['dm3_standard'];
+
+        if (mm3Volume != null && mm3Volume > 0) {
+          // Konvertiere mm³ zu m³
+          final volumeInM3 = (mm3Volume as num).toDouble() / 1000000000.0;
+          return {
+            'volume': volumeInM3,
+            'type': 'mm3',
+            'original_value': mm3Volume,
+          };
+        } else if (dm3Volume != null && dm3Volume > 0) {
+          // Konvertiere dm³ zu m³
+          final volumeInM3 = (dm3Volume as num).toDouble() / 1000.0;
+          return {
+            'volume': volumeInM3,
+            'type': 'dm3',
+            'original_value': dm3Volume,
+          };
+        }
+      }
+
+      return null;
+    } catch (e) {
+      print('Fehler beim Laden des Standard-Volumens für Artikel: $e');
+      return null;
+    }
   }
 
 

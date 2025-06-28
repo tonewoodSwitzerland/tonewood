@@ -1338,7 +1338,7 @@ class CustomerSelectionSheet {
     TextFormField(
     controller: companyController,
     decoration: InputDecoration(
-    labelText: 'Firma *',
+    labelText: 'Firma',
     border: OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
     borderSide: BorderSide(color: Colors.grey.shade300),
@@ -1362,7 +1362,7 @@ class CustomerSelectionSheet {
     borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
     ),
     ),
-    validator: (value) => value?.isEmpty == true ? 'Bitte Firma eingeben' : null,
+   // validator: (value) => value?.isEmpty == true ? 'Bitte Firma eingeben' : null,
     ),
     const SizedBox(height: 16),
     Row(

@@ -1463,6 +1463,7 @@ class AddProductScreenState extends State<AddProductScreen> {
   }
 
   Future<void> _saveProduct() async {
+    print("testxxx");
     if (!_formKey.currentState!.validate()) return;
     // Verhindere das Speichern bei Barcode-Fehlern
     if (widget.isProduction && hasGeneratedBarcodeError) {

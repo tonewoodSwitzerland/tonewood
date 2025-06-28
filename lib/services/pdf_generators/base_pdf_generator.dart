@@ -121,8 +121,20 @@ abstract class BasePdfGenerator {
     );
   }
 
-  // Gemeinsame Kunden-Adressbox
+
+  // Verbesserte Kunden-Adressbox
+// Verbesserte Kunden-Adressbox
   static pw.Widget buildCustomerAddress(Map<String, dynamic> customerData) {
+    // Prüfen ob Firma vorhanden ist
+    final bool hasCompany = customerData['company'] != null &&
+        customerData['company'].toString().trim().isNotEmpty;
+
+    // Vollständigen Namen aus firstName und lastName zusammensetzen
+    final String firstName = customerData['firstName']?.toString().trim() ?? '';
+    final String lastName = customerData['lastName']?.toString().trim() ?? '';
+    final String fullName = '$firstName $lastName'.trim();
+    final bool hasName = fullName.isNotEmpty;
+
     return pw.Container(
       padding: const pw.EdgeInsets.all(15),
       decoration: pw.BoxDecoration(
@@ -133,46 +145,57 @@ abstract class BasePdfGenerator {
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text(
-            customerData['company'] ?? '',
-            style: pw.TextStyle(
-              fontSize: 14,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.blueGrey800,
+          // Wenn Firma vorhanden, zeige Firma an erster Stelle
+          if (hasCompany) ...[
+            pw.Text(
+              customerData['company'],
+              style: pw.TextStyle(
+                fontSize: 14,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.blueGrey800,
+              ),
             ),
-          ),
+            pw.SizedBox(height: 4),
+            // Name als zweite Zeile bei Firmenadressen
+            if (hasName)
+              pw.Text(
+                fullName,
+                style: const pw.TextStyle(color: PdfColors.blueGrey700),
+              ),
+          ] else ...[
+            // Wenn keine Firma, zeige den Namen prominent
+            if (hasName)
+              pw.Text(
+                fullName,
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.blueGrey800,
+                ),
+              ),
+          ],
+
           pw.SizedBox(height: 4),
+
+          // Straße und Hausnummer
           pw.Text(
-            customerData['fullName'] ?? '',
+            '${customerData['street'] ?? ''} ${customerData['houseNumber'] ?? ''}'.trim(),
             style: const pw.TextStyle(color: PdfColors.blueGrey700),
           ),
-          pw.SizedBox(height: 4),
+
+          // PLZ und Stadt
           pw.Text(
-            '${customerData['street'] ?? ''} ${customerData['houseNumber'] ?? ''}',
+            '${customerData['zipCode'] ?? ''} ${customerData['city'] ?? ''}'.trim(),
             style: const pw.TextStyle(color: PdfColors.blueGrey700),
           ),
-          pw.Text(
-            '${customerData['zipCode'] ?? ''} ${customerData['city'] ?? ''}',
-            style: const pw.TextStyle(color: PdfColors.blueGrey700),
-          ),
-          pw.Text(
-            customerData['country'] ?? '',
-            style: const pw.TextStyle(color: PdfColors.blueGrey700),
-          ),
-          // pw.SizedBox(height: 10),
-          // pw.Text(
-          //   'per mail an:',
-          //   style: pw.TextStyle(
-          //     fontSize: 8,
-          //     fontWeight: pw.FontWeight.bold,
-          //     color: PdfColors.blueGrey800,
-          //   ),
-          // ),
-          // pw.SizedBox(height: 4),
-          // pw.Text(
-          //   customerData['email'] ?? '',
-          //   style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 8),
-          // ),
+
+          // Land
+          if (customerData['country'] != null &&
+              customerData['country'].toString().trim().isNotEmpty)
+            pw.Text(
+              customerData['country'],
+              style: const pw.TextStyle(color: PdfColors.blueGrey700),
+            ),
         ],
       ),
     );

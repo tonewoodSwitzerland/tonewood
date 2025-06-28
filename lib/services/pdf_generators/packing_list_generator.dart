@@ -65,10 +65,13 @@ class PackingListGenerator extends BasePdfGenerator {
     // NEU: Lade auch alle Maße aus temporary_basket vorher
     final Map<String, Map<String, dynamic>> measurementsCache = {};
 
+    final Map<String, Map<String, dynamic>> standardVolumeCache = {}; // NEU
+
+
     for (final package in packages) {
       final packageItems = List<Map<String, dynamic>>.from(package['items'] ?? []);
       for (final item in packageItems) {
-        // Holzart-Cache
+        // Holzart-Cache (bleibt gleich)
         final woodCode = item['wood_code'] as String? ?? '';
         if (woodCode.isNotEmpty && !woodTypeCache.containsKey(woodCode)) {
           final woodTypeDoc = await FirebaseFirestore.instance
@@ -82,7 +85,7 @@ class PackingListGenerator extends BasePdfGenerator {
           }
         }
 
-        // NEU: Maße-Cache
+        // Maße-Cache (bleibt gleich)
         final productId = item['product_id'] as String? ?? '';
         if (productId.isNotEmpty && !measurementsCache.containsKey(productId)) {
           try {
@@ -98,12 +101,14 @@ class PackingListGenerator extends BasePdfGenerator {
                 'custom_length': basketData['custom_length'] ?? 0.0,
                 'custom_width': basketData['custom_width'] ?? 0.0,
                 'custom_thickness': basketData['custom_thickness'] ?? 0.0,
+                'custom_volume': basketData['custom_volume']?? 0.0,
               };
             } else {
               measurementsCache[productId] = {
                 'custom_length': 0.0,
                 'custom_width': 0.0,
                 'custom_thickness': 0.0,
+                'custom_volume': 0.0,
               };
             }
           } catch (e) {
@@ -112,7 +117,60 @@ class PackingListGenerator extends BasePdfGenerator {
               'custom_length': 0.0,
               'custom_width': 0.0,
               'custom_thickness': 0.0,
+              'custom_volume': 0.0,
             };
+          }
+        }
+
+        // NEU: Standard-Volumen Cache
+        final instrumentCode = item['instrument_code'] as String?;
+        final partCode = item['part_code'] as String?;
+
+        if (instrumentCode != null && partCode != null) {
+          final articleNumber = instrumentCode + partCode;
+
+          if (!standardVolumeCache.containsKey(articleNumber)) {
+            try {
+              final standardProductQuery = await FirebaseFirestore.instance
+                  .collection('standardized_products')
+                  .where('articleNumber', isEqualTo: articleNumber)
+                  .limit(1)
+                  .get();
+
+              if (standardProductQuery.docs.isNotEmpty) {
+                final standardProduct = standardProductQuery.docs.first.data();
+                final mm3Volume = standardProduct['volume']?['mm3_standard'];
+                final dm3Volume = standardProduct['volume']?['dm3_standard'];
+
+                if (mm3Volume != null && mm3Volume > 0) {
+                  standardVolumeCache[articleNumber] = {
+                    'volume': mm3Volume,
+                    'type': 'mm3'
+                  };
+                } else if (dm3Volume != null && dm3Volume > 0) {
+                  standardVolumeCache[articleNumber] = {
+                    'volume': dm3Volume,
+                    'type': 'dm3'
+                  };
+                } else {
+                  standardVolumeCache[articleNumber] = {
+                    'volume': 0,
+                    'type': 'mm3'
+                  };
+                }
+              } else {
+                standardVolumeCache[articleNumber] = {
+                  'volume': 0,
+                  'type': 'mm3'
+                };
+              }
+            } catch (e) {
+              print('Fehler beim Laden des Standard-Volumens für $articleNumber: $e');
+              standardVolumeCache[articleNumber] = {
+                'volume': 0,
+                'type': 'mm3'
+              };
+            }
           }
         }
       }
@@ -128,6 +186,7 @@ class PackingListGenerator extends BasePdfGenerator {
         print('  custom_length: ${item['custom_length']}');
         print('  custom_width: ${item['custom_width']}');
         print('  custom_thickness: ${item['custom_thickness']}');
+        print('  custom_volume: ${item['custom_volume']}');
       }
     }
 
@@ -219,11 +278,13 @@ class PackingListGenerator extends BasePdfGenerator {
       return pdf.save();
     }
 
+    // Ersetze den entsprechenden Teil in der generatePackingListPdf Methode:
+
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(20),
-        build: (pw.Context context) {
+        build: (pw.Context context) {  // Async entfernt
           final List<pw.Widget> content = [];
 
           // Header
@@ -234,9 +295,8 @@ class PackingListGenerator extends BasePdfGenerator {
             logo: logo,
             costCenter: costCenterCode,
             language: language,
-             additionalReference: invoiceNumber != null ? 'Rechnungsnummer: $invoiceNumber' : null,
-             secondaryReference: quoteNumber != null ? 'Angebotsnummer: $quoteNumber' : null,
-
+            additionalReference: invoiceNumber != null ? 'Rechnungsnummer: $invoiceNumber' : null,
+            secondaryReference: quoteNumber != null ? 'Angebotsnummer: $quoteNumber' : null,
           ));
           content.add(pw.SizedBox(height: 20));
 
@@ -255,8 +315,8 @@ class PackingListGenerator extends BasePdfGenerator {
             content.add(_buildPackageHeader(package, language, i + 1, getTranslation));
             content.add(pw.SizedBox(height: 10));
 
-            // Paket-Tabelle - NEU: mit measurementsCache
-            content.add(_buildPackageTable(package, packageItems, language, getTranslation, woodTypeCache, measurementsCache));
+            // Paket-Tabelle - NEU: standardVolumeCache hinzugefügt
+            content.add(_buildPackageTable(package, packageItems, language, getTranslation, woodTypeCache, measurementsCache, standardVolumeCache));
             content.add(pw.SizedBox(height: 20));
           }
 
@@ -267,7 +327,6 @@ class PackingListGenerator extends BasePdfGenerator {
         },
       ),
     );
-
     return pdf.save();
   }
 
@@ -338,13 +397,18 @@ class PackingListGenerator extends BasePdfGenerator {
 
 
 
+  // Ersetze die _buildPackageTable Methode in packing_list_generator.dart
+
+  // Ersetze die _buildPackageTable Methode in packing_list_generator.dart
+
   static pw.Widget _buildPackageTable(
       Map<String, dynamic> package,
       List<Map<String, dynamic>> packageItems,
       String language,
       String Function(String) getTranslation,
       Map<String, Map<String, dynamic>> woodTypeCache,
-      Map<String, Map<String, dynamic>> measurementsCache, // NEU
+      Map<String, Map<String, dynamic>> measurementsCache,
+      Map<String, Map<String, dynamic>> standardVolumeCache, // NEU: Standard-Volumen Cache
       ) {
     double packageNetWeight = 0.0;
     double packageNetVolume = 0.0;
@@ -358,7 +422,7 @@ class PackingListGenerator extends BasePdfGenerator {
 
     final List<pw.TableRow> rows = [];
 
-    // Header-Zeile bleibt gleich...
+    // Header-Zeile
     rows.add(
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: PdfColors.blueGrey50),
@@ -375,25 +439,66 @@ class PackingListGenerator extends BasePdfGenerator {
       ),
     );
 
-    // Produktzeilen
+    // Produktzeilen - KORRIGIERT
     for (final item in packageItems) {
       final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
       final productId = item['product_id'] as String? ?? '';
 
       // Hole die Maße aus dem Cache
-      final measurements = measurementsCache[productId] ?? {'custom_length': 0.0, 'custom_width': 0.0, 'custom_thickness': 0.0};
+      final measurements = measurementsCache[productId] ?? {
+        'custom_length': 0.0,
+        'custom_width': 0.0,
+        'custom_thickness': 0.0,
+        'custom_volume': 0.0
+      };
+
       final itemLength = (measurements['custom_length'] as num).toDouble();
       final itemWidth = (measurements['custom_width'] as num).toDouble();
       final thickness = (measurements['custom_thickness'] as num).toDouble();
 
-      // Rest bleibt gleich...
+      // Holzart-Info für Dichte
       final woodCode = item['wood_code'] as String? ?? '';
       final woodInfo = woodTypeCache[woodCode] ?? {};
       final density = (woodInfo['density'] as num?)?.toDouble() ?? 450.0;
 
-      // Volumen und Gewicht berechnen
-      final volumePerPiece = (itemLength / 1000) * (itemWidth / 1000) * (thickness / 1000);
+      // KORRIGIERT: Volumen berechnen - gleiche Logik wie Commercial Invoice
+      double volumePerPiece = 0.0;
+
+      // 1. Priorität: Manuell eingegebenes Volumen
+      if (measurements['custom_volume'] != null && (measurements['custom_volume'] as num) > 0) {
+        volumePerPiece = (measurements['custom_volume'] as num).toDouble();
+      }
+      // 2. Priorität: Berechnetes Volumen aus Maßen
+      else if (itemLength > 0 && itemWidth > 0 && thickness > 0) {
+        volumePerPiece = (itemLength / 1000) * (itemWidth / 1000) * (thickness / 1000);
+      }
+      // 3. Priorität: Standard-Volumen aus Cache
+      else {
+        final instrumentCode = item['instrument_code'] as String?;
+        final partCode = item['part_code'] as String?;
+
+        if (instrumentCode != null && partCode != null) {
+          final articleNumber = instrumentCode + partCode;
+          final standardVolumeData = standardVolumeCache[articleNumber];
+
+          if (standardVolumeData != null) {
+            final standardVolume = standardVolumeData['volume'] ?? 0;
+            final volumeType = standardVolumeData['type'] ?? 'mm3';
+
+            if (standardVolume > 0) {
+              if (volumeType == 'mm3') {
+                volumePerPiece = (standardVolume / 1000000000.0); // mm³ zu m³
+              } else {
+                volumePerPiece = (standardVolume / 1000.0); // dm³ zu m³
+              }
+            }
+          }
+        }
+      }
+
       final totalVolume = volumePerPiece * quantity;
+
+      // KORRIGIERT: Gewicht immer aus Volumen × Dichte berechnen (wie Commercial Invoice)
       final weightPerPiece = volumePerPiece * density;
       final totalWeight = weightPerPiece * quantity;
 
@@ -405,6 +510,12 @@ class PackingListGenerator extends BasePdfGenerator {
         unit = 'Stk';
       }
 
+      // Maße-String nur erstellen wenn Werte > 0 vorhanden sind
+      String dimensionsText = '';
+      if (itemLength > 0 || itemWidth > 0 || thickness > 0) {
+        dimensionsText = '${itemLength.toStringAsFixed(0)}×${itemWidth.toStringAsFixed(0)}×${thickness.toStringAsFixed(1)}';
+      }
+
       rows.add(
         pw.TableRow(
           children: [
@@ -412,8 +523,7 @@ class PackingListGenerator extends BasePdfGenerator {
               pw.Text(item['product_name'] ?? item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
             ),
             BasePdfGenerator.buildContentCell(
-              pw.Text('${itemLength.toStringAsFixed(0)}×${itemWidth.toStringAsFixed(0)}×${thickness.toStringAsFixed(1)}',
-                  style: const pw.TextStyle(fontSize: 8)),
+              pw.Text(dimensionsText, style: const pw.TextStyle(fontSize: 8)),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
@@ -458,7 +568,7 @@ class PackingListGenerator extends BasePdfGenerator {
       );
     }
 
-    // Paket-Summen im Stil der Handelsrechnung
+    // Rest der Methode bleibt gleich...
     rows.add(
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: PdfColors.blueGrey100),

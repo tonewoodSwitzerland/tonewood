@@ -442,8 +442,49 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       final quantity = (item['quantity'] as num? ?? 0).toDouble();
 
       // m³ pro Stück (in Meter umrechnen: mm -> m)
-      final volumePerPiece = (length / 1000) * (width / 1000) * (thicknessValue / 1000);
-      final totalVolume = volumePerPiece * quantity;
+      double totalVolume = 0.0;
+
+// 1. Priorität: Manuell eingegebenes Volumen
+      if (item['custom_volume'] != null && (item['custom_volume'] as num) > 0) {
+        totalVolume = (item['custom_volume'] as num).toDouble() * quantity;
+      }
+// 2. Priorität: Berechnetes Volumen aus Maßen
+      else if (length > 0 && width > 0 && thicknessValue > 0) {
+        final volumePerPiece = (length / 1000) * (width / 1000) * (thicknessValue / 1000);
+        totalVolume = volumePerPiece * quantity;
+      }
+// 3. Priorität: Standardvolumen aus der Datenbank
+      else {
+        // Hole Standardvolumen aus standardized_products
+        final instrumentCode = item['instrument_code'] as String?;
+        final partCode = item['part_code'] as String?;
+
+        if (instrumentCode != null && partCode != null) {
+          final articleNumber = instrumentCode + partCode;
+
+          try {
+            final standardProductQuery = await FirebaseFirestore.instance
+                .collection('standardized_products')
+                .where('articleNumber', isEqualTo: articleNumber)
+                .limit(1)
+                .get();
+
+            if (standardProductQuery.docs.isNotEmpty) {
+              final standardProduct = standardProductQuery.docs.first.data();
+              // Versuche verschiedene Volumen-Felder
+              final standardVolume = standardProduct['volume']?['mm3_standard'] ??
+                  standardProduct['volume']?['dm3_standard'] ?? 0;
+
+              if (standardVolume > 0) {
+                // Konvertiere mm³ zu m³ (falls mm3_standard)
+                totalVolume = (standardVolume / 1000000000.0) * quantity;
+              }
+            }
+          } catch (e) {
+            print('Fehler beim Laden des Standard-Volumens: $e');
+          }
+        }
+      }
 
       // Gewicht berechnen
       final weight = totalVolume * density;
@@ -580,12 +621,15 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             // Leere Zellen
             ...List.generate(5, (index) => pw.SizedBox(height: 16)),
             // Zwischensumme m³
+            // Im Zolltarifnummer-Header:
             pw.Padding(
               padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               child: pw.Text(
-                language == 'EN'
+                groupVolume > 0
+                    ? (language == 'EN'
                     ? '${groupVolume.toStringAsFixed(5)}'
-                    : '${groupVolume.toStringAsFixed(5)}',
+                    : '${groupVolume.toStringAsFixed(5)}')
+                    : '', // Leer wenn 0
                 style: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold,
                   fontSize: 7,
@@ -638,7 +682,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
-                  volumeM3.toStringAsFixed(5),
+                  volumeM3 > 0 ? volumeM3.toStringAsFixed(5) : '', // Leer wenn 0
                   style: const pw.TextStyle(fontSize: 6),
                   textAlign: pw.TextAlign.right,
                 ),

@@ -235,12 +235,29 @@ class DocumentSelectionManager {
 
 
   // Löscht die aktuelle Auswahl
+// Löscht die aktuelle Auswahl
   static Future<void> clearSelection() async {
     try {
+      // 1. Lösche die Dokumentauswahl
       await FirebaseFirestore.instance
           .collection('temporary_document_selection')
           .doc('current_selection')
           .delete();
+
+      // 2. Lösche ALLE Dokument-Einstellungen
+      final settingsCollection = FirebaseFirestore.instance
+          .collection('temporary_document_settings');
+
+      // Hole alle Dokumente in der Collection
+      final snapshot = await settingsCollection.get();
+
+      // Lösche jedes Dokument einzeln
+      for (final doc in snapshot.docs) {
+        await doc.reference.delete();
+        print('Gelöscht: ${doc.id}'); // Debug-Ausgabe
+      }
+
+      print('Dokumentauswahl und alle Einstellungen zurückgesetzt');
     } catch (e) {
       print('Fehler beim Löschen der Dokumentenauswahl: $e');
     }
@@ -1788,6 +1805,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
   Future<void> showTaraSettingsDialog() async {
     int numberOfPackages = 1;
     double packagingWeight = 0.0;
+    bool valuesFromPackingList = false;
 
     // Commercial Invoice Standardsätze
     bool originDeclaration = false;
@@ -1798,19 +1816,36 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
     bool carrier = false;
     bool signature = false;
     List<String> selectedIncoterms = [];
-    Map<String, String> incotermsFreeTexts = {}; // Für jeden Incoterm eigener Freitext
+    Map<String, String> incotermsFreeTexts = {};
     String exportReasonText = 'Ware';
     String carrierText = 'Swiss Post';
     DateTime? selectedDeliveryDate;
-    bool deliveryDateMonthOnly = false; // Toggle für nur Monatsangabe
+    bool deliveryDateMonthOnly = false;
     String? selectedSignature;
 
-    // Lade bestehende Einstellungen
-    final existingSettings = await DocumentSelectionManager.loadTaraSettings();
-    numberOfPackages = existingSettings['number_of_packages'] ?? 1;
-    packagingWeight = (existingSettings['packaging_weight'] ?? 0.0).toDouble();
+    // Lade Packlisten-Einstellungen zuerst
+    final packingListSettings = await DocumentSelectionManager.loadPackingListSettings();
+    final packages = packingListSettings['packages'] as List<dynamic>?;
 
-    // Lade Commercial Invoice Einstellungen
+    // Prüfe, ob Packliste existiert und Pakete enthält
+    if (packages != null && packages.isNotEmpty) {
+      valuesFromPackingList = true;
+      numberOfPackages = packages.length;
+
+      // Berechne das Gesamtgewicht der Verpackungen
+      packagingWeight = 0.0;
+      for (final package in packages) {
+        packagingWeight += (package['tare_weight'] as num?)?.toDouble() ?? 0.0;
+      }
+    } else {
+      // Lade bestehende Tara-Einstellungen nur wenn keine Packliste existiert
+      final existingSettings = await DocumentSelectionManager.loadTaraSettings();
+      numberOfPackages = existingSettings['number_of_packages'] ?? 1;
+      packagingWeight = (existingSettings['packaging_weight'] ?? 0.0).toDouble();
+    }
+
+    // Lade immer die Commercial Invoice Einstellungen
+    final existingSettings = await DocumentSelectionManager.loadTaraSettings();
     originDeclaration = existingSettings['commercial_invoice_origin_declaration'] ?? false;
     cites = existingSettings['commercial_invoice_cites'] ?? false;
     exportReason = existingSettings['commercial_invoice_export_reason'] ?? false;
@@ -1825,7 +1860,6 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
     deliveryDateMonthOnly = existingSettings['commercial_invoice_delivery_date_month_only'] ?? false;
     selectedSignature = existingSettings['commercial_invoice_selected_signature'];
 
-    // Lieferdatum aus Lieferschein laden falls vorhanden
     if (existingSettings['commercial_invoice_delivery_date_value'] != null) {
       final timestamp = existingSettings['commercial_invoice_delivery_date_value'];
       if (timestamp is Timestamp) {
@@ -1838,7 +1872,6 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
     final exportReasonTextController = TextEditingController(text: exportReasonText);
     final carrierTextController = TextEditingController(text: carrierText);
 
-    // Controller für Incoterm-Freitexte - außerhalb des StatefulBuilder
     final Map<String, TextEditingController> incotermControllers = {};
     for (String incotermId in selectedIncoterms) {
       incotermControllers[incotermId] = TextEditingController(text: incotermsFreeTexts[incotermId] ?? '');
@@ -1923,10 +1956,44 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                           ),
                           const SizedBox(height: 16),
 
+                          // Info-Box wenn Werte aus Packliste kommen
+                          if (valuesFromPackingList)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              margin: const EdgeInsets.only(bottom: 16),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    color: Theme.of(context).colorScheme.primary,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Die Werte werden aus der Packliste übernommen und können nur dort bearbeitet werden.',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
                           // Anzahl Packungen
                           TextField(
                             controller: numberOfPackagesController,
                             keyboardType: TextInputType.number,
+                            enabled: !valuesFromPackingList, // Deaktiviert wenn aus Packliste
                             decoration: InputDecoration(
                               labelText: 'Anzahl Packungen',
                               prefixIcon: getAdaptiveIcon(
@@ -1936,9 +2003,18 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              helperText: 'Anzahl der Verpackungseinheiten',
+                              helperText: valuesFromPackingList
+                                  ? 'Wert aus Packliste'
+                                  : 'Anzahl der Verpackungseinheiten',
+                              suffixIcon: valuesFromPackingList
+                                  ? Icon(
+                                Icons.lock_outline,
+                                size: 20,
+                                color: Theme.of(context).colorScheme.outline,
+                              )
+                                  : null,
                             ),
-                            onChanged: (value) {
+                            onChanged: valuesFromPackingList ? null : (value) {
                               setDialogState(() {
                                 numberOfPackages = int.tryParse(value) ?? 1;
                               });
@@ -1951,6 +2027,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                           TextField(
                             controller: packagingWeightController,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            enabled: !valuesFromPackingList, // Deaktiviert wenn aus Packliste
                             decoration: InputDecoration(
                               labelText: 'Verpackungsgewicht (kg)',
                               prefixIcon: getAdaptiveIcon(
@@ -1960,18 +2037,41 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              helperText: 'Gesamtgewicht der Verpackung in kg',
+                              helperText: valuesFromPackingList
+                                  ? 'Summe der Tara-Gewichte aus Packliste'
+                                  : 'Gesamtgewicht der Verpackung in kg',
+                              suffixIcon: valuesFromPackingList
+                                  ? Icon(
+                                Icons.lock_outline,
+                                size: 20,
+                                color: Theme.of(context).colorScheme.outline,
+                              )
+                                  : null,
                             ),
-                            onChanged: (value) {
+                            onChanged: valuesFromPackingList ? null : (value) {
                               setDialogState(() {
                                 packagingWeight = double.tryParse(value) ?? 0.0;
                               });
                             },
                           ),
 
+                          // Zusätzlicher Hinweis unter den Feldern
+                          if (!valuesFromPackingList)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                'Hinweis: Diese Werte können nur bearbeitet werden, solange keine Packliste erstellt wurde.',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontStyle: FontStyle.italic,
+                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                ),
+                              ),
+                            ),
+
                           const SizedBox(height: 24),
 
-                          // Commercial Invoice Standardsätze
+                          // Commercial Invoice Standardsätze (Rest bleibt gleich)
                           Text(
                             'Standardsätze für Handelsrechnung',
                             style: TextStyle(
@@ -1981,6 +2081,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                             ),
                           ),
                           const SizedBox(height: 16),
+
 
                           // Ursprungserklärung
                           CheckboxListTile(
@@ -2448,6 +2549,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       ),
     );
   }
+
   Future<void> showPackingListSettingsDialog() async {
     // Lade bestehende Packlisten-Einstellungen
     final existingSettings = await DocumentSelectionManager.loadPackingListSettings();

@@ -324,7 +324,16 @@ class QuoteGenerator extends BasePdfGenerator {
           final length = item['custom_length']?.toString() ?? '';
           final width = item['custom_width']?.toString() ?? '';
           final thickness = item['custom_thickness']?.toString() ?? '';
-          dimensions = '${length}×${width}×${thickness}';
+
+          // NEU: Prüfe ob alle Werte 0 oder leer sind
+          final lengthNum = double.tryParse(length) ?? 0;
+          final widthNum = double.tryParse(width) ?? 0;
+          final thicknessNum = double.tryParse(thickness) ?? 0;
+
+          // Nur wenn mindestens ein Wert größer als 0 ist
+          if (lengthNum > 0 || widthNum > 0 || thicknessNum > 0) {
+            dimensions = '${length}×${width}×${thickness}';
+          }
         }
 
         // Einheit korrigieren: "Stück" zu "Stk"

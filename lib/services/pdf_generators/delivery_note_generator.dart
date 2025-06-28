@@ -306,11 +306,13 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
 
         // Maße zusammenstellen
         String dimensions = '';
-        if (item['custom_length'] != null || item['custom_width'] != null || item['custom_thickness'] != null) {
-          final length = item['custom_length']?.toString() ?? '';
-          final width = item['custom_width']?.toString() ?? '';
-          final thickness = item['custom_thickness']?.toString() ?? '';
-          dimensions = '${length}×${width}×${thickness}';
+        final customLength = (item['custom_length'] as num?) ?? 0;
+        final customWidth = (item['custom_width'] as num?) ?? 0;
+        final customThickness = (item['custom_thickness'] as num?) ?? 0;
+
+// Nur anzeigen wenn mindestens ein Maß größer als 0 ist
+        if (customLength > 0 || customWidth > 0 || customThickness > 0) {
+          dimensions = '${customLength}×${customWidth}×${customThickness}';
         }
 
         String unit = item['unit'] ?? '';
