@@ -673,7 +673,9 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
 
                     const SizedBox(height: 20),
 
-                    // Artikel
+                    // Ersetze den Artikel-Bereich in der _showQuoteDetails Methode:
+
+// Artikel
                     Text(
                       'Artikel',
                       style: TextStyle(
@@ -682,46 +684,231 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                         color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     ...quote.items.map((item) {
                       final quantity = item['quantity'] ?? 0;
                       final pricePerUnit = item['price_per_unit'] ?? 0;
                       final total = item['total'] ?? (quantity * pricePerUnit);
+                      final hasDiscount = (item['discount_amount'] ?? 0) > 0;
 
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item['product_name'] ?? 'Unbekanntes Produkt',
-                                style: const TextStyle(fontWeight: FontWeight.bold),
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () {}, // Optional: für spätere Funktionalität
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Produktname und Artikelnummer
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                item['product_name'] ?? 'Unbekanntes Produkt',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 15,
+                                                ),
+                                              ),
+                                              if (item['product_id'] != null) ...[
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  'Art.-Nr. ${item['product_id']}',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                        // Gesamtpreis prominent rechts
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            'CHF ${total.toStringAsFixed(2)}',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                              color: Theme.of(context).colorScheme.primary,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+                                    const SizedBox(height: 12),
+
+                                    // Details in einer Zeile
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          // Menge
+                                          Expanded(
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.inventory_2_outlined,
+                                                  size: 16,
+                                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  '$quantity ${item['unit'] ?? 'Stk'}',
+                                                  style: const TextStyle(fontSize: 13),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+
+                                          // Vertikaler Trenner
+                                          Container(
+                                            height: 20,
+                                            width: 1,
+                                            color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                                          ),
+
+                                          // Einzelpreis
+                                          Expanded(
+                                            child: Row(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  Icons.attach_money,
+                                                  size: 16,
+                                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  'CHF ${pricePerUnit.toStringAsFixed(2)}',
+                                                  style: const TextStyle(fontSize: 13),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+
+                                          // Rabatt (falls vorhanden)
+                                          if (hasDiscount) ...[
+                                            Container(
+                                              height: 20,
+                                              width: 1,
+                                              color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                                            ),
+                                            Expanded(
+                                              child: Row(
+                                                mainAxisAlignment: MainAxisAlignment.end,
+                                                children: [
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.green.withOpacity(0.1),
+                                                      borderRadius: BorderRadius.circular(4),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Icon(
+                                                          Icons.discount_outlined,
+                                                          size: 14,
+                                                          color: Colors.green[700],
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          '-${(item['discount_amount'] ?? 0).toStringAsFixed(2)}',
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: Colors.green[700],
+                                                            fontWeight: FontWeight.w500,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+
+                                    // Zusätzliche Details (falls vorhanden)
+                                    if (item['custom_length'] != null || item['custom_width'] != null || item['custom_thickness'] != null) ...[
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.straighten,
+                                            size: 14,
+                                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            'Maße: ${item['custom_length'] ?? '-'} × ${item['custom_width'] ?? '-'} × ${item['custom_thickness'] ?? '-'} mm',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ],
+                                ),
                               ),
-                              const SizedBox(height: 4),
-                              Text('Menge: $quantity ${item['unit'] ?? 'Stück'}'),
-                              Text('Preis: CHF ${pricePerUnit.toStringAsFixed(2)}'),
-                              Text('Gesamt: CHF ${total.toStringAsFixed(2)}'),
-                            ],
+                            ),
                           ),
                         ),
                       );
-                    }),
+                    }).toList(),
 
-                    const SizedBox(height: 20),
-
-                    // Berechnungen
-                    _buildInfoSection('Berechnungen', [
-                      _buildInfoRow('Zwischensumme:', 'CHF ${(quote.calculations['subtotal'] ?? 0).toStringAsFixed(2)}'),
-                      if ((quote.calculations['item_discounts'] ?? 0) > 0)
-                        _buildInfoRow('Positionsrabatte:', 'CHF -${(quote.calculations['item_discounts'] ?? 0).toStringAsFixed(2)}'),
-                      if ((quote.calculations['total_discount_amount'] ?? 0) > 0)
-                        _buildInfoRow('Gesamtrabatt:', 'CHF -${(quote.calculations['total_discount_amount'] ?? 0).toStringAsFixed(2)}'),
-                      _buildInfoRow('Nettobetrag:', 'CHF ${(quote.calculations['net_amount'] ?? 0).toStringAsFixed(2)}'),
-                      _buildInfoRow('MwSt:', 'CHF ${(quote.calculations['vat_amount'] ?? 0).toStringAsFixed(2)}'),
-                      _buildInfoRow('Gesamtbetrag:', 'CHF ${(quote.calculations['total'] ?? 0).toStringAsFixed(2)}', isTotal: true),
-                    ]),
+                    // const SizedBox(height: 20),
+                    //
+                    // // Berechnungen
+                    // _buildInfoSection('Berechnungen', [
+                    //   _buildInfoRow('Zwischensumme:', 'CHF ${(quote.calculations['subtotal'] ?? 0).toStringAsFixed(2)}'),
+                    //   if ((quote.calculations['item_discounts'] ?? 0) > 0)
+                    //     _buildInfoRow('Positionsrabatte:', 'CHF -${(quote.calculations['item_discounts'] ?? 0).toStringAsFixed(2)}'),
+                    //   if ((quote.calculations['total_discount_amount'] ?? 0) > 0)
+                    //     _buildInfoRow('Gesamtrabatt:', 'CHF -${(quote.calculations['total_discount_amount'] ?? 0).toStringAsFixed(2)}'),
+                    //   _buildInfoRow('Nettobetrag:', 'CHF ${(quote.calculations['net_amount'] ?? 0).toStringAsFixed(2)}'),
+                    //   _buildInfoRow('MwSt:', 'CHF ${(quote.calculations['vat_amount'] ?? 0).toStringAsFixed(2)}'),
+                    //   _buildInfoRow('Gesamtbetrag:', 'CHF ${(quote.calculations['total'] ?? 0).toStringAsFixed(2)}', isTotal: true),
+                    // ]),
                   ],
                 ),
               ),

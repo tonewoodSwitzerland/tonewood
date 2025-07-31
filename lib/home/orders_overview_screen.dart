@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
@@ -487,6 +488,21 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      order.metadata?['language'] ?? 'DE',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
                   // Status ändern
                   _buildCompactActionButton(
                     icon: Icons.edit_outlined,
@@ -699,110 +715,701 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
           color: Theme.of(context).scaffoldBackgroundColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        child: Column(
-          children: [
-            // Drag Handle
-            Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
+        child: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('orders')
+              .doc(order.id)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-            // Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: Row(
-                children: [
-                  getAdaptiveIcon(iconName: 'shopping_bag', defaultIcon: Icons.shopping_bag),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Auftrag ${order.orderNumber}',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+            final currentOrder = OrderX.fromFirestore(snapshot.data!);
+
+            return Column(
+              children: [
+                // Drag Handle
+                Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  const Spacer(),
-                  IconButton(
-                    icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
+                ),
 
-            const Divider(),
-
-            // Content
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Auftragsinformationen
-                    _buildInfoSection('Auftragsinformationen', [
-                      _buildInfoRow('Auftragsnummer:', order.orderNumber),
-                      _buildInfoRow('Datum:', DateFormat('dd.MM.yyyy HH:mm').format(order.orderDate)),
-                      _buildInfoRow('Status:', order.status.displayName),
-                      _buildInfoRow('Zahlungsstatus:', order.paymentStatus.displayName),
-                    ]),
-
-                    const SizedBox(height: 20),
-
-                    // Kundeninformationen
-                    _buildInfoSection('Kunde', [
-                      _buildInfoRow('Firma:', order.customer['company'] ?? '-'),
-                      _buildInfoRow('Name:', order.customer['fullName'] ?? '-'),
-                      _buildInfoRow('E-Mail:', order.customer['email'] ?? '-'),
-                      _buildInfoRow('Adresse:', '${order.customer['street']} ${order.customer['houseNumber']}, ${order.customer['zipCode']} ${order.customer['city']}'),
-                    ]),
-
-                    const SizedBox(height: 20),
-
-                    // Artikel
-                    Text(
-                      'Artikel',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.primary,
+                // Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Row(
+                    children: [
+                      getAdaptiveIcon(iconName: 'shopping_bag', defaultIcon: Icons.shopping_bag),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Auftrag ${currentOrder.orderNumber}',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    ...order.items.map((item) {
-                      final quantity = item['quantity'] as num? ?? 0;
-                      final pricePerUnit = item['price_per_unit'] as num? ?? 0;
-                      final total = item['total'] as num? ?? (quantity * pricePerUnit);
+                      const Spacer(),
+                      IconButton(
+                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
 
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item['product_name']?.toString() ?? 'Unbekanntes Produkt',
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
+                const Divider(),
 
-                            ],
+                // Content
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Auftragsinformationen
+                        _buildInfoSection('Auftragsinformationen', [
+                          _buildInfoRow('Auftragsnummer:', currentOrder.orderNumber),
+                          _buildInfoRow('Datum:', DateFormat('dd.MM.yyyy HH:mm').format(currentOrder.orderDate)),
+                          _buildInfoRow('Status:', currentOrder.status.displayName),
+                          _buildInfoRow('Zahlungsstatus:', currentOrder.paymentStatus.displayName),
+                        ]),
+
+                        const SizedBox(height: 20),
+
+                        // Kundeninformationen
+                        _buildInfoSection('Kunde', [
+                          _buildInfoRow('Firma:', currentOrder.customer['company'] ?? '-'),
+                          _buildInfoRow('Name:', currentOrder.customer['fullName'] ?? '-'),
+                          _buildInfoRow('E-Mail:', currentOrder.customer['email'] ?? '-'),
+                          _buildInfoRow('Adresse:', '${currentOrder.customer['street']} ${currentOrder.customer['houseNumber']}, ${currentOrder.customer['zipCode']} ${currentOrder.customer['city']}'),
+                        ]),
+
+                        const SizedBox(height: 20),
+
+                        // Artikel
+                        Text(
+                          'Artikel',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
                           ),
                         ),
-                      );
-                    }),
+                        const SizedBox(height: 12),
+                        ...currentOrder.items.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final item = entry.value;
+                          final quantity = item['quantity'] as num? ?? 0;
+                          final pricePerUnit = item['price_per_unit'] as num? ?? 0;
+                          final total = item['total'] as num? ?? (quantity * pricePerUnit);
+                          final hasDiscount = (item['discount_amount'] as num? ?? 0) > 0;
 
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                                width: 1,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.04),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () => _showEditItemMeasurementsDialog(context, currentOrder, item, index),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Produktname und Artikelnummer
+                                        Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    item['product_name']?.toString() ?? 'Unbekanntes Produkt',
+                                                    style: const TextStyle(
+                                                      fontWeight: FontWeight.w600,
+                                                      fontSize: 15,
+                                                    ),
+                                                  ),
+                                                  if (item['product_id'] != null) ...[
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      'Art.-Nr. ${item['product_id']}',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                            ),
+                                            // Gesamtpreis prominent rechts
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                              decoration: BoxDecoration(
+                                                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                'CHF ${total.toStringAsFixed(2)}',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 16,
+                                                  color: Theme.of(context).colorScheme.primary,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
 
+                                        const SizedBox(height: 12),
 
-                  ],
+                                        // Details in einer Zeile
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              // Menge
+                                              Expanded(
+                                                child: Row(
+                                                  children: [
+                                                    Icon(
+                                                      Icons.inventory_2_outlined,
+                                                      size: 16,
+                                                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    Text(
+                                                      '$quantity ${item['unit'] ?? 'Stk'}',
+                                                      style: const TextStyle(fontSize: 13),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+
+                                              // Vertikaler Trenner
+                                              Container(
+                                                height: 20,
+                                                width: 1,
+                                                color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                                              ),
+
+                                              // Einzelpreis
+                                              Expanded(
+                                                child: Row(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    Icon(
+                                                      Icons.attach_money,
+                                                      size: 16,
+                                                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    Text(
+                                                      'CHF ${pricePerUnit.toStringAsFixed(2)}',
+                                                      style: const TextStyle(fontSize: 13),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+
+                                              // Rabatt (falls vorhanden)
+                                              if (hasDiscount) ...[
+                                                Container(
+                                                  height: 20,
+                                                  width: 1,
+                                                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                                                ),
+                                                Expanded(
+                                                  child: Row(
+                                                    mainAxisAlignment: MainAxisAlignment.end,
+                                                    children: [
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                        decoration: BoxDecoration(
+                                                          color: Colors.green.withOpacity(0.1),
+                                                          borderRadius: BorderRadius.circular(4),
+                                                        ),
+                                                        child: Row(
+                                                          mainAxisSize: MainAxisSize.min,
+                                                          children: [
+                                                            Icon(
+                                                              Icons.discount_outlined,
+                                                              size: 14,
+                                                              color: Colors.green[700],
+                                                            ),
+                                                            const SizedBox(width: 4),
+                                                            Text(
+                                                              '-${(item['discount_amount'] as num? ?? 0).toStringAsFixed(2)}',
+                                                              style: TextStyle(
+                                                                fontSize: 12,
+                                                                color: Colors.green[700],
+                                                                fontWeight: FontWeight.w500,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+
+                                        // Zusätzliche Details (falls vorhanden)
+                                        if ((item['custom_length'] != null && item['custom_length'] > 0) ||
+                                            (item['custom_width'] != null && item['custom_width'] > 0) ||
+                                            (item['custom_thickness'] != null && item['custom_thickness'] > 0)) ...[
+                                          const SizedBox(height: 8),
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.straighten,
+                                                size: 14,
+                                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                'Maße: ${item['custom_length']?.toString() ?? '0'} × ${item['custom_width']?.toString() ?? '0'} × ${item['custom_thickness']?.toString() ?? '0'} mm',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+
+                                        // Manuelle Produkte Hinweis
+                                        if (item['is_manual_product'] == true) ...[
+                                          const SizedBox(height: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blue.withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.edit_note,
+                                                  size: 14,
+                                                  color: Colors.blue[700],
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  'Manuelles Produkt',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.blue[700],
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showEditItemMeasurementsDialog(BuildContext context, OrderX order, Map<String, dynamic> item, int itemIndex) {
+    // Controller für die Eingabefelder
+    final lengthController = TextEditingController(
+      text: item['custom_length']?.toString() ?? '',
+    );
+    final widthController = TextEditingController(
+      text: item['custom_width']?.toString() ?? '',
+    );
+    final thicknessController = TextEditingController(
+      text: item['custom_thickness']?.toString() ?? '',
+    );
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Drag Handle
+                Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+
+                // Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.straighten,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Maße bearbeiten',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              item['product_name']?.toString() ?? 'Produkt',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const Divider(),
+
+                // Content
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      // Info Box
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 20,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Geben Sie die exakten Maße des Artikels ein. Diese Angaben erscheinen auf den Dokumenten.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Maße Eingabefelder
+                      Row(
+                        children: [
+                          // Länge
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Länge (mm)',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  controller: lengthController,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  textAlign: TextAlign.center,
+                                  decoration: InputDecoration(
+                                    hintText: '0',
+                                    prefixIcon: Icon(
+                                      Icons.arrow_right_alt,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    filled: true,
+                                    fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(width: 12),
+
+                          // Breite
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Breite (mm)',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  controller: widthController,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  textAlign: TextAlign.center,
+                                  decoration: InputDecoration(
+                                    hintText: '0',
+                                    prefixIcon: Icon(
+                                      Icons.swap_horiz,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    filled: true,
+                                    fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(width: 12),
+
+                          // Dicke
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Dicke (mm)',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  controller: thicknessController,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  textAlign: TextAlign.center,
+                                  decoration: InputDecoration(
+                                    hintText: '0',
+                                    prefixIcon: Icon(
+                                      Icons.height,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    filled: true,
+                                    fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 32),
+
+                      // Action Buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(context),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: const Text('Abbrechen'),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () async {
+                                // Validiere und parse die Eingaben
+                                final length = double.tryParse(lengthController.text);
+                                final width = double.tryParse(widthController.text);
+                                final thickness = double.tryParse(thicknessController.text);
+
+                                try {
+                                  // Update das Item in der Liste
+                                  final updatedItems = List<Map<String, dynamic>>.from(order.items);
+
+                                  // Update direkt am korrekten Index
+                                  updatedItems[itemIndex] = {
+                                    ...updatedItems[itemIndex],
+                                    'custom_length': length,
+                                    'custom_width': width,
+                                    'custom_thickness': thickness,
+                                  };
+
+                                  // Update in Firestore
+                                  await FirebaseFirestore.instance
+                                      .collection('orders')
+                                      .doc(order.id)
+                                      .update({
+                                    'items': updatedItems,
+                                    'updated_at': FieldValue.serverTimestamp(),
+                                  });
+
+                                  // Erstelle History-Eintrag
+                                  final user = FirebaseAuth.instance.currentUser;
+                                  await FirebaseFirestore.instance
+                                      .collection('orders')
+                                      .doc(order.id)
+                                      .collection('history')
+                                      .add({
+                                    'timestamp': FieldValue.serverTimestamp(),
+                                    'user_id': user?.uid ?? 'unknown',
+                                    'user_email': user?.email ?? 'Unknown User',
+                                    'user_name': user?.displayName ?? user?.email?.split('@')[0] ?? 'Unknown',
+                                    'action': 'measurements_updated',
+                                    'product_name': item['product_name'],
+                                    'item_index': itemIndex,
+                                    'measurements': {
+                                      'length': length,
+                                      'width': width,
+                                      'thickness': thickness,
+                                    },
+                                  });
+
+                                  if (mounted) {
+                                    Navigator.pop(context); // Schließe nur Maße-Dialog
+
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Maße für ${item['product_name']} wurden aktualisiert'),
+                                        backgroundColor: Colors.green,
+                                        behavior: SnackBarBehavior.floating,
+                                        margin: const EdgeInsets.all(8),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Fehler beim Aktualisieren: $e'),
+                                        backgroundColor: Colors.red,
+                                        behavior: SnackBarBehavior.floating,
+                                        margin: const EdgeInsets.all(8),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                              icon: const Icon(Icons.save),
+                              label: const Text('Speichern'),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1456,7 +2063,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       children: [
                         Icon(
                           Icons.description_outlined,
-                          size: 48,
+                          size: 40,
                           color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
                         ),
                         const SizedBox(height: 16),
@@ -1471,12 +2078,16 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                     ),
                   )
                       : ListView.builder(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(8),
                     itemCount: currentOrder.documents.length,
                     itemBuilder: (context, index) {
                       final entry = currentOrder.documents.entries.elementAt(index);
                       final docType = entry.key;
                       final docUrl = entry.value;
+
+                      // Prüfe ob das Dokument löschbar ist
+                      final isDeletable = ['delivery_note_pdf', 'commercial_invoice_pdf', 'packing_list_pdf']
+                          .contains(docType);
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
@@ -1488,7 +2099,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                               color: _getDocumentTypeColor(docType),
                             ),
                           ),
-                          title: Text(_getDocumentTypeName(docType)),
+                          title: Text(_getDocumentTypeName(docType),style: TextStyle(fontSize:12),),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -1502,6 +2113,18 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                 onPressed: () => _shareDocument(docUrl, docType, currentOrder.orderNumber),
                                 tooltip: 'Weiterleiten',
                               ),
+                              if (isDeletable)
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                                  onPressed: () => _deleteDocument(currentOrder, docType),
+                                  tooltip: 'Löschen',
+                                ),
+                              if (!isDeletable)
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, size: 20, color: Colors.transparent),
+                                  onPressed:(){},
+                                  tooltip: 'Löschen',
+                                ),
                             ],
                           ),
                         ),
@@ -1516,9 +2139,10 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                     !currentOrder.documents.containsKey('commercial_invoice_pdf') ||
                     !currentOrder.documents.containsKey('packing_list_pdf'))
                   Padding(
-                    padding: const EdgeInsets.all(40),
+                    padding: const EdgeInsets.all(20),
                     child: ElevatedButton.icon(
                       onPressed: () async {
+                        Navigator.pop(context); // Schließe zuerst das aktuelle Modal
                         await OrderDocumentManager.showCreateDocumentsDialog(context, currentOrder);
                       },
                       icon: const Icon(Icons.add),
@@ -1534,6 +2158,190 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
         },
       ),
     );
+  }
+
+// Neue Methode zum Löschen von Dokumenten
+  Future<void> _deleteDocument(OrderX order, String docType) async {
+    // Bestätigungsdialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Dokument löschen'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Möchten Sie "${_getDocumentTypeName(docType)}" wirklich löschen?'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.warning, color: Colors.orange, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Hinweis:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '• Das PDF-Dokument wird gelöscht\n'
+                        '• Die Einstellungen werden zurückgesetzt\n'
+                        '• Sie können das Dokument jederzeit neu erstellen',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        // Zeige Ladeindikator
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+
+        final batch = FirebaseFirestore.instance.batch();
+
+        // 1. Lösche das Dokument aus Firebase Storage
+        if (order.documents[docType] != null) {
+          try {
+            final storageRef = FirebaseStorage.instance
+                .ref()
+                .child('orders')
+                .child(order.id)
+                .child('$docType.pdf');
+            await storageRef.delete();
+          } catch (e) {
+            print('Fehler beim Löschen aus Storage: $e');
+          }
+        }
+
+        // 2. Entferne die Dokument-URL aus dem Order-Dokument
+        final orderRef = FirebaseFirestore.instance
+            .collection('orders')
+            .doc(order.id);
+
+        batch.update(orderRef, {
+          'documents.$docType': FieldValue.delete(),
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+
+        // 3. Lösche spezifische Einstellungen je nach Dokumenttyp
+        switch (docType) {
+          case 'packing_list_pdf':
+          // Lösche Packlisten-Einstellungen
+            final packingListRef = FirebaseFirestore.instance
+                .collection('orders')
+                .doc(order.id)
+                .collection('packing_list')
+                .doc('settings');
+            batch.delete(packingListRef);
+            break;
+
+          case 'delivery_note_pdf':
+          // Lösche Lieferschein-Einstellungen (falls vorhanden)
+            final deliverySettingsRef = FirebaseFirestore.instance
+                .collection('orders')
+                .doc(order.id)
+                .collection('settings')
+                .doc('delivery_settings');
+            batch.delete(deliverySettingsRef);
+            break;
+
+          case 'commercial_invoice_pdf':
+          // Lösche Handelsrechnung-Einstellungen (falls vorhanden)
+            final commercialSettingsRef = FirebaseFirestore.instance
+                .collection('orders')
+                .doc(order.id)
+                .collection('settings')
+                .doc('tara_settings');
+            batch.delete(commercialSettingsRef);
+            break;
+        }
+
+        // 4. Erstelle History-Eintrag
+        final user = FirebaseAuth.instance.currentUser;
+        final historyRef = FirebaseFirestore.instance
+            .collection('orders')
+            .doc(order.id)
+            .collection('history')
+            .doc();
+
+        batch.set(historyRef, {
+          'timestamp': FieldValue.serverTimestamp(),
+          'user_id': user?.uid ?? 'unknown',
+          'user_email': user?.email ?? 'Unknown User',
+          'user_name': user?.displayName ?? user?.email?.split('@')[0] ?? 'Unknown',
+          'action': 'document_deleted',
+          'document_type': _getDocumentTypeName(docType),
+          'document_key': docType,
+        });
+
+        // Commit aller Änderungen
+        await batch.commit();
+
+        if (mounted) {
+          Navigator.pop(context); // Schließe Ladeindikator
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${_getDocumentTypeName(docType)} wurde gelöscht'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          Navigator.pop(context); // Schließe Ladeindikator
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Fehler beim Löschen: $e'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          );
+        }
+      }
+    }
   }
 
   Color _getDocumentTypeColor(String docType) {

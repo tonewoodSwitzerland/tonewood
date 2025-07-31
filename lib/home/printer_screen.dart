@@ -6,7 +6,7 @@ import 'dart:math';
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:another_brother/printer_info.dart';
@@ -23,6 +23,7 @@ import '../constants.dart';
 import '../services/icon_helper.dart';
 import '../services/print_status.dart';
 import '../services/printer_service.dart';
+import 'barcode_scanner.dart';
 enum BarcodeType {
   sales,
   production,
@@ -1154,11 +1155,11 @@ class PrinterScreenState extends State<PrinterScreen> {
     });
 
     try {
-      String barcodeResult = await FlutterBarcodeScanner.scanBarcode(
-        '#FF0000',
-        'Abbrechen',
-        true,
-        ScanMode.BARCODE,
+      final String? barcodeResult = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SimpleBarcodeScannerPage(),
+        ),
       );
 
       if (barcodeResult != '-1') {
@@ -1168,7 +1169,7 @@ class PrinterScreenState extends State<PrinterScreen> {
         BarcodeType currentType = selectedBarcodeType;
 
         // Prüfe, ob der Barcode für den aktuellen Typ gültig ist
-        bool isValidForCurrentType = _validateBarcode(barcodeResult, currentType);
+        bool isValidForCurrentType = _validateBarcode(barcodeResult!, currentType);
 
         // Prüfe, ob der Barcode für andere Typen gültig wäre
         bool isValidForSales = _validateBarcode(barcodeResult, BarcodeType.sales);

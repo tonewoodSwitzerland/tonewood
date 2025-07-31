@@ -74,6 +74,7 @@ class ProductionScreenState extends State<ProductionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: widget.isDialog
             ? TextField(
           controller: searchController,

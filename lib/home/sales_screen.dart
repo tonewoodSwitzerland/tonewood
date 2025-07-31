@@ -20,7 +20,7 @@ import '../services/document_selection_manager.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
+
 import 'package:share_plus/share_plus.dart';
 import '../analytics/sales/export_documents_integration.dart';
 import '../analytics/sales/export_module.dart';
@@ -45,6 +45,8 @@ import '../services/fairs.dart';
 import 'package:csv/csv.dart';
 
 import '../services/icon_helper.dart';
+import 'barcode_scanner.dart';
+import 'currency_converter_sheet.dart';
 import 'customer_selection.dart';
 import '../services/shipping_costs_manager.dart';
 
@@ -118,7 +120,7 @@ Stream<QuerySnapshot> get _basketStream => FirebaseFirestore.instance
     _checkShippingCosts();
     _loadTemporaryDiscounts();
     _loadTemporaryTax();
-
+    _loadDocumentLanguage();
   }
 
 @override
@@ -352,6 +354,39 @@ return Scaffold(
       .map((snapshot) => snapshot.data() ?? {});
 
 
+
+  // In sales_screen.dart, nach _saveTemporaryTax():
+  Future<void> _saveDocumentLanguage() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('temporary_document_settings')
+          .doc('language_settings')
+          .set({
+        'document_language': _documentLanguageNotifier.value,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Fehler beim Speichern der Dokumentensprache: $e');
+    }
+  }
+
+// Nach _loadTemporaryTax():
+  Future<void> _loadDocumentLanguage() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('temporary_document_settings')
+          .doc('language_settings')
+          .get();
+
+      if (doc.exists) {
+        final language = doc.data()?['document_language'] ?? 'DE';
+        _documentLanguageNotifier.value = language;
+        print("Dokumentensprache geladen: $language");
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Dokumentensprache: $e');
+    }
+  }
   // Nach den anderen Load-Methoden hinzufügen:
   Future<void> _loadTemporaryTax() async {
     try {
@@ -1285,246 +1320,13 @@ return Scaffold(
     ).format(convertedAmount);
   }
 
-// Überarbeitete Methode für den Währungsumrechner
+// Die Methode ersetzen
   void _showCurrencyConverterDialog() {
-    final eurRateController = TextEditingController(text: _exchangeRates['EUR']!.toString());
-    final usdRateController = TextEditingController(text: _exchangeRates['USD']!.toString());
-    String currentCurrency = _selectedCurrency;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (BuildContext context, StateSetter setState) {
-          return Dialog(
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              width: 400,
-              // Machen wir eine maximale Höhe
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.8,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Dialog-Header
-                  Row(
-                    children: [
-                      Text(
-                        'Währung',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      const Spacer(),
-                      IconButton(
-
-                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
-
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-
-                  // Scrollbarer Inhalt
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 24),
-
-                          // Aktuelle Währung
-                          Text(
-                            'Aktuelle Währung',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            decoration: const InputDecoration(
-                              labelText: 'Währung auswählen',
-                              border: OutlineInputBorder(),
-                            ),
-                            value: currentCurrency,
-                            items: _exchangeRates.keys.map((currency) =>
-                                DropdownMenuItem(
-                                  value: currency,
-                                  child: Text(currency),
-                                )
-                            ).toList(),
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() => currentCurrency = value);
-                              }
-                            },
-                          ),
-
-                          const SizedBox(height: 24),
-
-                          // Umrechnungsfaktoren
-                          Text(
-                            'Umrechnungsfaktoren (1 CHF =)',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-
-                          // EUR Umrechnungsfaktor
-                          TextFormField(
-                            controller: eurRateController,
-                            decoration: InputDecoration(
-                              labelText: 'EUR Faktor',
-                              border: OutlineInputBorder(),
-                              prefixIcon:getAdaptiveIcon(iconName: 'euro', defaultIcon: Icons.euro,),
-                              helperText: '1 CHF = x EUR',
-                            ),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(RegExp(r'^\d*[,.]?\d{0,4}')),
-                            ],
-                            onChanged: (_) => setState(() {}),
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // USD Umrechnungsfaktor
-                          TextFormField(
-                            controller: usdRateController,
-                            decoration: InputDecoration(
-                              labelText: 'USD Faktor',
-                              border: OutlineInputBorder(),
-                              prefixIcon: getAdaptiveIcon(iconName: 'attach_money', defaultIcon: Icons.attach_money,),
-                              helperText: '1 CHF = x USD',
-                            ),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(RegExp(r'^\d*[,.]?\d{0,4}')),
-                            ],
-                            onChanged: (_) => setState(() {}),
-                          ),
-
-                          const SizedBox(height: 24),
-
-                          // Beispielumrechnungen
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Beispielumrechnungen:',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Theme.of(context).colorScheme.primary,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text('100 CHF = ${(100 * double.parse(eurRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} EUR'),
-                                Text('100 CHF = ${(100 * double.parse(usdRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} USD'),
-                                const SizedBox(height: 4),
-                                Text('100 EUR = ${(100 / double.parse(eurRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} CHF'),
-                                Text('100 USD = ${(100 / double.parse(usdRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} CHF'),
-                              ],
-                            ),
-                          ),
-
-                          const SizedBox(height: 24),
-
-                          // Übernehmen Button
-                          ElevatedButton.icon(
-                            onPressed: () async {
-                              try {
-                                double eurRate = double.parse(eurRateController.text.replaceAll(',', '.'));
-                                double usdRate = double.parse(usdRateController.text.replaceAll(',', '.'));
-
-                                if (eurRate <= 0 || usdRate <= 0) {
-                                  throw Exception('Faktoren müssen positiv sein');
-                                }
-
-                                // Aktualisiere die Werte
-                                _exchangeRatesNotifier.value = {
-                                  'CHF': 1.0,
-                                  'EUR': eurRate,
-                                  'USD': usdRate
-                                };
-                                _currencyNotifier.value = currentCurrency;
-
-                                // Speichere in Firebase
-                                await _saveCurrencySettings();
-
-                                Navigator.pop(context);
-
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Währung auf $_selectedCurrency umgestellt'),
-                                      backgroundColor: Colors.green,
-                                    ),
-                                  );
-                                }
-                              } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Fehler: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
-                            },
-                            icon: getAdaptiveIcon(iconName: 'check', defaultIcon: Icons.check,),
-                            label: const Text('Übernehmen'),
-                            style: ElevatedButton.styleFrom(
-                              minimumSize: const Size(double.infinity, 45),
-                            ),
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // Kurse abrufen Button
-                          ElevatedButton.icon(
-                            onPressed: () async {
-                              Navigator.pop(context);
-                              await _fetchLatestExchangeRates();
-                              _showCurrencyConverterDialog(); // Dialog erneut öffnen mit neuen Kursen
-                            },
-                            icon: getAdaptiveIcon(iconName: 'refresh', defaultIcon: Icons.refresh,),
-                            label: const Text('Aktuelle Kurse abrufen'),
-                            style: ElevatedButton.styleFrom(
-                              minimumSize: const Size(double.infinity, 45),
-                            ),
-                          ),
-
-                          // Quelle der Wechselkurse
-                          const SizedBox(height: 8),
-                          Center(
-                            child: Text(
-                              'Quelle: Frankfurter API (Europäische Zentralbank)',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontStyle: FontStyle.italic,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 8),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
+    CurrencyConverterSheet.show(
+      context,
+      currencyNotifier: _currencyNotifier,
+      exchangeRatesNotifier: _exchangeRatesNotifier,
+      onSave: _saveCurrencySettings,
     );
   }
 
@@ -3802,15 +3604,19 @@ return Scaffold(
                           builder: (context, shippingSnapshot) {
                             double freightCost = 0.0;
                             double phytosanitaryCost = 0.0;
+                            double totalDeductions = 0.0;  // NEU
+                            double totalSurcharges = 0.0;  // NEU
 
                             if (shippingSnapshot.hasData && shippingSnapshot.data!.exists) {
                               final shippingData = shippingSnapshot.data!.data() as Map<String, dynamic>;
                               freightCost = (shippingData['amount'] as num?)?.toDouble() ?? 0.0;
                               phytosanitaryCost = (shippingData['phytosanitaryCertificate'] as num?)?.toDouble() ?? 0.0;
+                              totalDeductions = (shippingData['totalDeductions'] as num?)?.toDouble() ?? 0.0;  // NEU
+                              totalSurcharges = (shippingData['totalSurcharges'] as num?)?.toDouble() ?? 0.0;  // NEU
                             }
 
-                            // Berechne neuen Total mit Versandkosten
-                            final netWithShipping = netAmount + freightCost + phytosanitaryCost;
+// Berechne neuen Total mit Versandkosten, Abschlägen und Zuschlägen
+                            final netWithShipping = netAmount + freightCost + phytosanitaryCost + totalSurcharges - totalDeductions;
 
                             // MwSt nur berechnen, wenn es Standard-Option ist
                             double vatAmount = 0.0;
@@ -3986,9 +3792,33 @@ return Scaffold(
                                                     ],
                                                   ),
                                                 ],
-
+                                                if (  totalDeductions > 0) ...[
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      const Text('Abschläge'),
+                                                      Text(
+                                                        '- ${_formatPrice(totalDeductions)}',
+                                                        style: TextStyle(
+                                                          color: Colors.red,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
                                                 const SizedBox(height: 4),
-
+                                                if (  totalSurcharges > 0) ...[
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      const Text('Zuschläge'),
+                                                      Text(_formatPrice(totalSurcharges)),
+                                                    ],
+                                                  ),
+                                                ],
+                                                const SizedBox(height: 4),
                                                 // MwSt mit Einstellungsrad
                                                 Row(
                                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -4151,6 +3981,8 @@ return Scaffold(
                                                           onTap: () {
                                                             _documentLanguageNotifier.value =
                                                             _documentLanguageNotifier.value == 'DE' ? 'EN' : 'DE';
+                                                             _saveDocumentLanguage();
+
                                                           },
                                                           child: Container(
                                                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -4999,6 +4831,13 @@ return Scaffold(
       'quality_name': productData['quality_name'],
       'quality_code': productData['quality_code'],
 
+      // NEU: Englische Bezeichnungen hinzufügen
+      'instrument_name_en': productData['instrument_name_en'] ?? '',
+      'part_name_en': productData['part_name_en'] ?? '',
+      'wood_name_en': productData['wood_name_en'] ?? '',
+      'product_name_en': productData['product_name_en'] ?? '',
+
+
       // Füge das Feld nur hinzu, wenn es gesetzt ist
       if (onlineShopBarcode != null) 'online_shop_barcode': onlineShopBarcode,
       if (onlineShopBarcode != null) 'is_online_shop_item': true,
@@ -5595,15 +5434,15 @@ child: const Text('Suchen'),
 
     Future<void> _scanProduct() async {
 try {
-String barcodeResult = await FlutterBarcodeScanner.scanBarcode(
-'#ff6666',
-'Abbrechen',
-true,
-ScanMode.BARCODE,
-);
+  final String? barcodeResult = await Navigator.push<String>(
+    context,
+    MaterialPageRoute(
+      builder: (context) => SimpleBarcodeScannerPage(),
+    ),
+  );
 
 if (barcodeResult != '-1') {
-await _fetchProductAndShowQuantityDialog(barcodeResult);
+await _fetchProductAndShowQuantityDialog(barcodeResult!);
 }
 } on PlatformException {
 if (!mounted) return;

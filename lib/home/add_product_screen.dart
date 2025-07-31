@@ -1045,409 +1045,6 @@ class AddProductScreenState extends State<AddProductScreen> {
       ),
     );
   }
-  // Widget build(BuildContext context) {
-  //
-  //
-  //
-  //   return Scaffold(
-  //     appBar: AppBar(
-  //       title: Text(
-  //         widget.isProduction
-  //             ? (widget.editMode ? 'Produktion bearbeiten' : 'Neues Produkt')
-  //             : (widget.editMode ? 'Bestand bearbeiten' : 'Neuer Verkauf'),
-  //         style: headline4_0,
-  //       ),
-  //     ),
-  //     body: SingleChildScrollView(
-  //       padding: const EdgeInsets.all(16.0),
-  //       child: Form(
-  //         key: _formKey,
-  //         child: Column(
-  //           crossAxisAlignment: CrossAxisAlignment.start,
-  //           children: [
-  //             // Barcode Anzeige
-  //             if (!widget.editMode)
-  //               Card(
-  //                 child: Padding(
-  //                   padding: const EdgeInsets.all(16.0),
-  //                   child: Column(
-  //                     children: [
-  //                       Text(
-  //                         widget.isProduction
-  //                             ? 'Generierte Produktions-Artikelnummer:'
-  //                             : 'Verkaufs-Artikelnummer:',
-  //                         style: TextStyle(color: Colors.grey[600]),
-  //                       ),
-  //                       const SizedBox(height: 8),
-  //                       Text(
-  //                         widget.isProduction ? generatedBarcode : shortBarcode,
-  //                         style: const TextStyle(
-  //                           fontSize: 18,
-  //                           fontWeight: FontWeight.bold,
-  //                         ),
-  //                       ),
-  //                     ],
-  //                   ),
-  //                 ),
-  //               ),
-  //             Card(
-  //               child: Padding(
-  //                 padding: const EdgeInsets.all(16.0),
-  //                 child: Column(
-  //                   children: [
-  //                     Text(
-  //
-  //                            'Verkaufs-Artikelnummer:',
-  //                       style: TextStyle(color: Colors.grey[600]),
-  //                     ),
-  //                     const SizedBox(height: 8),
-  //                     Text(
-  //                        shortBarcode,
-  //                       style: const TextStyle(
-  //                         fontSize: 18,
-  //                         fontWeight: FontWeight.bold,
-  //                       ),
-  //                     ),
-  //                   ],
-  //                 ),
-  //               ),
-  //             ),
-  //             const SizedBox(height: 16),
-  //
-  //             // Grundinformationen Card (immer sichtbar)
-  //           IgnorePointer(
-  //                 ignoring:    widget.editMode,
-  //                 child: _buildBasicInformationCard()),
-  //
-  //             const SizedBox(height: 16),
-  //
-  //             // Produktionsdetails nur im Produktionsmodus anzeigen
-  //             if (widget.isProduction) ...[
-  //               _buildProductionDetailsCard(),
-  //               const SizedBox(height: 16),
-  //             ],
-  //
-  //             // Bestand und Preis Card
-  //             _buildInventoryAndPriceCard(),
-  //
-  //             const SizedBox(height: 24),
-  //
-  //             // Speichern Button
-  //             SizedBox(
-  //               width: double.infinity,
-  //               height: 50,
-  //               child: ElevatedButton(
-  //                 onPressed: _saveProduct,
-  //                 child: Text(widget.editMode ? 'Änderungen speichern' : 'Speichern'),
-  //               ),
-  //             ),
-  //           ],
-  //         ),
-  //       ),
-  //     ),
-  //   );
-  //
-  // }
-  //
-  // Widget _buildBasicInformationCard() {
-  //   return Card(
-  //     child: Padding(
-  //       padding: const EdgeInsets.all(16.0),
-  //       child: Column(
-  //         crossAxisAlignment: CrossAxisAlignment.start,
-  //         children: [
-  //           const Text(
-  //             'Grundinformationen',
-  //             style: TextStyle(
-  //               fontSize: 18,
-  //               fontWeight: FontWeight.bold,
-  //             ),
-  //           ),
-  //           const SizedBox(height: 16),
-  //           if (instruments != null)
-  //             DropdownButtonFormField<String>(
-  //               decoration: const InputDecoration(
-  //                 labelText: 'Instrument',
-  //                 border: OutlineInputBorder(),
-  //               ),
-  //               value: selectedInstrument,
-  //               items: instruments!.map((doc) {
-  //                 final data = doc.data() as Map<String, dynamic>;
-  //                 return DropdownMenuItem<String>(
-  //                   value: data['code'] as String,
-  //                   child: Text('${data['name']} (${data['code']})'),
-  //                 );
-  //               }).toList(),
-  //               onChanged: (value) {
-  //                 setState(() {
-  //                   selectedInstrument = value;
-  //                   _updateBarcode();
-  //                 });
-  //               },
-  //               validator: (value) => value == null ? 'Pflichtfeld' : null,
-  //             ),
-  //           const SizedBox(height: 16),
-  //           if (parts != null)
-  //             DropdownButtonFormField<String>(
-  //               decoration: const InputDecoration(
-  //                 labelText: 'Bauteil',
-  //                 border: OutlineInputBorder(),
-  //               ),
-  //               value: selectedPart,
-  //               items: parts!.map((doc) {
-  //                 final data = doc.data() as Map<String, dynamic>;
-  //                 return DropdownMenuItem<String>(
-  //                   value: data['code'] as String,
-  //                   child: Text('${data['name']} (${data['code']})'),
-  //                 );
-  //               }).toList(),
-  //               onChanged: (value) {
-  //                 setState(() {
-  //                   selectedPart = value;
-  //                   _updateBarcode();
-  //                 });
-  //               },
-  //               validator: (value) => value == null ? 'Pflichtfeld' : null,
-  //             ),
-  //           const SizedBox(height: 16),
-  //           if (woodTypes != null)
-  //             DropdownButtonFormField<String>(
-  //               decoration: const InputDecoration(
-  //                 labelText: 'Holzart',
-  //                 border: OutlineInputBorder(),
-  //               ),
-  //               value: selectedWoodType,
-  //               items: woodTypes!.map((doc) {
-  //                 final data = doc.data() as Map<String, dynamic>;
-  //                 return DropdownMenuItem<String>(
-  //                   value: data['code'] as String,
-  //                   child: Text('${data['name']} (${data['code']})'),
-  //                 );
-  //               }).toList(),
-  //               onChanged: (value) {
-  //                 setState(() {
-  //                   selectedWoodType = value;
-  //                   _updateBarcode();
-  //                 });
-  //               },
-  //               validator: (value) => value == null ? 'Pflichtfeld' : null,
-  //             ),
-  //           const SizedBox(height: 16),
-  //           if (qualities != null)
-  //             DropdownButtonFormField<String>(
-  //               decoration: const InputDecoration(
-  //                 labelText: 'Qualität',
-  //                 border: OutlineInputBorder(),
-  //               ),
-  //               value: selectedQuality,
-  //               items: qualities!.map((doc) {
-  //                 final data = doc.data() as Map<String, dynamic>;
-  //                 return DropdownMenuItem<String>(
-  //                   value: data['code'] as String,
-  //                   child: Text('${data['name']} (${data['code']})'),
-  //                 );
-  //               }).toList(),
-  //               onChanged: (value) {
-  //                 setState(() {
-  //                   selectedQuality = value;
-  //                   _updateBarcode();
-  //                 });
-  //               },
-  //               validator: (value) => value == null ? 'Pflichtfeld' : null,
-  //             ),
-  //           const SizedBox(height: 16),
-  //           DropdownButtonFormField<String>(
-  //             decoration: InputDecoration(
-  //               labelText: 'Einheit',
-  //               border: const OutlineInputBorder(),
-  //               errorText: isUnitMismatch ? unitMismatchMessage : null,
-  //               errorStyle: const TextStyle(color: Colors.red),
-  //               enabledBorder: OutlineInputBorder(
-  //                 borderSide: BorderSide(
-  //                   color: isUnitMismatch ? Colors.red : Colors.grey,
-  //                   width: isUnitMismatch ? 2 : 1,
-  //                 ),
-  //               ),
-  //               focusedBorder: OutlineInputBorder(
-  //                 borderSide: BorderSide(
-  //                   color: isUnitMismatch ? Colors.red : primaryAppColor,
-  //                   width: 2,
-  //                 ),
-  //               ),
-  //             ),
-  //             value: selectedUnit,
-  //             items: units.map((unit) => DropdownMenuItem<String>(
-  //               value: unit,
-  //               child: Text(unit),
-  //             )).toList(),
-  //             onChanged: (value) {
-  //               setState(() {
-  //                 selectedUnit = value;
-  //                 if (existingUnit != null && value != existingUnit) {
-  //                   isUnitMismatch = true;
-  //                   unitMismatchMessage = 'Produkt existiert bereits mit der Einheit "$existingUnit"!';
-  //                 } else {
-  //                   isUnitMismatch = false;
-  //                   unitMismatchMessage = null;
-  //                 }
-  //               });
-  //             },
-  //             validator: (value) => value == null ? 'Pflichtfeld' : null,
-  //           )
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
-  //
-  // Widget _buildInventoryAndPriceCard() {
-  //   return Card(
-  //     child: Padding(
-  //       padding: const EdgeInsets.all(16.0),
-  //       child: Column(
-  //         crossAxisAlignment: CrossAxisAlignment.start,
-  //         children: [
-  //           const Text(
-  //             'Bestand und Preis',
-  //             style: TextStyle(
-  //               fontSize: 18,
-  //               fontWeight: FontWeight.bold,
-  //             ),
-  //           ),
-  //           const SizedBox(height: 16),
-  //           TextFormField(
-  //             controller: quantityController,
-  //             decoration: InputDecoration(
-  //               labelText: 'Bestand (${selectedUnit ?? ""})',
-  //               border: const OutlineInputBorder(),
-  //             ),
-  //             keyboardType: TextInputType.number,
-  //             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-  //             validator: (value) => value?.isEmpty ?? true ? 'Pflichtfeld' : null,
-  //           ),
-  //           const SizedBox(height: 16),
-  //           TextFormField(
-  //             controller: priceController,
-  //             decoration: const InputDecoration(
-  //               labelText: 'Preis (CHF)',
-  //               border: OutlineInputBorder(),
-  //             ),
-  //             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-  //             inputFormatters: [
-  //               FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-  //             ],
-  //             validator: (value) => value?.isEmpty ?? true ? 'Pflichtfeld' : null,
-  //           ),
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
-  //
-  //
-  // Widget _buildProductionDetailsCard() {
-  //   return Card(
-  //     child: Padding(
-  //       padding: const EdgeInsets.all(16.0),
-  //       child: Column(
-  //         crossAxisAlignment: CrossAxisAlignment.start,
-  //         children: [
-  //           const Text(
-  //             'Produktionsdetails',
-  //             style: TextStyle(
-  //               fontSize: 18,
-  //               fontWeight: FontWeight.bold,
-  //             ),
-  //           ),
-  //           const SizedBox(height: 16),
-  //
-  //           // Jahrgang Dropdown
-  //           DropdownButtonFormField<int>(
-  //             decoration: const InputDecoration(
-  //               labelText: 'Jahrgang',
-  //               border: OutlineInputBorder(),
-  //             ),
-  //             value: selectedYear,
-  //             items: List<int>.generate(
-  //               DateTime.now().year - 1999,
-  //                   (index) => 2000 + index+1,
-  //             ).map((year) => DropdownMenuItem<int>(
-  //               value: year,
-  //               child: Text(year.toString()),
-  //             )).toList(),
-  //             onChanged: (value) {
-  //               if (value != selectedYear) {  // Nur updaten wenn sich der Wert wirklich ändert
-  //                 setState(() {
-  //                   selectedYear = value;
-  //                 });
-  //                 _updateBarcode();  // Direkte Prüfung bei Änderung
-  //               }
-  //             },
-  //             validator: (value) => value == null ? 'Pflichtfeld' : null,
-  //           ),
-  //
-  //           const SizedBox(height: 24),
-  //           const Text(
-  //             'Eigenschaften',
-  //             style: TextStyle(
-  //               fontSize: 16,
-  //               fontWeight: FontWeight.bold,
-  //             ),
-  //           ),
-  //           const SizedBox(height: 8),
-  //
-  //           // Thermobehandelt Switch
-  //           SwitchListTile(
-  //             title: const Text('Thermobehandelt'),
-  //             value: thermallyTreated,
-  //             onChanged: (value) {
-  //               setState(() {
-  //                 thermallyTreated = value;
-  //                 _updateBarcode();
-  //               });
-  //             },
-  //           ),
-  //
-  //           // Haselfichte Switch
-  //           SwitchListTile(
-  //             title: const Text('Haselfichte'),
-  //             value: haselfichte,
-  //             onChanged: (value) {
-  //               setState(() {
-  //                 haselfichte = value;
-  //                 _updateBarcode();
-  //               });
-  //             },
-  //           ),
-  //
-  //           // Mondholz Switch
-  //           SwitchListTile(
-  //             title: const Text('Mondholz'),
-  //             value: moonwood,
-  //             onChanged: (value) {
-  //               setState(() {
-  //                 moonwood = value;
-  //                 _updateBarcode();
-  //               });
-  //             },
-  //           ),
-  //
-  //           // FSC 100% Switch
-  //           SwitchListTile(
-  //             title: const Text('FSC 100%'),
-  //             value: fsc100,
-  //             onChanged: (value) {
-  //               setState(() {
-  //                 fsc100 = value;
-  //                 _updateBarcode();
-  //               });
-  //             },
-  //           ),
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
 
 
   String getNameFromDocs(List<QueryDocumentSnapshot> docs, String code) {
@@ -1495,15 +1092,66 @@ class AddProductScreenState extends State<AddProductScreen> {
     }
 
     try {
+      // Lade die englischen Namen aus den Dokumenten
+      String instrumentNameEn = '';
+      String partNameEn = '';
+      String woodNameEn = '';
+      String qualityNameEn = '';
+
+      // Hole die englischen Namen
+      if (instruments != null) {
+        final instrumentDoc = instruments!.firstWhere(
+              (doc) => (doc.data() as Map<String, dynamic>)['code'] == selectedInstrument,
+        );
+        instrumentNameEn = (instrumentDoc.data() as Map<String, dynamic>)['name_english'] ?? '';
+      }
+
+      if (parts != null) {
+        final partDoc = parts!.firstWhere(
+              (doc) => (doc.data() as Map<String, dynamic>)['code'] == selectedPart,
+        );
+        partNameEn = (partDoc.data() as Map<String, dynamic>)['name_english'] ?? '';
+      }
+
+      if (woodTypes != null) {
+        final woodDoc = woodTypes!.firstWhere(
+              (doc) => (doc.data() as Map<String, dynamic>)['code'] == selectedWoodType,
+        );
+        woodNameEn = (woodDoc.data() as Map<String, dynamic>)['name_english'] ?? '';
+      }
+
+      if (qualities != null) {
+        final qualityDoc = qualities!.firstWhere(
+              (doc) => (doc.data() as Map<String, dynamic>)['code'] == selectedQuality,
+        );
+        qualityNameEn = (qualityDoc.data() as Map<String, dynamic>)['name_english'] ?? '';
+      }
+
+      // Erstelle den englischen Produktnamen
+      String productNameEn = '';
+      if (instrumentNameEn.isNotEmpty && partNameEn.isNotEmpty) {
+        productNameEn = '$instrumentNameEn $partNameEn';
+        if (woodNameEn.isNotEmpty) {
+          productNameEn += ' - $woodNameEn';
+        }
+        if (qualityNameEn.isNotEmpty) {
+          productNameEn += ' ($qualityNameEn)';
+        }
+      }
+
       final baseData = {
         'instrument_code': selectedInstrument,
         'instrument_name': getNameFromDocs(instruments!, selectedInstrument!),
+        'instrument_name_en': instrumentNameEn,
         'part_code': selectedPart,
         'part_name': getNameFromDocs(parts!, selectedPart!),
+        'part_name_en': partNameEn,
         'wood_code': selectedWoodType,
         'wood_name': getNameFromDocs(woodTypes!, selectedWoodType!),
+        'wood_name_en': woodNameEn,
         'quality_code': selectedQuality,
         'quality_name': getNameFromDocs(qualities!, selectedQuality!),
+        'quality_name_en': qualityNameEn,
         'unit': selectedUnit,
         'price_CHF': double.parse(priceController.text),
         'last_modified': FieldValue.serverTimestamp(),
@@ -1512,13 +1160,20 @@ class AddProductScreenState extends State<AddProductScreen> {
 
       final productName = '${baseData['instrument_name']} - ${baseData['part_name']} - ${baseData['wood_name']}';
       baseData['product_name'] = productName;
+      baseData['product_name_en'] = productNameEn;
 
       if (widget.editMode) {
-        // Bearbeitungsmodus
+        // Bearbeitungsmodus - WICHTIG: Quantity hinzufügen!
+        final updateData = {
+          ...baseData,
+          'quantity': int.parse(quantityController.text), // <-- Das fehlte!
+        };
+
         await FirebaseFirestore.instance
             .collection(widget.isProduction ? 'production' : 'inventory')
             .doc(widget.isProduction ? widget.barcode : shortBarcode)
-            .update(baseData);
+            .update(updateData);
+
       } else {
         // Neuer Eintrag
         final batch = FirebaseFirestore.instance.batch();
@@ -1610,7 +1265,6 @@ class AddProductScreenState extends State<AddProductScreen> {
         ),
       );
     }
-
   }
 
 

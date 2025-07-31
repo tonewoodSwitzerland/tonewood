@@ -1,4 +1,10 @@
 // File: services/document_selection_manager.dart (Erweiterte Version)
+
+/// Info, hier ist der Angeobtsbereich
+
+
+
+
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -90,11 +96,19 @@ class DocumentSelectionManager {
 
   static Future<void> savePackingListSettings(List<Map<String, dynamic>> packages) async {
     try {
+      // Erweitere die gespeicherten Daten um die standard_package_id
+      final packagesWithStandardInfo = packages.map((package) {
+        return {
+          ...package,
+          'standard_package_id': package['standard_package_id'],
+        };
+      }).toList();
+
       await FirebaseFirestore.instance
           .collection('temporary_document_settings')
           .doc('packing_list_settings')
           .set({
-        'packages': packages,
+        'packages': packagesWithStandardInfo,
         'timestamp': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -129,6 +143,20 @@ class DocumentSelectionManager {
 
       // NEU: Lade Tara-Einstellungen
       final taraSettings = await loadTaraSettings();
+print(taraSettings);
+      if (taraSettings['packaging_weight'] != null) {
+        taraSettings['packaging_weight'] = (taraSettings['packaging_weight'] as num).toDouble();
+      }
+
+      print("rtest:${  taraSettings['packaging_weight']}");
+// Nach dem Laden der taraSettings
+      DateTime? invoiceDate;
+      if (taraSettings['commercial_invoice_date'] != null) {
+        final timestamp = taraSettings['commercial_invoice_date'];
+        if (timestamp is Timestamp) {
+          invoiceDate = timestamp.toDate();
+        }
+      }
 
       final basketItems = data['basketItems'] as List<Map<String, dynamic>>;
 
@@ -174,6 +202,7 @@ class DocumentSelectionManager {
       final costCenterCode = costCenter != null ? costCenter['code'] : '00000';
 
       final pdfBytes = await CommercialInvoiceGenerator.generateCommercialInvoicePdf(
+        invoiceDate: invoiceDate,
         items: items,
         customerData: data['customer'],
         fairData: data['fair'],
@@ -214,22 +243,82 @@ class DocumentSelectionManager {
     }
   }
 
-// Lade Tara-Einstellungen
   static Future<Map<String, dynamic>> loadTaraSettings() async {
     try {
+      // 1. Lade zuerst die gespeicherten Tara-Einstellungen
       final doc = await FirebaseFirestore.instance
           .collection('temporary_document_settings')
           .doc('tara_settings')
           .get();
 
-      if (doc.exists) {
-        return doc.data()!;
+      Map<String, dynamic> taraSettings = {};
+      bool hasExplicitTaraSettings = false;
+
+      if (doc.exists && doc.data() != null) {
+        taraSettings = doc.data()!;
+        // Prüfe ob explizit Tara-Werte gespeichert wurden
+        hasExplicitTaraSettings = taraSettings.containsKey('number_of_packages') ||
+            taraSettings.containsKey('packaging_weight');
       }
+
+      // 2. Wenn KEINE expliziten Tara-Einstellungen für Gewicht/Anzahl existieren,
+      //    nutze die Packlisten-Daten
+      if (!hasExplicitTaraSettings) {
+        final packingListSettings = await loadPackingListSettings();
+        final packages = packingListSettings['packages'] as List<dynamic>?;
+
+        if (packages != null && packages.isNotEmpty) {
+          double totalPackagingWeight = 0.0;
+
+          // Berechne das Gesamtgewicht aller Verpackungen
+          for (final package in packages) {
+            final tareWeight = package['tare_weight'];
+            if (tareWeight != null) {
+              totalPackagingWeight += (tareWeight is num) ? tareWeight.toDouble() : 0.0;
+            }
+          }
+
+          // Überschreibe nur number_of_packages und packaging_weight
+          taraSettings['number_of_packages'] = packages.length;
+          taraSettings['packaging_weight'] = totalPackagingWeight;
+
+          print('Verwende Packlisten-Daten: ${packages.length} Pakete, ${totalPackagingWeight.toStringAsFixed(2)} kg');
+        } else {
+          // Fallback wenn weder Tara-Settings noch Packliste existieren
+          taraSettings['number_of_packages'] = taraSettings['number_of_packages'] ?? 1;
+          taraSettings['packaging_weight'] = taraSettings['packaging_weight'] ?? 0.0;
+        }
+      }
+
+      // 3. Stelle sicher, dass alle Werte als richtige Typen vorliegen
+      return {
+        'number_of_packages': (taraSettings['number_of_packages'] ?? 1) as int,
+        'packaging_weight': ((taraSettings['packaging_weight'] ?? 0.0) as num).toDouble(),
+        // Alle anderen Einstellungen beibehalten
+        'commercial_invoice_origin_declaration': taraSettings['commercial_invoice_origin_declaration'] ?? false,
+        'commercial_invoice_cites': taraSettings['commercial_invoice_cites'] ?? false,
+        'commercial_invoice_export_reason': taraSettings['commercial_invoice_export_reason'] ?? false,
+        'commercial_invoice_export_reason_text': taraSettings['commercial_invoice_export_reason_text'] ?? 'Ware',
+        'commercial_invoice_incoterms': taraSettings['commercial_invoice_incoterms'] ?? false,
+        'commercial_invoice_selected_incoterms': List<String>.from(taraSettings['commercial_invoice_selected_incoterms'] ?? []),
+        'commercial_invoice_incoterms_freetexts': Map<String, String>.from(taraSettings['commercial_invoice_incoterms_freetexts'] ?? {}),
+        'commercial_invoice_delivery_date': taraSettings['commercial_invoice_delivery_date'] ?? false,
+        'commercial_invoice_delivery_date_value': taraSettings['commercial_invoice_delivery_date_value'],
+        'commercial_invoice_delivery_date_month_only': taraSettings['commercial_invoice_delivery_date_month_only'] ?? false,
+        'commercial_invoice_carrier': taraSettings['commercial_invoice_carrier'] ?? false,
+        'commercial_invoice_carrier_text': taraSettings['commercial_invoice_carrier_text'] ?? 'Swiss Post',
+        'commercial_invoice_signature': taraSettings['commercial_invoice_signature'] ?? false,
+        'commercial_invoice_selected_signature': taraSettings['commercial_invoice_selected_signature'],
+        'commercial_invoice_date': taraSettings['commercial_invoice_date'],
+      };
+
     } catch (e) {
       print('Fehler beim Laden der Tara-Einstellungen: $e');
+      return {
+        'number_of_packages': 1,
+        'packaging_weight': 0.0,
+      };
     }
-
-    return {'number_of_packages': 1, 'packaging_weight': 0.0};
   }
 
 
@@ -344,6 +433,93 @@ class DocumentSelectionManager {
     }
   }
 
+
+  // In document_selection_manager.dart, nach den anderen save-Methoden hinzufügen:
+
+  static Future<void> saveInvoiceSettings(Map<String, dynamic> settings) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('temporary_document_settings')
+          .doc('invoice_settings')
+          .set({
+        'down_payment_amount': settings['down_payment_amount'] ?? 0.0,
+        'down_payment_reference': settings['down_payment_reference'] ?? '',
+        'down_payment_date': settings['down_payment_date'],
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Fehler beim Speichern der Rechnungs-Einstellungen: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> loadInvoiceSettings() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('temporary_document_settings')
+          .doc('invoice_settings')
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        return {
+          'down_payment_amount': data['down_payment_amount'] ?? 0.0,
+          'down_payment_reference': data['down_payment_reference'] ?? '',
+          'down_payment_date': data['down_payment_date'] != null
+              ? (data['down_payment_date'] as Timestamp).toDate()
+              : null,
+        };
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Rechnungs-Einstellungen: $e');
+    }
+
+    return {
+      'down_payment_amount': 0.0,
+      'down_payment_reference': '',
+      'down_payment_date': null,
+    };
+  }
+// Nach saveInvoiceSettings() hinzufügen:
+
+  static Future<void> saveQuoteSettings(Map<String, dynamic> settings) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('temporary_document_settings')
+          .doc('quote_settings')
+          .set({
+        'validity_date': settings['validity_date'],
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Fehler beim Speichern der Offerten-Einstellungen: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> loadQuoteSettings() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('temporary_document_settings')
+          .doc('quote_settings')
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+        return {
+          'validity_date': data['validity_date'] != null
+              ? (data['validity_date'] as Timestamp).toDate()
+              : null,
+        };
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Offerten-Einstellungen: $e');
+    }
+
+    return {
+      'validity_date': null,
+    };
+  }
+
+
 // Lade Lieferschein-Einstellungen
   static Future<Map<String, DateTime?>> loadDeliveryNoteSettings() async {
     try {
@@ -369,6 +545,14 @@ class DocumentSelectionManager {
 
     return {'delivery_date': null, 'payment_date': null};
   }
+
+
+
+
+
+
+
+
 
 // Zeige Lieferschein-Preview
   static Future<void> _showDeliveryNotePreview(BuildContext context, Map<String, dynamic> data, {String? language}) async {
@@ -489,28 +673,59 @@ class DocumentSelectionManager {
       }
     }
   }
+  // Ersetze die _showPackingListPreview Methode mit dieser Version:
+
   static Future<void> _showPackingListPreview(BuildContext context, Map<String, dynamic> data, {String? language}) async {
     try {
-      final customerData = data['customer'] as Map<String, dynamic>;
-      final documentLanguage = language ?? customerData['language'] ?? 'DE';
+      print('=== START PACKLISTE PREVIEW DEBUG ===');
+      print('Received data: ${data.keys}');
 
+      // Customer Data Debug
+      final customerData = data['customer'] as Map<String, dynamic>;
+      print('Customer data keys: ${customerData.keys}');
+      print('Customer language: ${customerData['language']}');
+
+      final documentLanguage = language ?? customerData['language'] ?? 'DE';
+      print('Document language: $documentLanguage');
+
+      // Cost Center Debug
       final costCenter = data['costCenter'];
+      print('Cost center data: $costCenter');
+
       final costCenterCode = costCenter != null ? costCenter['code'] : '00000';
+      print('Cost center code: $costCenterCode');
+
+      // Fair Data Debug
+      final fairData = data['fair'];
+      print('Fair data: $fairData');
+
+      // Lade Packlisten-Einstellungen für Debug
+      final packingListSettings = await DocumentSelectionManager.loadPackingListSettings();
+      print('Packing list settings: ${packingListSettings.keys}');
+      print('Packages: ${packingListSettings['packages']}');
+
+      // Generiere PDF mit detailliertem Error Handling
+      print('Calling PackingListGenerator.generatePackingListPdf...');
 
       final pdfBytes = await PackingListGenerator.generatePackingListPdf(
         language: documentLanguage,
         packingListNumber: 'PREVIEW',
-        customerData: data['customer'],
-        fairData: data['fair'],
+        customerData: customerData,
+        fairData: fairData,
         costCenterCode: costCenterCode,
       );
+
+      print('PDF bytes generated successfully: ${pdfBytes.length} bytes');
 
       if (context.mounted) {
         Navigator.pop(context);
         _openPdfViewer(context, pdfBytes, 'Packliste_Preview.pdf');
       }
-    } catch (e) {
-      print('Fehler bei Packliste-Preview: $e');
+    } catch (e, stackTrace) {
+      print('=== FEHLER BEI PACKLISTE-PREVIEW ===');
+      print('Error: $e');
+      print('Stack trace: $stackTrace');
+      print('=== END ERROR ===');
       rethrow;
     }
   }
@@ -595,6 +810,7 @@ class DocumentSelectionManager {
   }
 
   // Zeige Offerte-Preview
+// Zeige Offerte-Preview
   static Future<void> _showQuotePreview(BuildContext context, Map<String, dynamic> data, {String? language}) async {
     try {
       final customerData = data['customer'] as Map<String, dynamic>;
@@ -603,6 +819,9 @@ class DocumentSelectionManager {
       final taxOption = data['taxOption'] ?? 0;
       final vatRate = data['vatRate'] ?? 8.1;
       final basketItems = data['basketItems'] as List<Map<String, dynamic>>;
+
+      // NEU: Lade Quote-Einstellungen
+      final quoteSettings = await DocumentSelectionManager.loadQuoteSettings();
 
       // Berechne Rabatte für Preview - das lädt bereits den Gesamtrabatt!
       final calculations = await _calculateDiscountsForPreview(basketItems);
@@ -656,8 +875,9 @@ class DocumentSelectionManager {
         quoteNumber: 'PREVIEW',
         shippingCosts: shippingCosts,
         calculations: calculations, // Hier wird der Gesamtrabatt übergeben!
-        taxOption: taxOption,  // NEU
-        vatRate: vatRate,      // NEU
+        taxOption: taxOption,
+        vatRate: vatRate,
+        validityDate: quoteSettings['validity_date'], // NEU: Hier wird die Gültigkeit übergeben
       );
 
       if (context.mounted) {
@@ -678,6 +898,7 @@ class DocumentSelectionManager {
       final taxOption = data['taxOption'] ?? 0;
       final vatRate = data['vatRate'] ?? 8.1;
       final basketItems = data['basketItems'] as List<Map<String, dynamic>>;
+      final invoiceSettings = await loadInvoiceSettings();
 
       // Berechne Rabatte für Preview
       final calculations = await _calculateDiscountsForPreview(basketItems);
@@ -701,6 +922,7 @@ class DocumentSelectionManager {
       final costCenterCode = costCenter != null ? costCenter['code'] : '00000';
 
       final pdfBytes = await InvoiceGenerator.generateInvoicePdf(
+        downPaymentSettings: invoiceSettings,
         items: items,
         customerData: data['customer'],
         fairData: data['fair'],
@@ -824,6 +1046,12 @@ class DocumentSelectionManager {
   }
 }
 // Am Ende der document_selection_manager.dart Datei:
+
+
+// In der showDocumentSelectionBottomSheet Funktion, fügen Sie diese neue Funktion hinzu:
+
+
+
 
 Future<void> _showDeliveryNoteSettingsDialog(BuildContext context) async {
   DateTime? selectedDeliveryDate;
@@ -1118,6 +1346,7 @@ int _getAssignedQuantity(Map<String, dynamic> item, List<Map<String, dynamic>> p
   return totalAssigned;
 }
 
+// In der showPackingListSettingsDialog Funktion ersetzen Sie den Package Card Builder mit dieser Version:
 Widget _buildPackageCard(
     BuildContext context,
     BuildContext dialogContext,
@@ -1126,14 +1355,18 @@ Widget _buildPackageCard(
     List<dynamic> availableItems,
     List<Map<String, dynamic>> packages,
     StateSetter setDialogState,
+    Map<String, Map<String, TextEditingController>> packageControllers, // NEU
     ) {
-  final packagingTypes = [
-    'Kartonschachtel',
-    'INKA Palette mit Karton',
-    'INKA Palette mit Folie',
-    'Holzkiste',
-    'Andere',
-  ];
+  // NEU: State für ausgewähltes Standardpaket
+  String? selectedStandardPackageId = package['standard_package_id'];
+
+  // Hole Controller aus der Map
+  final controllers = packageControllers[package['id']]!;
+  final lengthController = controllers['length']!;
+  final widthController = controllers['width']!;
+  final heightController = controllers['height']!;
+  final weightController = controllers['weight']!;
+  final customNameController = controllers['custom_name']!;
 
   return Card(
     margin: const EdgeInsets.only(bottom: 16),
@@ -1157,6 +1390,14 @@ Widget _buildPackageCard(
                 IconButton(
                   onPressed: () {
                     setDialogState(() {
+                      // Dispose und entferne Controller
+                      final packageId = package['id'] as String;  // NEU: Verwende package direkt
+
+                      packageControllers[packageId]?.forEach((key, controller) {
+                        controller.dispose();
+                      });
+                      packageControllers.remove(packageId);
+
                       packages.removeAt(index);
                     });
                   },
@@ -1168,36 +1409,156 @@ Widget _buildPackageCard(
 
           const SizedBox(height: 12),
 
-          // Verpackungsart
-          DropdownButtonFormField<String>(
-            decoration: InputDecoration(
-              labelText: 'Verpackungsart',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              isDense: true,
-            ),
-            value: package['packaging_type'],
-            items: packagingTypes.map((type) {
-              return DropdownMenuItem(
-                value: type,
-                child: Text(type),
+          // NEU: Dropdown für Standardpakete
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('standardized_packages')
+                .orderBy('name')
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const LinearProgressIndicator();
+              }
+
+              final standardPackages = snapshot.data!.docs;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DropdownButtonFormField<String>(
+                    decoration: InputDecoration(
+                      labelText: 'Verpackungsvorlage',
+                      hintText: 'Bitte auswählen',
+                      prefixIcon: Icon(Icons.inventory_2),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      isDense: true,
+                    ),
+                    value: selectedStandardPackageId,
+                    items: [
+                      // Option für kein Standardpaket
+                      const DropdownMenuItem<String>(
+                        value: 'custom',
+                        child: Text('Benutzerdefiniert'),
+                      ),
+                      // Standardpakete aus der Datenbank
+                      ...standardPackages.map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return DropdownMenuItem<String>(
+                          value: doc.id,
+                          child: Text(data['name'] ?? 'Unbenannt'),
+                        );
+                      }).toList(),
+                    ],
+                    onChanged: (value) {
+                      setDialogState(() {
+                        package['standard_package_id'] = value;
+
+                        if (value != null && value != 'custom') {
+                          // Finde das ausgewählte Paket
+                          final selectedPackage = standardPackages.firstWhere(
+                                (doc) => doc.id == value,
+                          );
+                          final packageData = selectedPackage.data() as Map<String, dynamic>;
+
+                          // Übernehme die Werte vom Standardpaket
+                          package['packaging_type'] = packageData['name'] ?? 'Standardpaket';
+                          package['packaging_type_en'] = packageData['nameEn'] ?? packageData['name'] ?? 'Standard package'; // NEU
+
+                          package['length'] = packageData['length'] ?? 0.0;
+                          package['width'] = packageData['width'] ?? 0.0;
+                          package['height'] = packageData['height'] ?? 0.0;
+                          package['tare_weight'] = packageData['weight'] ?? 0.0;
+
+                          // Aktualisiere die Controller
+                          lengthController.text = package['length'].toString();
+                          widthController.text = package['width'].toString();
+                          heightController.text = package['height'].toString();
+                          weightController.text = package['tare_weight'].toString();
+                        } else if (value == 'custom') {
+                          // Bei Benutzerdefiniert, leere die Werte
+                          package['packaging_type'] = '';
+                          package['length'] = 0.0;
+                          package['width'] = 0.0;
+                          package['height'] = 0.0;
+                          package['tare_weight'] = 0.0;
+
+                          // Aktualisiere die Controller
+                          lengthController.text = '0.0';
+                          widthController.text = '0.0';
+                          heightController.text = '0.0';
+                          weightController.text = '0.0';
+                          customNameController.text = '';
+                        }
+                      });
+                    },
+                  ),
+
+                  // Info-Text wenn Standardpaket ausgewählt
+                  if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom')
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 16,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Die Werte wurden aus der Vorlage übernommen und können bei Bedarf angepasst werden.',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
               );
-            }).toList(),
-            onChanged: (value) {
-              setDialogState(() {
-                package['packaging_type'] = value;
-              });
             },
           ),
 
           const SizedBox(height: 12),
 
-          // Abmessungen
+          // Freitextfeld für benutzerdefinierten Namen
+          if (selectedStandardPackageId == 'custom') ...[
+            TextFormField(
+              controller: customNameController,
+              decoration: InputDecoration(
+                labelText: 'Verpackungsbezeichnung',
+                hintText: 'z.B. Spezialverpackung',
+                prefixIcon: Icon(Icons.edit),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                isDense: true,
+              ),
+              onChanged: (value) {
+                package['packaging_type'] = value;
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Abmessungen (immer bearbeitbar)
           Row(
             children: [
               Expanded(
                 child: TextFormField(
+                  controller: lengthController,
                   decoration: InputDecoration(
                     labelText: 'Länge (cm)',
                     border: OutlineInputBorder(
@@ -1206,7 +1567,6 @@ Widget _buildPackageCard(
                     isDense: true,
                   ),
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  initialValue: package['length'].toString(),
                   onChanged: (value) {
                     package['length'] = double.tryParse(value) ?? 0.0;
                   },
@@ -1217,6 +1577,7 @@ Widget _buildPackageCard(
               const SizedBox(width: 8),
               Expanded(
                 child: TextFormField(
+                  controller: widthController,
                   decoration: InputDecoration(
                     labelText: 'Breite (cm)',
                     border: OutlineInputBorder(
@@ -1225,7 +1586,6 @@ Widget _buildPackageCard(
                     isDense: true,
                   ),
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  initialValue: package['width'].toString(),
                   onChanged: (value) {
                     package['width'] = double.tryParse(value) ?? 0.0;
                   },
@@ -1236,6 +1596,7 @@ Widget _buildPackageCard(
               const SizedBox(width: 8),
               Expanded(
                 child: TextFormField(
+                  controller: heightController,
                   decoration: InputDecoration(
                     labelText: 'Höhe (cm)',
                     border: OutlineInputBorder(
@@ -1244,7 +1605,6 @@ Widget _buildPackageCard(
                     isDense: true,
                   ),
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  initialValue: package['height'].toString(),
                   onChanged: (value) {
                     package['height'] = double.tryParse(value) ?? 0.0;
                   },
@@ -1255,8 +1615,9 @@ Widget _buildPackageCard(
 
           const SizedBox(height: 12),
 
-          // Tara-Gewicht
+          // Tara-Gewicht (immer bearbeitbar)
           TextFormField(
+            controller: weightController,
             decoration: InputDecoration(
               labelText: 'Verpackungsgewicht (kg)',
               border: OutlineInputBorder(
@@ -1265,7 +1626,6 @@ Widget _buildPackageCard(
               isDense: true,
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            initialValue: package['tare_weight'].toString(),
             onChanged: (value) {
               package['tare_weight'] = double.tryParse(value) ?? 0.0;
             },
@@ -1273,7 +1633,7 @@ Widget _buildPackageCard(
 
           const SizedBox(height: 16),
 
-          // Produkte zuweisen
+          // Produkte zuweisen (bleibt gleich)
           Text(
             'Zugewiesene Produkte',
             style: TextStyle(
@@ -1340,6 +1700,7 @@ Widget _buildPackageCard(
     ),
   );
 }
+
 
 void _showAddProductDialog(
     BuildContext dialogContext,
@@ -1463,6 +1824,7 @@ void _showQuantityDialog(
                 package['items'].add({
                   'product_id': item['product_id'],
                   'product_name': item['product_name'],
+                  'product_name_en': item['product_name_en'] ?? '',
                   'quantity': selectedQuantity,
                   'weight_per_unit': item['weight'] ?? 0.0,
                   'volume_per_unit': item['volume'] ?? 0.0,
@@ -1476,8 +1838,10 @@ void _showQuantityDialog(
                   'unit': item['unit'] ?? 'Stk',
                   'instrument_code': item['instrument_code'] ?? '',
                   'instrument_name': item['instrument_name'] ?? '',
+                  'instrument_name_en': item['instrument_name_en'] ?? '' ,
                   'part_code': item['part_code'] ?? '',
                   'part_name': item['part_name'] ?? '',
+                  'part_name_en': item['part_name_en'] ?? '',
                   'quality_code': item['quality_code'] ?? '',
                   'quality_name': item['quality_name'] ?? '',
                 });
@@ -1493,6 +1857,68 @@ void _showQuantityDialog(
 }
 
 
+// In document_selection_manager.dart, nach anderen Methoden hinzufügen:
+
+Future<Map<String, dynamic>> _calculateDiscountsForPreview(List<Map<String, dynamic>> basketItems) async {
+try {
+double itemDiscounts = 0.0;
+double totalDiscountAmount = 0.0;
+
+// Berechne Item-Rabatte direkt aus den basketItems
+for (final item in basketItems) {
+final customPriceValue = item['custom_price_per_unit'];
+final pricePerUnit = customPriceValue != null
+? (customPriceValue as num).toDouble()
+    : (item['price_per_unit'] as num).toDouble();
+
+final itemSubtotal = (item['quantity'] as int) * pricePerUnit;
+
+// Rabatt ist direkt im Item gespeichert
+final discount = item['discount'] as Map<String, dynamic>?;
+if (discount != null) {
+final percentage = (discount['percentage'] as num? ?? 0).toDouble();
+final absolute = (discount['absolute'] as num? ?? 0).toDouble();
+final discountAmount = (itemSubtotal * (percentage / 100)) + absolute;
+itemDiscounts += discountAmount;
+}
+}
+
+// Lade Gesamtrabatt aus temporary_discounts/total_discount
+final totalDiscountDoc = await FirebaseFirestore.instance
+    .collection('temporary_discounts')
+    .doc('total_discount')
+    .get();
+
+if (totalDiscountDoc.exists) {
+final totalDiscountData = totalDiscountDoc.data()!;
+final totalPercentage = (totalDiscountData['percentage'] as num? ?? 0).toDouble();
+final totalAbsolute = (totalDiscountData['absolute'] as num? ?? 0).toDouble();
+
+// Berechne Subtotal nach Item-Rabatten
+final subtotal = basketItems.fold<double>(0.0, (sum, item) {
+final customPriceValue = item['custom_price_per_unit'];
+final pricePerUnit = customPriceValue != null
+? (customPriceValue as num).toDouble()
+    : (item['price_per_unit'] as num).toDouble();
+return sum + ((item['quantity'] as int) * pricePerUnit);
+});
+
+final subtotalAfterItemDiscounts = subtotal - itemDiscounts;
+totalDiscountAmount = (subtotalAfterItemDiscounts * (totalPercentage / 100)) + totalAbsolute;
+}
+
+return {
+'item_discounts': itemDiscounts,
+'total_discount_amount': totalDiscountAmount,
+};
+} catch (e) {
+print('Fehler beim Berechnen der Rabatte: $e');
+return {
+'item_discounts': 0.0,
+'total_discount_amount': 0.0,
+};
+}
+}
 
 Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
   required ValueNotifier<bool> selectionCompleteNotifier,
@@ -1500,13 +1926,654 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
 }) async {
   Map<String, bool> documentSelection = await DocumentSelectionManager.loadDocumentSelection();
 
-
+  print("yuppp");
   print("documentLanguageNotifier passed: $documentLanguageNotifier");
   final hasSelection = documentSelection.values.any((selected) => selected == true);
   selectionCompleteNotifier.value = hasSelection;
   // Verwende den übergebenen documentLanguageNotifier direkt
   final languageNotifier = documentLanguageNotifier ?? ValueNotifier<String>('DE');
   final dependentDocuments = ['Lieferschein', 'Handelsrechnung', 'Packliste'];
+
+
+  // In der showDocumentSelectionBottomSheet Funktion, fügen Sie diese neue Funktion hinzu:
+
+  Future<void> showInvoiceSettingsDialog() async {
+    double downPaymentAmount = 0.0;
+    String downPaymentReference = '';
+    DateTime? downPaymentDate;
+
+    // Lade bestehende Einstellungen
+    final existingSettings = await DocumentSelectionManager.loadInvoiceSettings();
+    downPaymentAmount = (existingSettings['down_payment_amount'] ?? 0.0).toDouble();
+    downPaymentReference = existingSettings['down_payment_reference'] ?? '';
+    downPaymentDate = existingSettings['down_payment_date'];
+
+    final downPaymentController = TextEditingController(text: downPaymentAmount > 0 ? downPaymentAmount.toString() : '');
+    final referenceController = TextEditingController(text: downPaymentReference);
+
+    // Hole den Gesamtbetrag aus dem Warenkorb
+    double totalAmount = 0.0;
+    try {
+      // Berechne den Gesamtbetrag
+      final basketSnapshot = await FirebaseFirestore.instance
+          .collection('temporary_basket')
+          .get();
+
+      final calculations = await _calculateDiscountsForPreview(
+          basketSnapshot.docs.map((doc) => doc.data()).toList()
+      );
+
+      // Hier müssen wir den Bruttobetrag berechnen
+      double subtotal = 0.0;
+      for (final doc in basketSnapshot.docs) {
+        final data = doc.data();
+        final customPriceValue = data['custom_price_per_unit'];
+        final pricePerUnit = customPriceValue != null
+            ? (customPriceValue as num).toDouble()
+            : (data['price_per_unit'] as num).toDouble();
+        subtotal += (data['quantity'] as int) * pricePerUnit;
+      }
+
+      // Rabatte abziehen
+      final netAmount = subtotal - calculations['item_discounts'] - calculations['total_discount_amount'];
+
+      // MwSt hinzufügen (Standard 8.1%)
+      final taxDoc = await FirebaseFirestore.instance
+          .collection('temporary_tax')
+          .doc('current_tax')
+          .get();
+
+      final vatRate = taxDoc.exists ? (taxDoc.data()?['vat_rate'] ?? 8.1).toDouble() : 8.1;
+      final taxOption = taxDoc.exists ? (taxDoc.data()?['tax_option'] ?? 0) : 0;
+
+      if (taxOption == 0) { // Standard
+        totalAmount = netAmount * (1 + vatRate / 100);
+      } else {
+        totalAmount = netAmount;
+      }
+
+      // Versandkosten hinzufügen
+      final shippingCosts = await ShippingCostsManager.loadShippingCosts();
+      if (shippingCosts.isNotEmpty) {
+        totalAmount += (shippingCosts['amount'] ?? 0.0) + (shippingCosts['phytosanitaryCertificate'] ?? 0.0);
+        totalAmount += (shippingCosts['totalSurcharges'] ?? 0.0) - (shippingCosts['totalDeductions'] ?? 0.0);
+      }
+    } catch (e) {
+      print('Fehler beim Berechnen des Gesamtbetrags: $e');
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.85,
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
+            ),
+            child: Column(
+              children: [
+                // Drag Handle
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.outline.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+
+                // Content
+                // Content
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: getAdaptiveIcon(
+                                iconName: 'receipt',
+                                defaultIcon: Icons.receipt,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Rechnung - Anzahlung',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              icon: getAdaptiveIcon(
+                                iconName: 'close',
+                                defaultIcon: Icons.close,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Gesamtbetrag anzeigen
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Bruttobetrag',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              Text(
+                                'CHF ${totalAmount.toStringAsFixed(2)}',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Anzahlung Betrag
+                        TextField(
+                          controller: downPaymentController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            labelText: 'Anzahlung (CHF)',
+                            prefixIcon: getAdaptiveIcon(
+                              iconName: 'payments',
+                              defaultIcon: Icons.payments,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            helperText: 'Betrag der bereits geleisteten Anzahlung',
+                          ),
+                          onChanged: (value) {
+                            setDialogState(() {
+                              downPaymentAmount = double.tryParse(value) ?? 0.0;
+                            });
+                          },
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Belegnummer/Notiz
+                        TextField(
+                          controller: referenceController,
+                          decoration: InputDecoration(
+                            labelText: 'Belegnummer / Notiz',
+                            prefixIcon: getAdaptiveIcon(
+                              iconName: 'description',
+                              defaultIcon: Icons.description,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            helperText: 'z.B. Anzahlung AR-2025-0004 vom 15.05.2025',
+                          ),
+                          onChanged: (value) {
+                            downPaymentReference = value;
+                          },
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Datum der Anzahlung
+                        InkWell(
+                          onTap: () async {
+                            final DateTime? picked = await showDatePicker(
+                              context: dialogContext,
+                              initialDate: downPaymentDate ?? DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now(),
+                              locale: const Locale('de', 'DE'),
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                downPaymentDate = picked;
+                              });
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                getAdaptiveIcon(
+                                  iconName: 'calendar_today',
+                                  defaultIcon: Icons.calendar_today,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Datum der Anzahlung',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                      Text(
+                                        downPaymentDate != null
+                                            ? DateFormat('dd.MM.yyyy').format(downPaymentDate!)
+                                            : 'Datum auswählen',
+                                        style: const TextStyle(fontSize: 16),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (downPaymentDate != null)
+                                  IconButton(
+                                    icon: getAdaptiveIcon(
+                                      iconName: 'clear',
+                                      defaultIcon: Icons.clear,
+                                    ),
+                                    onPressed: () {
+                                      setDialogState(() {
+                                        downPaymentDate = null;
+                                      });
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Vorschau der Berechnung
+                        if (downPaymentAmount > 0)
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('Bruttobetrag:'),
+                                    Text('CHF ${totalAmount.toStringAsFixed(2)}'),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('Anzahlung:'),
+                                    Text(
+                                      '- CHF ${downPaymentAmount.toStringAsFixed(2)}',
+                                      style: const TextStyle(color: Colors.red),
+                                    ),
+                                  ],
+                                ),
+                                const Divider(),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Restbetrag:',
+                                      style: TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                    Text(
+                                      'CHF ${(totalAmount - downPaymentAmount).toStringAsFixed(2)}',
+                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        const SizedBox(height: 32), // Fester Abstand statt Spacer
+
+                        // Action Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => Navigator.pop(dialogContext),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text('Abbrechen'),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  await DocumentSelectionManager.saveInvoiceSettings({
+                                    'down_payment_amount': downPaymentAmount,
+                                    'down_payment_reference': downPaymentReference,
+                                    'down_payment_date': downPaymentDate != null
+                                        ? Timestamp.fromDate(downPaymentDate!)
+                                        : null,
+                                  });
+
+                                  if (dialogContext.mounted) {
+                                    Navigator.pop(dialogContext);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Anzahlung gespeichert'),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  }
+                                },
+                                icon: getAdaptiveIcon(
+                                  iconName: 'save',
+                                  defaultIcon: Icons.save,
+                                  color: Theme.of(context).colorScheme.onPrimary,
+                                ),
+                                label: const Text('Speichern'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Theme.of(context).colorScheme.primary,
+                                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+  Future<void> showQuoteSettingsDialog() async {
+    DateTime? validityDate;
+
+    // Lade bestehende Einstellungen
+    final existingSettings = await DocumentSelectionManager.loadQuoteSettings();
+    validityDate = existingSettings['validity_date'];
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.5,
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
+            ),
+            child: Column(
+              children: [
+                // Drag Handle
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.outline.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+
+                // Content
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: getAdaptiveIcon(
+                                iconName: 'request_quote',
+                                defaultIcon: Icons.request_quote,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Offerte - Gültigkeit',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              icon: getAdaptiveIcon(
+                                iconName: 'close',
+                                defaultIcon: Icons.close,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Gültigkeitsdatum
+                        InkWell(
+                          onTap: () async {
+                            final DateTime? picked = await showDatePicker(
+                              context: dialogContext,
+                              initialDate: validityDate ?? DateTime.now().add(const Duration(days: 30)),
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime(2100),
+                              locale: const Locale('de', 'DE'),
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                validityDate = picked;
+                              });
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                getAdaptiveIcon(
+                                  iconName: 'event',
+                                  defaultIcon: Icons.event,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Gültig bis',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                      Text(
+                                        validityDate != null
+                                            ? DateFormat('dd.MM.yyyy').format(validityDate!)
+                                            : 'Datum auswählen',
+                                        style: const TextStyle(fontSize: 16),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (validityDate != null)
+                                  IconButton(
+                                    icon: getAdaptiveIcon(
+                                      iconName: 'clear',
+                                      defaultIcon: Icons.clear,
+                                    ),
+                                    onPressed: () {
+                                      setDialogState(() {
+                                        validityDate = null;
+                                      });
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Info-Box
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              getAdaptiveIcon(
+                                iconName: 'info_outline',
+                                defaultIcon: Icons.info_outline,
+                                color: Theme.of(context).colorScheme.secondary,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Die Offerte ist standardmäßig 14 Tage gültig. Du kannst hier ein anderes Gültigkeitsdatum festlegen.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(context).colorScheme.onSecondaryContainer,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const Spacer(),
+
+                        // Action Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => Navigator.pop(dialogContext),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text('Abbrechen'),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  await DocumentSelectionManager.saveQuoteSettings({
+                                    'validity_date': validityDate != null
+                                        ? Timestamp.fromDate(validityDate!)
+                                        : null,
+                                  });
+
+                                  if (dialogContext.mounted) {
+                                    Navigator.pop(dialogContext);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Offerten-Gültigkeit gespeichert'),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  }
+                                },
+                                icon: getAdaptiveIcon(
+                                  iconName: 'save',
+                                  defaultIcon: Icons.save,
+                                  color: Theme.of(context).colorScheme.onPrimary,
+                                ),
+                                label: const Text('Speichern'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Theme.of(context).colorScheme.primary,
+                                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+
 
 
   // NEU: Definiere die Funktion INNERHALB von showDocumentSelectionBottomSheet
@@ -1806,7 +2873,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
     int numberOfPackages = 1;
     double packagingWeight = 0.0;
     bool valuesFromPackingList = false;
-
+    DateTime? commercialInvoiceDate;
     // Commercial Invoice Standardsätze
     bool originDeclaration = false;
     bool cites = false;
@@ -1827,6 +2894,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
     final packingListSettings = await DocumentSelectionManager.loadPackingListSettings();
     final packages = packingListSettings['packages'] as List<dynamic>?;
 
+    print("packages:$packages");
     // Prüfe, ob Packliste existiert und Pakete enthält
     if (packages != null && packages.isNotEmpty) {
       valuesFromPackingList = true;
@@ -1837,12 +2905,23 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       for (final package in packages) {
         packagingWeight += (package['tare_weight'] as num?)?.toDouble() ?? 0.0;
       }
+      print("pW:$packagingWeight");
     } else {
       // Lade bestehende Tara-Einstellungen nur wenn keine Packliste existiert
       final existingSettings = await DocumentSelectionManager.loadTaraSettings();
       numberOfPackages = existingSettings['number_of_packages'] ?? 1;
       packagingWeight = (existingSettings['packaging_weight'] ?? 0.0).toDouble();
+
+      // Laden Sie die Einstellung mit den anderen
+      if (existingSettings['commercial_invoice_date'] != null) {
+        final timestamp = existingSettings['commercial_invoice_date'];
+        if (timestamp is Timestamp) {
+          commercialInvoiceDate = timestamp.toDate();
+        }
+      }
+
     }
+
 
     // Lade immer die Commercial Invoice Einstellungen
     final existingSettings = await DocumentSelectionManager.loadTaraSettings();
@@ -1868,7 +2947,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
     }
 
     final numberOfPackagesController = TextEditingController(text: numberOfPackages.toString());
-    final packagingWeightController = TextEditingController(text: packagingWeight.toString());
+    final packagingWeightController = TextEditingController(text: packagingWeight.toStringAsFixed(2) );
     final exportReasonTextController = TextEditingController(text: exportReasonText);
     final carrierTextController = TextEditingController(text: carrierText);
 
@@ -2070,7 +3149,75 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                             ),
 
                           const SizedBox(height: 24),
+// Datum der Handelsrechnung
+                          InkWell(
+                            onTap: () async {
+                              final DateTime? picked = await showDatePicker(
+                                context: dialogContext,
+                                initialDate: commercialInvoiceDate ?? DateTime.now(),
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2100),
+                                locale: const Locale('de', 'DE'),
+                              );
+                              if (picked != null) {
+                                setDialogState(() {
+                                  commercialInvoiceDate = picked;
+                                });
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  getAdaptiveIcon(
+                                    iconName: 'calendar_today',
+                                    defaultIcon: Icons.calendar_today,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Datum der Handelsrechnung',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                        Text(
+                                          commercialInvoiceDate != null
+                                              ? DateFormat('dd.MM.yyyy').format(commercialInvoiceDate!)
+                                              : 'Aktuelles Datum verwenden',
+                                          style: const TextStyle(fontSize: 16),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (commercialInvoiceDate != null)
+                                    IconButton(
+                                      icon: getAdaptiveIcon(
+                                        iconName: 'clear',
+                                        defaultIcon: Icons.clear,
+                                      ),
+                                      onPressed: () {
+                                        setDialogState(() {
+                                          commercialInvoiceDate = null;
+                                        });
+                                      },
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
 
+                          const SizedBox(height: 24),
                           // Commercial Invoice Standardsätze (Rest bleibt gleich)
                           Text(
                             'Standardsätze für Handelsrechnung',
@@ -2511,6 +3658,9 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                               'commercial_invoice_carrier_text': carrierText,
                               'commercial_invoice_selected_signature': selectedSignature,
                               'timestamp': FieldValue.serverTimestamp(),
+                              'commercial_invoice_date': commercialInvoiceDate != null
+                                  ? Timestamp.fromDate(commercialInvoiceDate!)
+                                  : null,
                             });
 
                             if (dialogContext.mounted) {
@@ -2549,17 +3699,70 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       ),
     );
   }
+// Hilfsfunktion zum Zuweisen aller Produkte zu einem Paket
+  void _assignAllItemsToPackage(
+      Map<String, dynamic> targetPackage,
+      List<Map<String, dynamic>> items,
+      List<Map<String, dynamic>> packages,
+      StateSetter setDialogState,
+      ) {
+    setDialogState(() {
+      // Leere zuerst alle Items aus dem Zielpaket
+      targetPackage['items'].clear();
 
+      // Füge alle verfügbaren Items hinzu
+      for (final item in items) {
+        final totalQuantity = item['quantity'] as int;
+
+        // Entferne das Item aus allen anderen Paketen
+        for (final package in packages) {
+          if (package['id'] != targetPackage['id']) {
+            package['items'].removeWhere((assignedItem) =>
+            assignedItem['product_id'] == item['product_id']
+            );
+          }
+        }
+
+        // Füge das Item mit voller Menge zum Zielpaket hinzu
+        targetPackage['items'].add({
+          'product_id': item['product_id'],
+          'product_name': item['product_name'],
+          'product_name_en': item['product_name_en'] ?? '',
+          'quantity': totalQuantity,
+          'weight_per_unit': item['weight'] ?? 0.0,
+          'volume_per_unit': item['volume'] ?? 0.0,
+          // Maße korrekt übernehmen
+          'custom_length': item['custom_length'] ?? 0.0,
+          'custom_width': item['custom_width'] ?? 0.0,
+          'custom_thickness': item['custom_thickness'] ?? 0.0,
+          // Weitere wichtige Felder
+          'wood_code': item['wood_code'] ?? '',
+          'wood_name': item['wood_name'] ?? '',
+          'unit': item['unit'] ?? 'Stk',
+          'instrument_code': item['instrument_code'] ?? '',
+          'instrument_name': item['instrument_name'] ?? '',
+          'instrument_name_en': item['instrument_name_en'] ?? '',
+          'part_code': item['part_code'] ?? '',
+          'part_name': item['part_name'] ?? '',
+          'part_name_en': item['part_name_en'] ?? '',
+          'quality_code': item['quality_code'] ?? '',
+          'quality_name': item['quality_name'] ?? '',
+        });
+      }
+    });
+  }
   Future<void> showPackingListSettingsDialog() async {
     // Lade bestehende Packlisten-Einstellungen
     final existingSettings = await DocumentSelectionManager.loadPackingListSettings();
     List<Map<String, dynamic>> packages = List<Map<String, dynamic>>.from(existingSettings['packages'] ?? []);
 
+    // NEU: Map für TextEditingController
+    final Map<String, Map<String, TextEditingController>> packageControllers = {};
+
     // Lade die Produkte aus temporary_basket (wie bei den anderen Dokumenten)
     final basketSnapshot = await FirebaseFirestore.instance
         .collection('temporary_basket')
         .get();
-
 
     // WICHTIG: Stelle sicher, dass ALLE Felder kopiert werden
     List<Map<String, dynamic>> items = basketSnapshot.docs.map((doc) {
@@ -2581,262 +3784,348 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       print('${item['product_name']}: ${item['custom_length']}×${item['custom_width']}×${item['custom_thickness']}');
     }
 
-
+    // Falls noch keine Pakete existieren, erstelle Paket 1
     // Falls noch keine Pakete existieren, erstelle Paket 1
     if (packages.isEmpty) {
+      final firstPackageId = DateTime.now().millisecondsSinceEpoch.toString(); // NEU: Eindeutige ID
       packages.add({
-        'id': 'package_1',
+        'id': firstPackageId,
         'name': 'Packung 1',
-        'packaging_type': 'Kartonschachtel',
+        'packaging_type': '',
         'length': 0.0,
         'width': 0.0,
         'height': 0.0,
         'tare_weight': 0.0,
-        'items': <Map<String, dynamic>>[], // Zugewiesene Produkte
+        'items': <Map<String, dynamic>>[],
+        'standard_package_id': null,
       });
+
+      // Controller für das erste Paket
+      packageControllers[firstPackageId] = {
+        'length': TextEditingController(text: '0.0'),
+        'width': TextEditingController(text: '0.0'),
+        'height': TextEditingController(text: '0.0'),
+        'weight': TextEditingController(text: '0.0'),
+        'custom_name': TextEditingController(text: ''),
+      };
+    } else {
+      // Initialisiere Controller für existierende Pakete
+      for (final package in packages) {
+        final packageId = package['id'] as String;
+        packageControllers[packageId] = {
+          'length': TextEditingController(text: package['length'].toString()),
+          'width': TextEditingController(text: package['width'].toString()),
+          'height': TextEditingController(text: package['height'].toString()),
+          'weight': TextEditingController(text: package['tare_weight'].toString()),
+          'custom_name': TextEditingController(text: package['packaging_type'] ?? ''),
+        };
+      }
     }
 
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      enableDrag: true,
+      useSafeArea: true,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.9,
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(20),
-              ),
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
             ),
-            child: Column(
-              children: [
-                // Drag Handle
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.outline.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+            child: Container(
+              height: MediaQuery.of(context).size.height * 0.9,
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
                 ),
-
-                // Header
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: getAdaptiveIcon(
-                          iconName: 'view_list',
-                          defaultIcon: Icons.view_list,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Packliste',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.pop(dialogContext),
-                        icon: getAdaptiveIcon(
-                          iconName: 'close',
-                          defaultIcon: Icons.close,
-                        ),
-                      ),
-                    ],
+              ),
+              child: Column(
+                children: [
+                  // Drag Handle
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.outline.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                ),
 
-                // Content
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                    child: Row(
                       children: [
-                        // Übersicht verfügbare Produkte
                         Container(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                            color: Theme.of(context).colorScheme.primaryContainer,
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Verfügbare Produkte',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              ...items.map((item) {
-                                final assignedQuantity = _getAssignedQuantity(item, packages);
-                                final remainingQuantity = (item['quantity'] as int) - assignedQuantity;
-
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 2),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          item['product_name'] ?? '',
-                                          style: const TextStyle(fontSize: 12),
-                                        ),
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: remainingQuantity > 0
-                                              ? Colors.orange.withOpacity(0.2)
-                                              : Colors.green.withOpacity(0.2),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          '$remainingQuantity/${item['quantity']} verbleibend',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: remainingQuantity > 0 ? Colors.orange[700] : Colors.green[700],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
-                            ],
+                          child: getAdaptiveIcon(
+                            iconName: 'view_list',
+                            defaultIcon: Icons.view_list,
+                            color: Theme.of(context).colorScheme.primary,
                           ),
                         ),
-
-                        const SizedBox(height: 24),
-
-                        // Pakete verwalten
-                        Row(
-                          children: [
-                            Text(
-                              'Pakete',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                            const Spacer(),
-                            ElevatedButton.icon(
-                              onPressed: () {
-                                setDialogState(() {
-                                  final newPackageNumber = packages.length + 1;
-                                  packages.add({
-                                    'id': 'package_$newPackageNumber',
-                                    'name': 'Packung $newPackageNumber',
-                                    'packaging_type': 'Kartonschachtel',
-                                    'length': 0.0,
-                                    'width': 0.0,
-                                    'height': 0.0,
-                                    'tare_weight': 0.0,
-                                    'items': <Map<String, dynamic>>[],
-                                  });
-                                });
-                              },
-                              icon: Icon(Icons.add, size: 16),
-                              label: const Text('Paket hinzufügen'),
-                              style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                minimumSize: Size.zero,
-                              ),
-                            ),
-                          ],
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Packliste',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
                         ),
-
-                        const SizedBox(height: 16),
-
-                        // Pakete anzeigen
-                        ...packages.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          final package = entry.value;
-
-                          return _buildPackageCard(
-                            context,
-                            dialogContext,
-                            package,
-                            index,
-                            items,
-                            packages,
-                            setDialogState,
-                          );
-                        }).toList(),
+                        IconButton(
+                          onPressed: () => Navigator.pop(dialogContext),
+                          icon: getAdaptiveIcon(
+                            iconName: 'close',
+                            defaultIcon: Icons.close,
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ),
 
-                // Action Buttons
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.pop(dialogContext),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                  // Content
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Übersicht verfügbare Produkte
+                          // Übersicht verfügbare Produkte
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                          ),
-                          child: const Text('Abbrechen'),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () async {
-                            await DocumentSelectionManager.savePackingListSettings(packages);
-
-                            if (dialogContext.mounted) {
-                              Navigator.pop(dialogContext);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Packliste-Einstellungen gespeichert'),
-                                  backgroundColor: Colors.green,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        'Verfügbare Produkte',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                    // NEU: Schnell-Button
+                                    if (packages.isNotEmpty)
+                                      TextButton.icon(
+                                        onPressed: () {
+                                          _assignAllItemsToPackage(
+                                            packages.first, // Paket 1
+                                            items,
+                                            packages,
+                                            setDialogState,
+                                          );
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Alle Produkte wurden Paket 1 zugewiesen'),
+                                              duration: Duration(seconds: 2),
+                                            ),
+                                          );
+                                        },
+                                        icon: Icon(
+                                          Icons.inbox,
+                                          size: 16,
+                                        ),
+                                        label: const Text(
+                                          'Alle → Paket 1',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                        style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          minimumSize: Size.zero,
+                                        ),
+                                      ),
+                                  ],
                                 ),
-                              );
-                            }
-                          },
-                          icon: getAdaptiveIcon(
-                            iconName: 'save',
-                            defaultIcon: Icons.save,
-                            color: Theme.of(context).colorScheme.onPrimary,
+                                const SizedBox(height: 8),
+                                ...items.map((item) {
+                                  final assignedQuantity = _getAssignedQuantity(item, packages);
+                                  final remainingQuantity = (item['quantity'] as int) - assignedQuantity;
+
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 2),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            item['product_name'] ?? '',
+                                            style: const TextStyle(fontSize: 12),
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: remainingQuantity > 0
+                                                ? Colors.orange.withOpacity(0.2)
+                                                : Colors.green.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            '$remainingQuantity/${item['quantity']} verbleibend',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: remainingQuantity > 0 ? Colors.orange[700] : Colors.green[700],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ],
+                            ),
                           ),
-                          label: const Text('Speichern'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(context).colorScheme.primary,
-                            foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+
+                          const SizedBox(height: 24),
+
+                          // Pakete verwalten
+                          Row(
+                            children: [
+                              Text(
+                                'Pakete',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              const Spacer(),
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  setDialogState(() {
+                                    final newPackageId = DateTime.now().millisecondsSinceEpoch.toString(); // NEU: Eindeutige ID
+
+                                    // Erstelle Controller für das neue Paket
+                                    packageControllers[newPackageId] = {
+                                      'length': TextEditingController(text: '0.0'),
+                                      'width': TextEditingController(text: '0.0'),
+                                      'height': TextEditingController(text: '0.0'),
+                                      'weight': TextEditingController(text: '0.0'),
+                                      'custom_name': TextEditingController(text: ''),
+                                    };
+
+                                    packages.add({
+                                      'id': newPackageId,
+                                      'name': '${packages.length + 1}', // Name basiert auf aktueller Anzahl
+                                      'packaging_type': '',
+                                      'length': 0.0,
+                                      'width': 0.0,
+                                      'height': 0.0,
+                                      'tare_weight': 0.0,
+                                      'items': <Map<String, dynamic>>[],
+                                      'standard_package_id': null,
+                                    });
+                                  });
+                                },
+                                icon: Icon(Icons.add, size: 16),
+                                label: const Text('Paket hinzufügen'),
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  minimumSize: Size.zero,
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // Pakete anzeigen
+                          ...packages.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final package = entry.value;
+                            package['name'] = '${index + 1}';
+                            return _buildPackageCard(
+                              context,
+                              dialogContext,
+                              package,
+                              index,
+                              items,
+                              packages,
+                              setDialogState,
+                              packageControllers, // NEU: Controller Map übergeben
+                            );
+                          }).toList(),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Action Buttons
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 36),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text('Abbrechen'),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              await DocumentSelectionManager.savePackingListSettings(packages);
+
+                              // Dispose all controllers
+                              packageControllers.forEach((key, controllers) {
+                                controllers.forEach((_, controller) {
+                                  controller.dispose();
+                                });
+                              });
+
+                              if (dialogContext.mounted) {
+                                Navigator.pop(dialogContext);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Packliste-Einstellungen gespeichert'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              }
+                            },
+                            icon: getAdaptiveIcon(
+                              iconName: 'save',
+                              defaultIcon: Icons.save,
+                              color: Theme.of(context).colorScheme.onPrimary,
+                            ),
+                            label: const Text('Speichern'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Theme.of(context).colorScheme.primary,
+                              foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         },
@@ -3024,6 +4313,12 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                             break;
                                           case 'Packliste':
                                             await showPackingListSettingsDialog();
+                                            break;
+                                          case 'Rechnung':
+                                            await showInvoiceSettingsDialog();
+                                            break;
+                                          case 'Offerte':
+                                            await showQuoteSettingsDialog();
                                             break;
                                           default:
                                           // Für alle anderen zeige eine Info-Nachricht

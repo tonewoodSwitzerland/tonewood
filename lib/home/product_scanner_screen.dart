@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../components/product_cart.dart';
 import '../constants.dart';
+import 'barcode_scanner.dart';
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({Key? key}) : super(key: key);
@@ -25,15 +26,15 @@ class ScannerScreenState extends State<ScannerScreen> {
     });
 
     try {
-      String barcodeResult = await FlutterBarcodeScanner.scanBarcode(
-        '#FF0000',
-        'Abbrechen',
-        true,
-        ScanMode.BARCODE,
+      final String? barcodeResult = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SimpleBarcodeScannerPage(),
+        ),
       );
 
       if (barcodeResult != '-1') {
-        lastScannedBarcode = barcodeResult;
+        lastScannedBarcode = barcodeResult!;
         await _fetchProductData(barcodeResult);
       }
     } on PlatformException {

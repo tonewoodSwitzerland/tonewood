@@ -58,6 +58,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     required int taxOption,
     required double vatRate,
     Map<String, dynamic>? taraSettings,
+    DateTime? invoiceDate
   }) async {
     final pdf = pw.Document();
     final logo = await BasePdfGenerator.loadLogo();
@@ -71,18 +72,24 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     final standardTextsWidget = await _addCommercialInvoiceStandardTexts(language);
     // Übersetzungsfunktion
     String getTranslation(String key) {
+      // Sichere den currency Wert
+      final safeCurrency = currency ?? 'CHF';
+      final exchangeRate = exchangeRates[safeCurrency] ?? 1.0;
+
       final translations = {
         'DE': {
           'commercial_invoice': 'HANDELSRECHNUNG',
-          'currency_note': 'Alle Preise in $currency (Umrechnungskurs: 1 CHF = ${exchangeRates[currency]!.toStringAsFixed(4)} $currency)',
+          'currency_note': 'Alle Preise in $safeCurrency (Umrechnungskurs: 1 CHF = ${exchangeRate.toStringAsFixed(4)} $safeCurrency)',
           'tariff_number': 'Zolltarifnummer',
         },
         'EN': {
           'commercial_invoice': 'COMMERCIAL INVOICE',
-          'currency_note': 'All prices in $currency (Exchange rate: 1 CHF = ${exchangeRates[currency]!.toStringAsFixed(4)} $currency)',
+          'currency_note': 'All prices in $safeCurrency (Exchange rate: 1 CHF = ${exchangeRate.toStringAsFixed(4)} $safeCurrency)',
           'tariff_number': 'Customs Tariff Number',
         }
       };
+
+      // Sichere Rückgabe
       return translations[language]?[key] ?? translations['DE']?[key] ?? '';
     }
 
@@ -97,7 +104,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               BasePdfGenerator.buildHeader(
                 documentTitle: getTranslation('commercial_invoice'),
                 documentNumber: invoiceNum,
-                date: DateTime.now(),
+                date: invoiceDate ?? DateTime.now(), // Verwende übergebenes Datum oder aktuelles
                 logo: logo,
                 costCenter: costCenterCode,
                 language: language,
@@ -108,7 +115,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               pw.SizedBox(height: 20),
 
               // Kundenadresse
-              BasePdfGenerator.buildCustomerAddress(customerData),
+             BasePdfGenerator.buildCustomerAddress(customerData, language: language),
 
               pw.SizedBox(height: 15),
 
@@ -663,13 +670,13 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                 pw.Text('', style: const pw.TextStyle(fontSize: 6)), // Zolltarifnummer nur im Header
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['instrument_name_en']:item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
@@ -689,7 +696,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
-                  quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
+                  quantity.toStringAsFixed(3),
                   style: const pw.TextStyle(fontSize: 6),
                   textAlign: pw.TextAlign.right,
                 ),
@@ -766,7 +773,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
-              '${totalWeight.toStringAsFixed(0)} kg',
+              '${totalWeight.toStringAsFixed(2)} kg',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
               textAlign: pw.TextAlign.right,
             ),
@@ -812,7 +819,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
-              '${packagingWeight.toStringAsFixed(0)} kg',
+              '${packagingWeight.toStringAsFixed(2)} kg',
               style: const pw.TextStyle(fontSize: 7),
               textAlign: pw.TextAlign.right,
             ),
@@ -851,7 +858,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
-              '${totalGrossWeight.toStringAsFixed(0)} kg',
+              '${totalGrossWeight.toStringAsFixed(2)} kg',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
               textAlign: pw.TextAlign.right,
             ),

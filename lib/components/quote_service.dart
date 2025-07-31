@@ -62,13 +62,19 @@ class QuoteService {
       final freightCost = (shippingCosts['amount'] as num?)?.toDouble() ?? 0.0;
       final phytosanitaryCost = (shippingCosts['phytosanitaryCertificate'] as num?)?.toDouble() ?? 0.0;
 
+      final totalDeductions = (shippingCosts['totalDeductions'] as num?)?.toDouble() ?? 0.0;
+      final totalSurcharges = (shippingCosts['totalSurcharges'] as num?)?.toDouble() ?? 0.0;
+
+
+
       // Hole Steuerdaten aus metadata
       final taxOption = metadata['taxOption'] ?? 0;
       final vatRate = (metadata['vatRate'] ?? 8.1).toDouble();
 
 // Berechne neuen Total vor Steuern
       final netAmountBeforeShipping = (calculations['net_amount'] as num?)?.toDouble() ?? 0.0;
-      final netAmountWithShipping = netAmountBeforeShipping + freightCost + phytosanitaryCost;
+      final netAmountWithShipping = netAmountBeforeShipping + freightCost + phytosanitaryCost + totalSurcharges - totalDeductions;
+
 
 // Berechne MwSt neu basierend auf dem Total inkl. Versandkosten
       double newVatAmount = 0.0;
@@ -84,6 +90,9 @@ class QuoteService {
       finalCalculations['net_amount'] = netAmountWithShipping;
       finalCalculations['freight'] = freightCost;
       finalCalculations['phytosanitary'] = phytosanitaryCost;
+      finalCalculations['total_deductions'] = totalDeductions;  // NEU
+      finalCalculations['total_surcharges'] = totalSurcharges;  // NEU
+
       finalCalculations['vat_amount'] = newVatAmount;
       finalCalculations['total'] = newTotal;
 
@@ -238,12 +247,24 @@ class QuoteService {
     return Quote.fromFirestore(doc);
   }
 
-  // Prüfe Verfügbarkeit (unter Berücksichtigung von Reservierungen)
-  static Future<Map<String, int>> checkAvailability(List<Map<String, dynamic>> items) async {
+// Prüfe Verfügbarkeit (unter Berücksichtigung von Reservierungen)
+  static Future<Map<String, int>> checkAvailability(
+      List<Map<String, dynamic>> items,
+      {String? excludeQuoteId}  // NEU: Optional Quote-ID zum Ausschließen
+      ) async {
+    print('=== START checkAvailability ===');
+    print('Anzahl zu prüfender Items: ${items.length}');
+    print('Exclude Quote ID: $excludeQuoteId');  // NEU
+
     final availability = <String, int>{};
 
     for (final item in items) {
-      if (item['is_manual_product'] == true) continue;
+      // ... (Debug-Ausgaben bleiben gleich)
+
+      if (item['is_manual_product'] == true) {
+        print('-> Überspringe manuelles Produkt');
+        continue;
+      }
 
       final productId = item['product_id'] as String;
 
@@ -259,19 +280,40 @@ class QuoteService {
       }
 
       final currentStock = (inventoryDoc.data()?['quantity'] ?? 0) as int;
+      print('Aktueller Lagerbestand: $currentStock');
 
       // Hole alle aktiven Reservierungen
-      final reservations = await _firestore
+      print('\nLade Reservierungen für $productId...');
+      var reservationsQuery = _firestore
           .collection('stock_movements')
           .where('productId', isEqualTo: productId)
           .where('type', isEqualTo: StockMovementType.reservation.name)
-          .where('status', isEqualTo: StockMovementStatus.reserved.name)
-          .get();
+          .where('status', isEqualTo: StockMovementStatus.reserved.name);
+
+      final reservations = await reservationsQuery.get();
+
+      print('Anzahl gefundener Reservierungen: ${reservations.docs.length}');
 
       final reservedQuantity = reservations.docs.fold<int>(
         0,
-            (sum, doc) => sum + ((doc.data()['quantity'] as int).abs()),
+            (sum, doc) {
+          final data = doc.data();
+          final quoteId = data['quoteId'] as String?;
+
+          // NEU: Überspringe Reservierungen der aktuellen Quote
+          if (excludeQuoteId != null && quoteId == excludeQuoteId) {
+            print('  -> ÜBERSPRINGE eigene Reservierung für Quote $quoteId');
+            return sum;
+          }
+
+          final qty = (data['quantity'] as int).abs();
+          print('  -> Addiere ${qty} zur Gesamtreservierung (Quote: $quoteId)');
+          return sum + qty;
+        },
       );
+
+      print('\nGesamte reservierte Menge (ohne eigene): $reservedQuantity');
+      print('Verfügbare Menge: ${currentStock - reservedQuantity}');
 
       availability[productId] = currentStock - reservedQuantity;
     }

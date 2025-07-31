@@ -286,9 +286,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+
+import 'barcode_scanner.dart';
 
 class StockEntryScreen extends StatefulWidget {
   const StockEntryScreen({Key? key}) : super(key: key);
@@ -348,16 +350,16 @@ class StockEntryScreenState extends State<StockEntryScreen> {
 
   Future<void> scanBarcode() async {
     try {
-      String barcodeResult = await FlutterBarcodeScanner.scanBarcode(
-        '#ff6666',
-        'Abbrechen',
-        true,
-        ScanMode.BARCODE,
+      final String? barcodeResult = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SimpleBarcodeScannerPage(),
+        ),
       );
 
       if (barcodeResult != '-1') {
         setState(() {
-          _barcodeController.text = barcodeResult;
+          _barcodeController.text = barcodeResult!;
         });
         await _searchProduct();
       }

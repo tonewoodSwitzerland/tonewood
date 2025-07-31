@@ -55,7 +55,7 @@ class OrderService {
       if (quote == null) throw Exception('Angebot nicht gefunden');
 
       // Prüfe Verfügbarkeit nochmals
-      final availability = await QuoteService.checkAvailability(quote.items);
+      final availability = await QuoteService.checkAvailability(quote.items,  excludeQuoteId: quoteId );
 
       for (final item in quote.items) {
         if (item['is_manual_product'] == true) continue;
@@ -63,6 +63,9 @@ class OrderService {
         final productId = item['product_id'] as String;
         final required = item['quantity'] as int;
         final available = availability[productId] ?? 0;
+
+
+
 
         if (available < required) {
           throw Exception(

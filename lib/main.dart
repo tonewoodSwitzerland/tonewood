@@ -81,7 +81,7 @@ class MyApp extends StatelessWidget {
                   foregroundColor: Colors.black87, textStyle: smallHeadline,
                 ),
               ),
-              dialogTheme: const DialogTheme(
+              dialogTheme: const DialogThemeData(
                 backgroundColor: Colors.white,
                 surfaceTintColor: Colors.transparent,
               ),

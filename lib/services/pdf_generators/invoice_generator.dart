@@ -55,6 +55,7 @@ class InvoiceGenerator extends BasePdfGenerator {
     int paymentTermDays = 30,
     required int taxOption,
     required double vatRate,
+    Map<String, dynamic>? downPaymentSettings,
   }) async {
     final pdf = pw.Document();
     final logo = await BasePdfGenerator.loadLogo();
@@ -68,24 +69,27 @@ class InvoiceGenerator extends BasePdfGenerator {
     final additionalTextsWidget = await _addInlineAdditionalTexts(language);
 
     // Übersetzungsfunktion
+    // In der getTranslation Funktion, ändere diese Zeilen:
     String getTranslation(String key) {
+      // Sichere den Exchange Rate ab
+      final exchangeRate = exchangeRates[currency] ?? 1.0;
+
       final translations = {
         'DE': {
           'invoice': 'RECHNUNG',
-          'quote_reference': 'Angebotsnummer: $quoteNumber', // NEU
-          'currency_note': 'Alle Preise in $currency (Umrechnungskurs: 1 CHF = ${exchangeRates[currency]!.toStringAsFixed(4)} $currency)',
+          'quote_reference': quoteNumber != null ? 'Angebotsnummer: $quoteNumber' : '',
+          'currency_note': 'Alle Preise in $currency (Umrechnungskurs: 1 CHF = ${exchangeRate.toStringAsFixed(4)} $currency)',
           'payment_note': 'Zahlbar innerhalb von $paymentTermDays Tagen bis ${DateFormat('dd. MMMM yyyy', 'de_DE').format(paymentDue)}.',
         },
         'EN': {
           'invoice': 'INVOICE',
-          'quote_reference': 'Quote Number: $quoteNumber', // NEU
-          'currency_note': 'All prices in $currency (Exchange rate: 1 CHF = ${exchangeRates[currency]!.toStringAsFixed(4)} $currency)',
+          'quote_reference': quoteNumber != null ? 'Quote Number: $quoteNumber' : '',
+          'currency_note': 'All prices in $currency (Exchange rate: 1 CHF = ${exchangeRate.toStringAsFixed(4)} $currency)',
           'payment_note': 'Payment due within $paymentTermDays days until ${DateFormat('MMMM dd, yyyy', 'en_US').format(paymentDue)}.',
         }
       };
       return translations[language]?[key] ?? translations['DE']?[key] ?? '';
     }
-
     pdf.addPage(
       pw.Page(
         margin: const pw.EdgeInsets.all(20),
@@ -101,12 +105,14 @@ class InvoiceGenerator extends BasePdfGenerator {
                 logo: logo,
                 costCenter: costCenterCode,
                 language: language,
-                additionalReference: quoteNumber != null ? getTranslation('quote_reference') : null, // NEU
+                additionalReference: quoteNumber != null && quoteNumber.isNotEmpty
+                    ? getTranslation('quote_reference')
+                    : null, // GEÄNDERT
               ),
               pw.SizedBox(height: 20),
 
               // Kundenadresse
-              BasePdfGenerator.buildCustomerAddress(customerData),
+              BasePdfGenerator.buildCustomerAddress(customerData, language: language),
 
               pw.SizedBox(height: 15),
 
@@ -134,7 +140,8 @@ class InvoiceGenerator extends BasePdfGenerator {
                     _buildProductTable(groupedItems, currency, exchangeRates, language),
                     pw.SizedBox(height: 10),
                     // Summen-Bereich
-                    _buildTotalsSection(items, currency, exchangeRates, language, shippingCosts, calculations, taxOption, vatRate),
+                    _buildTotalsSection(items, currency, exchangeRates, language, shippingCosts, calculations, taxOption, vatRate, downPaymentSettings, // NEU
+                      paymentDue,),
 
                     pw.SizedBox(height: 10),
                     // Zahlungshinweis
@@ -327,17 +334,19 @@ class InvoiceGenerator extends BasePdfGenerator {
           unit = 'Stk';
         }
 
+        ///TODO hier mit der Sprache weitermachen!!
+print("pN:${item['part_name_en']}");
         rows.add(
           pw.TableRow(
             children: [
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['instrument_name_en']:item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
@@ -447,7 +456,25 @@ class InvoiceGenerator extends BasePdfGenerator {
       children: rows,
     );
   }
+// Hilfsmethode für die Referenz-Formatierung
+  static String _buildDownPaymentReference(String reference, DateTime? date, String language) {
+    final List<String> parts = [];
 
+    if (reference.isNotEmpty) {
+      parts.add(reference);
+    }
+
+    if (date != null) {
+      parts.add(DateFormat('dd.MM.yyyy').format(date));
+    }
+
+    if (parts.isEmpty) {
+      return '';
+    }
+
+    final referenceText = language == 'EN' ? 'Reference' : 'Referenz';
+    return ' ($referenceText: ${parts.join(', ')})';
+  }
   // Erstelle Summen-Bereich
   static pw.Widget _buildTotalsSection(
       List<Map<String, dynamic>> items,
@@ -456,8 +483,10 @@ class InvoiceGenerator extends BasePdfGenerator {
       String language,
       Map<String, dynamic>? shippingCosts,
       Map<String, dynamic>? calculations,
-      int taxOption,  // NEU
-      double vatRate, // NEU
+      int taxOption,
+      double vatRate,
+      Map<String, dynamic>? downPaymentSettings, // NEU: Parameter hinzufügen
+      DateTime? paymentDue, // NEU: Parameter für Zahlungsziel
       ) {
     double subtotal = 0.0;
     double actualItemDiscounts = 0.0;
@@ -481,11 +510,27 @@ class InvoiceGenerator extends BasePdfGenerator {
     final packagingCost = shippingCosts?['packaging_cost'] ?? 0.0;
     final freightCost = shippingCosts?['freight_cost'] ?? 0.0;
     final shippingCombined = shippingCosts?['shipping_combined'] ?? true;
-    final carrier = shippingCosts?['carrier'] ?? 'Swiss Post';
+    final carrier = (shippingCosts?['carrier'] == 'Persönlich abgeholt' && language == 'EN')
+        ? 'Collected in person'
+        : (shippingCosts?['carrier'] ?? 'Swiss Post');
 
-    final netAmount = afterDiscounts + plantCertificate + packagingCost + freightCost;
+    // Abschläge und Zuschläge
+    final totalDeductions = shippingCosts?['totalDeductions'] ?? 0.0;
+    final totalSurcharges = shippingCosts?['totalSurcharges'] ?? 0.0;
 
-    // NEU: MwSt-Berechnung basierend auf taxOption
+    final netAmount = afterDiscounts + plantCertificate + packagingCost + freightCost + totalSurcharges - totalDeductions;
+
+
+
+    final downPaymentAmount = downPaymentSettings != null
+        ? ((downPaymentSettings['down_payment_amount'] as num?) ?? 0.0).toDouble()
+        : 0.0;
+    final downPaymentReference = downPaymentSettings?['down_payment_reference'] ?? '';
+    final downPaymentDate = downPaymentSettings?['down_payment_date'];
+
+
+
+    // MwSt-Berechnung basierend auf taxOption
     double vatAmount = 0.0;
     double totalWithTax = netAmount;
 
@@ -510,8 +555,8 @@ class InvoiceGenerator extends BasePdfGenerator {
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                pw.Text(language == 'EN' ? 'Subtotal' : 'Subtotal' ,style: const pw.TextStyle(fontSize: 9),),
-                pw.Text(BasePdfGenerator.formatCurrency(subtotal, currency, exchangeRates) ,style: const pw.TextStyle(fontSize: 9),),
+                pw.Text(language == 'EN' ? 'Subtotal' : 'Subtotal', style: const pw.TextStyle(fontSize: 9)),
+                pw.Text(BasePdfGenerator.formatCurrency(subtotal, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
               ],
             ),
 
@@ -521,8 +566,8 @@ class InvoiceGenerator extends BasePdfGenerator {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(language == 'EN' ? 'Item discounts' : 'Positionsrabatte' ,style: const pw.TextStyle(fontSize: 9),),
-                  pw.Text('- ${BasePdfGenerator.formatCurrency(itemDiscounts, currency, exchangeRates)}' ,style: const pw.TextStyle(fontSize: 9),),
+                  pw.Text(language == 'EN' ? 'Item discounts' : 'Positionsrabatte', style: const pw.TextStyle(fontSize: 9)),
+                  pw.Text('- ${BasePdfGenerator.formatCurrency(itemDiscounts, currency, exchangeRates)}', style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
             ],
@@ -533,8 +578,8 @@ class InvoiceGenerator extends BasePdfGenerator {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(language == 'EN' ? 'Total discount' : 'Gesamtrabatt' ,style: const pw.TextStyle(fontSize: 9),),
-                  pw.Text('- ${BasePdfGenerator.formatCurrency(totalDiscountAmount, currency, exchangeRates)}' ,style: const pw.TextStyle(fontSize: 9),),
+                  pw.Text(language == 'EN' ? 'Total discount' : 'Gesamtrabatt', style: const pw.TextStyle(fontSize: 9)),
+                  pw.Text('- ${BasePdfGenerator.formatCurrency(totalDiscountAmount, currency, exchangeRates)}', style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
             ],
@@ -545,8 +590,8 @@ class InvoiceGenerator extends BasePdfGenerator {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(language == 'EN' ? 'Phytosanitary certificate' : 'Pflanzenschutzzeugniss' ,style: const pw.TextStyle(fontSize: 9),),
-                  pw.Text(BasePdfGenerator.formatCurrency(plantCertificate, currency, exchangeRates) ,style: const pw.TextStyle(fontSize: 9),),
+                  pw.Text(language == 'EN' ? 'Phytosanitary certificate' : 'Pflanzenschutzzeugniss', style: const pw.TextStyle(fontSize: 9)),
+                  pw.Text(BasePdfGenerator.formatCurrency(plantCertificate, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
             ],
@@ -558,11 +603,12 @@ class InvoiceGenerator extends BasePdfGenerator {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text(
-                      language == 'EN'
-                          ? 'Packing & Freight costs ($carrier)'
-                          : 'Verpackungs- & Frachtkosten ($carrier)'
-                    ,style: const pw.TextStyle(fontSize: 9),),
-                  pw.Text(BasePdfGenerator.formatCurrency(packagingCost + freightCost, currency, exchangeRates) ,style: const pw.TextStyle(fontSize: 9),),
+                    language == 'EN'
+                        ? 'Packing & Freight costs ($carrier)'
+                        : 'Verpackungs- & Frachtkosten ($carrier)',
+                    style: const pw.TextStyle(fontSize: 9),
+                  ),
+                  pw.Text(BasePdfGenerator.formatCurrency(packagingCost + freightCost, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
             ] else ...[
@@ -571,8 +617,8 @@ class InvoiceGenerator extends BasePdfGenerator {
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text(language == 'EN' ? 'Packing costs' : 'Verpackungskosten' ,style: const pw.TextStyle(fontSize: 9),),
-                    pw.Text(BasePdfGenerator.formatCurrency(packagingCost, currency, exchangeRates) ,style: const pw.TextStyle(fontSize: 9),),
+                    pw.Text(language == 'EN' ? 'Packing costs' : 'Verpackungskosten', style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(BasePdfGenerator.formatCurrency(packagingCost, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                   ],
                 ),
               ],
@@ -582,17 +628,111 @@ class InvoiceGenerator extends BasePdfGenerator {
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
                     pw.Text(
-                        language == 'EN'
-                            ? 'Freight costs ($carrier)'
-                            : 'Frachtkosten ($carrier)'
-                      ,style: const pw.TextStyle(fontSize: 9), ),
-                    pw.Text(BasePdfGenerator.formatCurrency(freightCost, currency, exchangeRates) ,style: const pw.TextStyle(fontSize: 9),),
+                      language == 'EN'
+                          ? 'Freight costs ($carrier)'
+                          : 'Frachtkosten ($carrier)',
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                    pw.Text(BasePdfGenerator.formatCurrency(freightCost, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                   ],
                 ),
               ],
             ],
 
-            // NEU: MwSt-Bereich je nach Option
+            // Abschläge und Zuschläge
+            if (shippingCosts != null) ...[
+              // Abschlag 1
+              if ((shippingCosts['deduction_1_text'] ?? '').isNotEmpty && (shippingCosts['deduction_1_amount'] ?? 0.0) > 0) ...[
+                pw.SizedBox(height: 4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(shippingCosts['deduction_1_text'], style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(
+                      '- ${BasePdfGenerator.formatCurrency(shippingCosts['deduction_1_amount'], currency, exchangeRates)}',
+                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.red),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Abschlag 2
+              if ((shippingCosts['deduction_2_text'] ?? '').isNotEmpty && (shippingCosts['deduction_2_amount'] ?? 0.0) > 0) ...[
+                pw.SizedBox(height: 4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(shippingCosts['deduction_2_text'], style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(
+                      '- ${BasePdfGenerator.formatCurrency(shippingCosts['deduction_2_amount'], currency, exchangeRates)}',
+                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.red),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Abschlag 3
+              if ((shippingCosts['deduction_3_text'] ?? '').isNotEmpty && (shippingCosts['deduction_3_amount'] ?? 0.0) > 0) ...[
+                pw.SizedBox(height: 4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(shippingCosts['deduction_3_text'], style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(
+                      '- ${BasePdfGenerator.formatCurrency(shippingCosts['deduction_3_amount'], currency, exchangeRates)}',
+                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.red),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Zuschlag 1
+              if ((shippingCosts['surcharge_1_text'] ?? '').isNotEmpty && (shippingCosts['surcharge_1_amount'] ?? 0.0) > 0) ...[
+                pw.SizedBox(height: 4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(shippingCosts['surcharge_1_text'], style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(
+                      BasePdfGenerator.formatCurrency(shippingCosts['surcharge_1_amount'], currency, exchangeRates),
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Zuschlag 2
+              if ((shippingCosts['surcharge_2_text'] ?? '').isNotEmpty && (shippingCosts['surcharge_2_amount'] ?? 0.0) > 0) ...[
+                pw.SizedBox(height: 4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(shippingCosts['surcharge_2_text'], style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(
+                      BasePdfGenerator.formatCurrency(shippingCosts['surcharge_2_amount'], currency, exchangeRates),
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Zuschlag 3
+              if ((shippingCosts['surcharge_3_text'] ?? '').isNotEmpty && (shippingCosts['surcharge_3_amount'] ?? 0.0) > 0) ...[
+                pw.SizedBox(height: 4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(shippingCosts['surcharge_3_text'], style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(
+                      BasePdfGenerator.formatCurrency(shippingCosts['surcharge_3_amount'], currency, exchangeRates),
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+
+            // MwSt-Bereich je nach Option
             if (taxOption == 0) ...[  // TaxOption.standard
               pw.Divider(color: PdfColors.blueGrey300),
 
@@ -600,8 +740,8 @@ class InvoiceGenerator extends BasePdfGenerator {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(language == 'EN' ? 'Net amount' : 'Nettobetrag' ,style: const pw.TextStyle(fontSize: 9),),
-                  pw.Text(BasePdfGenerator.formatCurrency(netAmount, currency, exchangeRates) ,style: const pw.TextStyle(fontSize: 9),),
+                  pw.Text(language == 'EN' ? 'Net amount' : 'Nettobetrag', style: const pw.TextStyle(fontSize: 9)),
+                  pw.Text(BasePdfGenerator.formatCurrency(netAmount, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
 
@@ -612,30 +752,73 @@ class InvoiceGenerator extends BasePdfGenerator {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text(
-                      language == 'EN'
-                          ? 'VAT (${vatRate.toStringAsFixed(1)}%)'
-                          : 'MwSt (${vatRate.toStringAsFixed(1)}%)'
-                    ,style: const pw.TextStyle(fontSize: 9),),
-                  pw.Text(BasePdfGenerator.formatCurrency(vatAmount, currency, exchangeRates) ,style: const pw.TextStyle(fontSize: 9),),
+                    language == 'EN'
+                        ? 'VAT (${vatRate.toStringAsFixed(1)}%)'
+                        : 'MwSt (${vatRate.toStringAsFixed(1)}%)',
+                    style: const pw.TextStyle(fontSize: 9),
+                  ),
+                  pw.Text(BasePdfGenerator.formatCurrency(vatAmount, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
 
               pw.Divider(color: PdfColors.blueGrey300),
 
               // Gesamtbetrag
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(
-                    'Total',
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
-                  ),
-                  pw.Text(
-                    BasePdfGenerator.formatCurrency(totalWithTax, currency, exchangeRates),
-                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
-                  ),
-                ],
-              ),
+    // Bruttobetrag
+    pw.Row(
+    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+    children: [
+    pw.Text(
+    language == 'EN' ? 'Gross amount' : 'Bruttobetrag',
+    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
+    ),
+    pw.Text(
+    BasePdfGenerator.formatCurrency(totalWithTax, currency, exchangeRates),
+    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
+    ),
+    ],
+    ),
+
+    // NEU: Anzahlung abziehen falls vorhanden
+              if (downPaymentAmount > 0) ...[
+                pw.SizedBox(height: 8),
+
+                // Anzahlungszeile
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      language == 'EN'
+                          ? './ Down payment${_buildDownPaymentReference(downPaymentReference, downPaymentDate, language)}'
+                          : './ Anzahlung${_buildDownPaymentReference(downPaymentReference, downPaymentDate, language)}',
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                    pw.Text(
+                      '-${BasePdfGenerator.formatCurrency(downPaymentAmount, currency, exchangeRates)}',
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                  ],
+                ),
+
+                pw.SizedBox(height: 4),
+
+                // Restbetrag
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      language == 'EN'
+                          ? 'Balance due'
+                          : 'Restbetrag',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
+                    ),
+                    pw.Text(
+                      BasePdfGenerator.formatCurrency(totalWithTax - downPaymentAmount, currency, exchangeRates),
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
+                    ),
+                  ],
+                ),
+              ],
 
             ] else if (taxOption == 1) ...[  // TaxOption.noTax
               pw.Divider(color: PdfColors.blueGrey300),

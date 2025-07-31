@@ -67,24 +67,42 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
     final additionalTextsWidget = await _addInlineAdditionalTexts(language);
 
     // Übersetzungsfunktion
+    // Übersetzungsfunktion
     String getTranslation(String key) {
+      // Sichere den currency Wert
+      final safeCurrency = currency ?? 'CHF';
+      final exchangeRate = exchangeRates[safeCurrency] ?? 1.0;
+
       final translations = {
         'DE': {
           'delivery_note': 'LIEFERSCHEIN',
-          'currency_note': 'Alle Preise in $currency (Umrechnungskurs: 1 CHF = ${exchangeRates[currency]!.toStringAsFixed(4)} $currency)',
+          'currency_note': 'Alle Preise in $safeCurrency (Umrechnungskurs: 1 CHF = ${exchangeRate.toStringAsFixed(4)} $safeCurrency)',
           'delivery_date': 'Lieferdatum',
           'payment_date': 'Zahlungsdatum',
         },
         'EN': {
           'delivery_note': 'DELIVERY NOTE',
-          'currency_note': 'All prices in $currency (Exchange rate: 1 CHF = ${exchangeRates[currency]!.toStringAsFixed(4)} $currency)',
+          'currency_note': 'All prices in $safeCurrency (Exchange rate: 1 CHF = ${exchangeRate.toStringAsFixed(4)} $safeCurrency)',
           'delivery_date': 'Delivery date',
           'payment_date': 'Payment date',
         }
       };
-      return translations[language]?[key] ?? translations['DE']?[key] ?? '';
-    }
 
+      // Sichere Rückgabe ohne ! Operator
+      final langTranslations = translations[language];
+      if (langTranslations != null && langTranslations[key] != null) {
+        return langTranslations[key]!;
+      }
+
+      // Fallback auf DE
+      final deTranslations = translations['DE'];
+      if (deTranslations != null && deTranslations[key] != null) {
+        return deTranslations[key]!;
+      }
+
+      // Letzter Fallback
+      return key;
+    }
     pdf.addPage(
       pw.Page(
         margin: const pw.EdgeInsets.all(20),
@@ -106,7 +124,7 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
               pw.SizedBox(height: 20),
 
               // Kundenadresse
-              BasePdfGenerator.buildCustomerAddress(customerData),
+             BasePdfGenerator.buildCustomerAddress(customerData, language: language),
 
               pw.SizedBox(height: 15),
 
@@ -268,8 +286,7 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Orig' : 'Urs', 8),
           BasePdfGenerator.buildHeaderCell('°C', 8),
-          BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Dimensions' : 'Masse', 8),
+          // BasePdfGenerator.buildHeaderCell(language == 'EN' ? 'Dimensions' : 'Masse', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Qty' : 'Anz.', 8, align: pw.TextAlign.right),
           BasePdfGenerator.buildHeaderCell(
@@ -296,7 +313,7 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
                 ),
               ),
             ),
-            ...List.generate(9, (index) => pw.SizedBox(height: 16)),
+            ...List.generate(8, (index) => pw.SizedBox(height: 16)),
           ],
         ),
       );
@@ -324,13 +341,13 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
           pw.TableRow(
             children: [
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['instrument_name_en']:item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
@@ -344,9 +361,9 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
               BasePdfGenerator.buildContentCell(
                 pw.Text('', style: const pw.TextStyle(fontSize: 6)),
               ),
-              BasePdfGenerator.buildContentCell(
-                pw.Text(dimensions, style: const pw.TextStyle(fontSize: 6)),
-              ),
+              // BasePdfGenerator.buildContentCell(
+              //   pw.Text(dimensions, style: const pw.TextStyle(fontSize: 6)),
+              // ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
                   quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
@@ -373,9 +390,9 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
         4: const pw.FlexColumnWidth(1.5),    // FSC
         5: const pw.FlexColumnWidth(1.5),    // Urs
         6: const pw.FlexColumnWidth(1.0),    // °C
-        7: const pw.FlexColumnWidth(2.5),    // Masse
-        8: const pw.FlexColumnWidth(1.5),    // Anz.
-        9: const pw.FlexColumnWidth(1.5),    // Einh
+       // 7: const pw.FlexColumnWidth(2.5),    // Masse
+        7: const pw.FlexColumnWidth(1.5),    // Anz.
+        8: const pw.FlexColumnWidth(1.5),    // Einh
       },
       children: rows,
     );

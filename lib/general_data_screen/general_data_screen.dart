@@ -939,20 +939,383 @@ class GeneralDataScreenState extends State<GeneralDataScreen> {
               _buildCollectionView('qualities'),
             ],
           ),
-          floatingActionButton: _currentTabIndex != 0 ? FloatingActionButton(
-            onPressed: _showAddDialog,
-            backgroundColor: Colors.white,
-            child: getAdaptiveIcon(
-              iconName: 'add',
-              defaultIcon: Icons.add,
-              color: Colors.grey.shade600, // Standardfarbe für das Icon
-            ),
+          floatingActionButton: _currentTabIndex != 0 ? Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              // Inventory Migration Button
+              // FloatingActionButton.small(
+              //   onPressed: _showInventoryMigrationDialog,
+              //   backgroundColor: Colors.deepOrange,
+              //   heroTag: "inventory_migration",
+              //   child: getAdaptiveIcon(
+              //     iconName: 'inventory',
+              //     defaultIcon: Icons.inventory,
+              //     color: Colors.white,
+              //   ),
+              //   tooltip: 'Inventory migrieren',
+              // ),
+
+              const SizedBox(width: 16),
+              // Hauptbutton
+              FloatingActionButton(
+                onPressed: _showAddDialog,
+                backgroundColor: Colors.white,
+                heroTag: "add",
+                child: getAdaptiveIcon(
+                  iconName: 'add',
+                  defaultIcon: Icons.add,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
           ) : null,
         ),
       );
     }
   }
+  void _showInventoryMigrationDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            getAdaptiveIcon(
+              iconName: 'inventory',
+              defaultIcon: Icons.inventory,
+              color: Colors.deepOrange,
+            ),
+            const SizedBox(width: 8),
+            const Text('Inventory Migration'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Diese Funktion fügt englische Bezeichnungen zu ALLEN Inventory-Einträgen hinzu.\n\n'
+                  'Folgende Felder werden ergänzt:',
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '• instrument_name_en\n'
+                  '• part_name_en\n'
+                  '• wood_name_en\n'
+                  '• product_name_en',
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber, color: Colors.orange, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Dies kann bei vielen Produkten einige Zeit dauern!',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange[800],
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _runInventoryMigration();
+            },
+            icon: getAdaptiveIcon(
+              iconName: 'play_arrow',
+              defaultIcon: Icons.play_arrow,
+            ),
+            label: const Text('Migration starten'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepOrange,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
+  Future<void> _runInventoryMigration() async {
+    // Zeige Fortschritts-Dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => WillPopScope(
+        onWillPop: () async => false,
+        child: AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text('Inventory Migration läuft...'),
+              const SizedBox(height: 8),
+              Text(
+                _inventoryMigrationStatus,
+                style: const TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      int updatedCount = 0;
+
+      // Lade alle Inventory-Einträge
+      setState(() => _inventoryMigrationStatus = 'Lade Inventory-Daten...');
+      final inventorySnapshot = await FirebaseFirestore.instance
+          .collection('inventory')
+          .get();
+
+      setState(() => _inventoryMigrationStatus = 'Verarbeite ${inventorySnapshot.docs.length} Produkte...');
+
+      // Batch-Updates für bessere Performance
+      final batches = <WriteBatch>[];
+      WriteBatch currentBatch = FirebaseFirestore.instance.batch();
+      int batchOperationCount = 0;
+
+      for (int i = 0; i < inventorySnapshot.docs.length; i++) {
+        final doc = inventorySnapshot.docs[i];
+
+        // Update Status alle 10 Produkte für bessere Performance
+        if (i % 10 == 0) {
+          setState(() =>
+          _inventoryMigrationStatus = 'Verarbeite Produkt ${i + 1} von ${inventorySnapshot.docs.length}...'
+          );
+        }
+
+        final updated = await _updateInventoryItem(doc, currentBatch);
+        if (updated) {
+          updatedCount++;
+          batchOperationCount++;
+        }
+
+        // Firebase hat ein Limit von 500 Operationen pro Batch
+        if (batchOperationCount >= 450) {
+          batches.add(currentBatch);
+          currentBatch = FirebaseFirestore.instance.batch();
+          batchOperationCount = 0;
+        }
+      }
+
+      // Füge den letzten Batch hinzu, falls er Operationen enthält
+      if (batchOperationCount > 0) {
+        batches.add(currentBatch);
+      }
+
+      // Führe alle Batches aus
+      setState(() => _inventoryMigrationStatus = 'Speichere Änderungen...');
+      for (int i = 0; i < batches.length; i++) {
+        await batches[i].commit();
+        print('Batch ${i + 1} von ${batches.length} committed');
+      }
+
+      // Fertig
+      Navigator.pop(context);
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green),
+                const SizedBox(width: 8),
+                const Text('Migration abgeschlossen'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Es wurden $updatedCount von ${inventorySnapshot.docs.length} Inventory-Einträgen aktualisiert.',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${inventorySnapshot.docs.length - updatedCount} Einträge hatten bereits alle englischen Felder.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler bei der Inventory-Migration: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<bool> _updateInventoryItem(
+      DocumentSnapshot inventoryDoc,
+      [WriteBatch? batch]
+      ) async {
+    try {
+      final data = inventoryDoc.data() as Map<String, dynamic>;
+      final productId = inventoryDoc.id; // z.B. "1010.1010"
+
+      // Prüfe ob die englischen Felder bereits existieren
+      if (data.containsKey('instrument_name_en') &&
+          data.containsKey('part_name_en') &&
+          data.containsKey('wood_name_en') &&
+          data.containsKey('product_name_en')) {
+        print('Produkt $productId hat bereits alle englischen Felder');
+        return false;
+      }
+
+      // Parse die Produkt-ID
+      final parts = productId.split('.');
+      if (parts.length != 2) {
+        print('Ungültige Produkt-ID: $productId');
+        return false;
+      }
+
+      final instrumentPart = parts[0].substring(0, 2); // "10"
+      final partCode = parts[0].substring(2, 4);       // "10"
+      final woodCode = parts[1].substring(0, 2);       // "10"
+      final qualityCode = parts[1].substring(2, 4);    // "10"
+
+      print('Verarbeite Produkt $productId:');
+      print('  Instrument Code: $instrumentPart');
+      print('  Part Code: $partCode');
+      print('  Wood Code: $woodCode');
+      print('  Quality Code: $qualityCode');
+
+      // Lade die englischen Namen aus den jeweiligen Collections
+      String instrumentNameEn = '';
+      String partNameEn = '';
+      String woodNameEn = '';
+      String qualityNameEn = '';
+
+      // 1. Instrument
+      final instrumentDoc = await FirebaseFirestore.instance
+          .collection('instruments')
+          .doc(instrumentPart)
+          .get();
+
+      if (instrumentDoc.exists) {
+        instrumentNameEn = instrumentDoc.data()?['name_english'] ?? '';
+        print('  Instrument EN: $instrumentNameEn');
+      }
+
+      // 2. Part
+      final partDoc = await FirebaseFirestore.instance
+          .collection('parts')
+          .doc(partCode)
+          .get();
+
+      if (partDoc.exists) {
+        partNameEn = partDoc.data()?['name_english'] ?? '';
+        print('  Part EN: $partNameEn');
+      }
+
+      // 3. Wood
+      final woodDoc = await FirebaseFirestore.instance
+          .collection('wood_types')
+          .doc(woodCode)
+          .get();
+
+      if (woodDoc.exists) {
+        woodNameEn = woodDoc.data()?['name_english'] ?? '';
+        print('  Wood EN: $woodNameEn');
+      }
+
+      // 4. Quality
+      final qualityDoc = await FirebaseFirestore.instance
+          .collection('qualities')
+          .doc(qualityCode)
+          .get();
+
+      if (qualityDoc.exists) {
+        qualityNameEn = qualityDoc.data()?['name_english'] ?? '';
+        print('  Quality EN: $qualityNameEn');
+      }
+
+      // Erstelle den product_name_en
+      String productNameEn = '';
+      if (instrumentNameEn.isNotEmpty && partNameEn.isNotEmpty) {
+        productNameEn = '$instrumentNameEn $partNameEn';
+        if (woodNameEn.isNotEmpty) {
+          productNameEn += ' - $woodNameEn';
+        }
+        if (qualityNameEn.isNotEmpty) {
+          productNameEn += ' ($qualityNameEn)';
+        }
+      }
+      print('  Product Name EN: $productNameEn');
+
+      // Update das Inventory-Dokument
+      final updateData = {
+        'instrument_name_en': instrumentNameEn,
+        'part_name_en': partNameEn,
+        'wood_name_en': woodNameEn,
+        'quality_name_en': qualityNameEn,
+        'product_name_en': productNameEn,
+        'migrated_at': FieldValue.serverTimestamp(),
+      };
+
+      if (batch != null) {
+        batch.update(inventoryDoc.reference, updateData);
+      } else {
+        // Für Test-Modus: Direktes Update
+        await inventoryDoc.reference.update(updateData);
+      }
+
+      print('✓ Produkt $productId erfolgreich aktualisiert');
+      return true;
+
+    } catch (e) {
+      print('Fehler beim Update von ${inventoryDoc.id}: $e');
+      return false;
+    }
+  }
+
+  String _inventoryMigrationStatus = '';
   Widget _buildNavItem(String title, int index, dynamic iconData) {
     final isSelected = _currentTabIndex == index;
 
@@ -1012,7 +1375,6 @@ class GeneralDataScreenState extends State<GeneralDataScreen> {
                 leading: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
@@ -1024,7 +1386,12 @@ class GeneralDataScreenState extends State<GeneralDataScreen> {
                   ),
                 ),
                 title: Text(data['name']),
-                subtitle: Text(data['short']),
+                subtitle: Text(
+                  // NEU: Englische Bezeichnung vor dem Kürzel anzeigen
+                  data['name_english'] != null && data['name_english'].toString().isNotEmpty
+                      ? '${data['name_english']} • ${data['short']}'
+                      : data['short'],
+                ),
                 trailing: IconButton(
                   icon: getAdaptiveIcon(
                     iconName: 'edit',
@@ -1268,7 +1635,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
               ),
               const SizedBox(width: 12),
               Text(
-                'Neue ${widget.title}',
+                'Neu: ${widget.title}',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
@@ -1332,6 +1699,30 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                               : null,
                           autofocus: true,
                         ),
+
+
+
+                        if (widget.collection == 'instruments' || widget.collection == 'parts') ...[
+                const SizedBox(height: 16),
+            TextFormField(
+              controller: _englishController,
+              decoration: InputDecoration(
+                  labelText: 'Englische Bezeichnung *',
+                  border: const OutlineInputBorder(),
+                  filled: true,
+                fillColor: Theme.of(context).colorScheme.surface,
+                prefixIcon: getAdaptiveIcon(
+                  iconName: 'language',
+                  defaultIcon: Icons.language,
+                ),
+              ),
+              validator: (value) => value?.isEmpty == true
+                  ? 'Bitte englische Bezeichnung eingeben'
+                  : null,
+            ),
+                      ],
+
+
                         const SizedBox(height: 16),
                         TextFormField(
                           controller: _shortController,
@@ -1651,7 +2042,9 @@ class _AddItemDialogState extends State<_AddItemDialog> {
         'short': _shortController.text.trim(),
         'created_at': FieldValue.serverTimestamp(),
       };
-
+      if (widget.collection == 'instruments' || widget.collection == 'parts') {
+        data['name_english'] = _englishController.text.trim();
+      }
       // Zusätzliche Felder für Holzarten hinzufügen
       if (widget.isWoodTypes) {
         data.addAll({
@@ -1889,7 +2282,29 @@ class _ExtendedEditNameDialogState extends State<ExtendedEditNameDialog> {
                               : null,
                           autofocus: true,
                         ),
+
+                        // NEU: Englische Bezeichnung für Instrumente
+                        if (widget.collection == 'instruments' || widget.collection == 'parts') ...[
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _englishController,
+                            decoration: InputDecoration(
+                              labelText: 'Englische Bezeichnung *',
+                              border: const OutlineInputBorder(),
+                              filled: true,
+                              fillColor: Theme.of(context).colorScheme.surface,
+                              prefixIcon: getAdaptiveIcon(
+                                iconName: 'language',
+                                defaultIcon: Icons.language,
+                              ),
+                            ),
+                            validator: (value) => value?.isEmpty == true
+                                ? 'Bitte englische Bezeichnung eingeben'
+                                : null,
+                          ),
+                        ],
                         const SizedBox(height: 16),
+
                         TextFormField(
                           controller: _shortController,
                           decoration: InputDecoration(
@@ -2201,7 +2616,10 @@ class _ExtendedEditNameDialogState extends State<ExtendedEditNameDialog> {
           'short': _shortController.text.trim(),
           'updated_at': FieldValue.serverTimestamp(),
         };
-
+// NEU: Englische Bezeichnung für Instrumente
+        if (widget.collection == 'instruments' || widget.collection == 'parts') {
+          updateData['name_english'] = _englishController.text.trim();
+        }
         // Zusätzliche Felder für Holzarten
         if (widget.collection == 'wood_types') {
           updateData.addAll({

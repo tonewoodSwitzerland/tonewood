@@ -21,13 +21,32 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
   bool _isLoading = false;
   Map<String, bool> _documentSelection = {};
   bool _isQuoteOnly = false;
-
+  String? _selectedDistributionChannelId;
+  Map<String, dynamic>? _selectedDistributionChannel;
+  String? _customerLanguage;
   @override
   void initState() {
     super.initState();
     _loadDocumentSelection();
+    _loadCustomerLanguage();
   }
+// Neue Methode hinzufügen:
+  Future<void> _loadCustomerLanguage() async {
+    try {
+      final customerSnapshot = await FirebaseFirestore.instance
+          .collection('temporary_customer')
+          .limit(1)
+          .get();
 
+      if (customerSnapshot.docs.isNotEmpty) {
+        setState(() {
+          _customerLanguage = customerSnapshot.docs.first.data()['language'] ?? 'DE';
+        });
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Kundensprache: $e');
+    }
+  }
   Future<void> _loadDocumentSelection() async {
     final selection = await DocumentSelectionManager.loadDocumentSelection();
     setState(() {
@@ -44,7 +63,7 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
       appBar: AppBar(
         title: Text(_isQuoteOnly ? 'Angebot erstellen' : 'Auftrag erstellen'),
       ),
-      body: Padding(
+      body: SingleChildScrollView(  // NEU: Scrollable machen
         padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -53,10 +72,20 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
             const SizedBox(height: 24),
             _buildDocumentOverview(),
             const SizedBox(height: 24),
+
+            _buildLanguageInfo(), // NEU
+            const SizedBox(height: 24),
+            _buildDistributionChannelSelection(),
+            const SizedBox(height: 24),
             if (_isQuoteOnly) _buildQuoteInfo(),
-            const Spacer(),
-            _buildActionButtons(),
+            const SizedBox(height: 100), // Platz für den Button
           ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(  // NEU: Button als bottomNavigationBar
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: _buildActionButtons(),
         ),
       ),
     );
@@ -124,7 +153,67 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
       },
     );
   }
+  Widget _buildLanguageInfo() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+        ),
+        borderRadius: BorderRadius.circular(12),
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.language,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Spracheinstellungen',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Voreingestellte Sprache des Kunden: ${_customerLanguage ?? 'Nicht definiert'}',
+            style: const TextStyle(fontSize: 14),
+          ),
+          const SizedBox(height: 4),
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('temporary_document_settings')
+                .doc('language_settings')
+                .snapshots(),
+            builder: (context, snapshot) {
+              String documentLanguage = 'DE'; // Standardwert
 
+              if (snapshot.hasData && snapshot.data!.exists) {
+                final data = snapshot.data!.data() as Map<String, dynamic>?;
+                documentLanguage = data?['document_language'] ?? 'DE';
+              }
+
+              return Text(
+                'Gewählte Dokumentensprache: $documentLanguage',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
   Widget _buildDocumentOverview() {
     final selectedDocs = _documentSelection.entries
         .where((e) => e.value == true)
@@ -181,6 +270,168 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
     );
   }
 
+
+// 2. NEUE WIDGET-METHODE (nach _buildDocumentOverview() einfügen):
+  Widget _buildDistributionChannelSelection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.storefront,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Vertriebsweg wählen',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (_selectedDistributionChannelId == null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                ),
+                child: Text(
+                  'Erforderlich',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.red[700],
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('distribution_channel')
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text('Keine Vertriebswege verfügbar'),
+              );
+            }
+
+            final channels = snapshot.data!.docs;
+
+            return GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 3, // 3 Spalten
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 1.2, // Breite zu Höhe Verhältnis
+              children: channels.map((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final channelId = doc.id;
+                final isSelected = _selectedDistributionChannelId == channelId;
+
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedDistributionChannelId = channelId;
+                      _selectedDistributionChannel = data;
+                    });
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.primaryContainer
+                          : Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.grey.withOpacity(0.3),
+                        width: isSelected ? 2 : 1,
+                      ),
+                      boxShadow: isSelected ? [
+                        BoxShadow(
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                          blurRadius: 8,
+                          spreadRadius: 0,
+                          offset: const Offset(0, 2),
+                        ),
+                      ] : null,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _getChannelIcon(data['name']?.toString() ?? ''),
+                          size: 28, // Etwas kleiner
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.grey[600],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          data['name']?.toString() ?? 'Unbekannt',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.onPrimaryContainer
+                                : Colors.grey[700],
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+// 3. HILFSMETHODE FÜR ICONS (neue Methode):
+  IconData _getChannelIcon(String channelName) {
+    final name = channelName.toLowerCase();
+
+    if (name.contains('website') || name.contains('online')) {
+      return Icons.language;
+    } else if (name.contains('telefon') || name.contains('phone')) {
+      return Icons.phone;
+    } else if (name.contains('email') || name.contains('mail')) {
+      return Icons.email;
+    } else if (name.contains('messe') || name.contains('fair')) {
+      return Icons.event;
+    } else if (name.contains('besuch') || name.contains('visit')) {
+      return Icons.business;
+    } else if (name.contains('whatsapp')) {
+      return Icons.chat;
+    } else if (name.contains('social')) {
+      return Icons.share;
+    } else {
+      return Icons.storefront;
+    }
+  }
   Widget _buildQuoteInfo() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -221,7 +472,8 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
           const SizedBox(width: 16),
           Expanded(
             child: ElevatedButton.icon(
-              onPressed: _isLoading ? null : _processDocuments,
+              onPressed: (_isLoading || _selectedDistributionChannelId == null) ? null : _processDocuments,
+
               icon: _isLoading
                   ? const SizedBox(
                 width: 20,
@@ -271,7 +523,7 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
           _showSuccessDialog(
             'Angebot erstellt',
             'Angebotsnummer: ${quote.quoteNumber}\n\n'
-                'Die Produkte wurden für 14 Tage reserviert.',
+                'Die Produkte wurden reserviert.',
             quote.id,
           );
         }
@@ -389,6 +641,9 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
       // Berechne Summen
       final calculations = await _calculateTotals(basketSnapshot.docs);
 
+      final invoiceSettings = await DocumentSelectionManager.loadInvoiceSettings();
+
+
       // Items vorbereiten
       final items = basketSnapshot.docs.map((doc) {
         final data = doc.data();
@@ -413,9 +668,12 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
           'vatRate': taxDoc.exists ? (taxDoc.data()?['vat_rate'] ?? 8.1) : 8.1,
           'currency': currencyDoc.exists ? (currencyDoc.data()?['selected_currency'] ?? 'CHF') : 'CHF',
           'exchangeRates': currencyDoc.exists ? (currencyDoc.data()?['exchange_rates'] ?? {'CHF': 1.0}) : {'CHF': 1.0},
-          'language': customerSnapshot.docs.first.data()['language'] ?? 'DE',
+          'language': await _getDocumentLanguage() ?? customerSnapshot.docs.first.data()['language'] ?? 'DE',
+
           'shippingCosts': shippingCosts,
           'additionalTexts': additionalTexts,
+          'invoiceSettings': invoiceSettings,
+          'distributionChannel': _selectedDistributionChannel,
         },
       };
     } catch (e) {
@@ -423,7 +681,22 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
       rethrow;
     }
   }
+// Und füge diese Hilfsmethode hinzu:
+  Future<String?> _getDocumentLanguage() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('temporary_document_settings')
+          .doc('language_settings')
+          .get();
 
+      if (doc.exists) {
+        return doc.data()?['document_language'];
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Dokumentensprache: $e');
+    }
+    return null;
+  }
   Future<Map<String, dynamic>> _calculateTotals(List<QueryDocumentSnapshot> basketItems) async {
     double subtotal = 0.0;
     double itemDiscounts = 0.0;
@@ -553,46 +826,160 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
   void _showSuccessDialog(String title, String message, String documentId) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(message),
-            // const SizedBox(height: 16),
-            // ElevatedButton.icon(
-            //   onPressed: () {
-            //     Navigator.pop(context);
-            //     // Navigiere zur Auftragsübersicht
-            //     Navigator.pushReplacementNamed(context, '/orders_overview');
-            //   },
-            //   icon: getAdaptiveIcon(iconName: 'list', defaultIcon: Icons.list),
-            //   label: const Text('Zur Auftragsübersicht'),
-            // ),
-          ],
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Success Icon
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.check_circle,
+                  color: Colors.green,
+                  size: 50,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Title
+              Text(
+                title,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+
+              // Message
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  message,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Single Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context); // Schließt den Dialog
+
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('Verstanden'),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
-
   void _showErrorDialog(String error) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Fehler'),
-        content: Text(error),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Error Icon
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.error_outline,
+                  color: Colors.red,
+                  size: 50,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Title
+              Text(
+                'Fehler',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Error Message
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.red.withOpacity(0.3),
+                  ),
+                ),
+                child: Text(
+                  error,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.red[700],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // OK Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('OK'),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

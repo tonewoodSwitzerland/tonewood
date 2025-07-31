@@ -10,8 +10,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
+
 import '../services/icon_helper.dart';
+import 'barcode_scanner.dart';
 
 class WarehouseScreen extends StatefulWidget {
   final bool isDialog;
@@ -51,7 +52,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     super.initState();
     _loadDropdownData();
   }
-
+  bool _showEnglishNames = false; // Neue Variable für Sprachwechsel
   bool isQuickFilterActive = false;
   String? _shopFilter; // null = alle, 'sold' = verkauft, 'available' = nicht verkauft
   bool _isOnlineShopView = false;
@@ -165,6 +166,14 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       'wood_code': productData['wood_code'],
       'quality_name': productData['quality_name'],
       'quality_code': productData['quality_code'],
+
+
+      // NEU: Englische Bezeichnungen hinzufügen
+      'instrument_name_en': productData['instrument_name_en'] ?? '',
+      'part_name_en': productData['part_name_en'] ?? '',
+      'wood_name_en': productData['wood_name_en'] ?? '',
+      'product_name_en': productData['product_name_en'] ?? '',
+
     });
   }
 
@@ -428,37 +437,89 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
                           const SizedBox(height: 16),
 
+                          // In der _showProductDetails Methode, ersetzen Sie die Produktinformationen Sektion mit:
+
+                          // In der _buildDetailSection Methode anpassen:
+
+                          // Produktinformationen
                           _buildDetailSection(
                             title: 'Produktinformationen',
                             iconName: 'info',
                             icon: Icons.info,
-                            content: Column(
-                              children: [
-                                _buildDetailRow(
-                                    'Instrument',
-                                    '${data['instrument_name']} (${data['instrument_code']})',
-                                    icon: Icons.music_note,
-                                    iconName: 'music_note'
-                                ),
-                                _buildDetailRow(
-                                    'Bauteil',
-                                    '${data['part_name']} (${data['part_code']})',
-                                    icon: Icons.category,
-                                    iconName: 'category'
-                                ),
-                                _buildDetailRow(
-                                    'Holzart',
-                                    '${data['wood_name']} (${data['wood_code']})',
-                                    icon: Icons.forest,
-                                    iconName: 'forest'
-                                ),
-                                _buildDetailRow(
-                                    'Qualität',
-                                    '${data['quality_name']} (${data['quality_code']})',
-                                    icon: Icons.star,
-                                    iconName: 'star'
-                                ),
-                              ],
+                            content: StatefulBuilder(
+                              builder: (context, setInnerState) {
+                                return Column(
+                                  children: [
+                                    // Switch in den Content-Bereich verschieben
+                                    Container(
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        children: [
+                                          Text(
+                                            'DE',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: !_showEnglishNames ? const Color(0xFF0F4A29) : Colors.grey[400],
+                                            ),
+                                          ),
+                                          Transform.scale(
+                                            scale: 0.7,
+                                            child: Switch(
+                                              value: _showEnglishNames,
+                                              onChanged: (value) {
+                                                setInnerState(() {
+                                                  _showEnglishNames = value;
+                                                });
+                                              },
+                                              activeColor: const Color(0xFF0F4A29),
+                                            ),
+                                          ),
+                                          Text(
+                                            'EN',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: _showEnglishNames ? const Color(0xFF0F4A29) : Colors.grey[400],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    _buildDetailRow(
+                                      'Instrument',
+                                      _showEnglishNames
+                                          ? '${data['instrument_name_en'] ?? data['instrument_name']} (${data['instrument_code']})'
+                                          : '${data['instrument_name']} (${data['instrument_code']})',
+                                      iconName: 'music_note',
+                                      icon: Icons.music_note,
+                                    ),
+                                    _buildDetailRow(
+                                      'Bauteil',
+                                      _showEnglishNames
+                                          ? '${data['part_name_en'] ?? data['part_name']} (${data['part_code']})'
+                                          : '${data['part_name']} (${data['part_code']})',
+                                      iconName: 'category',
+                                      icon: Icons.category,
+                                    ),
+                                    _buildDetailRow(
+                                      'Holzart',
+                                      _showEnglishNames
+                                          ? '${data['wood_name_en'] ?? data['wood_name']} (${data['wood_code']})'
+                                          : '${data['wood_name']} (${data['wood_code']})',
+                                      iconName: 'forest',
+                                      icon: Icons.forest,
+                                    ),
+                                    _buildDetailRow(
+                                      'Qualität',
+                                      _showEnglishNames
+                                          ? '${data['quality_name_en'] ?? data['quality_name']} (${data['quality_code']})'
+                                          : '${data['quality_name']} (${data['quality_code']})',
+                                      iconName: 'star',
+                                      icon: Icons.star,
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
                           ),
                         ],
@@ -866,41 +927,91 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
                       const SizedBox(height: 16),
 
+                      // In der _showProductDetails Methode, ersetzen Sie die Produktinformationen Sektion mit:
+
+                      // In der _buildDetailSection Methode anpassen:
+
                       // Produktinformationen
                       _buildDetailSection(
                         title: 'Produktinformationen',
                         iconName: 'info',
                         icon: Icons.info,
-                        content: Column(
-                          children: [
-                            _buildDetailRow(
-                              'Instrument',
-                              '${data['instrument_name']} (${data['instrument_code']})',
-                              iconName: 'music_note',
-                              icon: Icons.music_note,
-                            ),
-                            _buildDetailRow(
-                              'Bauteil',
-                              '${data['part_name']} (${data['part_code']})',
-                              iconName: 'category',
-                              icon: Icons.category,
-                            ),
-                            _buildDetailRow(
-                              'Holzart',
-                              '${data['wood_name']} (${data['wood_code']})',
-                              iconName: 'forest',
-                              icon: Icons.forest,
-                            ),
-                            _buildDetailRow(
-                              'Qualität',
-                              '${data['quality_name']} (${data['quality_code']})',
-                              iconName: 'star',
-                              icon: Icons.star,
-                            ),
-                          ],
+                        content: StatefulBuilder(
+                          builder: (context, setInnerState) {
+                            return Column(
+                              children: [
+                                // Switch in den Content-Bereich verschieben
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        'DE',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: !_showEnglishNames ? const Color(0xFF0F4A29) : Colors.grey[400],
+                                        ),
+                                      ),
+                                      Transform.scale(
+                                        scale: 0.7,
+                                        child: Switch(
+                                          value: _showEnglishNames,
+                                          onChanged: (value) {
+                                            setInnerState(() {
+                                              _showEnglishNames = value;
+                                            });
+                                          },
+                                          activeColor: const Color(0xFF0F4A29),
+                                        ),
+                                      ),
+                                      Text(
+                                        'EN',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: _showEnglishNames ? const Color(0xFF0F4A29) : Colors.grey[400],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                _buildDetailRow(
+                                  'Instrument',
+                                  _showEnglishNames
+                                      ? '${data['instrument_name_en'] ?? data['instrument_name']} (${data['instrument_code']})'
+                                      : '${data['instrument_name']} (${data['instrument_code']})',
+                                  iconName: 'music_note',
+                                  icon: Icons.music_note,
+                                ),
+                                _buildDetailRow(
+                                  'Bauteil',
+                                  _showEnglishNames
+                                      ? '${data['part_name_en'] ?? data['part_name']} (${data['part_code']})'
+                                      : '${data['part_name']} (${data['part_code']})',
+                                  iconName: 'category',
+                                  icon: Icons.category,
+                                ),
+                                _buildDetailRow(
+                                  'Holzart',
+                                  _showEnglishNames
+                                      ? '${data['wood_name_en'] ?? data['wood_name']} (${data['wood_code']})'
+                                      : '${data['wood_name']} (${data['wood_code']})',
+                                  iconName: 'forest',
+                                  icon: Icons.forest,
+                                ),
+                                _buildDetailRow(
+                                  'Qualität',
+                                  _showEnglishNames
+                                      ? '${data['quality_name_en'] ?? data['quality_name']} (${data['quality_code']})'
+                                      : '${data['quality_name']} (${data['quality_code']})',
+                                  iconName: 'star',
+                                  icon: Icons.star,
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ),
-
                       const SizedBox(height: 16),
 
                       // Bestand und Preis
@@ -1185,8 +1296,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     required String title,
     required IconData icon,
     required Widget content,
-    Map<String, dynamic>? data,  // Parameter für Produktdaten
-    String? iconName,            // Neuer Parameter für adaptive Icons
+    Map<String, dynamic>? data,
+    String? iconName,
+    Widget? customTitleWidget, // NEU
   }) {
     if (title == 'Bestand & Preis' && data != null) {
       return Container(
@@ -1236,9 +1348,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: const Color(0xFF0F4A29).withValues(
-                              red: 15,    // 0x0F
-                              green: 74,  // 0x4A
-                              blue: 41,   // 0x29
+                              red: 15,
+                              green: 74,
+                              blue: 41,
                               alpha: 0.1
                           ),
                           borderRadius: BorderRadius.circular(8),
@@ -1370,11 +1482,13 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                 )
                     : Icon(icon, size: 20, color: const Color(0xFF0F4A29)),
                 const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                Expanded(
+                  child: customTitleWidget ?? Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
               ],
@@ -1664,11 +1778,11 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
   Future<void> _scanAndShowProduct() async {
     try {
-      String barcodeResult = await FlutterBarcodeScanner.scanBarcode(
-        '#ff6666',
-        'Abbrechen',
-        true,
-        ScanMode.BARCODE,
+      final String? barcodeResult = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SimpleBarcodeScannerPage(),
+        ),
       );
 
       if (barcodeResult != '-1') {

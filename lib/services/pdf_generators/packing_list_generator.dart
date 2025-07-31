@@ -43,6 +43,7 @@ class PackingListGenerator extends BasePdfGenerator {
   static Future<Uint8List> generatePackingListPdf({
     required String language,
     String? packingListNumber,
+    String? orderId,
     String? invoiceNumber, // NEU
     String? quoteNumber, // NEU
     required Map<String, dynamic> customerData,
@@ -56,7 +57,29 @@ class PackingListGenerator extends BasePdfGenerator {
     final packingNum = packingListNumber ?? await getNextPackingListNumber();
 
     // Lade Packliste-Einstellungen
-    final packingSettings = await DocumentSelectionManager.loadPackingListSettings();
+    Map<String, dynamic> packingSettings;
+
+// Prüfe zuerst ob es eine gespeicherte Packliste für diesen Auftrag gibt
+    if (orderId != null && orderId.isNotEmpty) {
+      final orderPackingListDoc = await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(orderId)
+          .collection('packing_list')
+          .doc('settings')
+          .get();
+
+      if (orderPackingListDoc.exists) {
+        // Verwende die gespeicherten Daten aus dem Auftrag
+        packingSettings = orderPackingListDoc.data() ?? {};
+      } else {
+        // Fallback auf die globalen Einstellungen
+        packingSettings = await DocumentSelectionManager.loadPackingListSettings();
+      }
+    } else {
+      // Kein Auftrag vorhanden, verwende globale Einstellungen
+      packingSettings = await DocumentSelectionManager.loadPackingListSettings();
+    }
+
     final packages = List<Map<String, dynamic>>.from(packingSettings['packages'] ?? []);
 
     // Lade alle Holzart-Daten vorher
@@ -257,7 +280,7 @@ class PackingListGenerator extends BasePdfGenerator {
                 pw.SizedBox(height: 20),
 
                 // Kundenadresse
-                BasePdfGenerator.buildCustomerAddress(customerData),
+               BasePdfGenerator.buildCustomerAddress(customerData, language: language),
 
                 pw.Expanded(
                   child: pw.Center(
@@ -341,7 +364,9 @@ class PackingListGenerator extends BasePdfGenerator {
     final width = (package['width'] as num?)?.toDouble() ?? 0.0;
     final height = (package['height'] as num?)?.toDouble() ?? 0.0;
     final tareWeight = (package['tare_weight'] as num?)?.toDouble() ?? 0.0;
-    final packagingType = package['packaging_type'] as String? ?? '';
+    final packagingType = language == 'EN'
+        ? (package['packaging_type_en'] as String? ?? package['packaging_type'] as String? ?? '')
+        : (package['packaging_type'] as String? ?? '');
 
     // Berechne Bruttovolumen in m³
     final grossVolume = (length * width * height) / 1000000; // cm³ zu m³
@@ -357,7 +382,7 @@ class PackingListGenerator extends BasePdfGenerator {
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Text(
-            '${getTranslation('package')} $packageNumber: ${package['name']}',
+            '${getTranslation('package')} $packageNumber',
             style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12, color: PdfColors.blueGrey800),
           ),
           pw.SizedBox(height: 4),
@@ -516,12 +541,27 @@ class PackingListGenerator extends BasePdfGenerator {
         dimensionsText = '${itemLength.toStringAsFixed(0)}×${itemWidth.toStringAsFixed(0)}×${thickness.toStringAsFixed(1)}';
       }
 
+      print("item:$item");
+
       rows.add(
         pw.TableRow(
           children: [
+
+
+
+
+
             BasePdfGenerator.buildContentCell(
-              pw.Text(item['product_name'] ?? item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
+              pw.Text(
+                  (language == 'EN' ? item['product_name_en'] : item['product_name']) ??
+                      (language == 'EN' ? item['part_name_en'] : item['part_name']) ??
+                      '',
+                  style: const pw.TextStyle(fontSize: 8)
+              ),
             ),
+
+
+
             BasePdfGenerator.buildContentCell(
               pw.Text(dimensionsText, style: const pw.TextStyle(fontSize: 8)),
             ),

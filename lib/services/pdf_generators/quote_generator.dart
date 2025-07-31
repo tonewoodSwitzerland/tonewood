@@ -53,17 +53,18 @@ class QuoteGenerator extends BasePdfGenerator {
     required Map<String, double> exchangeRates,
     String? quoteNumber,
     required String language,
-    Map<String, dynamic>? shippingCosts,  // Neu
-    Map<String, dynamic>? calculations,   // Neu
-    required int taxOption,  // NEU: 0=standard, 1=noTax, 2=totalOnly
-    required double vatRate,  // NEU: MwSt-Satz
+    Map<String, dynamic>? shippingCosts,
+    Map<String, dynamic>? calculations,
+    required int taxOption,  // 0=standard, 1=noTax, 2=totalOnly
+    required double vatRate,
+  DateTime? validityDate,
   }) async {
     final pdf = pw.Document();
     final logo = await BasePdfGenerator.loadLogo();
 
     // Generiere Offerten-Nummer falls nicht übergeben
     final quoteNum = quoteNumber ?? await getNextQuoteNumber();
-    final validUntil = DateTime.now().add(Duration(days: 14));
+    final validUntil = validityDate ?? DateTime.now().add(Duration(days: 14));
 
     // Gruppiere Items nach Holzart
     final groupedItems = await _groupItemsByWoodType(items, language);
@@ -85,7 +86,7 @@ class QuoteGenerator extends BasePdfGenerator {
         'EN': {
           'quote': 'QUOTE',
           'currency_note': 'All prices in $currency (Exchange rate: 1 CHF = ${exchangeRates[currency]!.toStringAsFixed(4)} $currency)',
-          'validity_note': 'This quote is valid until ${DateFormat('MMMM dd, yyyy', 'en_US').format(validUntil)}. If payment is not received by then, we will cancel the reservation.',
+          'validity_note': 'This offer is valid until ${DateFormat('MMMM dd, yyyy', 'en_US').format(validUntil)}. If payment is not received by then, we will cancel the reservation.',
           'net_amount': 'Net amount',
           'vat': 'VAT',
           'total': 'Total',
@@ -115,7 +116,7 @@ class QuoteGenerator extends BasePdfGenerator {
               pw.SizedBox(height: 20),
 
               // Kundenadresse
-              BasePdfGenerator.buildCustomerAddress(customerData),
+             BasePdfGenerator.buildCustomerAddress(customerData, language: language),
 
               pw.SizedBox(height: 15),
 
@@ -346,13 +347,13 @@ class QuoteGenerator extends BasePdfGenerator {
           pw.TableRow(
             children: [
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['instrument_name_en']:item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
@@ -470,8 +471,8 @@ class QuoteGenerator extends BasePdfGenerator {
       String language,
       Map<String, dynamic>? shippingCosts,
       Map<String, dynamic>? calculations,
-      int taxOption,  // NEU
-      double vatRate, // NEU
+      int taxOption,
+      double vatRate,
       ) {
     double subtotal = 0.0;
     double actualItemDiscounts = 0.0;
@@ -497,11 +498,17 @@ class QuoteGenerator extends BasePdfGenerator {
     final packagingCost = shippingCosts?['packaging_cost'] ?? 0.0;
     final freightCost = shippingCosts?['freight_cost'] ?? 0.0;
     final shippingCombined = shippingCosts?['shipping_combined'] ?? true;
-    final carrier = shippingCosts?['carrier'] ?? 'Swiss Post';
+    final carrier = (shippingCosts?['carrier'] == 'Persönlich abgeholt' && language == 'EN')
+        ? 'Collected in person'
+        : (shippingCosts?['carrier'] ?? 'Swiss Post');
 
-    final netAmount = afterDiscounts + plantCertificate + packagingCost + freightCost;
+    // Abschläge und Zuschläge
+    final totalDeductions = shippingCosts?['totalDeductions'] ?? 0.0;
+    final totalSurcharges = shippingCosts?['totalSurcharges'] ?? 0.0;
 
-    // NEU: MwSt-Berechnung basierend auf taxOption
+    final netAmount = afterDiscounts + plantCertificate + packagingCost + freightCost + totalSurcharges - totalDeductions;
+
+    // MwSt-Berechnung basierend auf taxOption
     double vatAmount = 0.0;
     double totalWithTax = netAmount;
 
@@ -526,8 +533,8 @@ class QuoteGenerator extends BasePdfGenerator {
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                pw.Text(language == 'EN' ? 'Subtotal' : 'Subtotal' ,style: const pw.TextStyle(fontSize: 9), ),
-                pw.Text(BasePdfGenerator.formatCurrency(subtotal, currency, exchangeRates),style: const pw.TextStyle(fontSize: 9),),
+                pw.Text(language == 'EN' ? 'Subtotal' : 'Subtotal', style: const pw.TextStyle(fontSize: 9)),
+                pw.Text(BasePdfGenerator.formatCurrency(subtotal, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
               ],
             ),
 
@@ -537,8 +544,8 @@ class QuoteGenerator extends BasePdfGenerator {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(language == 'EN' ? 'Item discounts' : 'Positionsrabatte',style: const pw.TextStyle(fontSize: 9),),
-                  pw.Text('- ${BasePdfGenerator.formatCurrency(itemDiscounts, currency, exchangeRates)}',style: const pw.TextStyle(fontSize: 9),),
+                  pw.Text(language == 'EN' ? 'Item discounts' : 'Positionsrabatte', style: const pw.TextStyle(fontSize: 9)),
+                  pw.Text('- ${BasePdfGenerator.formatCurrency(itemDiscounts, currency, exchangeRates)}', style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
             ],
@@ -549,8 +556,8 @@ class QuoteGenerator extends BasePdfGenerator {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(language == 'EN' ? 'Total discount' : 'Gesamtrabatt',style: const pw.TextStyle(fontSize: 9),),
-                  pw.Text('- ${BasePdfGenerator.formatCurrency(totalDiscountAmount, currency, exchangeRates)}',style: const pw.TextStyle(fontSize: 9),),
+                  pw.Text(language == 'EN' ? 'Total discount' : 'Gesamtrabatt', style: const pw.TextStyle(fontSize: 9)),
+                  pw.Text('- ${BasePdfGenerator.formatCurrency(totalDiscountAmount, currency, exchangeRates)}', style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
             ],
@@ -561,8 +568,8 @@ class QuoteGenerator extends BasePdfGenerator {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(language == 'EN' ? 'Phytosanitary certificate' : 'Pflanzenschutzzeugniss',style: const pw.TextStyle(fontSize: 9),),
-                  pw.Text(BasePdfGenerator.formatCurrency(plantCertificate, currency, exchangeRates),style: const pw.TextStyle(fontSize: 9),),
+                  pw.Text(language == 'EN' ? 'Phytosanitary certificate' : 'Pflanzenschutzzeugniss', style: const pw.TextStyle(fontSize: 9)),
+                  pw.Text(BasePdfGenerator.formatCurrency(plantCertificate, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
             ],
@@ -574,11 +581,12 @@ class QuoteGenerator extends BasePdfGenerator {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text(
-                      language == 'EN'
-                          ? 'Packing & Freight costs ($carrier)'
-                          : 'Verpackungs- & Frachtkosten ($carrier)'
-                    ,style: const pw.TextStyle(fontSize: 9), ),
-                  pw.Text(BasePdfGenerator.formatCurrency(packagingCost + freightCost, currency, exchangeRates),style: const pw.TextStyle(fontSize: 9),),
+                    language == 'EN'
+                        ? 'Packing & Freight costs ($carrier)'
+                        : 'Verpackungs- & Frachtkosten ($carrier)',
+                    style: const pw.TextStyle(fontSize: 9),
+                  ),
+                  pw.Text(BasePdfGenerator.formatCurrency(packagingCost + freightCost, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
             ] else ...[
@@ -588,8 +596,8 @@ class QuoteGenerator extends BasePdfGenerator {
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text(language == 'EN' ? 'Packing costs' : 'Verpackungskosten',style: const pw.TextStyle(fontSize: 9),),
-                    pw.Text(BasePdfGenerator.formatCurrency(packagingCost, currency, exchangeRates),style: const pw.TextStyle(fontSize: 9),),
+                    pw.Text(language == 'EN' ? 'Packing costs' : 'Verpackungskosten', style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(BasePdfGenerator.formatCurrency(packagingCost, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                   ],
                 ),
               ],
@@ -599,17 +607,111 @@ class QuoteGenerator extends BasePdfGenerator {
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
                     pw.Text(
-                        language == 'EN'
-                            ? 'Freight costs ($carrier)'
-                            : 'Frachtkosten ($carrier)'
-                      ,style: const pw.TextStyle(fontSize: 9), ),
-                    pw.Text(BasePdfGenerator.formatCurrency(freightCost, currency, exchangeRates),style: const pw.TextStyle(fontSize: 9),),
+                      language == 'EN'
+                          ? 'Freight costs ($carrier)'
+                          : 'Frachtkosten ($carrier)',
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                    pw.Text(BasePdfGenerator.formatCurrency(freightCost, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                   ],
                 ),
               ],
             ],
 
-            // NEU: MwSt-Bereich je nach Option
+            // Abschläge und Zuschläge
+            if (shippingCosts != null) ...[
+              // Abschlag 1
+              if ((shippingCosts['deduction_1_text'] ?? '').isNotEmpty && (shippingCosts['deduction_1_amount'] ?? 0.0) > 0) ...[
+                pw.SizedBox(height: 4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(shippingCosts['deduction_1_text'], style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(
+                      '- ${BasePdfGenerator.formatCurrency(shippingCosts['deduction_1_amount'], currency, exchangeRates)}',
+                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.red),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Abschlag 2
+              if ((shippingCosts['deduction_2_text'] ?? '').isNotEmpty && (shippingCosts['deduction_2_amount'] ?? 0.0) > 0) ...[
+                pw.SizedBox(height: 4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(shippingCosts['deduction_2_text'], style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(
+                      '- ${BasePdfGenerator.formatCurrency(shippingCosts['deduction_2_amount'], currency, exchangeRates)}',
+                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.red),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Abschlag 3
+              if ((shippingCosts['deduction_3_text'] ?? '').isNotEmpty && (shippingCosts['deduction_3_amount'] ?? 0.0) > 0) ...[
+                pw.SizedBox(height: 4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(shippingCosts['deduction_3_text'], style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(
+                      '- ${BasePdfGenerator.formatCurrency(shippingCosts['deduction_3_amount'], currency, exchangeRates)}',
+                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.red),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Zuschlag 1
+              if ((shippingCosts['surcharge_1_text'] ?? '').isNotEmpty && (shippingCosts['surcharge_1_amount'] ?? 0.0) > 0) ...[
+                pw.SizedBox(height: 4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(shippingCosts['surcharge_1_text'], style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(
+                      BasePdfGenerator.formatCurrency(shippingCosts['surcharge_1_amount'], currency, exchangeRates),
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Zuschlag 2
+              if ((shippingCosts['surcharge_2_text'] ?? '').isNotEmpty && (shippingCosts['surcharge_2_amount'] ?? 0.0) > 0) ...[
+                pw.SizedBox(height: 4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(shippingCosts['surcharge_2_text'], style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(
+                      BasePdfGenerator.formatCurrency(shippingCosts['surcharge_2_amount'], currency, exchangeRates),
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Zuschlag 3
+              if ((shippingCosts['surcharge_3_text'] ?? '').isNotEmpty && (shippingCosts['surcharge_3_amount'] ?? 0.0) > 0) ...[
+                pw.SizedBox(height: 4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(shippingCosts['surcharge_3_text'], style: const pw.TextStyle(fontSize: 9)),
+                    pw.Text(
+                      BasePdfGenerator.formatCurrency(shippingCosts['surcharge_3_amount'], currency, exchangeRates),
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+
+            // MwSt-Bereich je nach Option
             if (taxOption == 0) ...[  // TaxOption.standard
               pw.Divider(color: PdfColors.blueGrey300),
 
@@ -617,8 +719,8 @@ class QuoteGenerator extends BasePdfGenerator {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(language == 'EN' ? 'Net amount' : 'Nettobetrag',style: const pw.TextStyle(fontSize: 9),),
-                  pw.Text(BasePdfGenerator.formatCurrency(netAmount, currency, exchangeRates),style: const pw.TextStyle(fontSize: 9),),
+                  pw.Text(language == 'EN' ? 'Net amount' : 'Nettobetrag', style: const pw.TextStyle(fontSize: 9)),
+                  pw.Text(BasePdfGenerator.formatCurrency(netAmount, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
 
@@ -629,11 +731,12 @@ class QuoteGenerator extends BasePdfGenerator {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text(
-                      language == 'EN'
-                          ? 'VAT (${vatRate.toStringAsFixed(1)}%)'
-                          : 'MwSt (${vatRate.toStringAsFixed(1)}%)'
-                    ,style: const pw.TextStyle(fontSize: 9),),
-                  pw.Text(BasePdfGenerator.formatCurrency(vatAmount, currency, exchangeRates),style: const pw.TextStyle(fontSize: 9),),
+                    language == 'EN'
+                        ? 'VAT (${vatRate.toStringAsFixed(1)}%)'
+                        : 'MwSt (${vatRate.toStringAsFixed(1)}%)',
+                    style: const pw.TextStyle(fontSize: 9),
+                  ),
+                  pw.Text(BasePdfGenerator.formatCurrency(vatAmount, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
 
@@ -709,7 +812,6 @@ class QuoteGenerator extends BasePdfGenerator {
       ),
     );
   }
-
   // Formatiere Betrag ohne Währungszeichen
   static String _formatAmountOnly(num amount, String currency, Map<String, double> exchangeRates) {
     double convertedAmount = amount.toDouble();
@@ -778,23 +880,23 @@ class QuoteGenerator extends BasePdfGenerator {
         );
       }
 
-      if (additionalTexts['bank_info']?['selected'] == true) {
-        textWidgets.add(
-          pw.Container(
-            alignment: pw.Alignment.centerLeft,
-            margin: const pw.EdgeInsets.only(bottom: 3),
-            child: pw.Text(
-              AdditionalTextsManager.getTextContent(
-                  additionalTexts['bank_info'],
-                  'bank_info',
-                  language: language
-              ),
-              style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
-              textAlign: pw.TextAlign.left,
-            ),
-          ),
-        );
-      }
+      // if (additionalTexts['bank_info']?['selected'] == true) {
+      //   textWidgets.add(
+      //     pw.Container(
+      //       alignment: pw.Alignment.centerLeft,
+      //       margin: const pw.EdgeInsets.only(bottom: 3),
+      //       child: pw.Text(
+      //         AdditionalTextsManager.getTextContent(
+      //             additionalTexts['bank_info'],
+      //             'bank_info',
+      //             language: language
+      //         ),
+      //         style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+      //         textAlign: pw.TextAlign.left,
+      //       ),
+      //     ),
+      //   );
+      // }
 
       // Neues Freitextfeld
       if (additionalTexts['free_text']?['selected'] == true) {

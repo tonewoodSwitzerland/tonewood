@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:tonewood/general_data_screen/general_data_screen.dart';
 import 'package:tonewood/home/printer_screen.dart';
 import 'package:tonewood/home/quotes_overview_screen.dart';
+import 'package:tonewood/home/standardized_packages_screen.dart';
 import 'package:tonewood/home/standardized_product_management_screen.dart';
 import '../components/admin_form.dart';
 import '../components/circular_avatar_shadowed.dart';
@@ -475,6 +476,27 @@ class StartScreenState extends State<StartScreen> {
               );
             },
           ),
+
+          const Divider(),
+
+          ListTile(
+            leading: getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory),
+            title: const Text('Standardpakete'),
+            subtitle: const Text('Verpackungsarten verwalten'),
+            onTap: () {
+
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const StandardizedPackagesScreen(),
+                ),
+              );
+            },
+          ),
+
+
+
 // Nach der Divider nach Standardprodukte
           const Divider(),
 
@@ -587,3 +609,4 @@ class StartScreenState extends State<StartScreen> {
     );
   }
 }
+

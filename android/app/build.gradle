@@ -28,16 +28,16 @@ if (flutterVersionName == null) {
 android {
     namespace = "tonewood.com.tonewood"
     compileSdkVersion 34
-
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.0.12077973"  // Fixed: Explicitly set the NDK version
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        coreLibraryDesugaringEnabled true
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_1_8
+        jvmTarget = "17"
     }
 
     defaultConfig {
@@ -63,4 +63,10 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+
+}
+
 apply plugin: 'com.google.gms.google-services'

@@ -13,6 +13,12 @@ class ShippingCostsManager {
   static const double DEFAULT_PACKAGING = 50.0;
   static const double DEFAULT_FREIGHT = 50.0;
   static const String DEFAULT_CARRIER = 'Swiss Post';
+  static const double DEFAULT_DEDUCTION_1 = 0.0;
+  static const double DEFAULT_DEDUCTION_2 = 0.0;
+  static const double DEFAULT_DEDUCTION_3 = 0.0;
+  static const double DEFAULT_SURCHARGE_1 = 0.0;
+  static const double DEFAULT_SURCHARGE_2 = 0.0;
+  static const double DEFAULT_SURCHARGE_3 = 0.0;
 
   // Lade aus Firebase
   static Future<Map<String, dynamic>> loadShippingCosts() async {
@@ -39,6 +45,20 @@ class ShippingCostsManager {
       'packaging_cost': DEFAULT_PACKAGING,
       'freight_cost': DEFAULT_FREIGHT,
       'carrier': DEFAULT_CARRIER,
+      'deduction_1_text': '',
+      'deduction_1_amount': DEFAULT_DEDUCTION_1,
+      'deduction_2_text': '',
+      'deduction_2_amount': DEFAULT_DEDUCTION_2,
+      'deduction_3_text': '',
+      'deduction_3_amount': DEFAULT_DEDUCTION_3,
+      // NEU: Zuschläge
+      'surcharge_1_text': 'Kleinmenge',
+      'surcharge_1_amount': DEFAULT_SURCHARGE_1,
+      'surcharge_2_text': 'Oberflächenbearbeitung',
+      'surcharge_2_amount': DEFAULT_SURCHARGE_2,
+      'surcharge_3_text': '',
+      'surcharge_3_amount': DEFAULT_SURCHARGE_3,
+
     };
   }
 
@@ -52,12 +72,24 @@ class ShippingCostsManager {
       final double phytosanitary = costs['plant_certificate_enabled'] == true
           ? (costs['plant_certificate_cost'] ?? 0.0)
           : 0.0;
+      final double totalDeductions =
+          (costs['deduction_1_amount'] ?? 0.0) +
+              (costs['deduction_2_amount'] ?? 0.0) +
+              (costs['deduction_3_amount'] ?? 0.0);
 
+// Berechne die Gesamtsumme der Zuschläge
+      final double totalSurcharges =
+          (costs['surcharge_1_amount'] ?? 0.0) +
+              (costs['surcharge_2_amount'] ?? 0.0) +
+              (costs['surcharge_3_amount'] ?? 0.0);
       // Füge die berechneten Felder hinzu
       final dataToSave = {
         ...costs,
         'amount': amount, // Kombinierter Betrag für Verpackung & Fracht
         'phytosanitaryCertificate': phytosanitary, // Pflanzenschutzzeugnisse
+        'timestamp': FieldValue.serverTimestamp(),
+        'totalDeductions': totalDeductions,
+        'totalSurcharges': totalSurcharges,
         'timestamp': FieldValue.serverTimestamp(),
       };
 
@@ -116,13 +148,29 @@ class _ShippingCostsBottomSheet extends StatefulWidget {
 class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
   Map<String, dynamic> shippingConfig = {};
   bool isLoading = true;
-
+  bool isPersonalPickup = false;
   // Controller
   final plantCertificateController = TextEditingController();
   final packagingController = TextEditingController();
   final freightController = TextEditingController();
   final carrierController = TextEditingController();
   final combinedCostController = TextEditingController();
+
+
+  final deduction1TextController = TextEditingController();
+  final deduction1AmountController = TextEditingController();
+  final deduction2TextController = TextEditingController();
+  final deduction2AmountController = TextEditingController();
+  final deduction3TextController = TextEditingController();
+  final deduction3AmountController = TextEditingController();
+
+// Zuschlag Controller
+  final surcharge1TextController = TextEditingController();
+  final surcharge1AmountController = TextEditingController();
+  final surcharge2TextController = TextEditingController();
+  final surcharge2AmountController = TextEditingController();
+  final surcharge3TextController = TextEditingController();
+  final surcharge3AmountController = TextEditingController();
 
   @override
   void initState() {
@@ -137,11 +185,34 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
       shippingConfig = config;
       isLoading = false;
 
+      isPersonalPickup = config['carrier'] == 'Persönlich abgeholt';
+      if (!isPersonalPickup) {
+        carrierController.text = config['carrier'] ?? ShippingCostsManager.DEFAULT_CARRIER;
+      }
+
       // Setze Controller-Werte MIT den gespeicherten Werten
       plantCertificateController.text = config['plant_certificate_cost']?.toString() ?? '50.0';
       packagingController.text = config['packaging_cost']?.toString() ?? '50.0';
       freightController.text = config['freight_cost']?.toString() ?? '50.0';
       carrierController.text = config['carrier'] ?? ShippingCostsManager.DEFAULT_CARRIER;
+
+      // Setze Abschlag-Controller
+      deduction1TextController.text = config['deduction_1_text'] ?? 'Anzahlung';
+      deduction1AmountController.text = config['deduction_1_amount']?.toString() ?? '0.0';
+      deduction2TextController.text = config['deduction_2_text'] ?? '';
+      deduction2AmountController.text = config['deduction_2_amount']?.toString() ?? '0.0';
+      deduction3TextController.text = config['deduction_3_text'] ?? '';
+      deduction3AmountController.text = config['deduction_3_amount']?.toString() ?? '0.0';
+
+// Setze Zuschlag-Controller
+      surcharge1TextController.text = config['surcharge_1_text'] ?? 'Kleinmenge';
+      surcharge1AmountController.text = config['surcharge_1_amount']?.toString() ?? '0.0';
+      surcharge2TextController.text = config['surcharge_2_text'] ?? 'Oberflächenbearbeitung';
+      surcharge2AmountController.text = config['surcharge_2_amount']?.toString() ?? '0.0';
+      surcharge3TextController.text = config['surcharge_3_text'] ?? '';
+      surcharge3AmountController.text = config['surcharge_3_amount']?.toString() ?? '0.0';
+
+
 
       // Kombinierter Preis BASIEREND auf gespeicherten Werten
       final packaging = config['packaging_cost'] ?? 50.0;
@@ -157,6 +228,21 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
     freightController.dispose();
     carrierController.dispose();
     combinedCostController.dispose();
+    // Abschlag Controller
+    deduction1TextController.dispose();
+    deduction1AmountController.dispose();
+    deduction2TextController.dispose();
+    deduction2AmountController.dispose();
+    deduction3TextController.dispose();
+    deduction3AmountController.dispose();
+
+// Zuschlag Controller
+    surcharge1TextController.dispose();
+    surcharge1AmountController.dispose();
+    surcharge2TextController.dispose();
+    surcharge2AmountController.dispose();
+    surcharge3TextController.dispose();
+    surcharge3AmountController.dispose();
     super.dispose();
   }
 
@@ -278,7 +364,7 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                             decoration: const InputDecoration(
                               labelText: 'Kosten (CHF)',
                               border: OutlineInputBorder(),
-                              prefixText: 'CHF ',
+
                             ),
                             keyboardType: TextInputType.numberWithOptions(decimal: true),
                           ),
@@ -342,7 +428,7 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                             decoration: const InputDecoration(
                               labelText: 'Gesamtkosten Verpackung & Fracht (CHF)',
                               border: OutlineInputBorder(),
-                              prefixText: 'CHF ',
+
                             ),
                             keyboardType: TextInputType.numberWithOptions(decimal: true),
                             onChanged: (value) {
@@ -360,7 +446,7 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                             decoration: const InputDecoration(
                               labelText: 'Verpackungskosten (CHF)',
                               border: OutlineInputBorder(),
-                              prefixText: 'CHF ',
+
                             ),
                             keyboardType: TextInputType.numberWithOptions(decimal: true),
                             onChanged: (value) {
@@ -376,7 +462,7 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                             decoration: const InputDecoration(
                               labelText: 'Frachtkosten (CHF)',
                               border: OutlineInputBorder(),
-                              prefixText: 'CHF ',
+
                             ),
                             keyboardType: TextInputType.numberWithOptions(decimal: true),
                             onChanged: (value) {
@@ -390,17 +476,307 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
 
                         const SizedBox(height: 16),
 
-                        // Transporteur
-                        TextFormField(
-                          controller: carrierController,
-                          decoration: InputDecoration(
-                            labelText: 'Transporteur',
-                            border: const OutlineInputBorder(),
-                            prefixIcon: getAdaptiveIcon(
-                                iconName: 'local_shipping',
-                                defaultIcon: Icons.local_shipping
+    const SizedBox(height: 16),
+
+// Transporteur oder persönliche Abholung
+    Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+    // Checkbox für persönliche Abholung
+    CheckboxListTile(
+    title: Text(
+    'Persönlich abgeholt',
+    style: TextStyle(
+    fontWeight: isPersonalPickup ? FontWeight.bold : FontWeight.normal,
+    ),
+    ),
+    subtitle: Text(
+    'Ware wird vom Kunden selbst abgeholt',
+    style: TextStyle(fontSize: 12),
+    ),
+    value: isPersonalPickup,
+    onChanged: (value) {
+    setState(() {
+    isPersonalPickup = value ?? false;
+    if (isPersonalPickup) {
+    carrierController.clear();
+    }
+    });
+    },
+    activeColor: Theme.of(context).colorScheme.primary,
+    controlAffinity: ListTileControlAffinity.leading,
+    contentPadding: EdgeInsets.zero,
+    ),
+
+    const SizedBox(height: 12),
+
+    // Transporteur Eingabefeld (nur wenn nicht persönlich abgeholt)
+    AnimatedOpacity(
+    opacity: isPersonalPickup ? 0.3 : 1.0,
+    duration: const Duration(milliseconds: 200),
+    child: TextFormField(
+    controller: carrierController,
+    enabled: !isPersonalPickup,
+    decoration: InputDecoration(
+    labelText: 'Transporteur',
+    border: const OutlineInputBorder(),
+    prefixIcon: getAdaptiveIcon(
+    iconName: 'local_shipping',
+    defaultIcon: Icons.local_shipping,
+    color: isPersonalPickup ? Colors.grey : null,
+    ),
+    filled: isPersonalPickup,
+    fillColor: isPersonalPickup ? Colors.grey.shade100 : null,
+    ),
+    ),
+    ),
+    ],
+    ),
+                      ],
+                    ),
+                  ),
+
+
+                  const SizedBox(height: 24),
+
+// 3. Abschläge
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerLowest,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.error.withOpacity(0.5),
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.remove_circle_outline,
+                              color: Theme.of(context).colorScheme.error,
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Abschläge',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Abschlag 1
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: TextFormField(
+                                controller: deduction1TextController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Bezeichnung',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                controller: deduction1AmountController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Betrag (CHF)',
+                                  border: OutlineInputBorder(),
+
+                                ),
+                                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Abschlag 2
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: TextFormField(
+                                controller: deduction2TextController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Bezeichnung',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                controller: deduction2AmountController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Betrag (CHF)',
+                                  border: OutlineInputBorder(),
+
+                                ),
+                                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Abschlag 3
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: TextFormField(
+                                controller: deduction3TextController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Bezeichnung',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                controller: deduction3AmountController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Betrag (CHF)',
+                                  border: OutlineInputBorder(),
+
+                                ),
+                                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+// 4. Zuschläge
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerLowest,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.add_circle_outline,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Zuschläge',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Zuschlag 1
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: TextFormField(
+                                controller: surcharge1TextController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Bezeichnung',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                controller: surcharge1AmountController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Betrag (CHF)',
+                                  border: OutlineInputBorder(),
+
+                                ),
+                                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Zuschlag 2
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: TextFormField(
+                                controller: surcharge2TextController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Bezeichnung',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                controller: surcharge2AmountController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Betrag (CHF)',
+                                  border: OutlineInputBorder(),
+
+                                ),
+                                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Zuschlag 3
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: TextFormField(
+                                controller: surcharge3TextController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Bezeichnung',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                controller: surcharge3AmountController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Betrag (CHF)',
+                                  border: OutlineInputBorder(),
+                                ),
+                                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -430,7 +806,23 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                             'shipping_combined': shippingConfig['shipping_combined'] ?? true,
                             'packaging_cost': double.tryParse(packagingController.text) ?? 50.0,
                             'freight_cost': double.tryParse(freightController.text) ?? 50.0,
-                            'carrier': carrierController.text.isNotEmpty ? carrierController.text : 'Swiss Post',
+                            'carrier': isPersonalPickup
+                                ? 'Persönlich abgeholt'
+                                : (carrierController.text.isNotEmpty ? carrierController.text : 'Swiss Post'),
+                            // NEU: Abschläge
+                            'deduction_1_text': deduction1TextController.text,
+                            'deduction_1_amount': double.tryParse(deduction1AmountController.text) ?? 0.0,
+                            'deduction_2_text': deduction2TextController.text,
+                            'deduction_2_amount': double.tryParse(deduction2AmountController.text) ?? 0.0,
+                            'deduction_3_text': deduction3TextController.text,
+                            'deduction_3_amount': double.tryParse(deduction3AmountController.text) ?? 0.0,
+                            // NEU: Zuschläge
+                            'surcharge_1_text': surcharge1TextController.text,
+                            'surcharge_1_amount': double.tryParse(surcharge1AmountController.text) ?? 0.0,
+                            'surcharge_2_text': surcharge2TextController.text,
+                            'surcharge_2_amount': double.tryParse(surcharge2AmountController.text) ?? 0.0,
+                            'surcharge_3_text': surcharge3TextController.text,
+                            'surcharge_3_amount': double.tryParse(surcharge3AmountController.text) ?? 0.0,
                           };
 
                           // Speichere die Konfiguration in Firebase

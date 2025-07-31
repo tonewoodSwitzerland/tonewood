@@ -45,7 +45,7 @@ abstract class BasePdfGenerator {
           'order_nr': 'Auftragsnr.:',
         },
         'EN': {
-          'QUOTE': 'QUOTE',
+          'QUOTE': 'OFFER',
           'LIEFERSCHEIN': 'DELIVERY NOTE',
           'INVOICE': 'INVOICE',
           'ORDER': 'ORDER',
@@ -122,9 +122,33 @@ abstract class BasePdfGenerator {
   }
 
 
-  // Verbesserte Kunden-Adressbox
-// Verbesserte Kunden-Adressbox
-  static pw.Widget buildCustomerAddress(Map<String, dynamic> customerData) {
+  static pw.Widget buildCustomerAddress(Map<String, dynamic> customerData, {String language = 'DE'}) {
+    // Übersetzungsfunktion für Adressen
+    String getAddressTranslation(String key) {
+      final translations = {
+        'DE': {
+          'delivery_address': 'Lieferadresse',
+          'billing_address': 'Rechnungsadresse',
+          'email': 'E-Mail:',
+          'phone': 'Tel.:',
+          'eori': 'EORI:',
+          'vat_id': 'MwST.:',
+        },
+        'EN': {
+          'delivery_address': 'Delivery address',
+          'billing_address': 'Billing address',
+          'email': 'Email:',
+          'phone': 'Phone:',
+          'eori': 'EORI:',
+          'vat_id': 'VAT ID:',
+        }
+      };
+      return translations[language]?[key] ?? translations['DE']?[key] ?? key;
+    }
+
+    // Prüfen ob unterschiedliche Lieferadresse vorhanden ist
+    final bool hasDifferentShippingAddress = customerData['hasDifferentShippingAddress'] == true;
+
     // Prüfen ob Firma vorhanden ist
     final bool hasCompany = customerData['company'] != null &&
         customerData['company'].toString().trim().isNotEmpty;
@@ -135,70 +159,335 @@ abstract class BasePdfGenerator {
     final String fullName = '$firstName $lastName'.trim();
     final bool hasName = fullName.isNotEmpty;
 
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(15),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.blueGrey200, width: 0.5),
-        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-        color: PdfColors.grey50,
-      ),
-      child: pw.Column(
+    // Widget für Kontaktinformationen - kompakter und inline
+    pw.Widget buildContactInfo() {
+      return pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          // Wenn Firma vorhanden, zeige Firma an erster Stelle
-          if (hasCompany) ...[
-            pw.Text(
-              customerData['company'],
-              style: pw.TextStyle(
-                fontSize: 14,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.blueGrey800,
-              ),
-            ),
-            pw.SizedBox(height: 4),
-            // Name als zweite Zeile bei Firmenadressen
-            if (hasName)
+          // Email
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
               pw.Text(
-                fullName,
-                style: const pw.TextStyle(color: PdfColors.blueGrey700),
-              ),
-          ] else ...[
-            // Wenn keine Firma, zeige den Namen prominent
-            if (hasName)
-              pw.Text(
-                fullName,
+                getAddressTranslation('email'),
                 style: pw.TextStyle(
-                  fontSize: 14,
+                  fontSize: 9,
                   fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.blueGrey800,
+                  color: PdfColors.blueGrey700,
                 ),
               ),
-          ],
+              pw.SizedBox(width: 4),
+              pw.Expanded(
+                child: pw.Text(
+                  customerData['email'] ?? '-',
+                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
+                ),
+              ),
+            ],
+          ),
 
           pw.SizedBox(height: 4),
 
-          // Straße und Hausnummer
-          pw.Text(
-            '${customerData['street'] ?? ''} ${customerData['houseNumber'] ?? ''}'.trim(),
-            style: const pw.TextStyle(color: PdfColors.blueGrey700),
+          // Telefon
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                getAddressTranslation('phone'),
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.blueGrey700,
+                ),
+              ),
+              pw.SizedBox(width: 4),
+              pw.Text(
+                customerData['phone1']?.toString().trim().isNotEmpty == true
+                    ? customerData['phone1']
+                    : '-',
+                style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
+              ),
+            ],
           ),
 
-          // PLZ und Stadt
-          pw.Text(
-            '${customerData['zipCode'] ?? ''} ${customerData['city'] ?? ''}'.trim(),
-            style: const pw.TextStyle(color: PdfColors.blueGrey700),
+          pw.SizedBox(height: 4),
+
+          // EORI
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                getAddressTranslation('eori'),
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.blueGrey700,
+                ),
+              ),
+              pw.SizedBox(width: 4),
+              pw.Text(
+                customerData['eoriNumber']?.toString().trim().isNotEmpty == true
+                    ? customerData['eoriNumber']
+                    : '-',
+                style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
+              ),
+            ],
           ),
 
-          // Land
-          if (customerData['country'] != null &&
-              customerData['country'].toString().trim().isNotEmpty)
-            pw.Text(
-              customerData['country'],
-              style: const pw.TextStyle(color: PdfColors.blueGrey700),
-            ),
+          pw.SizedBox(height: 4),
+
+          // MwSt-Nummer
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                getAddressTranslation('vat_id'),
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.blueGrey700,
+                ),
+              ),
+              pw.SizedBox(width: 4),
+              pw.Expanded(
+                child: pw.Text(
+                  customerData['vatNumber']?.toString().trim().isNotEmpty == true
+                      ? customerData['vatNumber']
+                      : '-',
+                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
+                ),
+              ),
+            ],
+          ),
         ],
-      ),
-    );
+      );
+    }
+
+    if (hasDifferentShippingAddress) {
+      // Drei-spaltige Darstellung bei unterschiedlichen Adressen
+      return pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          // Lieferadresse (links)
+          pw.Expanded(
+            flex: 2,
+            child: pw.Container(
+              padding: const pw.EdgeInsets.only(right: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  // Header für Lieferadresse
+                  pw.Text(
+                    getAddressTranslation('delivery_address'),
+                    style: pw.TextStyle(
+                      fontSize: 10,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blueGrey700,
+                    ),
+                  ),
+                  pw.SizedBox(height: 8),
+
+                  // Firma oder Name prominent
+                  if (hasCompany) ...[
+                    pw.Text(
+                      customerData['company'],
+                      style: pw.TextStyle(
+                        fontSize: 14,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.blueGrey900,
+                      ),
+                    ),
+                    if (hasName) ...[
+                      pw.SizedBox(height: 2),
+                      pw.Text(
+                        fullName,
+                        style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                      ),
+                    ],
+                  ] else ...[
+                    if (hasName)
+                      pw.Text(
+                        fullName,
+                        style: pw.TextStyle(
+                          fontSize: 14,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.blueGrey900,
+                        ),
+                      ),
+                  ],
+
+                  pw.SizedBox(height: 6),
+
+                  // Lieferadresse
+                  pw.Text(
+                    '${customerData['shippingStreet'] ?? customerData['street'] ?? ''} ${customerData['shippingHouseNumber'] ?? customerData['houseNumber'] ?? ''}'.trim(),
+                    style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                  ),
+                  pw.Text(
+                    '${customerData['shippingZipCode'] ?? customerData['zipCode'] ?? ''} ${customerData['shippingCity'] ?? customerData['city'] ?? ''}'.trim(),
+                    style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                  ),
+                  if ((customerData['shippingCountry'] ?? customerData['country'])?.toString().trim().isNotEmpty == true)
+                    pw.Text(
+                      customerData['shippingCountry'] ?? customerData['country'],
+                      style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                    ),
+                ],
+              ),
+            ),
+          ),
+
+          // Rechnungsadresse (mitte)
+          pw.Expanded(
+            flex: 2,
+            child: pw.Container(
+              padding: const pw.EdgeInsets.only(right: 15),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  // Header für Rechnungsadresse
+                  pw.Text(
+                    getAddressTranslation('billing_address'),
+                    style: pw.TextStyle(
+                      fontSize: 10,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blueGrey700,
+                    ),
+                  ),
+                  pw.SizedBox(height: 8),
+
+                  // Firma oder Name prominent
+                  if (hasCompany) ...[
+                    pw.Text(
+                      customerData['company'],
+                      style: pw.TextStyle(
+                        fontSize: 14,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.blueGrey900,
+                      ),
+                    ),
+                    if (hasName) ...[
+                      pw.SizedBox(height: 2),
+                      pw.Text(
+                        fullName,
+                        style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                      ),
+                    ],
+                  ] else ...[
+                    if (hasName)
+                      pw.Text(
+                        fullName,
+                        style: pw.TextStyle(
+                          fontSize: 14,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.blueGrey900,
+                        ),
+                      ),
+                  ],
+
+                  pw.SizedBox(height: 6),
+
+                  // Standard-Rechnungsadresse
+                  pw.Text(
+                    '${customerData['street'] ?? ''} ${customerData['houseNumber'] ?? ''}'.trim(),
+                    style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                  ),
+                  pw.Text(
+                    '${customerData['zipCode'] ?? ''} ${customerData['city'] ?? ''}'.trim(),
+                    style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                  ),
+                  if (customerData['country']?.toString().trim().isNotEmpty == true)
+                    pw.Text(
+                      customerData['country'],
+                      style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                    ),
+                ],
+              ),
+            ),
+          ),
+
+          // Kontaktdaten (rechts)
+          pw.Expanded(
+            flex: 2,
+            child: buildContactInfo(),
+          ),
+        ],
+      );
+    } else {
+      // Zweispaltige Darstellung bei gleicher Adresse - ohne Hintergrund
+      return pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          // Adresse (links)
+          pw.Expanded(
+            flex: 3,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                // Wenn Firma vorhanden, zeige Firma an erster Stelle
+                if (hasCompany) ...[
+                  pw.Text(
+                    customerData['company'],
+                    style: pw.TextStyle(
+                      fontSize: 14,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blueGrey900,
+                    ),
+                  ),
+                  if (hasName) ...[
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      fullName,
+                      style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                    ),
+                  ],
+                ] else ...[
+                  if (hasName)
+                    pw.Text(
+                      fullName,
+                      style: pw.TextStyle(
+                        fontSize: 14,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.blueGrey900,
+                      ),
+                    ),
+                ],
+
+                pw.SizedBox(height: 6),
+
+                // Straße und Hausnummer
+                pw.Text(
+                  '${customerData['street'] ?? ''} ${customerData['houseNumber'] ?? ''}'.trim(),
+                  style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                ),
+
+                // PLZ und Stadt
+                pw.Text(
+                  '${customerData['zipCode'] ?? ''} ${customerData['city'] ?? ''}'.trim(),
+                  style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                ),
+
+                // Land
+                if (customerData['country'] != null &&
+                    customerData['country'].toString().trim().isNotEmpty)
+                  pw.Text(
+                    customerData['country'],
+                    style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                  ),
+              ],
+            ),
+          ),
+
+          pw.SizedBox(width: 30),
+
+          // Kontaktdaten (rechts)
+          pw.Expanded(
+            flex: 2,
+            child: buildContactInfo(),
+          ),
+        ],
+      );
+    }
   }
 
   // Gemeinsamer Footer
@@ -234,6 +523,8 @@ abstract class BasePdfGenerator {
               pw.Text('phone: +41 81 407 21 34',
                   style: const pw.TextStyle(color: PdfColors.blueGrey600)),
               pw.Text('e-mail: info@tonewood.ch',
+                  style: const pw.TextStyle(color: PdfColors.blueGrey600)),
+              pw.Text('website: www.tonewood.ch',
                   style: const pw.TextStyle(color: PdfColors.blueGrey600)),
               pw.Text('VAT: CHE-102.853.600 MWST',
                   style: const pw.TextStyle(color: PdfColors.blueGrey600)),
