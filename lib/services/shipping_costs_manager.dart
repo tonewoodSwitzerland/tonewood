@@ -679,7 +679,7 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                         Row(
                           children: [
                             Icon(
-                              Icons.add_circle_outline,
+                              Icons.add_circle,
                               color: Theme.of(context).colorScheme.primary,
                             ),
                             const SizedBox(width: 8),

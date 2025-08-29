@@ -16,8 +16,16 @@ import 'pdf_generators/invoice_generator.dart';
 import 'pdf_generators/delivery_note_generator.dart';
 import 'pdf_generators/commercial_invoice_generator.dart';
 import 'pdf_generators/packing_list_generator.dart';
-import 'shipping_costs_manager.dart';
+import
 
+
+
+
+
+
+
+'shipping_costs_manager.dart';
+import '../services/additional_text_manager.dart';
 class OrderDocumentManager {
   static const List<String> availableDocuments = [
     'Rechnung',
@@ -352,7 +360,13 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                 documentType: _getDocumentKey(docType),
                               );
                             },
-                            icon: const Icon(Icons.visibility),
+                            icon:
+                            getAdaptiveIcon(
+                              iconName: 'visibility',
+                              defaultIcon: Icons.visibility,
+
+                            ),
+
                             tooltip: 'Vorschau',
                           ),
                         ),
@@ -456,7 +470,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
           int totalProducts = widget.order.items.length;
 
           for (final item in widget.order.items) {
-            final quantity = item['quantity'] as int? ?? 0;
+            final quantity = (item['quantity'] as num?)?.toDouble() ?? 0;
             final assigned = _getAssignedQuantityForOrder(item, packages.cast<Map<String, dynamic>>());
             if (assigned >= quantity) totalAssigned++;
           }
@@ -504,7 +518,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
 
       // Füge alle verfügbaren Items hinzu
       for (final item in orderItems) {
-        final totalQuantity = item['quantity'] as int? ?? 0;
+        final totalQuantity = item['quantity'] as double? ?? 0;
 
         // Entferne das Item aus allen anderen Paketen
         for (final package in packages) {
@@ -1172,7 +1186,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                   padding: const EdgeInsets.all(24),
                   child: Row(
                     children: [
-                      Icon(Icons.inventory_2,
+                      Icon(Icons.inventory,
                           color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 12),
                       const Text('Handelsrechnung Einstellungen',
@@ -1220,7 +1234,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             child: Row(
                               children: [
                                 Icon(
-                                  Icons.info_outline,
+                                  Icons.info,
                                   size: 16,
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
@@ -1389,27 +1403,196 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Checkboxen für Standardsätze
-                        CheckboxListTile(
-                          title: const Text('Ursprungserklärung'),
-                          subtitle: const Text('Erklärung über Schweizer Ursprungswaren'),
-                          value: settings['origin_declaration'],
-                          onChanged: (value) {
-                            setModalState(() {
-                              settings['origin_declaration'] = value ?? false;
-                            });
-                          },
+                        // In der _showCommercialInvoiceSettings Methode, ersetze die Checkboxen für Ursprungserklärung und CITES:
+
+// Ursprungserklärung - mit Info-Icon
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CheckboxListTile(
+                                title: const Text('Ursprungserklärung'),
+                                subtitle: const Text('Erklärung über Schweizer Ursprungswaren'),
+                                value: settings['origin_declaration'],
+                                onChanged: (value) {
+                                  setModalState(() {
+                                    settings['origin_declaration'] = value ?? false;
+                                  });
+                                },
+                              ),
+                            ),
+                            IconButton(
+                              icon: Icon(
+                                Icons.info_outline,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              onPressed: () async {
+                                // Lade den Standardtext
+                                await AdditionalTextsManager.loadDefaultTextsFromFirebase();
+                                final defaultText = AdditionalTextsManager.getTextContent(
+                                  {'selected': true, 'type': 'standard'},
+                                  'origin_declaration',
+                                  language: widget.order.customer['language'] ?? 'DE',
+                                );
+
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.info,
+                                          color: Theme.of(context).colorScheme.primary,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        const Text('Ursprungserklärung'),
+                                      ],
+                                    ),
+                                    content: SingleChildScrollView(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              defaultText,
+                                              style: const TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 16),
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.edit,
+                                                size: 16,
+                                                color: Theme.of(context).colorScheme.secondary,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  'Dieser Text kann in der Admin-Ansicht unter "Zusatztexte" bearbeitet werden.',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontStyle: FontStyle.italic,
+                                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('OK'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
 
-                        CheckboxListTile(
-                          title: const Text('CITES'),
-                          subtitle: const Text('Waren stehen NICHT auf der CITES-Liste'),
-                          value: settings['cites'],
-                          onChanged: (value) {
-                            setModalState(() {
-                              settings['cites'] = value ?? false;
-                            });
-                          },
+// CITES - mit Info-Icon
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CheckboxListTile(
+                                title: const Text('CITES'),
+                                subtitle: const Text('Waren stehen NICHT auf der CITES-Liste'),
+                                value: settings['cites'],
+                                onChanged: (value) {
+                                  setModalState(() {
+                                    settings['cites'] = value ?? false;
+                                  });
+                                },
+                              ),
+                            ),
+                            IconButton(
+                              icon: Icon(
+                                Icons.info_outline,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              onPressed: () async {
+                                // Lade den Standardtext
+                                await AdditionalTextsManager.loadDefaultTextsFromFirebase();
+                                final defaultText = AdditionalTextsManager.getTextContent(
+                                  {'selected': true, 'type': 'standard'},
+                                  'cites',
+                                  language: widget.order.customer['language'] ?? 'DE',
+                                );
+
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.info,
+                                          color: Theme.of(context).colorScheme.primary,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        const Text('CITES-Erklärung'),
+                                      ],
+                                    ),
+                                    content: SingleChildScrollView(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              defaultText,
+                                              style: const TextStyle(fontSize: 12),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 16),
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.edit,
+                                                size: 16,
+                                                color: Theme.of(context).colorScheme.secondary,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  'Dieser Text kann in der Admin-Ansicht unter "Zusatztexte" bearbeitet werden.',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontStyle: FontStyle.italic,
+                                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('OK'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
 
                         // Export Reason mit Textfeld
@@ -1546,6 +1729,9 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                     'signature': settings['signature'],
                                     'selected_signature': settings['selected_signature'],
                                     'timestamp': FieldValue.serverTimestamp(),
+                                  });
+                                  setState(() {
+                                    _settings['commercial_invoice'] = settings;
                                   });
                                   Navigator.pop(context);
                                 },
@@ -1742,7 +1928,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                 const SizedBox(height: 8),
                                 ...widget.order.items.map((item) {
                                   final assignedQuantity = _getAssignedQuantityForOrder(item, packages);
-                                  final totalQuantity = item['quantity'] as int? ?? 0;
+                                  final totalQuantity = (item['quantity'] as num).toDouble();
                                   final remainingQuantity = totalQuantity - assignedQuantity;
 
                                   return Padding(
@@ -1931,7 +2117,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
         for (final item in widget.order.items) {
           final productId = item['product_id'] as String? ?? '';
           final productName = item['product_name'] as String? ?? 'Unbekanntes Produkt';
-          final totalQuantity = item['quantity'] as int? ?? 0;
+          final totalQuantity = item['quantity'] as double? ?? 0;
           final assignedQuantity = _getAssignedQuantityForOrder(item, packages);
 
           if (assignedQuantity < totalQuantity) {
@@ -2318,7 +2504,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
           'timestamp': FieldValue.serverTimestamp(),
           'user_id': user?.uid ?? 'unknown',
           'user_email': user?.email ?? 'Unknown User',
-          'user_name': user?.displayName ?? user?.email?.split('@')[0] ?? 'Unknown',
+          'user_name': user?.email ?? 'Unknown',
           'action': 'document_created',
           'document_type': docType,
           'document_url': documentUrl,
@@ -2350,15 +2536,15 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
   }
 
   // Hilfsmethoden für Packliste
-  int _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, dynamic>> packages) {
-    int totalAssigned = 0;
+double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, dynamic>> packages) {
+   double totalAssigned = 0;
     final productId = item['product_id'] ?? '';
 
     for (final package in packages) {
       final packageItems = package['items'] as List<dynamic>? ?? [];
       for (final assignedItem in packageItems) {
         if (assignedItem['product_id'] == productId) {
-          totalAssigned += (assignedItem['quantity'] as int? ?? 0);
+          totalAssigned += ((assignedItem['quantity'] as num?)?.toDouble() ?? 0);
         }
       }
     }
@@ -2372,9 +2558,9 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
       List<Map<String, dynamic>> orderItems,
       List<Map<String, dynamic>> packages,
       StateSetter setModalState,
-      Map<String, Map<String, TextEditingController>> packageControllers, // NEU
+      Map<String, Map<String, TextEditingController>> packageControllers,
       ) {
-    // NEU: State für ausgewähltes Standardpaket
+    // State für ausgewähltes Standardpaket
     String? selectedStandardPackageId = package['standard_package_id'];
 
     // Hole Controller aus der Map
@@ -2384,6 +2570,54 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
     final heightController = controllers['height']!;
     final weightController = controllers['weight']!;
     final customNameController = controllers['custom_name']!;
+
+    // NEU: Controller für Bruttogewicht
+    if (!controllers.containsKey('gross_weight')) {
+      controllers['gross_weight'] = TextEditingController(
+        text: package['gross_weight']?.toString() ?? '',
+      );
+    }
+    final grossWeightController = controllers['gross_weight']!;
+
+    // NEU: Berechne Nettogewicht (Summe aller Produkte im Paket)
+    double calculateNetWeight() {
+      double netWeight = 0.0;
+      final packageItems = package['items'] as List<dynamic>? ?? [];
+
+      for (final item in packageItems) {
+        final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+        final unit = item['unit'] ?? 'Stk';
+
+        if (unit.toLowerCase() == 'kg') {
+          // Bei kg-Einheit ist quantity bereits das Gewicht
+          netWeight += quantity;
+        } else {
+          // Volumen berechnen (gleiche Logik wie in packing_list_generator)
+          double volumePerPiece = 0.0;
+
+          // Priorisierung für Volumenberechnung
+          if (item['volume_per_unit'] != null && (item['volume_per_unit'] as num) > 0) {
+            volumePerPiece = (item['volume_per_unit'] as num).toDouble();
+          } else {
+            final length = (item['custom_length'] as num?)?.toDouble() ?? 0.0;
+            final width = (item['custom_width'] as num?)?.toDouble() ?? 0.0;
+            final thickness = (item['custom_thickness'] as num?)?.toDouble() ?? 0.0;
+
+            if (length > 0 && width > 0 && thickness > 0) {
+              volumePerPiece = (length / 1000) * (width / 1000) * (thickness / 1000);
+            }
+          }
+
+          // Gewicht aus Volumen und Dichte
+          final woodCode = item['wood_code'] as String? ?? '';
+          final density = 450.0; // Default-Dichte, sollte aus woodTypeCache kommen
+          final weightPerPiece = volumePerPiece * density;
+          netWeight += weightPerPiece * quantity;
+        }
+      }
+
+      return netWeight;
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -2407,14 +2641,11 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                   IconButton(
                     onPressed: () {
                       setModalState(() {
-                        // Dispose und entferne Controller
-                        final packageId = package['id'] as String;  // NEU: Verwende package direkt
-
+                        final packageId = package['id'] as String;
                         packageControllers[packageId]?.forEach((key, controller) {
                           controller.dispose();
                         });
                         packageControllers.remove(packageId);
-
                         packages.removeAt(index);
                       });
                     },
@@ -2426,7 +2657,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
 
             const SizedBox(height: 12),
 
-            // NEU: Dropdown für Standardpakete
+            // Dropdown für Standardpakete
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('standardized_packages')
@@ -2446,7 +2677,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                       decoration: InputDecoration(
                         labelText: 'Verpackungsvorlage',
                         hintText: 'Bitte auswählen',
-                        prefixIcon: Icon(Icons.inventory_2),
+                        prefixIcon: Icon(Icons.inventory),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -2454,12 +2685,10 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                       ),
                       value: selectedStandardPackageId,
                       items: [
-                        // Option für kein Standardpaket
                         const DropdownMenuItem<String>(
                           value: 'custom',
                           child: Text('Benutzerdefiniert'),
                         ),
-                        // Standardpakete aus der Datenbank
                         ...standardPackages.map((doc) {
                           final data = doc.data() as Map<String, dynamic>;
                           return DropdownMenuItem<String>(
@@ -2473,35 +2702,29 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           package['standard_package_id'] = value;
 
                           if (value != null && value != 'custom') {
-                            // Finde das ausgewählte Paket
                             final selectedPackage = standardPackages.firstWhere(
                                   (doc) => doc.id == value,
                             );
                             final packageData = selectedPackage.data() as Map<String, dynamic>;
 
-                            // Übernehme die Werte vom Standardpaket
                             package['packaging_type'] = packageData['name'] ?? 'Standardpaket';
-                            package['packaging_type_en'] = packageData['nameEn'] ?? packageData['name'] ?? 'Standard package'; // NEU
-
+                            package['packaging_type_en'] = packageData['nameEn'] ?? packageData['name'] ?? 'Standard package';
                             package['length'] = packageData['length'] ?? 0.0;
                             package['width'] = packageData['width'] ?? 0.0;
                             package['height'] = packageData['height'] ?? 0.0;
                             package['tare_weight'] = packageData['weight'] ?? 0.0;
 
-                            // Aktualisiere die Controller
                             lengthController.text = package['length'].toString();
                             widthController.text = package['width'].toString();
                             heightController.text = package['height'].toString();
                             weightController.text = package['tare_weight'].toString();
                           } else if (value == 'custom') {
-                            // Bei Benutzerdefiniert, leere die Werte
                             package['packaging_type'] = '';
                             package['length'] = 0.0;
                             package['width'] = 0.0;
                             package['height'] = 0.0;
                             package['tare_weight'] = 0.0;
 
-                            // Aktualisiere die Controller
                             lengthController.text = '0.0';
                             widthController.text = '0.0';
                             heightController.text = '0.0';
@@ -2512,7 +2735,6 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                       },
                     ),
 
-                    // Info-Text wenn Standardpaket ausgewählt
                     if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom')
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
@@ -2525,7 +2747,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           child: Row(
                             children: [
                               Icon(
-                                Icons.info_outline,
+                                Icons.info,
                                 size: 16,
                                 color: Theme.of(context).colorScheme.primary,
                               ),
@@ -2570,7 +2792,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
               const SizedBox(height: 12),
             ],
 
-            // Abmessungen (immer bearbeitbar)
+            // Abmessungen
             Row(
               children: [
                 Expanded(
@@ -2632,11 +2854,11 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
 
             const SizedBox(height: 12),
 
-            // Tara-Gewicht (immer bearbeitbar)
+            // Tara-Gewicht
             TextFormField(
               controller: weightController,
               decoration: InputDecoration(
-                labelText: 'Verpackungsgewicht (kg)',
+                labelText: 'Verpackungsgewicht / Tara (kg)',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -2647,6 +2869,128 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                 package['tare_weight'] = double.tryParse(value) ?? 0.0;
               },
             ),
+
+            const SizedBox(height: 12),
+
+            // NEU: Bruttogewicht mit automatischer Tara-Berechnung
+            TextFormField(
+              controller: grossWeightController,
+              decoration: InputDecoration(
+                labelText: 'Bruttogewicht (gemessen) (kg)',
+                helperText: 'Leer lassen für automatische Berechnung',
+                prefixIcon: Icon(Icons.scale),
+                suffixIcon: grossWeightController.text.isNotEmpty
+                    ? IconButton(
+                  icon: Icon(Icons.clear),
+                  onPressed: () {
+                    setModalState(() {
+                      grossWeightController.clear();
+                      package['gross_weight'] = null;
+                      // Setze Tara auf Standardwert zurück
+                      if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom') {
+                        final selectedPackage = FirebaseFirestore.instance
+                            .collection('standardized_packages')
+                            .doc(selectedStandardPackageId);
+                        selectedPackage.get().then((doc) {
+                          if (doc.exists) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            package['tare_weight'] = data['weight'] ?? 0.0;
+                            weightController.text = package['tare_weight'].toString();
+                          }
+                        });
+                      }
+                    });
+                  },
+                )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                isDense: true,
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (value) {
+                setModalState(() {
+                  final grossWeight = double.tryParse(value);
+
+                  if (value.isEmpty || grossWeight == null) {
+                    // Feld wurde geleert - zurück zum Standardgewicht
+                    package['gross_weight'] = null;
+
+                    // Setze Tara auf Standardwert zurück
+                    if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom') {
+                      // Lade Standardgewicht aus der Datenbank
+                      FirebaseFirestore.instance
+                          .collection('standardized_packages')
+                          .doc(selectedStandardPackageId)
+                          .get()
+                          .then((doc) {
+                        if (doc.exists) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          setModalState(() {
+                            package['tare_weight'] = data['weight'] ?? 0.0;
+                            weightController.text = package['tare_weight'].toString();
+                          });
+                        }
+                      });
+                    } else {
+                      // Bei custom bleibt das manuell eingegebene Tara-Gewicht
+                      // Keine Änderung nötig
+                    }
+                  } else if (grossWeight > 0) {
+                    // Bruttogewicht eingegeben, berechne Tara neu
+                    package['gross_weight'] = grossWeight;
+                    final netWeight = calculateNetWeight();
+                    final calculatedTara = grossWeight - netWeight;
+                    package['tare_weight'] = calculatedTara > 0 ? calculatedTara : 0.0;
+                    weightController.text = package['tare_weight'].toStringAsFixed(2);
+                  }
+                });
+              },
+            ),
+
+            // NEU: Info-Box mit Gewichtsübersicht
+            if (package['items'].isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Nettogewicht (Produkte):', style: TextStyle(fontSize: 12)),
+                        Text('${calculateNetWeight().toStringAsFixed(2)} kg',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Tara (Verpackung):', style: TextStyle(fontSize: 12)),
+                        Text('${package['tare_weight'].toStringAsFixed(2)} kg',
+                            style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                    const Divider(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Bruttogewicht:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        Text('${(calculateNetWeight() + (package['tare_weight'] ?? 0.0)).toStringAsFixed(2)} kg',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             const SizedBox(height: 16),
 
@@ -2676,7 +3020,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                     children: [
                       Expanded(
                         child: Text(
-                          '${assignedItem['product_name']} - ${assignedItem['quantity']} Stk.',
+                          '${assignedItem['product_name']} - ${assignedItem['quantity']} ${assignedItem['unit'] ?? 'Stk'}',
                           style: const TextStyle(fontSize: 12),
                         ),
                       ),
@@ -2684,6 +3028,13 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                         onPressed: () {
                           setModalState(() {
                             package['items'].remove(assignedItem);
+                            // Wenn Bruttogewicht manuell gesetzt war, Tara neu berechnen
+                            if (package['gross_weight'] != null) {
+                              final netWeight = calculateNetWeight();
+                              final grossWeight = package['gross_weight'] as double;
+                              package['tare_weight'] = grossWeight - netWeight;
+                              weightController.text = package['tare_weight'].toStringAsFixed(2);
+                            }
                           });
                         },
                         icon: Icon(Icons.remove_circle_outline, color: Colors.red[400]),
@@ -2717,7 +3068,6 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
       ),
     );
   }
-
   void _showAddOrderProductDialog(
       BuildContext context,
       Map<String, dynamic> package,
@@ -2737,7 +3087,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
             itemBuilder: (context, index) {
               final item = orderItems[index];
               final assignedQuantity = _getAssignedQuantityForOrder(item, packages);
-              final totalQuantity = item['quantity'] as int? ?? 0;
+              final totalQuantity = (item['quantity'] as num?)?.toDouble() ?? 0;
               final remainingQuantity = totalQuantity - assignedQuantity;
 
               if (remainingQuantity <= 0) return const SizedBox.shrink();
@@ -2772,7 +3122,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
   void _showOrderQuantityDialog(
       BuildContext context,
       Map<String, dynamic> item,
-      int maxQuantity,
+    double maxQuantity,
       Map<String, dynamic> package,
       StateSetter setModalState,
       ) {

@@ -134,53 +134,7 @@ return Scaffold(
       title: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Kunde - mit roter "Kunde wählen" Anzeige wenn kein Kunde ausgewählt
-          // StreamBuilder<Customer?>(
-          //   stream: _temporaryCustomerStream,
-          //   builder: (context, snapshot) {
-          //     final customer = snapshot.data;
-          //
-          //     return Column(
-          //       children: [
-          //         GestureDetector(
-          //           onTap: _showCustomerSelection,
-          //           child: Container(
-          //             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          //             decoration: BoxDecoration(
-          //               color: customer != null
-          //                   ? Theme.of(context).colorScheme.secondaryContainer
-          //                   : Theme.of(context).colorScheme.errorContainer,
-          //               borderRadius: BorderRadius.circular(12),
-          //             ),
-          //             child: Row(
-          //               mainAxisSize: MainAxisSize.min,
-          //               children: [
-          //                 getAdaptiveIcon(iconName: 'person', defaultIcon: Icons.person,),
-          //                 const SizedBox(width: 4),
-          //                 Text(
-          //                   customer != null
-          //                       ? customer.company.substring(0, min(2, customer.company.length)).toUpperCase()
-          //                       : 'Kunde wählen',
-          //                   style: TextStyle(
-          //                     color: customer != null
-          //                         ? Theme.of(context).colorScheme.onSecondaryContainer
-          //                         : Theme.of(context).colorScheme.onErrorContainer,
-          //                     fontWeight: FontWeight.bold,
-          //                     fontSize: 13,
-          //                   ),
-          //                 ),
-          //               ],
-          //             ),
-          //           ),
-          //         ),
-          //
-          //       ],
-          //     );
-          //   },
-          // ),
-          // const SizedBox(width: 6),
 
-          // Kostenstelle - bleibt unverändert
           StreamBuilder<CostCenter?>(
             stream: _temporaryCostCenterStream,
             builder: (context, snapshot) {
@@ -273,14 +227,7 @@ return Scaffold(
           ),
         ),
 
-        // // Email-Icon
-        // IconButton(
-        //   icon:    getAdaptiveIcon(iconName: 'mail', defaultIcon: Icons.mail,),
-        //
-        //   tooltip: 'Email-Konfiguration',
-        //   onPressed: _showEmailConfigDialog,
-        // ),
-        // Währungsumrechner-Icon
+
 
         ValueListenableBuilder<String>(
           valueListenable: _currencyNotifier,
@@ -316,8 +263,8 @@ return Scaffold(
 
         IconButton(
           icon: getAdaptiveIcon(
-            iconName: 'delete_forever',
-            defaultIcon: Icons.delete_forever,
+            iconName: 'delete',
+            defaultIcon: Icons.delete,
           ),
           tooltip: 'Warenkorb leeren',
           onPressed: _showClearCartDialog,
@@ -1230,64 +1177,6 @@ return Scaffold(
     }
   }
 
-// Füge diese Methode zur SalesScreenState-Klasse hinzu
-  Future<void> _fetchLatestExchangeRates() async {
-    try {
-      // Setze Meldung, dass Kurse aktualisiert werden
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Aktuelle Wechselkurse werden abgerufen...'),
-          duration: Duration(seconds: 1),
-        ),
-      );
-
-      // API-Aufruf
-      final response = await http.get(
-        Uri.parse('https://api.frankfurter.app/latest?from=CHF&to=EUR,USD'),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final rates = data['rates'] as Map<String, dynamic>;
-
-        // Aktualisiere die Wechselkurse
-        final updatedRates = {
-          'CHF': 1.0,
-          'EUR': rates['EUR'] as double,
-          'USD': rates['USD'] as double,
-        };
-
-        // Speichere im ValueNotifier
-        _exchangeRatesNotifier.value = updatedRates;
-
-        // Speichere in Firebase
-        await _saveCurrencySettings();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Wechselkurse aktualisiert (Stand: ${data['date']})'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-
-        print('Wechselkurse aktualisiert: $updatedRates');
-      } else {
-        throw Exception('Fehler beim Abrufen der Wechselkurse: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('Fehler beim Abrufen der Wechselkurse: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Abrufen der Wechselkurse: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
 
   Future<void> _saveTemporaryDiscounts() async {
     try {
@@ -1890,6 +1779,9 @@ return Scaffold(
     final isWeb = kIsWeb;
     final screenWidth = MediaQuery.of(context).size.width;
 
+    // Erstelle einen stabilen Key außerhalb des Builders
+    final warehouseKey = GlobalKey();
+
     // Web mit großem Bildschirm: Dialog mit begrenzter Breite
     if (isWeb && screenWidth > 600) {
       showDialog(
@@ -1942,7 +1834,7 @@ return Scaffold(
                   // Hauptinhalt
                   Expanded(
                     child: WarehouseScreen(
-                      key: UniqueKey(),
+                      key: warehouseKey,
                       isDialog: true,
                       mode: 'shopping',
                       onBarcodeSelected: (barcode) {
@@ -1966,79 +1858,84 @@ return Scaffold(
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (BuildContext context) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.9,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black26,
-                  blurRadius: 10,
-                  spreadRadius: 0,
-                  offset: Offset(0, -1),
+          // Wichtig: StatefulBuilder hinzufügen für Mobile
+          return StatefulBuilder(
+            builder: (context, setModalState) {
+              return Container(
+                height: MediaQuery.of(context).size.height * 0.9,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 10,
+                      spreadRadius: 0,
+                      offset: Offset(0, -1),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Column(
-              children: [
-                // Drag Handle oben
-                Container(
-                  margin: EdgeInsets.only(top: 12, bottom: 8),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-
-                // Titel mit Schließen-Button
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: Colors.grey.shade200,
-                        width: 1,
+                child: Column(
+                  children: [
+                    // Drag Handle oben
+                    Container(
+                      margin: EdgeInsets.only(top: 12, bottom: 8),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      getAdaptiveIcon(iconName: 'warehouse', defaultIcon: Icons.warehouse),
-                      SizedBox(width: 12),
-                      Text(
-                        'Lager durchsuchen',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+
+                    // Titel mit Schließen-Button
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: Colors.grey.shade200,
+                            width: 1,
+                          ),
                         ),
                       ),
-                      Spacer(),
-                      IconButton(
-                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                        onPressed: () => Navigator.pop(context),
+                      child: Row(
+                        children: [
+                          getAdaptiveIcon(iconName: 'warehouse', defaultIcon: Icons.warehouse),
+                          SizedBox(width: 12),
+                          Text(
+                            'Lager durchsuchen',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Spacer(),
+                          IconButton(
+                            icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
+                    ),
 
-                // Hauptinhalt
-                Expanded(
-                  child: WarehouseScreen(
-                    key: UniqueKey(),
-                    isDialog: true,
-                    mode: 'shopping',
-                    onBarcodeSelected: (barcode) {
-                      print("bc:$barcode");
-                      Navigator.pop(context);
-                      _fetchProductAndShowQuantityDialog(barcode);
-                    },
-                  ),
+                    // Hauptinhalt
+                    Expanded(
+                      child: WarehouseScreen(
+                        key: warehouseKey,
+                        isDialog: true,
+                        mode: 'shopping',
+                        onBarcodeSelected: (barcode) {
+                          print("bc:$barcode");
+                          Navigator.pop(context);
+                          _fetchProductAndShowQuantityDialog(barcode);
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           );
         },
       );
@@ -2498,6 +2395,7 @@ return Scaffold(
 
     return Row(
       children: [
+
         // Linke Seite - kompaktere Produktauswahl
         Container(
           width: 320, // Reduzierte Breite
@@ -2511,6 +2409,109 @@ return Scaffold(
           ),
           child: Column(
             children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  children: [
+                    getAdaptiveIcon(
+                      iconName: 'people',
+                      defaultIcon: Icons.people,
+                      color: primaryAppColor,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Kunde auswählen',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: StreamBuilder<Customer?>(
+                  stream: _temporaryCustomerStream,
+                  builder: (context, snapshot) {
+                    final customer = snapshot.data;
+
+                    return GestureDetector(
+                      onTap: _showCustomerSelection,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: customer != null
+                              ? Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.3)
+                              : Theme.of(context).colorScheme.errorContainer.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: customer != null
+                                ? Theme.of(context).colorScheme.secondary
+                                : Theme.of(context).colorScheme.error,
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            getAdaptiveIcon(
+                              iconName: 'person',
+                              defaultIcon: Icons.person,
+                              color: customer != null
+                                  ? Theme.of(context).colorScheme.onSecondaryContainer
+                                  : Theme.of(context).colorScheme.onErrorContainer,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: customer != null
+                                  ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    customer.company.isNotEmpty
+                                        ? customer.company
+                                        : customer.fullName,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: Theme.of(context).colorScheme.onSecondaryContainer,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (customer.company.isNotEmpty)
+                                    Text(
+                                      '${customer.fullName} • ${customer.city}',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Theme.of(context).colorScheme.onSecondaryContainer.withOpacity(0.7),
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                ],
+                              )
+                                  : Text(
+                                'Kunde auswählen',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.onErrorContainer,
+                                ),
+                              ),
+                            ),
+                            Icon(
+                              Icons.arrow_drop_down,
+                              color: customer != null
+                                  ? Theme.of(context).colorScheme.onSecondaryContainer
+                                  : Theme.of(context).colorScheme.onErrorContainer,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
               // Header mit kompakterem Padding
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -2597,8 +2598,8 @@ return Scaffold(
                 child: OutlinedButton.icon(
                   onPressed: _showManualProductDialog,
                   icon: getAdaptiveIcon(
-                    iconName: 'add_circle_outline',
-                    defaultIcon: Icons.add_circle_outline,
+                    iconName: 'add_circle',
+                    defaultIcon: Icons.add_circle,
                     color: Theme.of(context).colorScheme.primary,
                   ),
                   label: const Text('Manuelles Produkt'),
@@ -3148,7 +3149,7 @@ return Scaffold(
               Expanded(
                 child: ElevatedButton(
                   onPressed: _showManualProductDialog,
-                  child: getAdaptiveIcon(iconName: 'add_circle_outline', defaultIcon: Icons.add_circle_outline),
+                  child: getAdaptiveIcon(iconName: 'add_circle', defaultIcon: Icons.add_circle),
                 ),
               ),
               const SizedBox(width: 6),
@@ -3254,16 +3255,21 @@ return Scaffold(
               // Synchronisiere mit lokalem State
               if (!_itemDiscounts.containsKey(itemId)) {
                 _itemDiscounts[itemId] = itemDiscount;
+
+                
               }
             } else {
               itemDiscount = _itemDiscounts[itemId] ?? const Discount();
             }
 
+            final isGratisartikel = item['is_gratisartikel'] == true;
+            final pricePerUnit = isGratisartikel
+                ? 0.0
+                : ((item['custom_price_per_unit'] ?? item['price_per_unit']) as num).toDouble();
 
 
-            final quantity = item['quantity'] as int;
-           // final pricePerUnit = (item['price_per_unit'] as num).toDouble();
-            final pricePerUnit = ((item['custom_price_per_unit'] ?? item['price_per_unit']) as num).toDouble();
+            final quantity = (item['quantity'] as num).toDouble();
+
             final subtotal = quantity * pricePerUnit;
 
             final discountAmount = itemDiscount.calculateDiscount(subtotal);
@@ -3313,7 +3319,30 @@ return Scaffold(
                                                 ),
                                               ),
                                               const SizedBox(width: 6),
+
                                             ],
+                                            if (item['is_gratisartikel'] == true) ...[
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.green.withOpacity(0.1),
+                                                  borderRadius: BorderRadius.circular(3),
+                                                  border: Border.all(
+                                                    color: Colors.green.withOpacity(0.3),
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  'GRATIS',
+                                                  style: TextStyle(
+                                                    fontSize: 8,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.green[700],
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                            ],
+
                                             Expanded(
                                               child: Text(
                                                 '${item['instrument_name'] ?? 'N/A'} - ${item['wood_name'] ?? 'N/A'}',
@@ -3325,6 +3354,9 @@ return Scaffold(
                                                 maxLines: 1,
                                               ),
                                             ),
+
+
+
                                           ],
                                         ),
                                         const SizedBox(height: 2),
@@ -3342,11 +3374,40 @@ return Scaffold(
                                         const SizedBox(height: 4),
 
                                         // Dritte Zeile: Menge × Preis
+                                        // Im _buildCartList, bei der Mengenanzeige:
                                         ValueListenableBuilder<String>(
                                           valueListenable: _currencyNotifier,
                                           builder: (context, currency, child) {
+                                            final String quantityDisplay = item['unit'] == 'Stück'
+                                                ? quantity.toStringAsFixed(0)
+                                                : quantity.toStringAsFixed(2);
+
+                                            if (isGratisartikel && item['proforma_value'] != null) {
+                                              return Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    '$quantityDisplay ${item['unit']} × GRATIS',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: Colors.green[700],
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    'Pro-forma: ${_formatPrice(item['proforma_value'])}',
+                                                    style: TextStyle(
+                                                      fontSize: 9,
+                                                      color: Colors.grey[600],
+                                                      fontStyle: FontStyle.italic,
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            }
+
                                             return Text(
-                                              '${quantity} ${item['unit']} × ${_formatPrice(pricePerUnit)}${item['is_price_customized'] == true ? ' *' : ''}',
+                                              '$quantityDisplay ${item['unit']} × ${_formatPrice(pricePerUnit)}${item['is_price_customized'] == true ? ' *' : ''}',
                                               style: TextStyle(
                                                 fontSize: 10,
                                                 fontStyle: item['is_price_customized'] == true
@@ -3571,22 +3632,29 @@ return Scaffold(
                         double subtotal = 0.0;
                         double itemDiscounts = 0.0;
 
+                        // In der StreamBuilder-Berechnung:
                         for (var doc in basketItems) {
                           final data = doc.data() as Map<String, dynamic>;
 
-                          // Hier den korrekten Preis verwenden (custom oder standard)
-                          final customPriceValue = data['custom_price_per_unit'];
-                          final pricePerUnit = customPriceValue != null
-                              ? (customPriceValue as num).toDouble()
-                              : (data['price_per_unit'] as num).toDouble();
+                          // NEU: Gratisartikel-Check
+                          final isGratisartikel = data['is_gratisartikel'] == true;
 
-                          final itemSubtotal = (data['quantity'] as int) * pricePerUnit;
+                          // Preis berechnen - 0 für Gratisartikel
+                          final customPriceValue = data['custom_price_per_unit'];
+                          final pricePerUnit = isGratisartikel
+                              ? 0.0
+                              : (customPriceValue != null
+                              ? (customPriceValue as num).toDouble()
+                              : (data['price_per_unit'] as num).toDouble());
+
+                          final itemSubtotal = (data['quantity']) * pricePerUnit;
                           subtotal += itemSubtotal;
 
-                          final itemDiscount = _itemDiscounts[doc.id] ?? const Discount();
-                          itemDiscounts += itemDiscount.calculateDiscount(
-                            itemSubtotal,
-                          );
+                          // Rabatte nur auf bezahlte Artikel anwenden
+                          if (!isGratisartikel) {
+                            final itemDiscount = _itemDiscounts[doc.id] ?? const Discount();
+                            itemDiscounts += itemDiscount.calculateDiscount(itemSubtotal);
+                          }
                         }
 
                         final afterItemDiscounts = subtotal - itemDiscounts;
@@ -4001,13 +4069,11 @@ return Scaffold(
                                                           ),
                                                         ),
                                                         const SizedBox(width: 8),
-                                                        Icon(
-                                                          isComplete
-                                                              ? Icons.check_circle_outline
-                                                              : Icons.error_outline,
-                                                          size: 18,
-                                                          color: isComplete ? Colors.green : Colors.red,
-                                                        ),
+                                                        isComplete
+                                                            ?
+                                                        getAdaptiveIcon(iconName: 'check_circle', defaultIcon: Icons.check_circle,color: Colors.green):
+                                                        getAdaptiveIcon(iconName: 'error', defaultIcon: Icons.error,color:  Colors.red),
+
                                                         const SizedBox(width: 8),
                                                         const Text(
                                                           'Dok.',
@@ -4051,13 +4117,11 @@ return Scaffold(
                                                 child: Row(
                                                   mainAxisSize: MainAxisSize.min,
                                                   children: [
-                                                    Icon(
-                                                      hasTexts
-                                                          ? Icons.text_fields
-                                                          : Icons.text_fields_outlined,
-                                                      size: 18,
-                                                      color: hasTexts ? Colors.green : Colors.red,
-                                                    ),
+                                                    hasTexts
+                                                        ?
+                                                    getAdaptiveIcon(iconName: 'text_fields', defaultIcon: Icons.text_fields,color: Colors.green):
+                                                    getAdaptiveIcon(iconName: 'text_fields', defaultIcon: Icons.text_fields,color:  Colors.red),
+
 
                                                   ],
                                                 ),
@@ -4091,13 +4155,10 @@ return Scaffold(
                                                 child: Row(
                                                   mainAxisSize: MainAxisSize.min,
                                                   children: [
-                                                    Icon(
-                                                      hasShippingCosts
-                                                          ? Icons.local_shipping
-                                                          : Icons.local_shipping_outlined,
-                                                      size: 18,
-                                                      color: hasShippingCosts ? Colors.green : Colors.red,
-                                                    ),
+                                                    hasShippingCosts
+                                                        ?
+                                                    getAdaptiveIcon(iconName: 'local_shipping', defaultIcon: Icons.local_shipping,color: Colors.green):
+                                                    getAdaptiveIcon(iconName: 'local_shipping', defaultIcon: Icons.local_shipping,color:  Colors.red),
 
                                                   ],
                                                 ),
@@ -4166,13 +4227,14 @@ return Scaffold(
                                                                     color: Colors.white,
                                                                   ),
                                                                 )
-                                                                    : Icon(
-                                                                  allConfigured
-                                                                      ? Icons.check
-                                                                      : Icons.warning_outlined,
-                                                                  size: 18,
-                                                                  color: Colors.white,
-                                                                ),
+                                                                    :
+                                                                allConfigured
+                                                                    ?
+                                                                getAdaptiveIcon(iconName: 'check', defaultIcon: Icons.check,color:  Colors.green, size: 18)
+                                                               : getAdaptiveIcon(iconName: 'warning', defaultIcon: Icons.warning,color:  Colors.white, size: 18,
+                                                              ),
+
+
                                                               ),
                                                             ),
                                                           ),
@@ -4210,7 +4272,7 @@ return Scaffold(
     );
   }
 // Hilfsmethoden
-  Future<int> _getAvailableQuantity(String shortBarcode) async {
+  Future<double> _getAvailableQuantity(String shortBarcode) async {
     try {
       // Aktuellen Bestand aus inventory collection abrufen
       final inventoryDoc = await FirebaseFirestore.instance
@@ -4218,20 +4280,34 @@ return Scaffold(
           .doc(shortBarcode)
           .get();
 
-      final currentStock = (inventoryDoc.data()?['quantity'] ?? 0) as int;
+      // FIX: Sichere Konvertierung zu double
+      final currentStock = (inventoryDoc.data()?['quantity'] as num?)?.toDouble() ?? 0.0;
 
-      // Temporär gebuchte Menge abrufen - HIER IST DAS PROBLEM
+      // Temporär gebuchte Menge abrufen
       final tempBasketDocs = await FirebaseFirestore.instance
           .collection('temporary_basket')
           .where('product_id', isEqualTo: shortBarcode)
           .get();
 
-      final reservedQuantity = tempBasketDocs.docs.fold<int>(
+      final reservedQuantity = tempBasketDocs.docs.fold<double>(
         0,
-            (sum, doc) => sum + (doc.data()['quantity'] as int),
+            (sum, doc) => sum + ((doc.data()['quantity'] as num?)?.toDouble() ?? 0.0),
       );
 
-      return currentStock - reservedQuantity;
+      // Reservierte Menge aus stock_movements abrufen
+      final reservationsDoc = await FirebaseFirestore.instance
+          .collection('stock_movements')
+          .where('productId', isEqualTo: shortBarcode)
+          .where('type', isEqualTo: 'reservation')
+          .where('status', isEqualTo: 'reserved')
+          .get();
+
+      final reservedFromMovements = reservationsDoc.docs.fold<double>(
+        0,
+            (sum, doc) => sum + (((doc.data()['quantity'] as num?)?.toDouble() ?? 0.0).abs()),
+      );
+
+      return currentStock - reservedQuantity - reservedFromMovements;
     } catch (e) {
       print('Fehler beim Abrufen der verfügbaren Menge: $e');
       return 0;
@@ -4812,7 +4888,8 @@ return Scaffold(
 
 // Erweiterte _addToTemporaryBasket Methode in sales_screen.dart
 
-  Future<void> _addToTemporaryBasket(String shortBarcode, Map<String, dynamic> productData, int quantity, String? onlineShopBarcode) async {
+  Future<void> _addToTemporaryBasket(String shortBarcode, Map<String, dynamic> productData, num quantity, String? onlineShopBarcode) async {
+    print("quan:$quantity");
     await FirebaseFirestore.instance
         .collection('temporary_basket')
         .add({
@@ -4837,6 +4914,11 @@ return Scaffold(
       'wood_name_en': productData['wood_name_en'] ?? '',
       'product_name_en': productData['product_name_en'] ?? '',
 
+      // NEU: Gratisartikel-Felder hinzufügen
+      if (productData.containsKey('is_gratisartikel'))
+        'is_gratisartikel': productData['is_gratisartikel'],
+      if (productData.containsKey('proforma_value'))
+        'proforma_value': productData['proforma_value'],
 
       // Füge das Feld nur hinzu, wenn es gesetzt ist
       if (onlineShopBarcode != null) 'online_shop_barcode': onlineShopBarcode,
@@ -4875,6 +4957,13 @@ await FirebaseFirestore.instance
 
     // FSC-Status Variable
     String selectedFscStatus = '100%'; // Standard
+
+    // NEU: Gratisartikel Variablen hier definieren
+    bool isGratisartikel = false;
+    final proformaController = TextEditingController(
+        text: (productData['price_CHF'] as num).toDouble().toStringAsFixed(2)
+    );
+
 
     showModalBottomSheet(
       context: context,
@@ -4958,12 +5047,14 @@ await FirebaseFirestore.instance
                                   Text('${productData['instrument_name'] ?? 'N/A'} - ${productData['part_name'] ?? 'N/A'}'),
                                   Text('${productData['wood_name'] ?? 'N/A'} - ${productData['quality_name'] ?? 'N/A'}'),
                                   const SizedBox(height: 8),
-                                  FutureBuilder<int>(
+                                  FutureBuilder<double>(
                                     future: _getAvailableQuantity(barcode),
                                     builder: (context, snapshot) {
                                       if (snapshot.hasData) {
                                         return Text(
-                                          'Verfügbar: ${snapshot.data} ${productData['unit'] ?? 'Stück'}',
+                                          'Verfügbar: ${productData['unit']?.toLowerCase() == 'stück'
+                                              ? snapshot.data!.toStringAsFixed(0)
+                                              : snapshot.data!.toStringAsFixed(3)} ${productData['unit'] ?? 'Stück'}',
                                           style: TextStyle(
                                             color: snapshot.data! > 0 ? Colors.green : Colors.red,
                                             fontWeight: FontWeight.bold,
@@ -5007,7 +5098,7 @@ await FirebaseFirestore.instance
 
                             // Menge
                             Text(
-                              'Menge',
+                              'MengeXX',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -5024,8 +5115,18 @@ await FirebaseFirestore.instance
                                 fillColor: Theme.of(context).colorScheme.surface,
                                 prefixIcon: getAdaptiveIcon(iconName: 'numbers', defaultIcon: Icons.numbers),
                               ),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                              keyboardType: TextInputType.numberWithOptions(decimal: true),
+                              inputFormatters: [
+                                if (productData['unit'] == 'Stück')
+                                  FilteringTextInputFormatter.digitsOnly
+                                else if (productData['unit'] == 'kg' ||
+                                    productData['unit'] == 'Kg' ||
+                                    productData['unit'] == 'm³' ||
+                                    productData['unit'] == 'm²')
+                                  FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,3}'))
+                                else
+                                  FilteringTextInputFormatter.digitsOnly,
+                              ],
                               autofocus: true,
                             ),
 
@@ -5135,7 +5236,9 @@ await FirebaseFirestore.instance
                                               border: const OutlineInputBorder(),
                                               filled: true,
                                               fillColor: Theme.of(context).colorScheme.surface,
-                                              prefixIcon: Icon(Icons.straighten, size: 20),
+                                              prefixIcon:
+                                              getAdaptiveIcon(iconName: 'straighten', defaultIcon:Icons.straighten, size: 20),
+
                                             ),
                                             keyboardType: TextInputType.numberWithOptions(decimal: true),
                                             onChanged: (value) {
@@ -5152,7 +5255,9 @@ await FirebaseFirestore.instance
                                               border: const OutlineInputBorder(),
                                               filled: true,
                                               fillColor: Theme.of(context).colorScheme.surface,
-                                              prefixIcon: Icon(Icons.swap_horiz, size: 20),
+                                              prefixIcon:
+                                              getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon:Icons.swap_horiz, size: 20),
+
                                             ),
                                             keyboardType: TextInputType.numberWithOptions(decimal: true),
                                             onChanged: (value) {
@@ -5170,7 +5275,8 @@ await FirebaseFirestore.instance
                                         border: const OutlineInputBorder(),
                                         filled: true,
                                         fillColor: Theme.of(context).colorScheme.surface,
-                                        prefixIcon: Icon(Icons.layers, size: 20),
+                                        prefixIcon:     getAdaptiveIcon(iconName: 'layers', defaultIcon:Icons.layers, size: 20),
+
                                       ),
                                       keyboardType: TextInputType.numberWithOptions(decimal: true),
                                       onChanged: (value) {
@@ -5194,6 +5300,73 @@ await FirebaseFirestore.instance
                                 );
                               },
                             ),
+
+
+// Nach dem Maße-Abschnitt und vor dem Ende des SingleChildScrollView:
+
+                            const SizedBox(height: 24),
+
+// Gratisartikel-Abschnitt
+                            Text(
+                              'Gratisartikel',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+
+// Checkbox für Gratisartikel
+                            StatefulBuilder(
+                              builder: (context, setCheckboxState) {
+
+                                return Column(
+                                  children: [
+                                    CheckboxListTile(
+                                      title: const Text('Als Gratisartikel markieren'),
+                                      subtitle: const Text(
+                                        'Artikel wird mit 0.00 berechnet, Pro-forma-Wert nur für Handelsrechnung',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
+                                      value: isGratisartikel,
+                                      onChanged: (value) {
+                                        setCheckboxState(() {
+                                          print("yoooQQ");
+                                          isGratisartikel = value ?? false;
+                                        });
+                                      },
+                                    ),
+
+                                    // Pro-forma-Wert Eingabe (nur sichtbar wenn Checkbox aktiv)
+                                    if (isGratisartikel) ...[
+                                      const SizedBox(height: 12),
+                                      TextFormField(
+                                        controller: proformaController,
+                                        decoration: InputDecoration(
+                                          labelText: 'Pro-forma-Wert für Handelsrechnung',
+                                          suffixText: _selectedCurrency,
+                                          border: const OutlineInputBorder(),
+                                          filled: true,
+                                          fillColor: Theme.of(context).colorScheme.surface,
+                                          prefixIcon: getAdaptiveIcon(
+                                              iconName: 'receipt_long',
+                                              defaultIcon: Icons.receipt_long
+                                          ),
+                                          helperText: 'Dieser Wert erscheint nur auf der Handelsrechnung',
+                                        ),
+                                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                                        ],
+                                      ),
+                                    ],
+                                  ],
+                                );
+                              },
+                            ),
+
+
                           ],
                         ),
                       ),
@@ -5227,10 +5400,25 @@ await FirebaseFirestore.instance
                             ),
                             const SizedBox(width: 16),
                             Expanded(
-                              child: ElevatedButton(
+                              child:
+                              ElevatedButton(
                                 onPressed: () async {
                                   if (quantityController.text.isNotEmpty) {
-                                    final quantity = int.parse(quantityController.text);
+                                    // Ersetze Komma durch Punkt für die Konvertierung
+                                    final normalizedInput = quantityController.text.replaceAll(',', '.');
+
+                                    // Parse als double wenn die Einheit Nachkommastellen erlaubt
+                                    num quantity;
+                                    if (productData['unit'] == 'Stück') {
+                                      quantity = int.tryParse(normalizedInput) ?? 0;
+                                    } else if (productData['unit'] == 'kg' ||
+                                        productData['unit'] == 'Kg' ||
+                                        productData['unit'] == 'm³' ||
+                                        productData['unit'] == 'm²') {
+                                      quantity = double.tryParse(normalizedInput) ?? 0;
+                                    } else {
+                                      quantity = int.tryParse(normalizedInput) ?? 0;
+                                    }
                                     final availableQuantity = await _getAvailableQuantity(barcode);
 
                                     if (quantity <= availableQuantity) {
@@ -5250,6 +5438,24 @@ await FirebaseFirestore.instance
 
                                       // Füge FSC-Status hinzu
                                       updatedProductData['fsc_status'] = selectedFscStatus;
+
+                                      // NEU: Erweitere productData um die Gratisartikel-Info
+                                      if (isGratisartikel) {
+                                        updatedProductData['is_gratisartikel'] = true;
+
+                                        // Proforma-Wert parsen
+                                        double proformaValue = double.tryParse(
+                                            proformaController.text.replaceAll(',', '.')) ??
+                                            (productData['price_CHF'] as num).toDouble();
+
+                                        // In CHF umrechnen, falls andere Währung ausgewählt
+                                        if (_selectedCurrency != 'CHF') {
+                                          proformaValue = proformaValue / _exchangeRates[_selectedCurrency]!;
+                                        }
+
+                                        updatedProductData['proforma_value'] = proformaValue;
+                                      }
+
 
                                       await _addToTemporaryBasket(barcode, updatedProductData, quantity, null);
                                       Navigator.pop(context);
@@ -5567,7 +5773,7 @@ backgroundColor: Colors.red,
 
     double totalRevenue = 0;
     double totalVat = 0;
-    Map<String, int> productsSold = {};
+    Map<String, double> productsSold = {};
     Set<String> uniqueCustomers = {};
 
     for (final sale in sales.docs) {
@@ -5581,7 +5787,7 @@ backgroundColor: Colors.red,
 
       for (final item in items) {
         final productId = item['product_id'] as String;
-        final quantity = item['quantity'] as int;
+        final quantity = item['quantity'] as double;
         productsSold[productId] = (productsSold[productId] ?? 0) + quantity;
       }
     }
@@ -6835,12 +7041,14 @@ Widget _buildSelectedProductInfo() {
           ),
         ),
         const SizedBox(height: 8),
-        FutureBuilder<int>(
+        FutureBuilder<double>(
           future: _getAvailableQuantity(selectedProduct!['barcode']),
           builder: (context, snapshot) {
             if (snapshot.hasData) {
               return Text(
-                'Verfügbar: ${snapshot.data} ${selectedProduct!['unit'] ?? 'Stück'}',
+                'Verfügbar: ${selectedProduct!['unit']?.toLowerCase() == 'stück'
+                    ? snapshot.data!.toStringAsFixed(0)
+                    : snapshot.data!.toStringAsFixed(3)} ${selectedProduct!['unit'] ?? 'Stück'}',
               );
             }
             return const CircularProgressIndicator();
@@ -7090,7 +7298,7 @@ Widget _buildSelectedProductInfo() {
                       getAdaptiveIcon(iconName: 'sell', defaultIcon: Icons.sell),
                       const SizedBox(width: 10),
                       Text(
-                        'Gesamtrabatt anpassen',
+                        'Gesamtrabatt',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       Spacer(),
@@ -7126,7 +7334,9 @@ Widget _buildSelectedProductInfo() {
                                   ? (customPriceValue as num).toDouble()
                                   : (data['price_per_unit'] as num).toDouble();
 
-                              final itemSubtotal = (data['quantity'] as int) * pricePerUnit;
+                              final qty = data['quantity'];
+                              final quantityDouble = qty is int ? qty.toDouble() : qty as double;
+                              final itemSubtotal = quantityDouble * pricePerUnit;
                               subtotal += itemSubtotal;
 
                               final itemDiscount = _itemDiscounts[doc.id] ?? const Discount();
@@ -7157,9 +7367,13 @@ Widget _buildSelectedProductInfo() {
                             totalAmount = netAmount + vatAmount;
                           }
 
-                          // Funktionen für die Umrechnung
                           void calculateTargetTotal() {
                             final targetTotal = double.tryParse(targetTotalController.text.replaceAll(',', '.')) ?? 0;
+
+                            print('=== DEBUG: calculateTargetTotal ===');
+                            print('Gewünschter Endbetrag: $targetTotal $currency');
+                            print('Nettobetrag nach Artikelrabatten: ${_formatPrice(afterItemDiscounts)}');
+
                             if (targetTotal <= 0 || afterItemDiscounts <= 0) return;
 
                             // Je nach Steueroption unterschiedlich berechnen
@@ -7167,32 +7381,29 @@ Widget _buildSelectedProductInfo() {
                             if (_taxOptionNotifier.value == TaxOption.standard) {
                               // Bei Standardsteuer: Zielbetrag enthält MwSt
                               targetNetAmount = targetTotal / (1 + (_vatRate / 100));
+                              print('Ziel-Nettobetrag (MwSt abgezogen): ${_formatPrice(targetNetAmount)}');
                             } else {
                               // Bei anderen Optionen: Zielbetrag ist direkt der Nettobetrag
                               targetNetAmount = targetTotal;
+                              print('Ziel-Nettobetrag: ${_formatPrice(targetNetAmount)}');
                             }
 
-                            // Berechne benötigten Rabatt
-                            final neededDiscount = afterItemDiscounts - targetNetAmount;
+                            // Berechne benötigten Rabatt in der angezeigten Währung
+                            final neededDiscountInDisplayCurrency = (afterItemDiscounts * _exchangeRates[currency]!) - targetNetAmount;
+                            print('Benötigter Rabatt: ${_formatPrice(afterItemDiscounts)} - ${targetNetAmount} $currency = $neededDiscountInDisplayCurrency $currency');
 
-                            // Setze den Rabatt als absoluten Wert (Prozent auf 0)
-                            if (neededDiscount >= 0) {
+                            if (neededDiscountInDisplayCurrency >= 0) {
                               setState(() {
                                 percentageController.text = '0';
+                                absoluteController.text = neededDiscountInDisplayCurrency.toStringAsFixed(2);
 
-                                // Wenn eine andere Währung als CHF ausgewählt ist, umrechnen
-                                double displayDiscount = neededDiscount;
-                                if (currency != 'CHF') {
-                                  displayDiscount = neededDiscount * _exchangeRates[currency]!;
-                                }
-
-                                absoluteController.text = displayDiscount.toStringAsFixed(2);
-
-                                // Speichere auch in den temporären Variablen
-                                tempPercentage = 0;
-                                tempAbsolute = neededDiscount;
+                                // Speichere in CHF für interne Verwendung
+                                tempAbsolute = neededDiscountInDisplayCurrency / _exchangeRates[currency]!;
+                                print('Gespeicherter Rabatt (CHF): $tempAbsolute');
                               });
                             }
+
+                            print('=== ENDE DEBUG ===');
                           }
 
                           return SingleChildScrollView(

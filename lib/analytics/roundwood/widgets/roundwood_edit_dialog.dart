@@ -170,7 +170,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                       // Zusätzliche Informationen Section
                       _buildDetailSection(
                         title: 'Zusätzliche Informationen',
-                        icon: Icons.info_outline,
+                        icon: Icons.info,
                         content: Column(
                           children: [
                             _buildQualitySelection(),

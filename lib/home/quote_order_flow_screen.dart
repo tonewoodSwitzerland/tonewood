@@ -442,7 +442,7 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
       ),
       child: Row(
         children: [
-          Icon(Icons.info_outline, color: Colors.blue[700]),
+          Icon(Icons.info, color: Colors.blue[700]),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -703,20 +703,30 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
 
     for (final doc in basketItems) {
       final data = doc.data() as Map<String, dynamic>;
+
+      // NEU: Check für Gratisartikel
+      final isGratisartikel = data['is_gratisartikel'] == true;
+
       final customPriceValue = data['custom_price_per_unit'];
-      final pricePerUnit = customPriceValue != null
+      final pricePerUnit = isGratisartikel
+          ? 0.0  // Gratisartikel haben Preis 0
+          : customPriceValue != null
           ? (customPriceValue as num).toDouble()
           : (data['price_per_unit'] as num).toDouble();
 
-      final itemSubtotal = (data['quantity'] as int) * pricePerUnit;
+      final quantity = data['quantity'];
+      final quantityDouble = quantity is int ? quantity.toDouble() : quantity as double;
+      final itemSubtotal = quantityDouble * pricePerUnit;
       subtotal += itemSubtotal;
 
-      // Rabatte
-      final discount = data['discount'] as Map<String, dynamic>?;
-      if (discount != null) {
-        final percentage = (discount['percentage'] as num? ?? 0).toDouble();
-        final absolute = (discount['absolute'] as num? ?? 0).toDouble();
-        itemDiscounts += (itemSubtotal * (percentage / 100)) + absolute;
+      // Rabatte nur auf nicht-Gratisartikel
+      if (!isGratisartikel) {
+        final discount = data['discount'] as Map<String, dynamic>?;
+        if (discount != null) {
+          final percentage = (discount['percentage'] as num? ?? 0).toDouble();
+          final absolute = (discount['absolute'] as num? ?? 0).toDouble();
+          itemDiscounts += (itemSubtotal * (percentage / 100)) + absolute;
+        }
       }
     }
 
@@ -732,7 +742,25 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
       final percentage = (discountData['percentage'] as num? ?? 0).toDouble();
       final absolute = (discountData['absolute'] as num? ?? 0).toDouble();
 
-      final afterItemDiscounts = subtotal - itemDiscounts;
+      // NEU: Berechne Subtotal nur für nicht-Gratisartikel für Gesamtrabatt
+      double subtotalForTotalDiscount = 0.0;
+      for (final doc in basketItems) {
+        final data = doc.data() as Map<String, dynamic>;
+        final isGratisartikel = data['is_gratisartikel'] == true;
+
+        if (!isGratisartikel) {
+          final customPriceValue = data['custom_price_per_unit'];
+          final pricePerUnit = customPriceValue != null
+              ? (customPriceValue as num).toDouble()
+              : (data['price_per_unit'] as num).toDouble();
+
+          final quantity = data['quantity'];
+          final quantityDouble = quantity is int ? quantity.toDouble() : quantity as double;
+          subtotalForTotalDiscount += quantityDouble * pricePerUnit;
+        }
+      }
+
+      final afterItemDiscounts = subtotalForTotalDiscount - itemDiscounts;
       totalDiscountAmount = (afterItemDiscounts * (percentage / 100)) + absolute;
     }
 
@@ -924,7 +952,7 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
-                  Icons.error_outline,
+                  Icons.error,
                   color: Colors.red,
                   size: 50,
                 ),

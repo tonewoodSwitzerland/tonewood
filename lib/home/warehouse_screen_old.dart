@@ -57,7 +57,7 @@
 //
 //     final reservedQuantity = tempBasketDoc.docs.fold<int>(
 //       0,
-//           (sum, doc) => sum + (doc.data()['quantity'] as int),
+//           (sum, doc) => sum + (doc.data()['quantity'] as double),
 //     );
 //
 //     return currentStock - reservedQuantity;

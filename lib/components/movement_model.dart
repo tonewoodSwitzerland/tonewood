@@ -41,7 +41,7 @@ class StockMovement {
   final String? orderId;
   final String? documentId;
   final String productId;
-  final int quantity;
+  final double quantity;
   final StockMovementStatus status;
   final DateTime timestamp;
 

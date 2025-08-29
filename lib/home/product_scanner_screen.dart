@@ -173,7 +173,7 @@ class ScannerScreenState extends State<ScannerScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Icon(
-                            Icons.error_outline,
+                            Icons.error,
                             size: 64,
                             color: Colors.orange,
                           ),

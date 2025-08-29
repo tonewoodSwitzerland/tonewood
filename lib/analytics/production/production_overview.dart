@@ -249,7 +249,7 @@ print(e);
 
   Widget _buildQuantityGrid(BuildContext context, Map<String, int> quantities) {
     final units = {
-      'Stk': ('inventory', Icons.inventory_2, Colors.blue),
+      'Stk': ('inventory', Icons.inventory, Colors.blue),
       'PAL': ('grid_view', Icons.grid_view, Colors.green),
       'KG': ('scale', Icons.scale, Colors.orange),
       'M3': ('view_in_ar', Icons.view_in_ar, Colors.purple),

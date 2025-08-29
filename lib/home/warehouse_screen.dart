@@ -1,4 +1,6 @@
 
+import 'dart:async';
+import 'filter_favorites_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -38,6 +40,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   List<String> selectedQualityCodes = [];
 
   String? selectedUnit;
+  final TextEditingController _searchController = TextEditingController();
 
 // Dropdown data from Firestore
   List<QueryDocumentSnapshot>? instruments;
@@ -46,20 +49,166 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   List<QueryDocumentSnapshot>? qualities;
   List<String> units = ['Stück', 'Kg', 'Palette', 'm³'];
 
+  StreamSubscription<DocumentSnapshot>? _filterSubscription;
+  bool _isLoadingFilters = true;
+  bool _hasUnsearchedChanges = false;
+
+  Stream<QuerySnapshot>? _productStream;
 
   @override
   void initState() {
     super.initState();
     _loadDropdownData();
+    _loadSavedFilters();
+    _updateProductStream();
+  }
+  @override
+  void dispose() {
+
+    _searchController.dispose();
+    _filterSubscription?.cancel();
+    super.dispose();
   }
   bool _showEnglishNames = false; // Neue Variable für Sprachwechsel
   bool isQuickFilterActive = false;
   String? _shopFilter; // null = alle, 'sold' = verkauft, 'available' = nicht verkauft
   bool _isOnlineShopView = false;
+  String _activeSearchText = '';
+
+  void _updateProductStream() {
+    setState(() {
+      _productStream = buildQuery().snapshots();
+    });
+  }
+// Neue Methoden in WarehouseScreenState:
+
+  Future<void> _saveCurrentFilterAsFavorite() async {
+    // Name Dialog zeigen
+    final nameController = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Filter-Favorit speichern'),
+        content: TextField(
+          controller: nameController,
+          decoration: InputDecoration(
+            labelText: 'Name für diesen Filter',
+            border: OutlineInputBorder(),
+            hintText: 'z.B. Gitarrendecken-Serie',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, nameController.text.trim()),
+            child: Text('Speichern'),
+          ),
+        ],
+      ),
+    );
+
+    if (name != null && name.isNotEmpty) {
+      try {
+        final favoriteData = <String, dynamic>{  // Expliziter Typ
+          'name': name,
+          'createdAt': FieldValue.serverTimestamp(),
+          'isSearch': _activeSearchText.isNotEmpty,
+        };
+
+        if (_activeSearchText.isNotEmpty) {  // Hier ändern
+          favoriteData['searchText'] = _activeSearchText;  // Hier ändern
+        } else {
+          favoriteData['instrumentCodes'] = selectedInstrumentCodes;
+          favoriteData['partCodes'] = selectedPartCodes;
+          favoriteData['woodCodes'] = selectedWoodCodes;
+          favoriteData['qualityCodes'] = selectedQualityCodes;
+          if (selectedUnit != null) {  // Nur hinzufügen wenn nicht null
+            favoriteData['unit'] = selectedUnit;
+          }
+        }
+
+        await FirebaseFirestore.instance
+            .collection('general_data')
+            .doc('filter_settings')
+            .collection('favorites')
+            .add(favoriteData);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Filter-Favorit "$name" gespeichert'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Speichern: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _applyFavoriteFilter(Map<String, dynamic> favoriteData) {
+    setState(() {
+      if (favoriteData['isSearch'] == true) {
+        // Suchfilter anwenden
+        _searchController.text = favoriteData['searchText'] ?? '';
+        selectedInstrumentCodes.clear();
+        selectedPartCodes.clear();
+        selectedWoodCodes.clear();
+        selectedQualityCodes.clear();
+        selectedUnit = null;
+
+        // Wichtig: Suche direkt ausführen
+        _performSearch();
+      } else {
+        // Manuelle Filter anwenden
+       _searchController.clear();
+       _hasUnsearchedChanges = false;
+    _activeSearchText = '';
+        selectedInstrumentCodes = List<String>.from(favoriteData['instrumentCodes'] ?? []);
+        selectedPartCodes = List<String>.from(favoriteData['partCodes'] ?? []);
+        selectedWoodCodes = List<String>.from(favoriteData['woodCodes'] ?? []);
+        selectedQualityCodes = List<String>.from(favoriteData['qualityCodes'] ?? []);
+        selectedUnit = favoriteData['unit'];
+       _updateProductStream();
+      }
+    });
+    _saveFilters();
+    // Gefilterte Produkte neu laden
+
+  }
+
+  void _showFilterFavorites() {
+    FilterFavoritesSheet.show(
+      context,
+      onFavoriteSelected: _applyFavoriteFilter,
+      onCreateNew: _saveCurrentFilterAsFavorite,
+    );
+  }
+
+
+
+
+
+
+
+
+
+
+
+
   void _toggleQuickFilter() {
     setState(() {
       isQuickFilterActive = !isQuickFilterActive;
-
+     _searchController.clear();
+    _activeSearchText = '';
       if (isQuickFilterActive) {
         // Clear existing filters first
         selectedInstrumentCodes.clear();
@@ -86,17 +235,132 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         selectedQualityCodes.clear();
       }
     });
+    _saveFilters();
+    _updateProductStream();
   }
 
-  Future<int> _getAvailableQuantity(String shortBarcode) async {
+
+  void _loadSavedFilters() {
+    _filterSubscription = FirebaseFirestore.instance
+        .collection('general_data')
+        .doc('filter_settings')
+        .snapshots()
+        .listen((snapshot) {
+      if (snapshot.exists && mounted) {
+        final data = snapshot.data() as Map<String, dynamic>;
+
+        // Suchtext laden
+        final savedSearchText = data['searchText'] ?? '';
+        if (_searchController.text != savedSearchText) {
+          _searchController.text = savedSearchText;
+        }
+
+        setState(() {
+          // Wenn Suchtext vorhanden ist, überschreibt er die manuellen Filter
+          if (savedSearchText.isNotEmpty) {
+            selectedInstrumentCodes.clear();
+            selectedPartCodes.clear();
+            selectedWoodCodes.clear();
+            selectedQualityCodes.clear();
+            selectedUnit = null;
+
+            // NEU: Setze auch den aktiven Suchtext
+            _activeSearchText = savedSearchText;
+            _hasUnsearchedChanges = false;
+          } else {
+            // Nur manuelle Filter laden wenn kein Suchtext
+            selectedInstrumentCodes = List<String>.from(data['instrumentCodes'] ?? []);
+            selectedPartCodes = List<String>.from(data['partCodes'] ?? []);
+            selectedWoodCodes = List<String>.from(data['woodCodes'] ?? []);
+            selectedQualityCodes = List<String>.from(data['qualityCodes'] ?? []);
+            selectedUnit = data['unit'];
+
+            // NEU: Stelle sicher, dass kein aktiver Suchtext gesetzt ist
+            _activeSearchText = '';
+            _hasUnsearchedChanges = false;
+          }
+          _isLoadingFilters = false;
+        });
+      } else {
+        setState(() {
+          _isLoadingFilters = false;
+        });
+      }
+    });
+  }
+// Filter in Firebase speichern
+  Future<void> _saveFilters() async {
     try {
+      // Wenn Suchtext vorhanden, speichere nur diesen
+      if (_activeSearchText.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('general_data')
+            .doc('filter_settings')
+            .set({
+          'searchText': _activeSearchText,
+          'instrumentCodes': [],
+          'partCodes': [],
+          'woodCodes': [],
+          'qualityCodes': [],
+          'unit': null,
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
+      } else {
+        // Sonst speichere die manuellen Filter
+        await FirebaseFirestore.instance
+            .collection('general_data')
+            .doc('filter_settings')
+            .set({
+          'searchText': '',
+          'instrumentCodes': selectedInstrumentCodes,
+          'partCodes': selectedPartCodes,
+          'woodCodes': selectedWoodCodes,
+          'qualityCodes': selectedQualityCodes,
+          'unit': selectedUnit,
+          'lastUpdated': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      print('Fehler beim Speichern der Filter: $e');
+    }
+  }
+
+  Future<void> _resetFilters() async {
+    setState(() {
+     _searchController.clear();
+     _hasUnsearchedChanges = false;
+    _activeSearchText = ''; // NEU
+      selectedInstrumentCodes.clear();
+      selectedPartCodes.clear();
+      selectedWoodCodes.clear();
+      selectedQualityCodes.clear();
+      selectedUnit = null;
+    });
+    _updateProductStream();
+    try {
+      await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('filter_settings')
+          .delete();
+    } catch (e) {
+      print('Fehler beim Zurücksetzen der Filter: $e');
+    }
+  }
+
+  Future<double> _getAvailableQuantity(String shortBarcode) async {
+    try {
+
+      print('Getting available quantity for: $shortBarcode'); // Debug
+
+
       // Aktuellen Bestand aus inventory collection abrufen
       final inventoryDoc = await FirebaseFirestore.instance
           .collection('inventory')
           .doc(shortBarcode)
           .get();
 
-      final currentStock = (inventoryDoc.data()?['quantity'] ?? 0) as int;
+      final currentStock = (inventoryDoc.data()?['quantity'] as num?)?.toDouble() ?? 0.0;
+      print('Current stock: $currentStock'); // Debug
 
       // Temporär gebuchte Menge abrufen
       final tempBasketDoc = await FirebaseFirestore.instance
@@ -104,9 +368,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           .where('product_id', isEqualTo: shortBarcode)
           .get();
 
-      final cartQuantity = tempBasketDoc.docs.fold<int>(
+      final cartQuantity = tempBasketDoc.docs.fold<double>(
         0,
-            (sum, doc) => sum + (doc.data()['quantity'] as int),
+            (sum, doc) => sum + ((doc.data()['quantity'] as num?)?.toDouble() ?? 0.0),
       );
 
       // Reservierte Menge aus stock_movements abrufen
@@ -117,14 +381,17 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           .where('status', isEqualTo: 'reserved')
           .get();
 
-      final reservedQuantity = reservationsDoc.docs.fold<int>(
+      final reservedQuantity = reservationsDoc.docs.fold<double>(
         0,
-            (sum, doc) => sum + ((doc.data()['quantity'] as int).abs()),
+            (sum, doc) => sum + (((doc.data()['quantity'] as num?)?.toDouble() ?? 0.0).abs()),
       );
 
-      return currentStock - cartQuantity - reservedQuantity;
+    final result = currentStock - cartQuantity - reservedQuantity;
+      print('Available quantity: $result'); // Debug
+      return result;
     } catch (e) {
       print('Fehler beim Abrufen der verfügbaren Menge: $e');
+      print('Stack trace: ${StackTrace.current}'); // Debug
       return 0;
     }
   }
@@ -148,7 +415,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         .map((snapshot) => snapshot.docs.isNotEmpty);
   }
 
-  Future<void> _addToTemporaryBasket(Map<String, dynamic> productData, int quantity) async {
+  Future<void> _addToTemporaryBasket(Map<String, dynamic> productData, double quantity) async {
     await FirebaseFirestore.instance
         .collection('temporary_basket')
         .add({
@@ -179,7 +446,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
 // Füge diese Methode zur WarehouseScreenState Klasse hinzu
 // Diese Methode zur WarehouseScreenState Klasse hinzufügen
-  Stream<int> _getReservedQuantityStream(String shortBarcode) {
+  Stream<double> _getReservedQuantityStream(String shortBarcode) {
     return FirebaseFirestore.instance
         .collection('stock_movements')
         .where('productId', isEqualTo: shortBarcode)
@@ -187,9 +454,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         .where('status', isEqualTo: 'reserved')
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.fold<int>(
+      return snapshot.docs.fold<double>(
         0,
-            (sum, doc) => sum + ((doc.data()['quantity'] as int).abs()), // abs() weil die Menge negativ gespeichert wird
+            (sum, doc) => sum + ((doc.data()['quantity'] as double).abs()), // abs() weil die Menge negativ gespeichert wird
       );
     });
   }
@@ -437,9 +704,6 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
                           const SizedBox(height: 16),
 
-                          // In der _showProductDetails Methode, ersetzen Sie die Produktinformationen Sektion mit:
-
-                          // In der _buildDetailSection Methode anpassen:
 
                           // Produktinformationen
                           _buildDetailSection(
@@ -646,7 +910,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                         style: FilledButton.styleFrom(
                                           backgroundColor: const Color(0xFF0F4A29),
                                         ),
-                                        icon: const Icon(Icons.check),
+                                        icon: getAdaptiveIcon(
+                                            iconName: 'check',
+                                            defaultIcon:Icons.check),
                                         label: const Text('Als verkauft markieren'),
                                       ),
                                     ],
@@ -664,7 +930,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                                 disabledBackgroundColor: Colors.grey[300],
                               ),
-                              icon: const Icon(Icons.sell),
+                              icon:  getAdaptiveIcon(
+                              iconName: 'sell',
+            defaultIcon:Icons.sell),
                               label: Text(
                                   isInCart ? 'Im Warenkorb - nicht verfügbar' :
                                   data['sold'] ? 'Bereits verkauft' : 'Als verkauft markieren'
@@ -826,393 +1094,421 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.9,
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black26,
-                blurRadius: 10,
-                spreadRadius: 0,
-                offset: Offset(0, -1),
-              ),
-            ],
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
           ),
-          child: Column(
-            children: [
-              // Drag Handle
-              Container(
-                margin: EdgeInsets.only(top: 12, bottom: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
+          child: Container(
+            height: MediaQuery.of(context).size.height * 0.9,
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 10,
+                  spreadRadius: 0,
+                  offset: Offset(0, -1),
                 ),
-              ),
-
-              // Header
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0F4A29).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        data['product_name']?.toString() ?? 'Produktdetails',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF0F4A29),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
+              ],
+            ),
+            child: Column(
+              children: [
+                // Drag Handle
+                Container(
+                  margin: EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
 
-              Divider(height: 1),
-
-              // Scrollbarer Inhalt
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                // Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Row(
                     children: [
-                      // Artikelnummer Sektion
-                      _buildDetailSection(
-                        title: 'Artikelnummer',
-                        iconName: 'qr_code',
-                        icon: Icons.qr_code,
-                        content: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[100],
-                            borderRadius: BorderRadius.circular(8),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F4A29).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          data['product_name']?.toString() ?? 'Produktdetails',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F4A29),
                           ),
-                          child: Row(
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+
+                Divider(height: 1),
+
+                // Scrollbarer Inhalt
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Artikelnummer Sektion
+                        _buildDetailSection(
+                          title: 'Artikelnummer',
+                          iconName: 'qr_code',
+                          icon: Icons.qr_code,
+                          content: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[100],
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                getAdaptiveIcon(
+                                  iconName: 'tag',
+                                  defaultIcon: Icons.tag,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  data['short_barcode']?.toString() ?? 'N/A',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // In der _showProductDetails Methode, ersetzen Sie die Produktinformationen Sektion mit:
+
+                        // In der _buildDetailSection Methode anpassen:
+
+                        // Produktinformationen
+                        _buildDetailSection(
+                          title: 'Produktinformationen',
+                          iconName: 'info',
+                          icon: Icons.info,
+                          content: StatefulBuilder(
+                            builder: (context, setInnerState) {
+                              return Column(
+                                children: [
+                                  // Switch in den Content-Bereich verschieben
+                                  Container(
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          'DE',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: !_showEnglishNames ? const Color(0xFF0F4A29) : Colors.grey[400],
+                                          ),
+                                        ),
+                                        Transform.scale(
+                                          scale: 0.7,
+                                          child: Switch(
+                                            value: _showEnglishNames,
+                                            onChanged: (value) {
+                                              setInnerState(() {
+                                                _showEnglishNames = value;
+                                              });
+                                            },
+                                            activeColor: const Color(0xFF0F4A29),
+                                          ),
+                                        ),
+                                        Text(
+                                          'EN',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: _showEnglishNames ? const Color(0xFF0F4A29) : Colors.grey[400],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  _buildDetailRow(
+                                    'Instrument',
+                                    _showEnglishNames
+                                        ? '${data['instrument_name_en'] ?? data['instrument_name']} (${data['instrument_code']})'
+                                        : '${data['instrument_name']} (${data['instrument_code']})',
+                                    iconName: 'music_note',
+                                    icon: Icons.music_note,
+                                  ),
+                                  _buildDetailRow(
+                                    'Bauteil',
+                                    _showEnglishNames
+                                        ? '${data['part_name_en'] ?? data['part_name']} (${data['part_code']})'
+                                        : '${data['part_name']} (${data['part_code']})',
+                                    iconName: 'category',
+                                    icon: Icons.category,
+                                  ),
+                                  _buildDetailRow(
+                                    'Holzart',
+                                    _showEnglishNames
+                                        ? '${data['wood_name_en'] ?? data['wood_name']} (${data['wood_code']})'
+                                        : '${data['wood_name']} (${data['wood_code']})',
+                                    iconName: 'forest',
+                                    icon: Icons.forest,
+                                  ),
+                                  _buildDetailRow(
+                                    'Qualität',
+                                    _showEnglishNames
+                                        ? '${data['quality_name_en'] ?? data['quality_name']} (${data['quality_code']})'
+                                        : '${data['quality_name']} (${data['quality_code']})',
+                                    iconName: 'star',
+                                    icon: Icons.star,
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Bestand und Preis
+                        _buildDetailSection(
+                          title: 'Bestand & Preis',
+                          iconName: 'inventory',
+                          icon: Icons.inventory,
+                          content: Column(
                             children: [
-                              getAdaptiveIcon(
-                                iconName: 'tag',
-                                defaultIcon: Icons.tag,
+                              // Bestandsanzeige
+                              FutureBuilder<double>(
+                                future: _getAvailableQuantity(data['short_barcode']),
+                                builder: (context, snapshot) {
+                                  // Debug-Ausgaben hinzufügen
+                                  print('FutureBuilder - ConnectionState: ${snapshot.connectionState}');
+                                  print('FutureBuilder - HasData: ${snapshot.hasData}');
+                                  print('FutureBuilder - Data: ${snapshot.data}');
+                                  print('FutureBuilder - Error: ${snapshot.error}');
+                                  print('FutureBuilder - short_barcode: ${data['short_barcode']}');
+
+                                  return Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0F4A29).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          'Verfügbarer Bestand:',
+                                          style: TextStyle(
+                                            color: Colors.grey[700],
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        Text(
+                                          snapshot.hasData
+                                              ? '${data['unit'] == 'Stück'
+                                              ? snapshot.data!.toInt().toString()
+                                              : snapshot.data!.toStringAsFixed(2)} ${data['unit'] ?? 'Stück'}'
+                                              : 'Wird Xgeladen...',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF0F4A29),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                data['short_barcode']?.toString() ?? 'N/A',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                              const SizedBox(height: 12),
+                              // Preisanzeige
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[100],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Preis pro ${data['unit'] ?? 'Stück'}:',
+                                      style: TextStyle(
+                                        color: Colors.grey[700],
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      NumberFormat.currency(
+                                          locale: 'de_DE',
+                                          symbol: 'CHF',
+                                          decimalDigits: 2
+                                      ).format(data['price_CHF'] ?? 0.00),
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
+                          data: data,
                         ),
-                      ),
 
-                      const SizedBox(height: 16),
+                        const SizedBox(height: 24),
 
-                      // In der _showProductDetails Methode, ersetzen Sie die Produktinformationen Sektion mit:
-
-                      // In der _buildDetailSection Methode anpassen:
-
-                      // Produktinformationen
-                      _buildDetailSection(
-                        title: 'Produktinformationen',
-                        iconName: 'info',
-                        icon: Icons.info,
-                        content: StatefulBuilder(
-                          builder: (context, setInnerState) {
-                            return Column(
-                              children: [
-                                // Switch in den Content-Bereich verschieben
-                                Container(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        'DE',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: !_showEnglishNames ? const Color(0xFF0F4A29) : Colors.grey[400],
-                                        ),
-                                      ),
-                                      Transform.scale(
-                                        scale: 0.7,
-                                        child: Switch(
-                                          value: _showEnglishNames,
-                                          onChanged: (value) {
-                                            setInnerState(() {
-                                              _showEnglishNames = value;
-                                            });
-                                          },
-                                          activeColor: const Color(0xFF0F4A29),
-                                        ),
-                                      ),
-                                      Text(
-                                        'EN',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: _showEnglishNames ? const Color(0xFF0F4A29) : Colors.grey[400],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                        // Warenkorb Sektion
+                        _buildDetailSection(
+                          title: 'In den Warenkorb',
+                          iconName: 'shopping_cart',
+                          icon: Icons.shopping_cart,
+                          content: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              TextFormField(
+                                controller: quantityController,
+                                decoration: InputDecoration(
+                                  labelText: 'Menge',
+                                  border: const OutlineInputBorder(),
+                                  hintText: 'Menge eingeben',
+                                  suffixText: data['unit'] ?? 'Stück',
+                                  filled: true,
+                                  fillColor: Colors.grey[100],
                                 ),
-                                _buildDetailRow(
-                                  'Instrument',
-                                  _showEnglishNames
-                                      ? '${data['instrument_name_en'] ?? data['instrument_name']} (${data['instrument_code']})'
-                                      : '${data['instrument_name']} (${data['instrument_code']})',
-                                  iconName: 'music_note',
-                                  icon: Icons.music_note,
-                                ),
-                                _buildDetailRow(
-                                  'Bauteil',
-                                  _showEnglishNames
-                                      ? '${data['part_name_en'] ?? data['part_name']} (${data['part_code']})'
-                                      : '${data['part_name']} (${data['part_code']})',
-                                  iconName: 'category',
-                                  icon: Icons.category,
-                                ),
-                                _buildDetailRow(
-                                  'Holzart',
-                                  _showEnglishNames
-                                      ? '${data['wood_name_en'] ?? data['wood_name']} (${data['wood_code']})'
-                                      : '${data['wood_name']} (${data['wood_code']})',
-                                  iconName: 'forest',
-                                  icon: Icons.forest,
-                                ),
-                                _buildDetailRow(
-                                  'Qualität',
-                                  _showEnglishNames
-                                      ? '${data['quality_name_en'] ?? data['quality_name']} (${data['quality_code']})'
-                                      : '${data['quality_name']} (${data['quality_code']})',
-                                  iconName: 'star',
-                                  icon: Icons.star,
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Bestand und Preis
-                      _buildDetailSection(
-                        title: 'Bestand & Preis',
-                        iconName: 'inventory',
-                        icon: Icons.inventory,
-                        content: Column(
-                          children: [
-                            // Bestandsanzeige
-                            FutureBuilder<int>(
-                              future: _getAvailableQuantity(data['short_barcode']),
-                              builder: (context, snapshot) {
-                                return Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF0F4A29).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        'Verfügbarer Bestand:',
-                                        style: TextStyle(
-                                          color: Colors.grey[700],
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      Text(
-                                        snapshot.hasData
-                                            ? '${snapshot.data} ${data['unit'] ?? 'Stück'}'
-                                            : 'Wird geladen...',
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF0F4A29),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 12),
-                            // Preisanzeige
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.grey[100],
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Preis pro ${data['unit'] ?? 'Stück'}:',
-                                    style: TextStyle(
-                                      color: Colors.grey[700],
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    NumberFormat.currency(
-                                        locale: 'de_DE',
-                                        symbol: 'CHF',
-                                        decimalDigits: 2
-                                    ).format(data['price_CHF'] ?? 0.00),
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: data['unit'] == 'Stück'
+                                    ? [FilteringTextInputFormatter.digitsOnly]
+                                    : [
+                                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}')),
+                                  TextInputFormatter.withFunction((oldValue, newValue) {
+                                    // Verhindert mehrere Dezimalpunkte
+                                    final text = newValue.text;
+                                    if (text.split('.').length > 2) {
+                                      return oldValue;
+                                    }
+                                    return newValue;
+                                  }),
                                 ],
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                        data: data,
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Warenkorb Sektion
-                      _buildDetailSection(
-                        title: 'In den Warenkorb',
-                        iconName: 'shopping_cart',
-                        icon: Icons.shopping_cart,
-                        content: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            TextFormField(
-                              controller: quantityController,
-                              decoration: InputDecoration(
-                                labelText: 'Menge',
-                                border: const OutlineInputBorder(),
-                                hintText: 'Menge eingeben',
-                                suffixText: data['unit'] ?? 'Stück',
-                                filled: true,
-                                fillColor: Colors.grey[100],
-                              ),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Action Buttons
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 10,
-                      spreadRadius: 0,
-                      offset: const Offset(0, -2),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-                child: SafeArea(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Abbrechen'),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          icon: getAdaptiveIcon(
-                            color: Colors.white,
-                            iconName: 'shopping_cart',
-                            defaultIcon: Icons.shopping_cart,
-                          ),
-                          label: const Text('In den Warenkorb'),
-                          onPressed: () async {
-                            if (quantityController.text.isEmpty) return;
 
-                            final quantity = int.parse(quantityController.text);
-                            final availableQuantity = await _getAvailableQuantity(data['short_barcode']);
-
-                            if (quantity <= 0) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Bitte gib eine gültige Menge ein'),
-                                  backgroundColor: Colors.orange,
-                                ),
-                              );
-                              return;
-                            }
-
-                            if (quantity > availableQuantity) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Nicht genügend Bestand verfügbar'),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                              return;
-                            }
-
-                            await _addToTemporaryBasket(data, quantity);
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Produkt wurde dem Warenkorb hinzugefügt'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            backgroundColor: const Color(0xFF0F4A29),
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
+                // Action Buttons
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        spreadRadius: 0,
+                        offset: const Offset(0, -2),
                       ),
                     ],
                   ),
+                  child: SafeArea(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Abbrechen'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            icon: getAdaptiveIcon(
+                              color: Colors.white,
+                              iconName: 'shopping_cart',
+                              defaultIcon: Icons.shopping_cart,
+                            ),
+                            label: const Text('In den Warenkorb'),
+                            onPressed: () async {
+                              if (quantityController.text.isEmpty) return;
+
+                              final quantity = data['unit'] == 'Stück'
+                                  ? int.parse(quantityController.text).toDouble()
+                                  : double.parse(quantityController.text);
+                              final availableQuantity = await _getAvailableQuantity(data['short_barcode']);
+
+                              if (quantity <= 0) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Bitte gib eine gültige Menge ein'),
+                                    backgroundColor: Colors.orange,
+                                  ),
+                                );
+                                return;
+                              }
+
+                              if (quantity > availableQuantity) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Nicht genügend Bestand verfügbar'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                                return;
+                              }
+
+                              await _addToTemporaryBasket(data, quantity);
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Produkt wurde dem Warenkorb hinzugefügt'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              backgroundColor: const Color(0xFF0F4A29),
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
     );
   }
 // Fügen Sie diese neue Methode zur WarehouseScreenState Klasse hinzu
-  Future<void> _adjustStock(String shortBarcode, int adjustment) async {
+  Future<void> _adjustStock(String shortBarcode, double adjustment) async {
     try {
       final inventoryRef = FirebaseFirestore.instance.collection('inventory').doc(shortBarcode);
 
@@ -1222,7 +1518,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           throw 'Produkt nicht gefunden';
         }
 
-        final currentQuantity = doc.data()?['quantity'] ?? 0;
+        final currentQuantity = (doc.data()?['quantity'] ?? 0).toDouble();
         final newQuantity = currentQuantity + adjustment;
 
         if (newQuantity < 0) {
@@ -1246,7 +1542,6 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         });
       });
 
-
     } catch (e) {
       AppToast.show(
         message: 'Fehler bei der Bestandsänderung: $e',
@@ -1255,13 +1550,15 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     }
   }
 // Fügen Sie diese neue Methode hinzu, die einen Stream zurückgibt
-  Stream<int> _getAvailableQuantityStream(String shortBarcode) {
+  Stream<double> _getAvailableQuantityStream(String shortBarcode) {
     return FirebaseFirestore.instance
         .collection('inventory')
         .doc(shortBarcode)
         .snapshots()
         .asyncMap((inventoryDoc) async {
-      final stock = inventoryDoc.data()?['quantity'] ?? 0;
+      // Sichere Konvertierung des Bestands zu double
+      final stockValue = inventoryDoc.data()?['quantity'] ?? 0;
+      final stock = stockValue is int ? stockValue.toDouble() : (stockValue as double);
 
       // Warenkorb-Menge abrufen
       final cartSnapshot = await FirebaseFirestore.instance
@@ -1269,9 +1566,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           .where('product_id', isEqualTo: shortBarcode)
           .get();
 
-      final cartQuantity = cartSnapshot.docs.fold<int>(
+      final cartQuantity = cartSnapshot.docs.fold<double>(
         0,
-            (sum, doc) => sum + (doc.data()['quantity'] as int),
+            (sum, doc) {
+          final qty = doc.data()['quantity'] ?? 0;
+          return sum + (qty is int ? qty.toDouble() : (qty as double));
+        },
       );
 
       // Reservierte Menge aus stock_movements abrufen
@@ -1282,9 +1582,13 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           .where('status', isEqualTo: 'reserved')
           .get();
 
-      final reservedQuantity = reservedSnapshot.docs.fold<int>(
+      final reservedQuantity = reservedSnapshot.docs.fold<double>(
         0,
-            (sum, doc) => sum + ((doc.data()['quantity'] as int).abs()),
+            (sum, doc) {
+          final qty = doc.data()['quantity'] ?? 0;
+          final qtyDouble = qty is int ? qty.toDouble() : (qty as double);
+          return sum + qtyDouble.abs();
+        },
       );
 
       return stock - cartQuantity - reservedQuantity;
@@ -1341,9 +1645,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               child: Column(
                 children: [
                   // Bestandsanzeige mit Anpassungsmöglichkeit
-                  StreamBuilder<int>(
+                  StreamBuilder<double>(
                     stream: _getAvailableQuantityStream(data['short_barcode']),
                     builder: (context, snapshot) {
+                      print('Snapshot state: ${snapshot.connectionState}'); // Debug
+                      print('Snapshot data: ${snapshot.data}'); // Debug
+                      print('Snapshot error: ${snapshot.error}');
                       return Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -1369,8 +1676,10 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                 ),
                                 Text(
                                   snapshot.hasData
-                                      ? '${snapshot.data} ${data['unit'] ?? 'Stück'}'
-                                      : 'Wird geladen...',
+                                      ? '${data['unit'] == 'Stück'
+                                      ? snapshot.data!.toInt().toString()
+                                      : snapshot.data!.toStringAsFixed(3)} ${data['unit'] ?? 'Stück'}'
+                                      : 'Wird Xgeladen...',
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -1385,7 +1694,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                               children: [
                                 ElevatedButton(
                                   onPressed: snapshot.hasData && snapshot.data! > 0
-                                      ? () => _adjustStock(data['short_barcode'], -1)
+                                      ? () => _adjustStock(data['short_barcode'], -1.0)
                                       : null,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.red[100],
@@ -1400,7 +1709,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                   ),
                                 ),
                                 ElevatedButton(
-                                  onPressed: () => _adjustStock(data['short_barcode'], 1),
+                                  onPressed: () => _adjustStock(data['short_barcode'], 1.0),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green[100],
                                     foregroundColor: Colors.green[900],
@@ -1580,17 +1889,20 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           .orderBy('code')
           .get();
 
-      setState(() {
-        instruments = instrumentsSnapshot.docs;
-        parts = partsSnapshot.docs;
-        woodTypes = woodTypesSnapshot.docs;
-        qualities = qualitiesSnapshot.docs;
-      });
+      // Prüfe ob Widget noch mounted ist bevor setState aufgerufen wird
+      if (mounted) {
+        setState(() {
+          instruments = instrumentsSnapshot.docs;
+          parts = partsSnapshot.docs;
+          woodTypes = woodTypesSnapshot.docs;
+          qualities = qualitiesSnapshot.docs;
+        });
+      }
     } catch (e) {
       print('Fehler beim Laden der Filterdaten: $e');
     }
   }
-  // Query builder based on filters
+
   Query<Map<String, dynamic>> buildQuery() {
     Query<Map<String, dynamic>> query;
 
@@ -1648,6 +1960,261 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     return query;
   }
 
+// Fügen Sie diese neue Methode hinzu, um die Suchergebnisse zu filtern:
+  List<QueryDocumentSnapshot> _filterBySearch(List<QueryDocumentSnapshot> docs) {
+    if (_activeSearchText.isEmpty) {  // Verwenden Sie _activeSearchText statt _searchController.text
+      return docs;
+    }
+
+    // Teile den Suchtext in einzelne Begriffe auf
+    final searchTerms = _activeSearchText.toLowerCase().split(' ')
+        .where((term) => term.isNotEmpty)
+        .toList();
+
+
+    return docs.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+
+      // Erstelle einen kombinierten String aus allen durchsuchbaren Feldern
+      final searchableContent = [
+        data['product_name'] ?? '',
+        data['product_name_en'] ?? '',
+        _isOnlineShopView ? (data['barcode'] ?? '') : (data['short_barcode'] ?? ''),
+        data['instrument_name'] ?? '',
+        data['instrument_name_en'] ?? '',
+        data['part_name'] ?? '',
+        data['part_name_en'] ?? '',
+        data['wood_name'] ?? '',
+        data['wood_name_en'] ?? '',
+        data['quality_name'] ?? '',
+        data['quality_name_en'] ?? '',
+        data['instrument_code'] ?? '',
+        data['part_code'] ?? '',
+        data['wood_code'] ?? '',
+        data['quality_code'] ?? '',
+      ].join(' ').toLowerCase();
+
+      // Prüfe ob ALLE Suchbegriffe im kombinierten Inhalt vorkommen
+      return searchTerms.every((term) => searchableContent.contains(term));
+    }).toList();
+  }
+
+// Aktualisieren Sie die _buildProductList() Methode:
+  Widget _buildProductList() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _productStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          print(snapshot.error);
+          return const Center(child: Text('Ein Fehler ist aufgetreten'));
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (!snapshot.hasData || snapshot.data == null || snapshot.data!.docs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  'Keine Produkte gefunden',
+                  style: TextStyle(color: Colors.grey[700]),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Filtere die Ergebnisse basierend auf dem Suchtext
+        final filteredDocs = _filterBySearch(snapshot.data!.docs);
+
+        if (filteredDocs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                getAdaptiveIcon(iconName: 'search_off', defaultIcon: Icons.search_off, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  'Keine Produkte für "${_activeSearchText}" gefunden',  // Hier ändern
+                  style: TextStyle(color: Colors.grey[700]),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                     _searchController.clear();
+    _activeSearchText = '';
+                     _hasUnsearchedChanges = false;
+                    });
+                  },
+                  child: const Text('Suche zurücksetzen'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Column(
+          children: [
+            if (_isOnlineShopView)
+              Container(
+                padding: const EdgeInsets.all(8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    FilterChip(
+                      label: const Text('Alle'),
+                      selected: _shopFilter == null,
+                      onSelected: (selected) {
+                        setState(() {
+                          _shopFilter = null;
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    FilterChip(
+                      label: const Text('Im Shop'),
+                      selected: _shopFilter == 'available',
+                      onSelected: (selected) {
+                        setState(() {
+                          _shopFilter = selected ? 'available' : null;
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    FilterChip(
+                      label: const Text('Verkauft'),
+                      selected: _shopFilter == 'sold',
+                      onSelected: (selected) {
+                        setState(() {
+                          _shopFilter = selected ? 'sold' : null;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            // Zeige die Anzahl der gefilterten Ergebnisse an
+            if (_activeSearchText.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.search, size: 16, color: Colors.grey[600]),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${filteredDocs.length} Ergebnis${filteredDocs.length == 1 ? '' : 'se'} für "${_activeSearchText}"',  // Hier auch ändern
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: ListView.builder(
+                itemCount: filteredDocs.length,
+                padding: const EdgeInsets.all(16),
+                itemBuilder: (context, index) {
+                  final doc = filteredDocs[index];
+                  final data = doc.data() as Map<String, dynamic>? ?? {};
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        if (_isOnlineShopView) {
+                          _showOnlineShopDetails(data);
+                        } else {
+                          _showProductDetails(data);
+                        }
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        data['product_name']?.toString() ?? 'Unbenanntes Produkt',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              data['quality_name']?.toString() ?? '-',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            _isOnlineShopView
+                                                ? data['barcode']?.toString() ?? ''
+                                                : data['short_barcode']?.toString() ?? '',
+                                            style: TextStyle(
+                                              color: Colors.grey[600],
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // Bestand/Status Anzeige
+                                if (_isOnlineShopView)
+                                  _buildOnlineShopStatus(data)
+                                else
+                                  _buildInventoryStatus(data),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+
+
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
@@ -1662,11 +2229,14 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           }
 
           return Scaffold(
-            appBar: AppBar(
-              automaticallyImplyLeading: false,
-              title: IntrinsicWidth(
+              appBar: AppBar(
+                automaticallyImplyLeading: false,
+                title: Row(
+                  children: [
+                // Toggle Lager/Shop bleibt unverändert
+                IntrinsicWidth(
                 child: Container(
-                  height: 36,
+                height: 36,
                   decoration: BoxDecoration(
                     color: Colors.grey[100],
                     borderRadius: BorderRadius.circular(8),
@@ -1680,7 +2250,10 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                     children: [
                       Expanded(
                         child: GestureDetector(
-                          onTap: () => setState(() => _isOnlineShopView = false),
+                          onTap: () {
+                            setState(() => _isOnlineShopView = false);
+                            _updateProductStream(); // HIER hinzufügen
+                          },
                           child: Container(
                             alignment: Alignment.center,
                             height: 36,
@@ -1731,7 +2304,84 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   ),
                 ),
               ),
-             // centerTitle: true,
+
+                    if (isDesktopLayout) ...[
+                      Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 24),
+                          constraints: const BoxConstraints(maxWidth: 400),
+                          height: 36,
+                          child: TextFormField(
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              hintText: 'Suche nach Produkten...',
+                              hintStyle: TextStyle(fontSize: 14),
+                              prefixIcon: Icon(
+                                Icons.search,
+                                size: 20,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                              suffixIcon: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (_activeSearchText.isNotEmpty)
+                                    IconButton(
+                                      icon: Icon(
+                                        Icons.clear,
+                                        size: 18,
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                      ),
+                                      onPressed: () {
+                                        setState(() {
+                                         _searchController.clear();
+                                          _activeSearchText = '';
+                                         _hasUnsearchedChanges = false;
+                                        });
+                                        _saveFilters(); // Filters zurücksetzen bei Clear
+                                      },
+                                    ),
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.search,
+                                      color: _hasUnsearchedChanges ? Colors.orange : primaryAppColor,
+                                    ),
+                                    onPressed: () {
+                                      FocusScope.of(context).unfocus();
+                                      // Suche ausführen
+                                      _performSearch();
+                                    },
+                                  ),
+                                ],
+                              ),
+                              filled: true,
+                              fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 0,
+                              ),
+                              isDense: true,
+                            ),
+                            style: const TextStyle(fontSize: 14),
+                            onFieldSubmitted: (value) {
+                              FocusScope.of(context).unfocus();
+                              _performSearch();
+                            },
+                            onChanged: (value) {
+                              setState(() {
+                                _hasUnsearchedChanges = value != _activeSearchText;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+          // centerTitle: true,
               actions: [
                 if (!isDesktopLayout) ...[
                   IconButton(
@@ -1747,16 +2397,17 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   ),
                 ],
                 IconButton(
-                  icon:
-          isQuickFilterActive ?
-          getAdaptiveIcon(iconName: 'star_fill', defaultIcon: Icons.star,)
-                        :
-          getAdaptiveIcon(iconName: 'star',defaultIcon:Icons.star_outline,
+                  icon: Badge(
+                    isLabelVisible: _hasActiveFilters(),
+                    label: Text('!'),
+                    child: getAdaptiveIcon(
+                      iconName: 'star',
+                      defaultIcon: Icons.star,
+                      color: _hasActiveFilters() ? primaryAppColor : null,
                     ),
-                  onPressed: _toggleQuickFilter,
-                  tooltip: isQuickFilterActive
-                      ? 'Schnellfilter deaktivieren'
-                      : 'Schnellfilter für aktivieren',
+                  ),
+                  onPressed: _showFilterFavorites,
+                  tooltip: 'Filter-Favoriten',
                 ),
                 // Add the export button
                 IconButton(
@@ -1899,6 +2550,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   setState(() {
                     selectedInstrumentCodes.remove(code);
                   });
+                  _saveFilters();
+                  _updateProductStream();
                 },
               ),
             )),
@@ -1913,6 +2566,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   setState(() {
                     selectedPartCodes.remove(code);
                   });
+                  _saveFilters();
+                  _updateProductStream();
                 },
               ),
             )),
@@ -1927,6 +2582,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   setState(() {
                     selectedWoodCodes.remove(code);
                   });
+                  _saveFilters();
+                  _updateProductStream();
                 },
               ),
             )),
@@ -1941,6 +2598,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   setState(() {
                     selectedQualityCodes.remove(code);
                   });
+                  _saveFilters();
+                  _updateProductStream();
                 },
               ),
             )),
@@ -1955,6 +2614,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   setState(() {
                     selectedUnit = null;
                   });
+                  _saveFilters();
+                  _updateProductStream();
                 },
               ),
             ),
@@ -1968,6 +2629,79 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   Widget _buildMobileLayout() {
     return Column(
       children: [
+        // NEU: Suchfeld für Mobile
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: TextFormField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Suche nach Produkten...',
+              prefixIcon: Icon(
+                Icons.search,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_activeSearchText.isNotEmpty)
+                    IconButton(
+                      icon: Icon(
+                        Icons.clear,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                         _searchController.clear();
+                      _activeSearchText = '';
+                         _hasUnsearchedChanges = false;
+                        });
+                        _saveFilters();
+                      },
+                    ),
+                  IconButton(
+                    icon: Icon(
+                      Icons.search,
+                      color: _hasUnsearchedChanges ? Colors.orange : primaryAppColor,
+                    ),
+                    onPressed: () {
+                      FocusScope.of(context).unfocus();
+                      _performSearch();
+                    },
+                  ),
+                ],
+              ),
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
+            ),
+            onFieldSubmitted: (value) {
+              _performSearch();
+            },
+            onChanged: (value) {
+              setState(() {
+                _hasUnsearchedChanges = value != _activeSearchText;
+
+              });
+            },
+          ),
+        ),
         if (_hasActiveFilters())
           _buildActiveFiltersChips(),
         Expanded(
@@ -1977,6 +2711,22 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     );
   }
 
+  void _performSearch() {
+    setState(() {
+      _activeSearchText = _searchController.text;
+      _hasUnsearchedChanges = false; // Zurücksetzen nach der Suche
+
+      if (_activeSearchText.isNotEmpty) {
+        selectedInstrumentCodes.clear();
+        selectedPartCodes.clear();
+        selectedWoodCodes.clear();
+        selectedQualityCodes.clear();
+        selectedUnit = null;
+      }
+    });
+    _saveFilters();
+    _updateProductStream();
+  }
   Widget _buildFilterSection() {
     return SingleChildScrollView(
       child: Padding(
@@ -2015,7 +2765,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   onChanged: (newSelection) {
                     setState(() {
                       selectedInstrumentCodes = newSelection;
+                     _searchController.clear();
+                     _activeSearchText = '';
+                      _hasUnsearchedChanges = false;
                     });
+                    _saveFilters();
+                    _updateProductStream();
                   },
                 ),
               ),
@@ -2034,7 +2789,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   onChanged: (newSelection) {
                     setState(() {
                       selectedPartCodes = newSelection;
+                     _searchController.clear();
+    _activeSearchText = '';
+                      _hasUnsearchedChanges = false;
                     });
+                    _saveFilters();
+                    _updateProductStream();
                   },
                 ),
               ),
@@ -2053,7 +2813,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   onChanged: (newSelection) {
                     setState(() {
                       selectedWoodCodes = newSelection;
+                     _searchController.clear();
+    _activeSearchText = '';
+                      _hasUnsearchedChanges = false;
                     });
+                    _saveFilters();
+                    _updateProductStream();
                   },
                 ),
               ),
@@ -2072,7 +2837,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   onChanged: (newSelection) {
                     setState(() {
                       selectedQualityCodes = newSelection;
+                     _searchController.clear();
+    _activeSearchText = '';
+                      _hasUnsearchedChanges = false;
                     });
+                    _saveFilters();
+                    _updateProductStream();
                   },
                 ),
               ),
@@ -2102,6 +2872,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                         selectedQualityCodes.clear();
                         selectedUnit = null;
                       });
+                      _saveFilters();
                     },
                     style: TextButton.styleFrom(
                       foregroundColor: Colors.red,
@@ -2248,170 +3019,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     );
   }
 
-  Widget _buildProductList() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: buildQuery().snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          print(snapshot.error);
-          return const Center(child: Text('Ein Fehler ist aufgetreten'));
-        }
 
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (!snapshot.hasData || snapshot.data == null || snapshot.data!.docs.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory, size: 48),
-                const SizedBox(height: 16),
-                Text(
-                  'Keine Produkte gefunden',
-                  style: TextStyle(color: Colors.grey[700]),
-                ),
-              ],
-            ),
-          );
-        }
-
-        return Column(
-          children: [
-            if (_isOnlineShopView)
-              Container(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    FilterChip(
-                      label: const Text('Alle'),
-                      selected: _shopFilter == null,
-                      onSelected: (selected) {
-                        setState(() {
-                          _shopFilter = null;
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    FilterChip(
-                      label: const Text('Im Shop'),
-                      selected: _shopFilter == 'available',
-                      onSelected: (selected) {
-                        setState(() {
-                          _shopFilter = selected ? 'available' : null;
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    FilterChip(
-                      label: const Text('Verkauft'),
-                      selected: _shopFilter == 'sold',
-                      onSelected: (selected) {
-                        setState(() {
-                          _shopFilter = selected ? 'sold' : null;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            Expanded(
-              child: ListView.builder(
-                itemCount: snapshot.data!.docs.length,
-                padding: const EdgeInsets.all(16),
-                itemBuilder: (context, index) {
-                  final doc = snapshot.data!.docs[index];
-                  final data = doc.data() as Map<String, dynamic>? ?? {};
-
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () {
-                        if (_isOnlineShopView) {
-                          _showOnlineShopDetails(data);
-                        } else {
-                          _showProductDetails(data);
-                        }
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        data['product_name']?.toString() ?? 'Unbenanntes Produkt',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                            decoration: BoxDecoration(
-                                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: Text(
-                                              data['quality_name']?.toString() ?? '-',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            _isOnlineShopView
-                                                ? data['barcode']?.toString() ?? ''
-                                                : data['short_barcode']?.toString() ?? '',
-                                            style: TextStyle(
-                                              color: Colors.grey[600],
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                // Bestand/Status Anzeige
-                                if (_isOnlineShopView)
-                                  _buildOnlineShopStatus(data)
-                                else
-                                  _buildInventoryStatus(data),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
 // Neue Hilfsmethode für Online-Shop Status
   Widget _buildOnlineShopStatus(Map<String, dynamic> data) {
@@ -2429,11 +3037,15 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            isSold ? Icons.sell : Icons.storefront,
-            size: 16,
-            color: isSold ? Colors.red : Colors.green,
-          ),
+isSold?
+        getAdaptiveIcon(
+        iconName: 'sell',
+        defaultIcon:Icons.sell,color: Colors.red,size: 16)
+          :
+getAdaptiveIcon(
+    iconName: 'storefront',
+    defaultIcon:Icons.storefront,color: Colors.green,size: 16),
+
           const SizedBox(width: 6),
           Text(
             isSold ? 'Verkauft' : 'Verfügbar',
@@ -2457,6 +3069,11 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
+
+
+
+
+
             color: const Color(0xFF0F4A29).withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
@@ -2464,7 +3081,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               width: 1,
             ),
           ),
-          child: StreamBuilder<int>(
+          child: StreamBuilder<double>(
             stream: _getAvailableQuantityStream(data['short_barcode']),
             builder: (context, availableSnapshot) {
               final available = availableSnapshot.data ?? data['quantity'] ?? 0;
@@ -2476,8 +3093,10 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.inventory_2,
+                  getAdaptiveIcon(
+                  iconName: 'inventory',
+                  defaultIcon:
+                        Icons.inventory,
                         size: 14,
                         color: const Color(0xFF0F4A29),
                       ),
@@ -2495,7 +3114,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   if (available != total) ...[
                     const SizedBox(height: 2),
                     Text(
-                      'verfügbar: $available',
+                      'verfügbar: ${available % 1 == 0 ? available.toInt().toString() : available.toStringAsFixed(3)}',
                       style: TextStyle(
                         color: const Color(0xFF0F4A29).withOpacity(0.8),
                         fontSize: 10,
@@ -2522,14 +3141,15 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                     .where('product_id', isEqualTo: data['short_barcode'])
                     .snapshots(),
                 builder: (context, cartSnapshot) {
-                  int cartQuantity = 0;
+                  double cartQuantity = 0;
                   if (cartSnapshot.hasData) {
                     cartQuantity = cartSnapshot.data!.docs.fold(0,
-                            (sum, doc) => sum + (doc.data() as Map<String, dynamic>)['quantity'] as int);
+                            (sum, doc) => sum + (doc.data() as Map<String, dynamic>)['quantity'] as double);
                   }
                   if (cartQuantity > 0) {
                     return _buildStatusIndicator(
                       icon: Icons.shopping_cart,
+                      iconName: 'shopping_cart',
                       value: cartQuantity,
                       color: Colors.orange,
                       tooltip: 'Im Warenkorb',
@@ -2540,7 +3160,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               ),
 
               // Reservierungen Status
-              StreamBuilder<int>(
+              StreamBuilder<double>(
                 stream: _getReservedQuantityStream(data['short_barcode']),
                 builder: (context, reservedSnapshot) {
                   final reservedQuantity = reservedSnapshot.data ?? 0;
@@ -2549,6 +3169,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                       padding: const EdgeInsets.only(left: 6),
                       child: _buildStatusIndicator(
                         icon: Icons.lock_clock,
+                        iconName: 'lock_clock',
                         value: reservedQuantity,
                         color: Colors.purple,
                         tooltip: 'Reserviert',
@@ -2565,7 +3186,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   padding: const EdgeInsets.only(left: 6),
                   child: _buildStatusIndicator(
                     icon: Icons.language,
-                    value: data['quantity_online_shop'],
+                    iconName: 'language',
+                    value: (data['quantity_online_shop'] ?? 0).toDouble(), // Konvertiere zu double
                     color: Colors.blue,
                     tooltip: 'Online Shop',
                   ),
@@ -2580,7 +3202,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 // Hilfsmethode für Status-Indikatoren
   Widget _buildStatusIndicator({
     required IconData icon,
-    required int value,
+    required String iconName,
+    required double value,
     required Color color,
     required String tooltip,
   }) {
@@ -2599,7 +3222,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
+            getAdaptiveIcon(
+            iconName: iconName,
+            defaultIcon:
               icon,
               size: 14,
               color: color,
@@ -2963,7 +3588,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
 
   bool _hasActiveFilters() {
-    return selectedInstrumentCodes.isNotEmpty ||
+    return _searchController.text.isNotEmpty ||
+        selectedInstrumentCodes.isNotEmpty ||
         selectedPartCodes.isNotEmpty ||
         selectedWoodCodes.isNotEmpty ||
         selectedQualityCodes.isNotEmpty ||
@@ -3056,7 +3682,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                     onChanged: (newSelection) {
                                       setState(() {
                                         selectedInstrumentCodes = newSelection;
+                                       _searchController.clear();
+    _activeSearchText = '';
+                                        _hasUnsearchedChanges = false;
                                       });
+                                      _saveFilters();
+                                      _updateProductStream();
                                     },
                                   ),
                                 ),
@@ -3075,7 +3706,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                     onChanged: (newSelection) {
                                       setState(() {
                                         selectedPartCodes = newSelection;
+                                       _searchController.clear();
+    _activeSearchText = '';
+                                        _hasUnsearchedChanges = false;
                                       });
+                                      _saveFilters();
+                                      _updateProductStream();
                                     },
                                   ),
                                 ),
@@ -3094,7 +3730,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                     onChanged: (newSelection) {
                                       setState(() {
                                         selectedWoodCodes = newSelection;
+                                       _searchController.clear();
+    _activeSearchText = '';
+                                        _hasUnsearchedChanges = false;
                                       });
+                                      _saveFilters();
+                                      _updateProductStream();
                                     },
                                   ),
                                 ),
@@ -3113,69 +3754,84 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                     onChanged: (newSelection) {
                                       setState(() {
                                         selectedQualityCodes = newSelection;
+                                       _searchController.clear();
+    _activeSearchText = '';
+                                        _hasUnsearchedChanges = false;
                                       });
+                                      _saveFilters();
+                                      _updateProductStream();
                                     },
                                   ),
                                 ),
                               ],
-
                               if (_hasActiveFilters()) ...[
-                                const SizedBox(height: 24),
-                                const Divider(),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        'Aktive Filter',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.grey[700],
-                                        ),
-                                      ),
-                                      TextButton.icon(
-                                        icon: getAdaptiveIcon(iconName: 'clear_all', defaultIcon: Icons.clear_all,),
-                                        label: const Text('Zurücksetzen'),
-                                        onPressed: () {
-                                          setState(() {
-                                            selectedInstrumentCodes.clear();
-                                            selectedPartCodes.clear();
-                                            selectedWoodCodes.clear();
-                                            selectedQualityCodes.clear();
-                                            selectedUnit = null;
-                                          });
-                                        },
-                                        style: TextButton.styleFrom(
-                                          foregroundColor: Colors.red,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    ...selectedInstrumentCodes.map((code) => _buildFilterChip(
-                                      label: _getNameForCode(instruments!, code),
-                                      onRemove: () => setState(() => selectedInstrumentCodes.remove(code)),
-                                    )),
-                                    ...selectedPartCodes.map((code) => _buildFilterChip(
-                                      label: _getNameForCode(parts!, code),
-                                      onRemove: () => setState(() => selectedPartCodes.remove(code)),
-                                    )),
-                                    ...selectedWoodCodes.map((code) => _buildFilterChip(
-                                      label: _getNameForCode(woodTypes!, code),
-                                      onRemove: () => setState(() => selectedWoodCodes.remove(code)),
-                                    )),
-                                    ...selectedQualityCodes.map((code) => _buildFilterChip(
-                                      label: _getNameForCode(qualities!, code),
-                                      onRemove: () => setState(() => selectedQualityCodes.remove(code)),
-                                    )),
+                                    Text(
+                                      'Aktive Filter:',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.grey[700],
+                                      ),
+                                    ),
+                                    Row(
+                                      children: [
+                                        IconButton(
+                                          icon: getAdaptiveIcon(
+                                            iconName: 'favorite_border',
+                                            defaultIcon: Icons.favorite_border,
+                                            color: Colors.red,
+                                          ),
+                                          onPressed: _saveCurrentFilterAsFavorite,
+                                          tooltip: 'Als Favorit speichern',
+                                        ),
+                                        TextButton.icon(
+                                          icon: getAdaptiveIcon(iconName: 'clear_all', defaultIcon: Icons.clear_all,),
+                                          label: const Text('Zurücksetzen'),
+                                          onPressed: () {
+                                            setState(() {
+                                              selectedInstrumentCodes.clear();
+                                              selectedPartCodes.clear();
+                                              selectedWoodCodes.clear();
+                                              selectedQualityCodes.clear();
+                                              selectedUnit = null;
+                                            });
+                                            _saveFilters();
+                                            _updateProductStream();
+                                          },
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: Colors.red,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ],
                                 ),
                               ],
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  ...selectedInstrumentCodes.map((code) => _buildFilterChip(
+                                    label: _getNameForCode(instruments!, code),
+                                    onRemove: () => setState(() => selectedInstrumentCodes.remove(code)),
+                                  )),
+                                  ...selectedPartCodes.map((code) => _buildFilterChip(
+                                    label: _getNameForCode(parts!, code),
+                                    onRemove: () => setState(() => selectedPartCodes.remove(code)),
+                                  )),
+                                  ...selectedWoodCodes.map((code) => _buildFilterChip(
+                                    label: _getNameForCode(woodTypes!, code),
+                                    onRemove: () => setState(() => selectedWoodCodes.remove(code)),
+                                  )),
+                                  ...selectedQualityCodes.map((code) => _buildFilterChip(
+                                    label: _getNameForCode(qualities!, code),
+                                    onRemove: () => setState(() => selectedQualityCodes.remove(code)),
+                                  )),
+                                ],
+                              ),
+
                             ],
                           ),
                         ),

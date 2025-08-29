@@ -318,7 +318,7 @@ class ExportDocumentsService {
 
             // Item rows
             ...tariffItems.map((item) {
-              final quantity = item['quantity'] as int;
+              final quantity = item['quantity'] as double;
               final pricePerUnit = _getPricePerUnit(item);
               final total = quantity * pricePerUnit;
 
@@ -344,7 +344,7 @@ class ExportDocumentsService {
       double tariffWeight = 0;
 
       for (final item in tariffItems) {
-        final quantity = item['quantity'] as int;
+        final quantity = item['quantity'] as double;
         final pricePerUnit = _getPricePerUnit(item);
         tariffTotal += quantity * pricePerUnit;
 
@@ -789,7 +789,7 @@ class ExportDocumentsService {
       double netWeight = 0;
 
       for (final item in packageItems) {
-        final quantity = item['quantity'] as int;
+        final quantity = item['quantity'] as double;
         netVolume += 0.001817 * quantity; // Example calculation
         netWeight += 0.75 * quantity; // Example calculation
       }
@@ -804,7 +804,7 @@ class ExportDocumentsService {
 
       // Create simulated items with detailed measurements
       final simulatedItems = packageItems.map((item) {
-        final quantity = item['quantity'] as int;
+        final quantity = item['quantity'] as double;
         return {
           'product': 'top',
           'instrument': item['instrument_name'] ?? 'violin',

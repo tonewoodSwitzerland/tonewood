@@ -366,7 +366,9 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
               // ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
-                  quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
+                  unit != "Stk"
+                      ? quantity.toStringAsFixed(3)
+                      : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
                   style: const pw.TextStyle(fontSize: 6),
                   textAlign: pw.TextAlign.right,
                 ),

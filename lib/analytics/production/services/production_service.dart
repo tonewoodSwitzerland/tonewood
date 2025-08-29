@@ -235,11 +235,11 @@ class ProductionService {
               final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
               if (!_isDateInRange(batchDate, filter)) continue;
 
-              final quantity = batchData['quantity'] as int? ?? 0;
+              final quantity = batchData['quantity'] as double? ?? 0;
               if (quantity == 0) continue;
 
               // Sichere Addition der Mengen mit normalisierter Einheit
-              final quantities = totals['quantities'] as Map<String, int>;
+              final quantities = totals['quantities'] as Map<String, double>;
               quantities[unit] = (quantities[unit] ?? 0) + quantity;
 
               // Gesamtwert berechnen
@@ -249,7 +249,7 @@ class ProductionService {
               totals['batch_count'] = (totals['batch_count'] as int) + 1;
 
               // Spezialholz Mengen
-              final specialWood = totals['special_wood'] as Map<String, int>;
+              final specialWood = totals['special_wood'] as Map<String, double>;
               if (moonwood) {
                 specialWood['moonwood'] = (specialWood['moonwood'] ?? 0) + quantity;
               }
@@ -294,7 +294,7 @@ class ProductionService {
     for (final doc in snapshot.docs) {
       // Batches für dieses Dokument holen
       final batchQuery = await doc.reference.collection('batch').get();
-      var totalQuantity = 0;
+      double totalQuantity = 0;
 
       // Prüfen ob Batches im Zeitraum existieren und deren Mengen summieren
       for (final batch in batchQuery.docs) {
@@ -302,7 +302,7 @@ class ProductionService {
         final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
         if (_isDateInRange(batchDate, filter)) {
-          totalQuantity += (batchData['quantity'] as int? ?? 0);
+          totalQuantity += (batchData['quantity'] as double? ?? 0);
         }
       }
 
@@ -368,9 +368,9 @@ class ProductionService {
           final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
           if (_isDateInRange(batchDate, filter)) {
-            final quantity = batchData['quantity'] as int;
+            final quantity = batchData['quantity'] as double;
 
-            final quantities = stats[instrumentCode]!['quantities'] as Map<String, int>;
+            final quantities = stats[instrumentCode]!['quantities'] as Map<String, double>;
             quantities[unit] = (quantities[unit] ?? 0) + quantity;
 
             stats[instrumentCode]!['total_value'] =
@@ -435,9 +435,9 @@ class ProductionService {
           final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
           if (_isDateInRange(batchDate, filter)) {
-            final quantity = batchData['quantity'] as int;
+            final quantity = batchData['quantity'] as double;
 
-            final quantities = stats[partCode]!['quantities'] as Map<String, int>;
+            final quantities = stats[partCode]!['quantities'] as Map<String, double>;
             quantities[unit] = (quantities[unit] ?? 0) + quantity;
 
             stats[partCode]!['total_value'] =
@@ -501,9 +501,9 @@ class ProductionService {
           final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
           if (_isDateInRange(batchDate, filter)) {
-            final quantity = batchData['quantity'] as int;
+            final quantity = batchData['quantity'] as double;
 
-            final quantities = stats[woodCode]!['quantities'] as Map<String, int>;
+            final quantities = stats[woodCode]!['quantities'] as Map<String, double>;
             quantities[unit] = (quantities[unit] ?? 0) + quantity;
 
             stats[woodCode]!['total_value'] =
@@ -566,9 +566,9 @@ class ProductionService {
           final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
           if (_isDateInRange(batchDate, filter)) {
-            final quantity = batchData['quantity'] as int;
+            final quantity = batchData['quantity'] as double;
 
-            final quantities = stats[qualityCode]!['quantities'] as Map<String, int>;
+            final quantities = stats[qualityCode]!['quantities'] as Map<String, double>;
             quantities[unit] = (quantities[unit] ?? 0) + quantity;
 
             stats[qualityCode]!['total_value'] =
@@ -714,7 +714,7 @@ class ProductionService {
           final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
           if (_isDateInRange(batchDate, filter)) {
-            final quantity = batchData['quantity'] as int? ?? 0;
+            final quantity = batchData['quantity'] as double? ?? 0;
             final price = baseData['price_CHF'] as double;
 
             // Kombiniere Batch- und Basisdaten
@@ -764,7 +764,7 @@ class ProductionService {
   final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
   if (_isDateInRange(batchDate, filter)) {
-  final quantity = batchData['quantity'] as int;
+  final quantity = batchData['quantity'] as double;
   batchValue += quantity * price;
   }
   }

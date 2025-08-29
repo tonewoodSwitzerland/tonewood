@@ -8,414 +8,446 @@ import 'package:share_plus/share_plus.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'dart:typed_data';
+import 'package:universal_html/html.dart' as html;
 import 'download_helper_mobile.dart' if (dart.library.html) 'download_helper_web.dart';
 import 'icon_helper.dart';
 
 class PreviewPDFViewerScreen extends StatefulWidget {
-  final Uint8List pdfBytes;
-  final String title;
+final Uint8List pdfBytes;
+final String title;
 
-  const PreviewPDFViewerScreen({
-    Key? key,
-    required this.pdfBytes,
-    required this.title,
-  }) : super(key: key);
+const PreviewPDFViewerScreen({
+Key? key,
+required this.pdfBytes,
+required this.title,
+}) : super(key: key);
 
-  @override
-  PreviewPDFViewerScreenState createState() => PreviewPDFViewerScreenState();
+@override
+PreviewPDFViewerScreenState createState() => PreviewPDFViewerScreenState();
 }
 
 class PreviewPDFViewerScreenState extends State<PreviewPDFViewerScreen> {
-  final GlobalKey<SfPdfViewerState> _pdfViewerKey = GlobalKey();
-  final PdfViewerController _pdfViewerController = PdfViewerController();
-  bool _isLoading = false;
+final GlobalKey<SfPdfViewerState> _pdfViewerKey = GlobalKey();
+final PdfViewerController _pdfViewerController = PdfViewerController();
+bool _isLoading = false;
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                'PREVIEW',
-                style: TextStyle(
-                  fontSize: 8,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                ),
-              ),
-            ),
+@override
+void initState() {
+super.initState();
+// Auf Web öffnen wir direkt in einem neuen Tab
+if (kIsWeb) {
+WidgetsBinding.instance.addPostFrameCallback((_) {
+_openInNewTab();
+// Nach kurzer Verzögerung schließen wir diesen Screen
+Future.delayed(const Duration(milliseconds: 500), () {
+if (mounted) {
+Navigator.of(context).pop();
+}
+});
+});
+}
+}
 
-          ],
-        ),
-        actions: [
-          // Zoom Out
-          IconButton(
-            icon: getAdaptiveIcon(iconName: 'zoom_out', defaultIcon: Icons.zoom_out),
-            onPressed: () {
-              final currentZoom = _pdfViewerController.zoomLevel;
-              _pdfViewerController.zoomLevel = (currentZoom - 0.25).clamp(0.5, 3.0);
-            },
-            tooltip: 'Verkleinern',
-          ),
+@override
+Widget build(BuildContext context) {
+// Auf Web zeigen wir nur einen kurzen Ladebildschirm
+if (kIsWeb) {
+return Scaffold(
+body: Center(
+child: Column(
+mainAxisAlignment: MainAxisAlignment.center,
+children: [
+const CircularProgressIndicator(),
+const SizedBox(height: 16),
+Text(
+'PDF wird geöffnet...',
+style: Theme.of(context).textTheme.titleMedium,
+),
+],
+),
+),
+);
+}
 
-          // Zoom In
-          IconButton(
-            icon: getAdaptiveIcon(iconName: 'zoom_in', defaultIcon: Icons.zoom_in),
-            onPressed: () {
-              final currentZoom = _pdfViewerController.zoomLevel;
-              _pdfViewerController.zoomLevel = (currentZoom + 0.25).clamp(0.5, 3.0);
-            },
-            tooltip: 'Vergrößern',
-          ),
+// Normale Mobile-Ansicht
+return Scaffold(
+appBar: AppBar(
+title: Row(
+children: [
+Container(
+padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+decoration: BoxDecoration(
+color: Theme.of(context).colorScheme.primaryContainer,
+borderRadius: BorderRadius.circular(12),
+),
+child: Text(
+'PREVIEW',
+style: TextStyle(
+fontSize: 8,
+fontWeight: FontWeight.bold,
+color: Theme.of(context).colorScheme.onPrimaryContainer,
+),
+),
+),
+],
+),
+actions: [
+if (!kIsWeb) ...[
+// Zoom Out - nur auf Mobile
+IconButton(
+icon: getAdaptiveIcon(iconName: 'zoom_out', defaultIcon: Icons.zoom_out),
+onPressed: () {
+final currentZoom = _pdfViewerController.zoomLevel;
+_pdfViewerController.zoomLevel = (currentZoom - 0.25).clamp(0.5, 3.0);
+},
+tooltip: 'Verkleinern',
+),
 
-          // Share
-          IconButton(
-            icon: getAdaptiveIcon(iconName: 'share', defaultIcon: Icons.share),
-            onPressed: _isLoading ? null : _sharePdf,
-            tooltip: 'Teilen',
-          ),
+// Zoom In - nur auf Mobile
+IconButton(
+icon: getAdaptiveIcon(iconName: 'zoom_in', defaultIcon: Icons.zoom_in),
+onPressed: () {
+final currentZoom = _pdfViewerController.zoomLevel;
+_pdfViewerController.zoomLevel = (currentZoom + 0.25).clamp(0.5, 3.0);
+},
+tooltip: 'Vergrößern',
+),
+],
 
-          // Download
-          IconButton(
-            icon: getAdaptiveIcon(iconName: 'download', defaultIcon: Icons.download),
-            onPressed: _isLoading ? null : _downloadPdf,
-            tooltip: 'Herunterladen',
-          ),
+// Share
+if (!kIsWeb)
+IconButton(
+icon: getAdaptiveIcon(iconName: 'share', defaultIcon: Icons.share),
+onPressed: _isLoading ? null : _sharePdf,
+tooltip: 'Teilen',
+),
 
-          // Mehr Optionen
-          PopupMenuButton<String>(
-            icon: getAdaptiveIcon(iconName: 'more_vert', defaultIcon: Icons.more_vert),
-            onSelected: (value) {
-              switch (value) {
-                case 'fit_width':
-                  _pdfViewerController.zoomLevel = 1.0;
-                  break;
-                case 'fit_page':
-                  _pdfViewerController.zoomLevel = 0.8;
-                  break;
-                case 'info':
-                  _showDocumentInfo();
-                  break;
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'fit_width',
-                child: Row(
-                  children: [
-                    getAdaptiveIcon(iconName: 'fit_screen', defaultIcon: Icons.fit_screen),
-                    const SizedBox(width: 8),
-                    const Text('An Breite anpassen'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'fit_page',
-                child: Row(
-                  children: [
-                    getAdaptiveIcon(iconName: 'fullscreen', defaultIcon: Icons.fullscreen),
-                    const SizedBox(width: 8),
-                    const Text('Ganze Seite'),
-                  ],
-                ),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem(
-                value: 'info',
-                child: Row(
-                  children: [
-                    getAdaptiveIcon(iconName: 'info', defaultIcon: Icons.info),
-                    const SizedBox(width: 8),
-                    const Text('Dokumentinfo'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+// Download
+IconButton(
+icon: getAdaptiveIcon(iconName: 'download', defaultIcon: Icons.download),
+onPressed: _isLoading ? null : _downloadPdf,
+tooltip: 'Herunterladen',
+),
 
-      body: Container(
-        color: Colors.grey[100],
-        child: Stack(
-          children: [
-            SfPdfViewer.memory(
-              widget.pdfBytes,
-              key: _pdfViewerKey,
-              controller: _pdfViewerController,
-              canShowScrollHead: true,
-              canShowScrollStatus: true,
-              enableDoubleTapZooming: true,
-              enableTextSelection: true,
-              pageLayoutMode: PdfPageLayoutMode.single,
-              onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
-                print('PDF Load Failed: ${details.description}');
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Fehler beim Laden: ${details.description}'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              },
-              onDocumentLoaded: (PdfDocumentLoadedDetails details) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('PDF geladen - ${details.document.pages.count} Seiten'),
-                      backgroundColor: Colors.green,
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                }
-              },
-            ),
+// Info
+IconButton(
+icon: getAdaptiveIcon(iconName: 'info', defaultIcon: Icons.info),
+onPressed: _showDocumentInfo,
+tooltip: 'Info',
+),
+],
+),
 
-            // Preview-Wasserzeichen
-            Positioned(
-              top: 20,
-              right: 20,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    getAdaptiveIcon(
-                      iconName: 'visibility',
-                      defaultIcon: Icons.visibility,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'VORSCHAU',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+body: Container(
+color: Colors.grey[100],
+child: Stack(
+children: [
+// PDF Viewer für Mobile
+_buildPdfViewer(),
 
-            // Loading Overlay
-            if (_isLoading)
-              Container(
-                color: Colors.black26,
-                child: const Center(
-                  child: Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 12),
-                          Text('Verarbeitung läuft...'),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
+// Preview-Wasserzeichen
+Positioned(
+top: 20,
+right: 20,
+child: Container(
+padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+decoration: BoxDecoration(
+color: Colors.orange.withOpacity(0.9),
+borderRadius: BorderRadius.circular(20),
+boxShadow: [
+BoxShadow(
+color: Colors.black26,
+blurRadius: 4,
+offset: const Offset(0, 2),
+),
+],
+),
+child: Row(
+mainAxisSize: MainAxisSize.min,
+children: [
+getAdaptiveIcon(
+iconName: 'visibility',
+defaultIcon: Icons.visibility,
+color: Colors.white,
+size: 16,
+),
+const SizedBox(width: 6),
+const Text(
+'VORSCHAU',
+style: TextStyle(
+color: Colors.white,
+fontSize: 12,
+fontWeight: FontWeight.bold,
+),
+),
+],
+),
+),
+),
 
+// Loading Overlay
+if (_isLoading)
+Container(
+color: Colors.black26,
+child: const Center(
+child: Card(
+child: Padding(
+padding: EdgeInsets.all(16),
+child: Column(
+mainAxisSize: MainAxisSize.min,
+children: [
+CircularProgressIndicator(),
+SizedBox(height: 12),
+Text('Verarbeitung läuft...'),
+],
+),
+),
+),
+),
+),
+],
+),
+),
+);
+}
 
-    );
-  }
+Future<void> _sharePdf() async {
+setState(() => _isLoading = true);
 
-  Future<void> _sharePdf() async {
-    setState(() => _isLoading = true);
+try {
+final tempDir = await getTemporaryDirectory();
+final tempFile = File('${tempDir.path}/${widget.title}');
+await tempFile.writeAsBytes(widget.pdfBytes);
 
-    try {
-      if (kIsWeb) {
-        await DownloadHelper.downloadFile(widget.pdfBytes, widget.title);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('PDF wird heruntergeladen...'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } else {
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/${widget.title}');
-        await tempFile.writeAsBytes(widget.pdfBytes);
+await Share.shareXFiles(
+[XFile(tempFile.path)],
+subject: 'Dokument: ${widget.title}',
+);
 
-        await Share.shareXFiles(
-          [XFile(tempFile.path)],
-          subject: 'Dokument: ${widget.title}',
-        );
+// Cleanup
+Future.delayed(const Duration(minutes: 5), () async {
+if (await tempFile.exists()) {
+await tempFile.delete();
+}
+});
+} catch (e) {
+if (mounted) {
+ScaffoldMessenger.of(context).showSnackBar(
+SnackBar(
+content: Text('Fehler beim Teilen: $e'),
+backgroundColor: Colors.red,
+),
+);
+}
+} finally {
+if (mounted) {
+setState(() => _isLoading = false);
+}
+}
+}
 
-        // Cleanup
-        Future.delayed(const Duration(minutes: 5), () async {
-          if (await tempFile.exists()) {
-            await tempFile.delete();
-          }
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Teilen: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
+Future<void> _downloadPdf() async {
+setState(() => _isLoading = true);
 
-  Future<void> _downloadPdf() async {
-    setState(() => _isLoading = true);
+try {
+if (kIsWeb) {
+await DownloadHelper.downloadFile(widget.pdfBytes, widget.title);
+if (mounted) {
+ScaffoldMessenger.of(context).showSnackBar(
+SnackBar(
+content: Row(
+children: [
+const Icon(Icons.download_done, color: Colors.white),
+const SizedBox(width: 12),
+Expanded(
+child: Column(
+crossAxisAlignment: CrossAxisAlignment.start,
+mainAxisSize: MainAxisSize.min,
+children: [
+const Text('PDF wurde heruntergeladen'),
+Text(
+'Überprüfen Sie Ihren Downloads-Ordner',
+style: TextStyle(
+fontSize: 12,
+color: Colors.white.withOpacity(0.9),
+),
+),
+],
+),
+),
+],
+),
+backgroundColor: Colors.green,
+duration: const Duration(seconds: 5),
+),
+);
+}
+} else {
+final downloadPath = await DownloadHelper.downloadFile(widget.pdfBytes, widget.title);
+if (mounted && downloadPath != null) {
+ScaffoldMessenger.of(context).showSnackBar(
+SnackBar(
+content: Text('Gespeichert: $downloadPath'),
+backgroundColor: Colors.green,
+),
+);
+}
+}
+} catch (e) {
+if (mounted) {
+ScaffoldMessenger.of(context).showSnackBar(
+SnackBar(
+content: Text('Fehler beim Speichern: $e'),
+backgroundColor: Colors.red,
+),
+);
+}
+} finally {
+if (mounted) {
+setState(() => _isLoading = false);
+}
+}
+}
 
-    try {
-      if (kIsWeb) {
-        await DownloadHelper.downloadFile(widget.pdfBytes, widget.title);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('PDF wird heruntergeladen...'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } else {
-        final downloadPath = await DownloadHelper.downloadFile(widget.pdfBytes, widget.title);
-        if (mounted && downloadPath != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Gespeichert: $downloadPath'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Speichern: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
+Widget _buildPdfViewer() {
+return SfPdfViewer.memory(
+widget.pdfBytes,
+key: _pdfViewerKey,
+controller: _pdfViewerController,
+canShowScrollHead: true,
+canShowScrollStatus: true,
+enableDoubleTapZooming: true,
+enableTextSelection: true,
+pageLayoutMode: PdfPageLayoutMode.single,
+onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
+print('PDF Load Failed: ${details.description}');
+if (mounted) {
+ScaffoldMessenger.of(context).showSnackBar(
+SnackBar(
+content: Text('Fehler beim Laden: ${details.description}'),
+backgroundColor: Colors.red,
+),
+);
+}
+},
+onDocumentLoaded: (PdfDocumentLoadedDetails details) {
+if (mounted) {
+ScaffoldMessenger.of(context).showSnackBar(
+SnackBar(
+content: Text('PDF geladen - ${details.document.pages.count} Seiten'),
+backgroundColor: Colors.green,
+duration: const Duration(seconds: 2),
+),
+);
+}
+},
+);
+}
 
-  void _showDocumentInfo() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            getAdaptiveIcon(iconName: 'info', defaultIcon: Icons.info),
-            const SizedBox(width: 8),
-            const Text('Dokumentinfo'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildInfoRow('Dateiname:', widget.title),
-            _buildInfoRow('Größe:', '${(widget.pdfBytes.length / 1024).toStringAsFixed(1)} KB'),
-            _buildInfoRow('Typ:', 'PDF-Dokument'),
-            _buildInfoRow('Status:', 'Vorschau (nicht gespeichert)'),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange.shade200),
-              ),
-              child: Row(
-                children: [
-                  getAdaptiveIcon(
-                    iconName: 'warning',
-                    defaultIcon: Icons.warning,
-                    color: Colors.orange,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'Dies ist eine Vorschau. Das Dokument wurde noch nicht in der Datenbank gespeichert.',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Schließen'),
-          ),
-        ],
-      ),
-    );
-  }
+Future<void> _openInNewTab() async {
+if (!kIsWeb) return;
 
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-          ),
-          Expanded(
-            child: Text(value),
-          ),
-        ],
-      ),
-    );
-  }
+try {
+final blob = html.Blob([widget.pdfBytes], 'application/pdf');
+final url = html.Url.createObjectUrlFromBlob(blob);
+html.window.open(url, '_blank');
 
-  @override
-  void dispose() {
-    _pdfViewerController.dispose();
-    super.dispose();
-  }
+// Cleanup nach kurzer Zeit
+Future.delayed(const Duration(seconds: 10), () {
+html.Url.revokeObjectUrl(url);
+});
+} catch (e) {
+print('Fehler beim Öffnen in neuem Tab: $e');
+// Fallback: Versuche Download
+_downloadPdf();
+}
+}
+
+void _showDocumentInfo() {
+showDialog(
+context: context,
+builder: (context) => AlertDialog(
+title: Row(
+children: [
+getAdaptiveIcon(iconName: 'info', defaultIcon: Icons.info),
+const SizedBox(width: 8),
+const Text('Dokumentinfo'),
+],
+),
+content: Column(
+mainAxisSize: MainAxisSize.min,
+crossAxisAlignment: CrossAxisAlignment.start,
+children: [
+_buildInfoRow('Dateiname:', widget.title),
+_buildInfoRow('Größe:', '${(widget.pdfBytes.length / 1024).toStringAsFixed(1)} KB'),
+_buildInfoRow('Typ:', 'PDF-Dokument'),
+_buildInfoRow('Status:', 'Vorschau (nicht gespeichert)'),
+if (kIsWeb)
+_buildInfoRow('Hinweis:', 'PDF-Vorschau nur auf Mobile verfügbar'),
+const SizedBox(height: 12),
+Container(
+padding: const EdgeInsets.all(8),
+decoration: BoxDecoration(
+color: Colors.orange.shade50,
+borderRadius: BorderRadius.circular(8),
+border: Border.all(color: Colors.orange.shade200),
+),
+child: Row(
+children: [
+getAdaptiveIcon(
+iconName: 'warning',
+defaultIcon: Icons.warning,
+color: Colors.orange,
+size: 16,
+),
+const SizedBox(width: 8),
+const Expanded(
+child: Text(
+'Dies ist eine Vorschau. Das Dokument wurde noch nicht in der Datenbank gespeichert.',
+style: TextStyle(fontSize: 12),
+),
+),
+],
+),
+),
+],
+),
+actions: [
+TextButton(
+onPressed: () => Navigator.pop(context),
+child: const Text('Schließen'),
+),
+],
+),
+);
+}
+
+Widget _buildInfoRow(String label, String value) {
+return Padding(
+padding: const EdgeInsets.only(bottom: 8),
+child: Row(
+crossAxisAlignment: CrossAxisAlignment.start,
+children: [
+SizedBox(
+width: 80,
+child: Text(
+label,
+style: const TextStyle(fontWeight: FontWeight.w500),
+),
+),
+Expanded(
+child: Text(value),
+),
+],
+),
+);
+}
+
+@override
+void dispose() {
+if (!kIsWeb) {
+_pdfViewerController.dispose();
+}
+super.dispose();
+}
 }

@@ -50,8 +50,12 @@ class OrderService {
   // Konvertiere Angebot zu Auftrag
   static Future<OrderX> createOrderFromQuote(String quoteId) async {
     try {
+
+
       // Lade Angebot
       final quote = await QuoteService.getQuote(quoteId);
+
+
       if (quote == null) throw Exception('Angebot nicht gefunden');
 
       // Prüfe Verfügbarkeit nochmals
@@ -61,13 +65,20 @@ class OrderService {
         if (item['is_manual_product'] == true) continue;
 
         final productId = item['product_id'] as String;
-        final required = item['quantity'] as int;
-        final available = availability[productId] ?? 0;
+
+
+        final quantityRaw = item['quantity'];
+        print('DEBUG: Raw quantity for $productId: $quantityRaw (${quantityRaw.runtimeType})');
+
+        final required = quantityRaw is int ? quantityRaw.toDouble() : quantityRaw as double;
+        final availableRaw = availability[productId];
+        print('DEBUG: Available raw for $productId: $availableRaw (${availableRaw.runtimeType})');
+
+        final available = availableRaw is int ? availableRaw?.toDouble() : (availableRaw ?? 0.0) as double;
 
 
 
-
-        if (available < required) {
+        if (available! < required) {
           throw Exception(
               'Nicht genügend Bestand für ${item['product_name']}. '
                   'Benötigt: $required, Verfügbar: $available'
@@ -100,7 +111,10 @@ class OrderService {
         orderDate: DateTime.now(),
         paymentStatus: PaymentStatus.pending,
         documents: initialDocuments,
-        metadata: quote.metadata,
+          metadata: {
+            ...quote.metadata, // NEU: Übernehme ALLE metadata aus der Quote
+            'orderCreatedAt': DateTime.now().toIso8601String(),
+          },
       );
 
       // Wichtig: Wir müssen sicherstellen, dass costCenter und fair auch übertragen werden
@@ -167,7 +181,7 @@ class OrderService {
                 .doc(productId);
 
             transaction.update(inventoryRef, {
-              'quantity': FieldValue.increment(-(item['quantity'] as int)),
+              'quantity': FieldValue.increment(-((item['quantity'] as num).toDouble())),
               'last_modified': FieldValue.serverTimestamp(),
             });
 
@@ -179,7 +193,7 @@ class OrderService {
               'orderId': orderId,
               'quoteId': quoteId,
               'productId': productId,
-              'quantity': -(item['quantity'] as int),
+              'quantity': -((item['quantity'] as num).toDouble()),
               'status': StockMovementStatus.confirmed.name,
               'timestamp': FieldValue.serverTimestamp(),
               'confirmedAt': FieldValue.serverTimestamp(),
@@ -198,6 +212,7 @@ class OrderService {
   }
 
   // Generiere und speichere Auftragsdokument
+// Aktualisiere die generateOrderDocument Methode:
   static Future<String> generateOrderDocument({
     required String orderId,
     required String orderNumber,
@@ -211,6 +226,9 @@ class OrderService {
 
       // Extrahiere metadata für einfacheren Zugriff
       final metadata = orderData['metadata'] as Map<String, dynamic>? ?? {};
+
+      // NEU: Hole Additional Texts aus metadata
+      final additionalTexts = metadata['additionalTexts'] as Map<String, dynamic>?;
 
       // Konvertiere exchangeRates sicher
       final rawExchangeRates = metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
@@ -236,11 +254,13 @@ class OrderService {
             currency: metadata['currency'] ?? 'CHF',
             exchangeRates: exchangeRates,
             invoiceNumber: orderNumber,
+            quoteNumber: orderData['quoteNumber'], // NEU: Quote Number übergeben
             language: language,
             shippingCosts: metadata['shippingCosts'],
             calculations: orderData['calculations'],
             taxOption: metadata['taxOption'] ?? 0,
             vatRate: (metadata['vatRate'] ?? 8.1).toDouble(),
+            additionalTexts: additionalTexts, // NEU: Additional Texts übergeben
           );
           break;
 
@@ -258,6 +278,7 @@ class OrderService {
             language: language,
             deliveryDate: DateTime.now(),
             paymentDate: DateTime.now().add(const Duration(days: 30)),
+
           );
           break;
 
@@ -278,6 +299,7 @@ class OrderService {
             taxOption: metadata['taxOption'] ?? 0,
             vatRate: (metadata['vatRate'] ?? 8.1).toDouble(),
             taraSettings: metadata['taraSettings'],
+
           );
           break;
 
@@ -394,4 +416,139 @@ class OrderService {
 
     return OrderX.fromFirestore(doc);
   }
+
+
+  static Future<OrderX> createOrderFromQuoteWithConfig(
+      String quoteId,
+      Map<String, dynamic> additionalTexts,
+      Map<String, dynamic> invoiceSettings,
+      ) async {
+    try {
+      // 1. Zuerst die Quote mit den Additional Texts aktualisieren
+      await FirebaseFirestore.instance
+          .collection('quotes')
+          .doc(quoteId)
+          .update({
+        'metadata.additionalTexts': additionalTexts,
+        'metadata.invoiceSettings': invoiceSettings,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+
+      // 2. Hole das aktualisierte Angebot
+      final quoteDoc = await FirebaseFirestore.instance
+          .collection('quotes')
+          .doc(quoteId)
+          .get();
+
+      if (!quoteDoc.exists) {
+        throw Exception('Angebot nicht gefunden');
+      }
+
+      final quote = Quote.fromFirestore(quoteDoc);
+
+      // 3. Erstelle den Auftrag (die Additional Texts sind jetzt in der Quote gespeichert)
+      final order = await createOrderFromQuote(quoteId);
+
+      // 4. Erstelle die Rechnung mit den Einstellungen aus der Quote
+      // HIER IST DIE KORREKTUR: Konvertiere exchangeRates zu Map<String, double>
+      final rawExchangeRates = quote.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
+      final exchangeRates = <String, double>{
+        'CHF': 1.0,
+      };
+      rawExchangeRates.forEach((key, value) {
+        if (value != null) {
+          if (value is double) {
+            exchangeRates[key] = value;
+          } else if (value is int) {
+            exchangeRates[key] = value.toDouble();
+          } else if (value is num) {
+            exchangeRates[key] = value.toDouble();
+          } else if (value is String) {
+            // Falls der Wert als String gespeichert wurde
+            final parsed = double.tryParse(value);
+            if (parsed != null) {
+              exchangeRates[key] = parsed;
+            }
+          }
+        }
+      });
+
+      final orderData = {
+        'order': order,
+        'items': quote.items,
+        'customer': quote.customer,
+        'calculations': quote.calculations,
+        'settings': {
+          'invoice': invoiceSettings,
+        },
+        'shippingCosts': quote.metadata['shippingCosts'] ?? {},
+        'currency': quote.metadata['currency'] ?? 'CHF',
+        'exchangeRates': exchangeRates, // VERWENDE DIE KONVERTIERTEN EXCHANGE RATES
+        'costCenterCode': quote.metadata['costCenterCode'] ?? '00000',
+        'fair': quote.metadata['fairData'],
+        'taxOption': quote.metadata['taxOption'] ?? 0,
+        'vatRate': (quote.metadata['vatRate'] as num?)?.toDouble() ?? 8.1,
+        'additionalTexts': additionalTexts,
+      };
+
+      // 5. Generiere Rechnung
+      final pdfBytes = await InvoiceGenerator.generateInvoicePdf(
+        items: orderData['items'],
+        customerData: orderData['customer'],
+        fairData: orderData['fair'],
+        costCenterCode: orderData['costCenterCode'],
+        currency: orderData['currency'],
+        exchangeRates: orderData['exchangeRates'], // Jetzt ist es Map<String, double>
+        language: orderData['customer']['language'] ?? 'DE',
+        invoiceNumber: order.orderNumber,
+        quoteNumber: order.quoteNumber, // NEU: Quote Number hinzufügen
+        shippingCosts: orderData['shippingCosts'],
+        calculations: orderData['calculations'],
+        paymentTermDays: 30,
+        taxOption: orderData['taxOption'],
+        vatRate: orderData['vatRate'],
+        downPaymentSettings: invoiceSettings,
+        additionalTexts: additionalTexts,
+      );
+
+      // 6. Speichere PDF
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('orders')
+          .child(order.id)
+          .child('invoice_pdf.pdf');
+
+      final uploadTask = await storageRef.putData(
+        pdfBytes,
+        SettableMetadata(
+          contentType: 'application/pdf',
+          customMetadata: {
+            'orderNumber': order.orderNumber,
+            'documentType': 'Rechnung',
+            'createdAt': DateTime.now().toIso8601String(),
+          },
+        ),
+      );
+
+      final documentUrl = await uploadTask.ref.getDownloadURL();
+
+      // 7. Update Order mit Dokument-URL
+      await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(order.id)
+          .update({
+        'documents.invoice_pdf': documentUrl,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+
+      return order;
+    } catch (e) {
+      print('Fehler beim Erstellen des Auftrags mit Konfiguration: $e');
+      rethrow;
+    }
+  }
+
+
+
+
 }

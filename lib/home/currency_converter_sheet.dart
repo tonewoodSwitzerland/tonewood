@@ -3,7 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../services/icon_helper.dart';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 class CurrencyConverterSheet {
   static void show(
       BuildContext context, {
@@ -29,6 +30,14 @@ class CurrencyConverterSheet {
           double convertFromCHF(double chfAmount, double rate) => chfAmount * rate;
           double convertToCHF(double foreignAmount, double rate) =>
               rate > 0 ? foreignAmount / rate : 0;
+
+          // Füge diese Methode am Anfang des StatefulBuilder hinzu:
+          double parseControllerValue(TextEditingController controller) {
+            if (controller.text.isEmpty) return 0.0;
+            return double.tryParse(controller.text.replaceAll(',', '.')) ?? 0.0;
+          }
+
+
 
           return Container(
             height: MediaQuery.of(context).size.height * 0.85,
@@ -147,8 +156,99 @@ class CurrencyConverterSheet {
                             ],
                           ),
                         ),
+                        const SizedBox(height: 16),
 
-                        const SizedBox(height: 24),
+// NEU: Letzte Aktualisierung anzeigen
+                        StreamBuilder<DocumentSnapshot>(
+                          stream: FirebaseFirestore.instance
+                              .collection('general_data')
+                              .doc('currency_settings')
+                              .snapshots(),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasData && snapshot.data!.exists) {
+                              final data = snapshot.data!.data() as Map<String, dynamic>;
+                              final lastUpdated = data['last_updated'] as Timestamp?;
+
+                              if (lastUpdated != null) {
+                                final dateTime = lastUpdated.toDate();
+                                final now = DateTime.now();
+                                final difference = now.difference(dateTime);
+
+                                String timeAgo;
+                                if (difference.inDays > 0) {
+                                  timeAgo = 'vor ${difference.inDays} Tag${difference.inDays > 1 ? 'en' : ''}';
+                                } else if (difference.inHours > 0) {
+                                  timeAgo = 'vor ${difference.inHours} Stunde${difference.inHours > 1 ? 'n' : ''}';
+                                } else if (difference.inMinutes > 0) {
+                                  timeAgo = 'vor ${difference.inMinutes} Minute${difference.inMinutes > 1 ? 'n' : ''}';
+                                } else {
+                                  timeAgo = 'gerade eben';
+                                }
+
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.tertiaryContainer.withOpacity(0.3),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: Theme.of(context).colorScheme.tertiary.withOpacity(0.3),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.update,
+                                        size: 16,
+                                        color: Theme.of(context).colorScheme.tertiary,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Kurse zuletzt aktualisiert: $timeAgo\n${DateFormat('dd.MM.yyyy HH:mm').format(dateTime)} Uhr',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Theme.of(context).colorScheme.onTertiaryContainer,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }
+                            }
+
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Colors.orange.withOpacity(0.3),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    size: 16,
+                                    color: Colors.orange[700],
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Keine Information über letzte Aktualisierung verfügbar',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.orange[700],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+
+
+                        const SizedBox(height: 16),
 // Wechselkurse
                         Container(
                           padding: const EdgeInsets.all(16),
@@ -276,7 +376,9 @@ class CurrencyConverterSheet {
                                                 ),
                                                 const SizedBox(height: 4),
                                                 Text(
-                                                  '${(1 / double.parse(eurRateController.text.replaceAll(',', '.'))).toStringAsFixed(4)} CHF',
+                                                  eurRateController.text.isEmpty
+                                                      ? '- CHF'
+                                                      : '${(1 / parseControllerValue(eurRateController)).toStringAsFixed(4)} CHF',
                                                   style: TextStyle(
                                                     fontSize: 16,
                                                     fontWeight: FontWeight.bold,
@@ -402,11 +504,13 @@ class CurrencyConverterSheet {
                                                 ),
                                                 const SizedBox(height: 4),
                                                 Text(
-                                                  '${(1 / double.parse(usdRateController.text.replaceAll(',', '.'))).toStringAsFixed(4)} CHF',
+                                                  usdRateController.text.isEmpty
+                                                      ? '- CHF'
+                                                      : '${(1 / double.parse(usdRateController.text.replaceAll(',', '.'))).toStringAsFixed(4)} CHF',
                                                   style: TextStyle(
                                                     fontSize: 16,
                                                     fontWeight: FontWeight.bold,
-                                                    color: Theme.of(context).colorScheme.secondary,
+                                                    color: Theme.of(context).colorScheme.onPrimaryContainer,
                                                   ),
                                                 ),
                                               ],
@@ -421,7 +525,7 @@ class CurrencyConverterSheet {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 16),
 
                         // Umrechnungstabelle
                         Container(
@@ -487,20 +591,28 @@ class CurrencyConverterSheet {
                                     ],
                                   ),
 
-                                  // EUR Zeile
+                                  // EUR Zeile - KORREKT
                                   _buildCurrencyRow(
                                     '100 CHF',
-                                    '${convertFromCHF(100, double.parse(eurRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} EUR',
+                                    eurRateController.text.isEmpty
+                                        ? '- EUR'
+                                        : '${convertFromCHF(100, parseControllerValue(eurRateController)).toStringAsFixed(2)} EUR',
                                     '100 EUR',
-                                    '${convertToCHF(100, double.parse(eurRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} CHF',
+                                    eurRateController.text.isEmpty
+                                        ? '- CHF'
+                                        : '${convertToCHF(100, parseControllerValue(eurRateController)).toStringAsFixed(2)} CHF',
                                   ),
 
-                                  // USD Zeile
+// USD Zeile - KORRIGIERT
                                   _buildCurrencyRow(
                                     '100 CHF',
-                                    '${convertFromCHF(100, double.parse(usdRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} USD',
+                                    usdRateController.text.isEmpty
+                                        ? '- USD'
+                                        : '${convertFromCHF(100, parseControllerValue(usdRateController)).toStringAsFixed(2)} USD',
                                     '100 USD',
-                                    '${convertToCHF(100, double.parse(usdRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} CHF',
+                                    usdRateController.text.isEmpty
+                                        ? '- CHF'
+                                        : '${convertToCHF(100, parseControllerValue(usdRateController)).toStringAsFixed(2)} CHF',
                                   ),
                                 ],
                               ),
@@ -523,11 +635,11 @@ class CurrencyConverterSheet {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
-                                    '1\'000 CHF = ${convertFromCHF(1000, double.parse(eurRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} EUR',
+                                    '1\'000 CHF = ${convertFromCHF(1000, parseControllerValue(eurRateController)).toStringAsFixed(2)} EUR',
                                     style: TextStyle(fontSize: 11),
                                   ),
                                   Text(
-                                    '1\'000 EUR = ${convertToCHF(1000, double.parse(eurRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} CHF',
+                                    '1\'000 EUR = ${convertToCHF(1000, parseControllerValue(eurRateController)).toStringAsFixed(2)} CHF',
                                     style: TextStyle(fontSize: 11),
                                   ),
                                 ],
@@ -537,11 +649,11 @@ class CurrencyConverterSheet {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
-                                    '1\'000 CHF = ${convertFromCHF(1000, double.parse(usdRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} USD',
+                                    '1\'000 CHF = ${convertFromCHF(1000, parseControllerValue(usdRateController)).toStringAsFixed(2)} USD',
                                     style: TextStyle(fontSize: 11),
                                   ),
                                   Text(
-                                    '1\'000 USD = ${convertToCHF(1000, double.parse(usdRateController.text.replaceAll(',', '.'))).toStringAsFixed(2)} CHF',
+                                    '1\'000 USD = ${convertToCHF(1000, parseControllerValue(usdRateController)).toStringAsFixed(2)} CHF',
                                     style: TextStyle(fontSize: 11),
                                   ),
                                 ],
@@ -589,18 +701,21 @@ class CurrencyConverterSheet {
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: () async {
-                              Navigator.pop(context);
+                              // Speichere den BuildContext vor dem Navigator.pop
+                              final parentContext = context;
+
+                              // Führe den API-Aufruf aus OHNE den Dialog zu schließen
                               await _fetchLatestExchangeRates(
-                                context,
+                                parentContext,
                                 exchangeRatesNotifier,
                               );
-                              // Dialog erneut öffnen mit neuen Kursen
-                              show(
-                                context,
-                                currencyNotifier: currencyNotifier,
-                                exchangeRatesNotifier: exchangeRatesNotifier,
-                                onSave: onSave,
-                              );
+
+                              // Aktualisiere die Controller mit den neuen Werten
+                              eurRateController.text = exchangeRatesNotifier.value['EUR']!.toString();
+                              usdRateController.text = exchangeRatesNotifier.value['USD']!.toString();
+
+                              // Trigger ein Rebuild des Dialogs
+                              setState(() {});
                             },
                             icon: getAdaptiveIcon(
                               iconName: 'refresh',
@@ -791,4 +906,6 @@ class CurrencyConverterSheet {
       }
     }
   }
+
+
 }

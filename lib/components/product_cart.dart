@@ -17,7 +17,7 @@ class ProductCard extends StatelessWidget {
         child: Column(
           children: const [
             Icon(
-              Icons.error_outline,
+              Icons.error,
               size: 64,
               color: Colors.orange,
             ),

@@ -522,7 +522,7 @@ class SalesListState extends State<SalesList> {
           itemBuilder: (context, index) {
             final item = items[index];
             // Use safe parsing to handle both int and double
-            final quantity = item['quantity'] as int;
+            final quantity = item['quantity'] as double;
             // Parse string to handle both int and double
             final pricePerUnit = num.parse(item['price_per_unit'].toString()).toDouble();
             final subtotal = quantity * pricePerUnit;

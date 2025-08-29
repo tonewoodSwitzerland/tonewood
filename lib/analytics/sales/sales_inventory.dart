@@ -55,7 +55,7 @@
 //             SalesStatsCard(
 //               title: 'Artikel im Lager',
 //               value: NumberFormat('#,###').format(stats.totalItems),
-//               icon: Icons.inventory_2,
+//               icon: Icons.inventory,
 //               color: Theme.of(context).colorScheme.primary,
 //             ),
 //             SalesStatsCard(

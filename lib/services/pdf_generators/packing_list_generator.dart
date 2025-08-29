@@ -433,7 +433,7 @@ class PackingListGenerator extends BasePdfGenerator {
       String Function(String) getTranslation,
       Map<String, Map<String, dynamic>> woodTypeCache,
       Map<String, Map<String, dynamic>> measurementsCache,
-      Map<String, Map<String, dynamic>> standardVolumeCache, // NEU: Standard-Volumen Cache
+      Map<String, Map<String, dynamic>> standardVolumeCache,
       ) {
     double packageNetWeight = 0.0;
     double packageNetVolume = 0.0;
@@ -464,10 +464,16 @@ class PackingListGenerator extends BasePdfGenerator {
       ),
     );
 
-    // Produktzeilen - KORRIGIERT
+    // Produktzeilen
     for (final item in packageItems) {
       final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
       final productId = item['product_id'] as String? ?? '';
+
+      // Einheit normalisieren
+      String unit = item['unit'] ?? 'Stk';
+      if (unit.toLowerCase() == 'stück') {
+        unit = 'Stk';
+      }
 
       // Hole die Maße aus dem Cache
       final measurements = measurementsCache[productId] ?? {
@@ -486,7 +492,7 @@ class PackingListGenerator extends BasePdfGenerator {
       final woodInfo = woodTypeCache[woodCode] ?? {};
       final density = (woodInfo['density'] as num?)?.toDouble() ?? 450.0;
 
-      // KORRIGIERT: Volumen berechnen - gleiche Logik wie Commercial Invoice
+      // Volumen berechnen
       double volumePerPiece = 0.0;
 
       // 1. Priorität: Manuell eingegebenes Volumen
@@ -521,19 +527,26 @@ class PackingListGenerator extends BasePdfGenerator {
         }
       }
 
-      final totalVolume = volumePerPiece * quantity;
+      // NEU: Gewichtsberechnung basierend auf Einheit
+      double weightPerPiece = 0.0;
+      double totalWeight = 0.0;
+      double totalVolume = 0.0;
 
-      // KORRIGIERT: Gewicht immer aus Volumen × Dichte berechnen (wie Commercial Invoice)
-      final weightPerPiece = volumePerPiece * density;
-      final totalWeight = weightPerPiece * quantity;
+      if (unit.toLowerCase() == 'kg') {
+        // Wenn Einheit kg ist, ist quantity bereits das Gesamtgewicht
+        totalWeight = quantity;
+        // Volumen berechnen aus Gewicht und Dichte
+        totalVolume = totalWeight / density;
+        // weightPerPiece bleibt 0, da es bei kg keinen Sinn macht
+      } else {
+        // Standard-Berechnung für andere Einheiten
+        totalVolume = volumePerPiece * quantity;
+        weightPerPiece = volumePerPiece * density;
+        totalWeight = weightPerPiece * quantity;
+      }
 
       packageNetWeight += totalWeight;
       packageNetVolume += totalVolume;
-
-      String unit = item['unit'] ?? 'Stk';
-      if (unit.toLowerCase() == 'stück') {
-        unit = 'Stk';
-      }
 
       // Maße-String nur erstellen wenn Werte > 0 vorhanden sind
       String dimensionsText = '';
@@ -541,16 +554,20 @@ class PackingListGenerator extends BasePdfGenerator {
         dimensionsText = '${itemLength.toStringAsFixed(0)}×${itemWidth.toStringAsFixed(0)}×${thickness.toStringAsFixed(1)}';
       }
 
+      // NEU: Gewicht/Stk und Volumen/Stk nur anzeigen wenn Einheit Stk ist
+      String weightPerPieceText = '';
+      String volumePerPieceText = '';
+
+      if (unit == 'Stk') {
+        weightPerPieceText = '${weightPerPiece.toStringAsFixed(3)} kg';
+        volumePerPieceText = '${volumePerPiece.toStringAsFixed(5)} m³';
+      }
+
       print("item:$item");
 
       rows.add(
         pw.TableRow(
           children: [
-
-
-
-
-
             BasePdfGenerator.buildContentCell(
               pw.Text(
                   (language == 'EN' ? item['product_name_en'] : item['product_name']) ??
@@ -559,16 +576,15 @@ class PackingListGenerator extends BasePdfGenerator {
                   style: const pw.TextStyle(fontSize: 8)
               ),
             ),
-
-
-
             BasePdfGenerator.buildContentCell(
               pw.Text(dimensionsText, style: const pw.TextStyle(fontSize: 8)),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
-                style: const pw.TextStyle(fontSize: 8),
+                unit != "Stk"
+                    ? quantity.toStringAsFixed(3)
+                    : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
+                style: const pw.TextStyle(fontSize: 6),
                 textAlign: pw.TextAlign.right,
               ),
             ),
@@ -577,14 +593,14 @@ class PackingListGenerator extends BasePdfGenerator {
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                '${weightPerPiece.toStringAsFixed(3)} kg',
+                weightPerPieceText,
                 style: const pw.TextStyle(fontSize: 8),
                 textAlign: pw.TextAlign.right,
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                '${volumePerPiece.toStringAsFixed(5)} m³',
+                volumePerPieceText,
                 style: const pw.TextStyle(fontSize: 8),
                 textAlign: pw.TextAlign.right,
               ),

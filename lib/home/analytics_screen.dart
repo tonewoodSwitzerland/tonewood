@@ -2696,7 +2696,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
               spots: List.generate(batchData.length, (index) {
                 return FlSpot(
                   index.toDouble(),
-                  (batchData[index]['quantity'] as int).toDouble(),
+                  (batchData[index]['quantity'] as double).toDouble(),
                 );
               }),
               isCurved: true,
@@ -3938,7 +3938,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                     // Berechne kritische Bestände
                     final lowStock = items.where((doc) {
                       final data = doc.data() as Map<String, dynamic>;
-                      return (data['quantity'] as int) < 10; // Schwellenwert
+                      return (data['quantity'] as double) < 10; // Schwellenwert
                     }).length;
 
                     return Column(
@@ -3974,7 +3974,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                           itemCount: items.length,
                           itemBuilder: (context, index) {
                             final data = items[index].data() as Map<String, dynamic>;
-                            final quantity = data['quantity'] as int;
+                            final quantity = data['quantity'] as double;
                             final isLowStock = quantity < 10;
 
                             return ListTile(
@@ -4566,7 +4566,7 @@ ${fairData['orders']} Bestellungen, ${customers.length} Kunden''',
 //
 //                           productTrends[productId]!.add({
 //                             'date': timestamp,
-//                             'quantity': item['quantity'] as int,
+//                             'quantity': item['quantity'] as double,
 //                             'total': item['total'] as double,
 //                             'name': item['product_name'] as String,
 //                           });
@@ -4601,7 +4601,7 @@ ${fairData['orders']} Bestellungen, ${customers.length} Kunden''',
 //                                 0, (sum, item) => sum + (item['total'] as double)
 //                             ),
 //                             'totalQuantity': sales.fold<int>(
-//                                 0, (sum, item) => sum + (item['quantity'] as int)
+//                                 0, (sum, item) => sum + (item['quantity'] as double)
 //                             ),
 //                             'growth': growth,
 //                           },
@@ -4966,7 +4966,7 @@ ${fairData['orders']} Bestellungen, ${customers.length} Kunden''',
 
     for (var item in items) {
     final productId = item['product_id'] as String;
-    final quantity = item['quantity'] as int;
+    final quantity = item['quantity'] as double;
     final total = item['total'] as double;
 
     if (!productSales.containsKey(productId)) {

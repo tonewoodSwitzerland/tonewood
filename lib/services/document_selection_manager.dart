@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 import 'package:tonewood/services/pdf_generators/commercial_invoice_generator.dart';
 import 'package:tonewood/services/pdf_generators/delivery_note_generator.dart';
 import 'package:tonewood/services/pdf_generators/packing_list_generator.dart';
+import 'additional_text_manager.dart';
 import 'pdf_generators/invoice_generator.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -25,7 +26,9 @@ import 'pdf_generators/quote_generator.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:intl/intl.dart';
-
+// Am Anfang von document_selection_manager.dart:
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class DocumentSelectionManager {
   // Dokumenttypen
@@ -134,7 +137,6 @@ class DocumentSelectionManager {
     }
   }
 
-  // Zeige Handelsrechnung-Preview
   static Future<void> _showCommercialInvoicePreview(BuildContext context, Map<String, dynamic> data, {String? language}) async {
     try {
       final customerData = data['customer'] as Map<String, dynamic>;
@@ -143,13 +145,15 @@ class DocumentSelectionManager {
 
       // NEU: Lade Tara-Einstellungen
       final taraSettings = await loadTaraSettings();
-print(taraSettings);
+      print(taraSettings);
+
       if (taraSettings['packaging_weight'] != null) {
         taraSettings['packaging_weight'] = (taraSettings['packaging_weight'] as num).toDouble();
       }
 
-      print("rtest:${  taraSettings['packaging_weight']}");
-// Nach dem Laden der taraSettings
+      print("rtest:${taraSettings['packaging_weight']}");
+
+      // Nach dem Laden der taraSettings
       DateTime? invoiceDate;
       if (taraSettings['commercial_invoice_date'] != null) {
         final timestamp = taraSettings['commercial_invoice_date'];
@@ -170,11 +174,17 @@ print(taraSettings);
       // Konvertiere Basket-Items zu Items für PDF
       final items = basketItems.map((basketItem) {
         final customPriceValue = basketItem['custom_price_per_unit'];
-        final pricePerUnit = customPriceValue != null
-            ? (customPriceValue as num).toDouble()
-            : (basketItem['price_per_unit'] as num).toDouble();
 
+        // WICHTIG: Stelle sicher, dass price_per_unit immer ein double ist
+        final pricePerUnit = customPriceValue != null
+            ? (customPriceValue is int ? customPriceValue.toDouble() : (customPriceValue as num).toDouble())
+            : (basketItem['price_per_unit'] is int
+            ? (basketItem['price_per_unit'] as int).toDouble()
+            : (basketItem['price_per_unit'] as num).toDouble());
+
+        // Sichere Konvertierung für quantity
         final quantity = (basketItem['quantity'] as num).toDouble();
+
         final itemSubtotal = quantity * pricePerUnit;
 
         final discount = basketItem['discount'] as Map<String, dynamic>? ?? {'percentage': 0.0, 'absolute': 0.0};
@@ -186,17 +196,55 @@ print(taraSettings);
           discountAmount = (itemSubtotal * (percentage / 100)) + absolute;
         }
 
-        return {
-          ...basketItem,
-          'price_per_unit': pricePerUnit,
-          'discount': discount,
-          'discount_amount': discountAmount,
-          'total': itemSubtotal - discountAmount,
-        };
+        // WICHTIG: Erstelle eine neue Map mit allen konvertierten Werten
+        final Map<String, dynamic> newItem = Map<String, dynamic>.from(basketItem);
+
+        // Überschreibe die numerischen Werte mit double-Versionen
+        newItem['price_per_unit'] = pricePerUnit;
+        newItem['quantity'] = quantity;
+        newItem['discount'] = discount;
+        newItem['discount_amount'] = discountAmount;
+        newItem['total'] = itemSubtotal - discountAmount;
+
+        // Stelle sicher, dass andere numerische Felder auch als double vorliegen
+        if (newItem['weight'] != null) {
+          newItem['weight'] = newItem['weight'] is int
+              ? (newItem['weight'] as int).toDouble()
+              : (newItem['weight'] as num).toDouble();
+        }
+
+        if (newItem['volume'] != null) {
+          newItem['volume'] = newItem['volume'] is int
+              ? (newItem['volume'] as int).toDouble()
+              : (newItem['volume'] as num).toDouble();
+        }
+
+        // Custom dimensions
+        if (newItem['custom_length'] != null) {
+          newItem['custom_length'] = newItem['custom_length'] is int
+              ? (newItem['custom_length'] as int).toDouble()
+              : (newItem['custom_length'] as num).toDouble();
+        }
+
+        if (newItem['custom_width'] != null) {
+          newItem['custom_width'] = newItem['custom_width'] is int
+              ? (newItem['custom_width'] as int).toDouble()
+              : (newItem['custom_width'] as num).toDouble();
+        }
+
+        if (newItem['custom_thickness'] != null) {
+          newItem['custom_thickness'] = newItem['custom_thickness'] is int
+              ? (newItem['custom_thickness'] as int).toDouble()
+              : (newItem['custom_thickness'] as num).toDouble();
+        }
+
+        return newItem;
       }).toList();
 
-      final currency = 'CHF';
-      final exchangeRates = {'CHF': 1.0, 'EUR': 0.96, 'USD': 1.08};
+      final currencySettings = await _loadCurrencySettings();
+      final currency = currencySettings['currency'] as String;
+      final exchangeRates = await _fetchCurrentExchangeRates();
+
 
       final costCenter = data['costCenter'];
       final costCenterCode = costCenter != null ? costCenter['code'] : '00000';
@@ -215,7 +263,7 @@ print(taraSettings);
         calculations: calculations,
         taxOption: taxOption,
         vatRate: vatRate,
-        taraSettings: taraSettings, // NEU: Übergebe Tara-Einstellungen
+        taraSettings: taraSettings,
       );
 
       if (context.mounted) {
@@ -223,11 +271,10 @@ print(taraSettings);
         _openPdfViewer(context, pdfBytes, 'Handelsrechnung_Preview.pdf');
       }
     } catch (e) {
-      print('Fehler bei Handelsrechnung-Preview: $e');
+      print('YYFehler bei Handelsrechnung-Preview: $e');
       rethrow;
     }
   }
-
   static Future<void> saveTaraSettings(int numberOfPackages, double packagingWeight) async {
     try {
       await FirebaseFirestore.instance
@@ -360,12 +407,19 @@ print(taraSettings);
 
       // Berechne Item-Rabatte direkt aus den basketItems
       for (final item in basketItems) {
+        final isGratisartikel = item['is_gratisartikel'] == true;
+
+        // Überspringe Gratisartikel bei der Rabattberechnung
+        if (isGratisartikel) continue;
+
         final customPriceValue = item['custom_price_per_unit'];
         final pricePerUnit = customPriceValue != null
             ? (customPriceValue as num).toDouble()
             : (item['price_per_unit'] as num).toDouble();
 
-        final itemSubtotal = (item['quantity'] as int) * pricePerUnit;
+        final quantity = item['quantity'];
+        final quantityDouble = quantity is int ? quantity.toDouble() : quantity as double;
+        final itemSubtotal = quantityDouble * pricePerUnit;
 
         // Rabatt ist direkt im Item gespeichert
         final discount = item['discount'] as Map<String, dynamic>?;
@@ -388,21 +442,22 @@ print(taraSettings);
         final totalPercentage = (totalDiscountData['percentage'] as num? ?? 0).toDouble();
         final totalAbsolute = (totalDiscountData['absolute'] as num? ?? 0).toDouble();
 
-        // Berechne Subtotal nach Item-Rabatten
+        // Berechne Subtotal nach Item-Rabatten (ohne Gratisartikel)
         final subtotal = basketItems.fold<double>(0.0, (sum, item) {
+          final isGratisartikel = item['is_gratisartikel'] == true;
+          if (isGratisartikel) return sum; // Überspringe Gratisartikel
+
           final customPriceValue = item['custom_price_per_unit'];
           final pricePerUnit = customPriceValue != null
               ? (customPriceValue as num).toDouble()
               : (item['price_per_unit'] as num).toDouble();
-          return sum + ((item['quantity'] as int) * pricePerUnit);
+          final qty = item['quantity'];
+          final qtyDouble = qty is int ? qty.toDouble() : qty as double;
+          return sum + (qtyDouble * pricePerUnit);
         });
 
         final subtotalAfterItemDiscounts = subtotal - itemDiscounts;
         totalDiscountAmount = (subtotalAfterItemDiscounts * (totalPercentage / 100)) + totalAbsolute;
-
-        // Debug
-        print('Total discount data: $totalDiscountData');
-        print('Calculated total discount: $totalDiscountAmount');
       }
 
       return {
@@ -445,6 +500,7 @@ print(taraSettings);
         'down_payment_amount': settings['down_payment_amount'] ?? 0.0,
         'down_payment_reference': settings['down_payment_reference'] ?? '',
         'down_payment_date': settings['down_payment_date'],
+        'show_dimensions': settings['show_dimensions'] ?? false,
         'timestamp': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -467,6 +523,7 @@ print(taraSettings);
           'down_payment_date': data['down_payment_date'] != null
               ? (data['down_payment_date'] as Timestamp).toDate()
               : null,
+          'show_dimensions': data['show_dimensions'] ?? false,
         };
       }
     } catch (e) {
@@ -477,6 +534,7 @@ print(taraSettings);
       'down_payment_amount': 0.0,
       'down_payment_reference': '',
       'down_payment_date': null,
+      'show_dimensions': false,
     };
   }
 // Nach saveInvoiceSettings() hinzufügen:
@@ -488,6 +546,7 @@ print(taraSettings);
           .doc('quote_settings')
           .set({
         'validity_date': settings['validity_date'],
+        'show_dimensions': settings['show_dimensions'],
         'timestamp': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -508,6 +567,7 @@ print(taraSettings);
           'validity_date': data['validity_date'] != null
               ? (data['validity_date'] as Timestamp).toDate()
               : null,
+          'show_dimensions': data['show_dimensions'] ?? false,
         };
       }
     } catch (e) {
@@ -552,7 +612,35 @@ print(taraSettings);
 
 
 
+// Neue Methode zum Laden der aktuellen Währungseinstellungen
+  static Future<Map<String, dynamic>> _loadCurrencySettings() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('currency_settings')
+          .get();
 
+      if (doc.exists) {
+        final data = doc.data()!;
+        return {
+          'currency': data['selected_currency'] ?? 'CHF',
+          'exchangeRates': {
+            'CHF': 1.0,
+            'EUR': (data['exchange_rates']?['EUR'] ?? 0.96).toDouble(),
+            'USD': (data['exchange_rates']?['USD'] ?? 1.08).toDouble(),
+          }
+        };
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Währungseinstellungen: $e');
+    }
+
+    // Fallback-Werte
+    return {
+      'currency': 'CHF',
+      'exchangeRates': {'CHF': 1.0, 'EUR': 0.96, 'USD': 1.08}
+    };
+  }
 
 // Zeige Lieferschein-Preview
   static Future<void> _showDeliveryNotePreview(BuildContext context, Map<String, dynamic> data, {String? language}) async {
@@ -578,8 +666,10 @@ print(taraSettings);
         };
       }).toList();
 
-      final currency = 'CHF';
-      final exchangeRates = {'CHF': 1.0, 'EUR': 0.96, 'USD': 1.08};
+      final currencySettings = await _loadCurrencySettings();
+      final currency = currencySettings['currency'] as String;
+      final exchangeRates = await _fetchCurrentExchangeRates();
+
 
       final costCenter = data['costCenter'];
       final costCenterCode = costCenter != null ? costCenter['code'] : '00000';
@@ -811,6 +901,48 @@ print(taraSettings);
 
   // Zeige Offerte-Preview
 // Zeige Offerte-Preview
+
+
+
+
+// NEUE VERSION - Ersetze mit:
+  static Future<Map<String, double>> _fetchCurrentExchangeRates() async {
+    try {
+      // Lade die gespeicherten Wechselkurse aus Firebase
+      final doc = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('currency_settings')
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data()!;
+
+        if (data.containsKey('exchange_rates')) {
+          final rates = data['exchange_rates'] as Map<String, dynamic>;
+
+          print('Wechselkurse aus Firebase geladen');
+          print('EUR: ${rates['EUR']}, USD: ${rates['USD']}');
+
+          return {
+            'CHF': 1.0,
+            'EUR': (rates['EUR'] as num).toDouble(),
+            'USD': (rates['USD'] as num).toDouble(),
+          };
+        }
+      }
+
+      // Fallback zu Standard-Werten wenn nichts in Firebase
+      print('Keine Wechselkurse in Firebase gefunden, verwende Standard-Werte');
+      return {'CHF': 1.0, 'EUR': 0.96, 'USD': 1.08};
+
+    } catch (e) {
+      print('Fehler beim Laden der Wechselkurse aus Firebase: $e');
+      // Fallback zu Standard-Werten
+      return {'CHF': 1.0, 'EUR': 0.96, 'USD': 1.08};
+    }
+  }
+
+
   static Future<void> _showQuotePreview(BuildContext context, Map<String, dynamic> data, {String? language}) async {
     try {
       final customerData = data['customer'] as Map<String, dynamic>;
@@ -855,14 +987,16 @@ print(taraSettings);
         };
       }).toList();
 
-      final currency = 'CHF';
-      final exchangeRates = {'CHF': 1.0, 'EUR': 0.96, 'USD': 1.08};
+      final currencySettings = await _loadCurrencySettings();
+      final currency = currencySettings['currency'] as String;
+      final exchangeRates = await _fetchCurrentExchangeRates();
 
       final costCenter = data['costCenter'];
       final costCenterCode = costCenter != null ? costCenter['code'] : '00000';
 
       // Debug
       print('Total discount from calculations: ${calculations['total_discount_amount']}');
+
 
       final pdfBytes = await QuoteGenerator.generateQuotePdf(
         items: items,
@@ -914,9 +1048,19 @@ print(taraSettings);
           'price_per_unit': pricePerUnit,
         };
       }).toList();
+      final additionalTexts = await AdditionalTextsManager.loadAdditionalTexts();
 
-      final currency = 'CHF';
-      final exchangeRates = {'CHF': 1.0, 'EUR': 0.96, 'USD': 1.08};
+      final currencySettings = await _loadCurrencySettings();
+      final currency = currencySettings['currency'] as String;
+      // Konvertiere die exchange rates korrekt
+      final exchangeRatesRaw = currencySettings['exchangeRates'] as Map<String, dynamic>;
+      final exchangeRates = <String, double>{};
+
+      exchangeRatesRaw.forEach((key, value) {
+        exchangeRates[key] = (value as num).toDouble();
+      });
+
+
 
       final costCenter = data['costCenter'];
       final costCenterCode = costCenter != null ? costCenter['code'] : '00000';
@@ -936,6 +1080,7 @@ print(taraSettings);
         paymentTermDays: 30,
         taxOption: taxOption,  // NEU (falls InvoiceGenerator das unterstützt)
         vatRate: vatRate,
+        additionalTexts: additionalTexts,
       );
 
       if (context.mounted) {
@@ -1333,31 +1478,29 @@ Future<void> _showDeliveryNoteSettingsDialog(BuildContext context) async {
     ),
   );
 }
-int _getAssignedQuantity(Map<String, dynamic> item, List<Map<String, dynamic>> packages) {
-  int totalAssigned = 0;
+double _getAssignedQuantity(Map<String, dynamic> item, List<Map<String, dynamic>> packages) {
+  double totalAssigned = 0;
   for (final package in packages) {
     final packageItems = package['items'] as List<dynamic>;
     for (final assignedItem in packageItems) {
       if (assignedItem['product_id'] == item['product_id']) {
-        totalAssigned += assignedItem['quantity'] as int;
+        totalAssigned += (assignedItem['quantity'] as num).toDouble();
       }
     }
   }
   return totalAssigned;
 }
 
-// In der showPackingListSettingsDialog Funktion ersetzen Sie den Package Card Builder mit dieser Version:
 Widget _buildPackageCard(
     BuildContext context,
-    BuildContext dialogContext,
     Map<String, dynamic> package,
     int index,
-    List<dynamic> availableItems,
+    List<Map<String, dynamic>> orderItems,
     List<Map<String, dynamic>> packages,
-    StateSetter setDialogState,
-    Map<String, Map<String, TextEditingController>> packageControllers, // NEU
+    StateSetter setModalState,
+    Map<String, Map<String, TextEditingController>> packageControllers,
     ) {
-  // NEU: State für ausgewähltes Standardpaket
+  // State für ausgewähltes Standardpaket
   String? selectedStandardPackageId = package['standard_package_id'];
 
   // Hole Controller aus der Map
@@ -1367,6 +1510,54 @@ Widget _buildPackageCard(
   final heightController = controllers['height']!;
   final weightController = controllers['weight']!;
   final customNameController = controllers['custom_name']!;
+
+  // NEU: Controller für Bruttogewicht
+  if (!controllers.containsKey('gross_weight')) {
+    controllers['gross_weight'] = TextEditingController(
+      text: package['gross_weight']?.toString() ?? '',
+    );
+  }
+  final grossWeightController = controllers['gross_weight']!;
+
+  // NEU: Berechne Nettogewicht (Summe aller Produkte im Paket)
+  double calculateNetWeight() {
+    double netWeight = 0.0;
+    final packageItems = package['items'] as List<dynamic>? ?? [];
+
+    for (final item in packageItems) {
+      final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+      final unit = item['unit'] ?? 'Stk';
+
+      if (unit.toLowerCase() == 'kg') {
+        // Bei kg-Einheit ist quantity bereits das Gewicht
+        netWeight += quantity;
+      } else {
+        // Volumen berechnen (gleiche Logik wie in packing_list_generator)
+        double volumePerPiece = 0.0;
+
+        // Priorisierung für Volumenberechnung
+        if (item['volume_per_unit'] != null && (item['volume_per_unit'] as num) > 0) {
+          volumePerPiece = (item['volume_per_unit'] as num).toDouble();
+        } else {
+          final length = (item['custom_length'] as num?)?.toDouble() ?? 0.0;
+          final width = (item['custom_width'] as num?)?.toDouble() ?? 0.0;
+          final thickness = (item['custom_thickness'] as num?)?.toDouble() ?? 0.0;
+
+          if (length > 0 && width > 0 && thickness > 0) {
+            volumePerPiece = (length / 1000) * (width / 1000) * (thickness / 1000);
+          }
+        }
+
+        // Gewicht aus Volumen und Dichte
+        final woodCode = item['wood_code'] as String? ?? '';
+        final density = 450.0; // Default-Dichte, sollte aus woodTypeCache kommen
+        final weightPerPiece = volumePerPiece * density;
+        netWeight += weightPerPiece * quantity;
+      }
+    }
+
+    return netWeight;
+  }
 
   return Card(
     margin: const EdgeInsets.only(bottom: 16),
@@ -1389,15 +1580,12 @@ Widget _buildPackageCard(
               if (packages.length > 1)
                 IconButton(
                   onPressed: () {
-                    setDialogState(() {
-                      // Dispose und entferne Controller
-                      final packageId = package['id'] as String;  // NEU: Verwende package direkt
-
+                    setModalState(() {
+                      final packageId = package['id'] as String;
                       packageControllers[packageId]?.forEach((key, controller) {
                         controller.dispose();
                       });
                       packageControllers.remove(packageId);
-
                       packages.removeAt(index);
                     });
                   },
@@ -1409,7 +1597,7 @@ Widget _buildPackageCard(
 
           const SizedBox(height: 12),
 
-          // NEU: Dropdown für Standardpakete
+          // Dropdown für Standardpakete
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('standardized_packages')
@@ -1429,7 +1617,7 @@ Widget _buildPackageCard(
                     decoration: InputDecoration(
                       labelText: 'Verpackungsvorlage',
                       hintText: 'Bitte auswählen',
-                      prefixIcon: Icon(Icons.inventory_2),
+                      prefixIcon: Icon(Icons.inventory),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -1437,12 +1625,10 @@ Widget _buildPackageCard(
                     ),
                     value: selectedStandardPackageId,
                     items: [
-                      // Option für kein Standardpaket
                       const DropdownMenuItem<String>(
                         value: 'custom',
                         child: Text('Benutzerdefiniert'),
                       ),
-                      // Standardpakete aus der Datenbank
                       ...standardPackages.map((doc) {
                         final data = doc.data() as Map<String, dynamic>;
                         return DropdownMenuItem<String>(
@@ -1452,39 +1638,33 @@ Widget _buildPackageCard(
                       }).toList(),
                     ],
                     onChanged: (value) {
-                      setDialogState(() {
+                      setModalState(() {
                         package['standard_package_id'] = value;
 
                         if (value != null && value != 'custom') {
-                          // Finde das ausgewählte Paket
                           final selectedPackage = standardPackages.firstWhere(
                                 (doc) => doc.id == value,
                           );
                           final packageData = selectedPackage.data() as Map<String, dynamic>;
 
-                          // Übernehme die Werte vom Standardpaket
                           package['packaging_type'] = packageData['name'] ?? 'Standardpaket';
-                          package['packaging_type_en'] = packageData['nameEn'] ?? packageData['name'] ?? 'Standard package'; // NEU
-
+                          package['packaging_type_en'] = packageData['nameEn'] ?? packageData['name'] ?? 'Standard package';
                           package['length'] = packageData['length'] ?? 0.0;
                           package['width'] = packageData['width'] ?? 0.0;
                           package['height'] = packageData['height'] ?? 0.0;
                           package['tare_weight'] = packageData['weight'] ?? 0.0;
 
-                          // Aktualisiere die Controller
                           lengthController.text = package['length'].toString();
                           widthController.text = package['width'].toString();
                           heightController.text = package['height'].toString();
                           weightController.text = package['tare_weight'].toString();
                         } else if (value == 'custom') {
-                          // Bei Benutzerdefiniert, leere die Werte
                           package['packaging_type'] = '';
                           package['length'] = 0.0;
                           package['width'] = 0.0;
                           package['height'] = 0.0;
                           package['tare_weight'] = 0.0;
 
-                          // Aktualisiere die Controller
                           lengthController.text = '0.0';
                           widthController.text = '0.0';
                           heightController.text = '0.0';
@@ -1495,7 +1675,6 @@ Widget _buildPackageCard(
                     },
                   ),
 
-                  // Info-Text wenn Standardpaket ausgewählt
                   if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom')
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
@@ -1508,7 +1687,7 @@ Widget _buildPackageCard(
                         child: Row(
                           children: [
                             Icon(
-                              Icons.info_outline,
+                              Icons.info,
                               size: 16,
                               color: Theme.of(context).colorScheme.primary,
                             ),
@@ -1553,7 +1732,7 @@ Widget _buildPackageCard(
             const SizedBox(height: 12),
           ],
 
-          // Abmessungen (immer bearbeitbar)
+          // Abmessungen
           Row(
             children: [
               Expanded(
@@ -1615,11 +1794,11 @@ Widget _buildPackageCard(
 
           const SizedBox(height: 12),
 
-          // Tara-Gewicht (immer bearbeitbar)
+          // Tara-Gewicht
           TextFormField(
             controller: weightController,
             decoration: InputDecoration(
-              labelText: 'Verpackungsgewicht (kg)',
+              labelText: 'Verpackungsgewicht / Tara (kg)',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -1631,9 +1810,131 @@ Widget _buildPackageCard(
             },
           ),
 
+          const SizedBox(height: 12),
+
+          // NEU: Bruttogewicht mit automatischer Tara-Berechnung
+          TextFormField(
+            controller: grossWeightController,
+            decoration: InputDecoration(
+              labelText: 'Bruttogewicht (gemessen) (kg)',
+              helperText: 'Leer lassen für automatische Berechnung',
+              prefixIcon: Icon(Icons.scale),
+              suffixIcon: grossWeightController.text.isNotEmpty
+                  ? IconButton(
+                icon: Icon(Icons.clear),
+                onPressed: () {
+                  setModalState(() {
+                    grossWeightController.clear();
+                    package['gross_weight'] = null;
+                    // Setze Tara auf Standardwert zurück
+                    if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom') {
+                      final selectedPackage = FirebaseFirestore.instance
+                          .collection('standardized_packages')
+                          .doc(selectedStandardPackageId);
+                      selectedPackage.get().then((doc) {
+                        if (doc.exists) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          package['tare_weight'] = data['weight'] ?? 0.0;
+                          weightController.text = package['tare_weight'].toString();
+                        }
+                      });
+                    }
+                  });
+                },
+              )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              isDense: true,
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (value) {
+              setModalState(() {
+                final grossWeight = double.tryParse(value);
+
+                if (value.isEmpty || grossWeight == null) {
+                  // Feld wurde geleert - zurück zum Standardgewicht
+                  package['gross_weight'] = null;
+
+                  // Setze Tara auf Standardwert zurück
+                  if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom') {
+                    // Lade Standardgewicht aus der Datenbank
+                    FirebaseFirestore.instance
+                        .collection('standardized_packages')
+                        .doc(selectedStandardPackageId)
+                        .get()
+                        .then((doc) {
+                      if (doc.exists) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        setModalState(() {
+                          package['tare_weight'] = data['weight'] ?? 0.0;
+                          weightController.text = package['tare_weight'].toString();
+                        });
+                      }
+                    });
+                  } else {
+                    // Bei custom bleibt das manuell eingegebene Tara-Gewicht
+                    // Keine Änderung nötig
+                  }
+                } else if (grossWeight > 0) {
+                  // Bruttogewicht eingegeben, berechne Tara neu
+                  package['gross_weight'] = grossWeight;
+                  final netWeight = calculateNetWeight();
+                  final calculatedTara = grossWeight - netWeight;
+                  package['tare_weight'] = calculatedTara > 0 ? calculatedTara : 0.0;
+                  weightController.text = package['tare_weight'].toStringAsFixed(2);
+                }
+              });
+            },
+          ),
+
+          // NEU: Info-Box mit Gewichtsübersicht
+          if (package['items'].isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Nettogewicht (Produkte):', style: TextStyle(fontSize: 12)),
+                      Text('${calculateNetWeight().toStringAsFixed(2)} kg',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Tara (Verpackung):', style: TextStyle(fontSize: 12)),
+                      Text('${package['tare_weight'].toStringAsFixed(2)} kg',
+                          style: TextStyle(fontSize: 12)),
+                    ],
+                  ),
+                  const Divider(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Bruttogewicht:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      Text('${(calculateNetWeight() + (package['tare_weight'] ?? 0.0)).toStringAsFixed(2)} kg',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+
           const SizedBox(height: 16),
 
-          // Produkte zuweisen (bleibt gleich)
+          // Produkte zuweisen
           Text(
             'Zugewiesene Produkte',
             style: TextStyle(
@@ -1659,14 +1960,21 @@ Widget _buildPackageCard(
                   children: [
                     Expanded(
                       child: Text(
-                        '${assignedItem['product_name']} - ${assignedItem['quantity']} Stk.',
+                        '${assignedItem['product_name']} - ${assignedItem['quantity']} ${assignedItem['unit'] ?? 'Stk'}',
                         style: const TextStyle(fontSize: 12),
                       ),
                     ),
                     IconButton(
                       onPressed: () {
-                        setDialogState(() {
+                        setModalState(() {
                           package['items'].remove(assignedItem);
+                          // Wenn Bruttogewicht manuell gesetzt war, Tara neu berechnen
+                          if (package['gross_weight'] != null) {
+                            final netWeight = calculateNetWeight();
+                            final grossWeight = package['gross_weight'] as double;
+                            package['tare_weight'] = grossWeight - netWeight;
+                            weightController.text = package['tare_weight'].toStringAsFixed(2);
+                          }
                         });
                       },
                       icon: Icon(Icons.remove_circle_outline, color: Colors.red[400]),
@@ -1682,13 +1990,13 @@ Widget _buildPackageCard(
           // Produkt hinzufügen Button
           OutlinedButton.icon(
             onPressed: () => _showAddProductDialog(
-              dialogContext,
+              context,
               package,
-              availableItems,
+              orderItems,
               packages,
-              setDialogState,
+              setModalState,
             ),
-            icon: Icon(Icons.add, size: 16),
+            icon: const Icon(Icons.add, size: 16),
             label: const Text('Produkt hinzufügen'),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1700,7 +2008,6 @@ Widget _buildPackageCard(
     ),
   );
 }
-
 
 void _showAddProductDialog(
     BuildContext dialogContext,
@@ -1721,7 +2028,7 @@ void _showAddProductDialog(
           itemBuilder: (context, index) {
             final item = availableItems[index];
             final assignedQuantity = _getAssignedQuantity(item, packages);
-            final remainingQuantity = (item['quantity'] as int) - assignedQuantity;
+            final remainingQuantity = (item['quantity'] as double) - assignedQuantity;
 
             if (remainingQuantity <= 0) return const SizedBox.shrink();
 
@@ -1755,7 +2062,7 @@ void _showAddProductDialog(
 void _showQuantityDialog(
     BuildContext dialogContext,
     Map<String, dynamic> item,
-    int maxQuantity,
+    double maxQuantity,
     Map<String, dynamic> package,
     StateSetter setDialogState,
     ) {
@@ -1856,7 +2163,30 @@ void _showQuantityDialog(
   );
 }
 
+// Hilfsfunktion zum Laden der Standardtexte
+Future<String> _loadDefaultTextForType(String textType, String language) async {
+try {
+final doc = await FirebaseFirestore.instance
+    .collection('general_data')
+    .doc('additional_texts')
+    .get();
 
+if (doc.exists) {
+final data = doc.data()!;
+final texts = data[textType] as Map<String, dynamic>?;
+if (texts != null) {
+final langTexts = texts[language] as Map<String, dynamic>?;
+if (langTexts != null) {
+return langTexts['standard'] ?? 'Kein Standardtext hinterlegt';
+}
+}
+}
+} catch (e) {
+print('Fehler beim Laden des Standardtexts: $e');
+}
+
+return 'Kein Standardtext hinterlegt';
+}
 // In document_selection_manager.dart, nach anderen Methoden hinzufügen:
 
 Future<Map<String, dynamic>> _calculateDiscountsForPreview(List<Map<String, dynamic>> basketItems) async {
@@ -1871,7 +2201,9 @@ final pricePerUnit = customPriceValue != null
 ? (customPriceValue as num).toDouble()
     : (item['price_per_unit'] as num).toDouble();
 
-final itemSubtotal = (item['quantity'] as int) * pricePerUnit;
+final quantity = item['quantity'];
+final quantityDouble = quantity is int ? quantity.toDouble() : quantity as double;
+final itemSubtotal = quantityDouble * pricePerUnit;
 
 // Rabatt ist direkt im Item gespeichert
 final discount = item['discount'] as Map<String, dynamic>?;
@@ -1900,7 +2232,9 @@ final customPriceValue = item['custom_price_per_unit'];
 final pricePerUnit = customPriceValue != null
 ? (customPriceValue as num).toDouble()
     : (item['price_per_unit'] as num).toDouble();
-return sum + ((item['quantity'] as int) * pricePerUnit);
+final qty = item['quantity'];
+final qtyDouble = qty is int ? qty.toDouble() : qty as double;
+return sum + (qtyDouble * pricePerUnit);
 });
 
 final subtotalAfterItemDiscounts = subtotal - itemDiscounts;
@@ -1926,7 +2260,30 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
 }) async {
   Map<String, bool> documentSelection = await DocumentSelectionManager.loadDocumentSelection();
 
-  print("yuppp");
+  // Lade die Währungseinstellungen hier
+  final currencyDoc = await FirebaseFirestore.instance
+      .collection('general_data')
+      .doc('currency_settings')
+      .get();
+
+  String currency = 'CHF'; // Default
+  Map<String, double> exchangeRates = {'CHF': 1.0, 'EUR': 0.96, 'USD': 1.08};
+
+  if (currencyDoc.exists) {
+    final data = currencyDoc.data()!;
+    currency = data['selected_currency'] ?? 'CHF';
+    if (data.containsKey('exchange_rates')) {
+      final rates = data['exchange_rates'] as Map<String, dynamic>;
+      exchangeRates = {
+        'CHF': 1.0,
+        'EUR': rates['EUR'] as double? ?? 0.96,
+        'USD': rates['USD'] as double? ?? 1.08,
+      };
+    }
+  }
+
+
+        print("yuppp");
   print("documentLanguageNotifier passed: $documentLanguageNotifier");
   final hasSelection = documentSelection.values.any((selected) => selected == true);
   selectionCompleteNotifier.value = hasSelection;
@@ -1941,17 +2298,24 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
     double downPaymentAmount = 0.0;
     String downPaymentReference = '';
     DateTime? downPaymentDate;
+    bool showDimensions = false;
+
 
     // Lade bestehende Einstellungen
     final existingSettings = await DocumentSelectionManager.loadInvoiceSettings();
     downPaymentAmount = (existingSettings['down_payment_amount'] ?? 0.0).toDouble();
     downPaymentReference = existingSettings['down_payment_reference'] ?? '';
     downPaymentDate = existingSettings['down_payment_date'];
+    showDimensions = existingSettings['show_dimensions'] ?? false; // NEU
 
     final downPaymentController = TextEditingController(text: downPaymentAmount > 0 ? downPaymentAmount.toString() : '');
     final referenceController = TextEditingController(text: downPaymentReference);
 
-    // Hole den Gesamtbetrag aus dem Warenkorb
+
+
+    // In showInvoiceSettingsDialog(), nach der Berechnung des totalAmount:
+
+// Hole den Gesamtbetrag aus dem Warenkorb
     double totalAmount = 0.0;
     try {
       // Berechne den Gesamtbetrag
@@ -1964,6 +2328,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       );
 
       // Hier müssen wir den Bruttobetrag berechnen
+      // Hier müssen wir den Bruttobetrag berechnen
       double subtotal = 0.0;
       for (final doc in basketSnapshot.docs) {
         final data = doc.data();
@@ -1971,11 +2336,22 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
         final pricePerUnit = customPriceValue != null
             ? (customPriceValue as num).toDouble()
             : (data['price_per_unit'] as num).toDouble();
-        subtotal += (data['quantity'] as int) * pricePerUnit;
+
+        // FIX: Hier war der Fehler - quantity muss auch sicher konvertiert werden
+        final quantity = (data['quantity'] as num).toDouble();
+        subtotal += quantity * pricePerUnit;
       }
 
       // Rabatte abziehen
       final netAmount = subtotal - calculations['item_discounts'] - calculations['total_discount_amount'];
+
+      // Versandkosten hinzufügen
+      final shippingCosts = await ShippingCostsManager.loadShippingCosts();
+      double netWithShipping = netAmount;
+      if (shippingCosts.isNotEmpty) {
+        netWithShipping += (shippingCosts['amount'] ?? 0.0) + (shippingCosts['phytosanitaryCertificate'] ?? 0.0);
+        netWithShipping += (shippingCosts['totalSurcharges'] ?? 0.0) - (shippingCosts['totalDeductions'] ?? 0.0);
+      }
 
       // MwSt hinzufügen (Standard 8.1%)
       final taxDoc = await FirebaseFirestore.instance
@@ -1987,20 +2363,21 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       final taxOption = taxDoc.exists ? (taxDoc.data()?['tax_option'] ?? 0) : 0;
 
       if (taxOption == 0) { // Standard
-        totalAmount = netAmount * (1 + vatRate / 100);
+        totalAmount = netWithShipping * (1 + vatRate / 100);
       } else {
-        totalAmount = netAmount;
+        totalAmount = netWithShipping;
       }
 
-      // Versandkosten hinzufügen
-      final shippingCosts = await ShippingCostsManager.loadShippingCosts();
-      if (shippingCosts.isNotEmpty) {
-        totalAmount += (shippingCosts['amount'] ?? 0.0) + (shippingCosts['phytosanitaryCertificate'] ?? 0.0);
-        totalAmount += (shippingCosts['totalSurcharges'] ?? 0.0) - (shippingCosts['totalDeductions'] ?? 0.0);
+      // NEU: Währungsumrechnung
+      if (currency != 'CHF' && exchangeRates.containsKey(currency)) {
+        totalAmount = totalAmount * exchangeRates[currency]!;
       }
+
     } catch (e) {
       print('Fehler beim Berechnen des Gesamtbetrags: $e');
     }
+
+
 
     await showModalBottomSheet<void>(
       context: context,
@@ -2092,7 +2469,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                 ),
                               ),
                               Text(
-                                'CHF ${totalAmount.toStringAsFixed(2)}',
+                                '${currency} ${totalAmount.toStringAsFixed(2)}',
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
@@ -2110,7 +2487,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                           controller: downPaymentController,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           decoration: InputDecoration(
-                            labelText: 'Anzahlung (CHF)',
+                            labelText: 'Anzahlung BRUTTO (${currency})', // NEU: Dynamische Währung
                             prefixIcon: getAdaptiveIcon(
                               iconName: 'payments',
                               defaultIcon: Icons.payments,
@@ -2128,6 +2505,41 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                         ),
 
                         const SizedBox(height: 16),
+
+                        // Nach dem Datum der Anzahlung, vor der Vorschau der Berechnung
+                        const SizedBox(height: 16),
+
+// NEU: Checkbox für Maße anzeigen
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: CheckboxListTile(
+                            title: const Text('Maße anzeigen'),
+                            subtitle: const Text(
+                              'Zeigt die Spalte "Maße" (Länge×Breite×Dicke) in der Rechnung an',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            value: showDimensions,
+                            onChanged: (value) {
+                              setDialogState(() {
+                                showDimensions = value ?? false;
+                              });
+                            },
+                            secondary: Icon(
+                              Icons.straighten,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+
+
 
                         // Belegnummer/Notiz
                         TextField(
@@ -2234,7 +2646,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
                                     const Text('Bruttobetrag:'),
-                                    Text('CHF ${totalAmount.toStringAsFixed(2)}'),
+                                    Text('${currency} ${totalAmount.toStringAsFixed(2)}'), // NEU
                                   ],
                                 ),
                                 const SizedBox(height: 8),
@@ -2243,7 +2655,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                   children: [
                                     const Text('Anzahlung:'),
                                     Text(
-                                      '- CHF ${downPaymentAmount.toStringAsFixed(2)}',
+                                      '- ${currency} ${downPaymentAmount.toStringAsFixed(2)}', // NEU
                                       style: const TextStyle(color: Colors.red),
                                     ),
                                   ],
@@ -2257,7 +2669,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                       style: TextStyle(fontWeight: FontWeight.bold),
                                     ),
                                     Text(
-                                      'CHF ${(totalAmount - downPaymentAmount).toStringAsFixed(2)}',
+                                      '${currency} ${(totalAmount - downPaymentAmount).toStringAsFixed(2)}', // NEU
                                       style: const TextStyle(fontWeight: FontWeight.bold),
                                     ),
                                   ],
@@ -2293,6 +2705,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                     'down_payment_date': downPaymentDate != null
                                         ? Timestamp.fromDate(downPaymentDate!)
                                         : null,
+                                    'show_dimensions': showDimensions,
                                   });
 
                                   if (dialogContext.mounted) {
@@ -2334,12 +2747,15 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       ),
     );
   }
+
   Future<void> showQuoteSettingsDialog() async {
     DateTime? validityDate;
+    bool showDimensions = false; // NEU: Standard deaktiviert
 
     // Lade bestehende Einstellungen
     final existingSettings = await DocumentSelectionManager.loadQuoteSettings();
     validityDate = existingSettings['validity_date'];
+    showDimensions = existingSettings['show_dimensions'] ?? false; // NEU
 
     await showModalBottomSheet<void>(
       context: context,
@@ -2348,7 +2764,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
           return Container(
-            height: MediaQuery.of(context).size.height * 0.5,
+            height: MediaQuery.of(context).size.height * 0.6, // Erhöht von 0.5
             decoration: BoxDecoration(
               color: Theme.of(context).scaffoldBackgroundColor,
               borderRadius: const BorderRadius.vertical(
@@ -2393,7 +2809,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                'Offerte - Gültigkeit',
+                                'Offerte - Einstellungen',
                                 style: Theme.of(context).textTheme.titleLarge,
                               ),
                             ),
@@ -2478,6 +2894,35 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
 
                         const SizedBox(height: 16),
 
+                        // NEU: Checkbox für Maße anzeigen
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: CheckboxListTile(
+                            title: const Text('Maße anzeigen'),
+                            subtitle: const Text(
+                              'Zeigt die Spalte "Maße" (Länge×Breite×Dicke) in der Offerte an',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            value: showDimensions,
+                            onChanged: (value) {
+                              setDialogState(() {
+                                showDimensions = value ?? false;
+                              });
+                            },
+                            secondary: Icon(
+                              Icons.straighten,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
                         // Info-Box
                         Container(
                           padding: const EdgeInsets.all(12),
@@ -2488,14 +2933,14 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                           child: Row(
                             children: [
                               getAdaptiveIcon(
-                                iconName: 'info_outline',
-                                defaultIcon: Icons.info_outline,
+                                iconName: 'info',
+                                defaultIcon: Icons.info,
                                 color: Theme.of(context).colorScheme.secondary,
                               ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'Die Offerte ist standardmäßig 14 Tage gültig. Du kannst hier ein anderes Gültigkeitsdatum festlegen.',
+                                  'Die Offerte ist standardmäßig 14 Tage gültig. Die Maße-Spalte ist standardmäßig ausgeblendet.',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Theme.of(context).colorScheme.onSecondaryContainer,
@@ -2531,13 +2976,14 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                     'validity_date': validityDate != null
                                         ? Timestamp.fromDate(validityDate!)
                                         : null,
+                                    'show_dimensions': showDimensions, // NEU
                                   });
 
                                   if (dialogContext.mounted) {
                                     Navigator.pop(dialogContext);
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                        content: Text('Offerten-Gültigkeit gespeichert'),
+                                        content: Text('Offerten-Einstellungen gespeichert'),
                                         backgroundColor: Colors.green,
                                       ),
                                     );
@@ -2572,8 +3018,6 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       ),
     );
   }
-
-
 
 
   // NEU: Definiere die Funktion INNERHALB von showDocumentSelectionBottomSheet
@@ -3001,8 +3445,8 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: getAdaptiveIcon(
-                                  iconName: 'inventory_2',
-                                  defaultIcon: Icons.inventory_2,
+                                  iconName: 'inventory',
+                                  defaultIcon: Icons.inventory,
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
                               ),
@@ -3050,7 +3494,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                               child: Row(
                                 children: [
                                   Icon(
-                                    Icons.info_outline,
+                                    Icons.info,
                                     color: Theme.of(context).colorScheme.primary,
                                     size: 20,
                                   ),
@@ -3230,28 +3674,184 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                           const SizedBox(height: 16),
 
 
-                          // Ursprungserklärung
-                          CheckboxListTile(
-                            title: const Text('Ursprungserklärung'),
-                            subtitle: const Text('Erklärung über Schweizer Ursprungswaren'),
-                            value: originDeclaration,
-                            onChanged: (value) {
-                              setDialogState(() {
-                                originDeclaration = value ?? false;
-                              });
-                            },
+                          // Ursprungserklärung - mit Info-Icon
+                          Row(
+                            children: [
+                              Expanded(
+                                child: CheckboxListTile(
+                                  title: const Text('Ursprungserklärung'),
+                                  subtitle: const Text('Erklärung über Schweizer Ursprungswaren'),
+                                  value: originDeclaration,
+                                  onChanged: (value) {
+                                    setDialogState(() {
+                                      originDeclaration = value ?? false;
+                                    });
+                                  },
+                                ),
+                              ),
+                              IconButton(
+                                icon: Icon(
+                                  Icons.info_outline,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                onPressed: () async {
+                                  // Lade den Standardtext
+                                  final defaultTexts = await _loadDefaultTextForType('origin_declaration', 'DE');
+
+                                  showDialog(
+                                    context: dialogContext,
+                                    builder: (context) => AlertDialog(
+                                      title: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.info,
+                                            color: Theme.of(context).colorScheme.primary,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          const Text('Ursprungserklärung'),
+                                        ],
+                                      ),
+                                      content: SingleChildScrollView(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(12),
+                                              decoration: BoxDecoration(
+                                                color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                defaultTexts,
+                                                style: const TextStyle(fontSize: 12),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 16),
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.edit,
+                                                  size: 16,
+                                                  color: Theme.of(context).colorScheme.secondary,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    'Dieser Text kann in der Admin-Ansicht unter "Zusatztexte" bearbeitet werden.',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontStyle: FontStyle.italic,
+                                                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context),
+                                          child: const Text('OK'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
                           ),
 
-                          // CITES
-                          CheckboxListTile(
-                            title: const Text('CITES'),
-                            subtitle: const Text('Waren stehen NICHT auf der CITES-Liste'),
-                            value: cites,
-                            onChanged: (value) {
-                              setDialogState(() {
-                                cites = value ?? false;
-                              });
-                            },
+// CITES - mit Info-Icon
+                          Row(
+                            children: [
+                              Expanded(
+                                child: CheckboxListTile(
+                                  title: const Text('CITES'),
+                                  subtitle: const Text('Waren stehen NICHT auf der CITES-Liste'),
+                                  value: cites,
+                                  onChanged: (value) {
+                                    setDialogState(() {
+                                      cites = value ?? false;
+                                    });
+                                  },
+                                ),
+                              ),
+                              IconButton(
+                                icon: Icon(
+                                  Icons.info_outline,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                onPressed: () async {
+                                  // Lade den Standardtext
+                                  final defaultTexts = await _loadDefaultTextForType('cites', 'DE');
+
+                                  showDialog(
+                                    context: dialogContext,
+                                    builder: (context) => AlertDialog(
+                                      title: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.info,
+                                            color: Theme.of(context).colorScheme.primary,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          const Text('CITES-Erklärung'),
+                                        ],
+                                      ),
+                                      content: SingleChildScrollView(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(12),
+                                              decoration: BoxDecoration(
+                                                color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                defaultTexts,
+                                                style: const TextStyle(fontSize: 12),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 16),
+                                            Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.edit,
+                                                  size: 16,
+                                                  color: Theme.of(context).colorScheme.secondary,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    'Dieser Text kann in der Admin-Ansicht unter "Zusatztexte" bearbeitet werden.',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontStyle: FontStyle.italic,
+                                                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context),
+                                          child: const Text('OK'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
                           ),
 
                           // Grund des Exports - mit Freitext
@@ -3590,8 +4190,8 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                             child: Row(
                               children: [
                                 getAdaptiveIcon(
-                                  iconName: 'info_outline',
-                                  defaultIcon: Icons.info_outline,
+                                  iconName: 'info',
+                                  defaultIcon: Icons.info,
                                   color: Theme.of(context).colorScheme.secondary,
                                 ),
                                 const SizedBox(width: 8),
@@ -3699,6 +4299,8 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       ),
     );
   }
+
+
 // Hilfsfunktion zum Zuweisen aller Produkte zu einem Paket
   void _assignAllItemsToPackage(
       Map<String, dynamic> targetPackage,
@@ -3712,7 +4314,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
 
       // Füge alle verfügbaren Items hinzu
       for (final item in items) {
-        final totalQuantity = item['quantity'] as int;
+        final totalQuantity = item['quantity'] as double;
 
         // Entferne das Item aus allen anderen Paketen
         for (final package in packages) {
@@ -3955,7 +4557,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                 const SizedBox(height: 8),
                                 ...items.map((item) {
                                   final assignedQuantity = _getAssignedQuantity(item, packages);
-                                  final remainingQuantity = (item['quantity'] as int) - assignedQuantity;
+                                  final remainingQuantity = (item['quantity'] as double) - assignedQuantity;
 
                                   return Padding(
                                     padding: const EdgeInsets.symmetric(vertical: 2),
@@ -4051,7 +4653,6 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                             package['name'] = '${index + 1}';
                             return _buildPackageCard(
                               context,
-                              dialogContext,
                               package,
                               index,
                               items,
@@ -4411,7 +5012,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                               builder: (dialogContext) => AlertDialog(
                                                 title: const Text('Warnung'),
                                                 content: const Text(
-                                                    'Wenn Sie die Rechnung deaktivieren, werden auch Lieferschein, '
+                                                    'Wenn du die Rechnung deaktivierst, werden auch Lieferschein, '
                                                         'Handelsrechnung und Packliste deaktiviert. Fortfahren?'
                                                 ),
                                                 actions: [

@@ -8,10 +8,14 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../components/order_filter_favorites_sheet.dart';
+import '../components/order_filter_service.dart';
 import '../components/order_model.dart';
 import '../services/icon_helper.dart';
 import '../services/orders_document_manager.dart';
 import '../services/order_document_preview_manager.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io' show File; // Nur für Mobile
 // Zentrale Farbdefinitionen
 class OrderColors {
   static const pending = Color(0xFFEF9A3C);      // Warmes Gelb-Orange
@@ -33,10 +37,20 @@ class OrdersOverviewScreen extends StatefulWidget {
 }
 
 class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
-  final TextEditingController _searchController = TextEditingController();
+
   String _searchQuery = '';
   OrderStatus? _filterStatus;
   PaymentStatus? _filterPaymentStatus;
+  Map<String, dynamic> _activeFilters = OrderFilterService.createEmptyFilter();
+  StreamSubscription<Map<String, dynamic>>? _filterSubscription;
+  final TextEditingController _searchController = TextEditingController();
+  bool _isLoadingFilters = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFilters();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,92 +59,57 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Theme.of(context).colorScheme.surface,
-        title: const Text('Aufträge', style: TextStyle(fontWeight: FontWeight.w600)),
-        actions: [
-          // Filter-Button für Status
-          PopupMenuButton<dynamic>(
-            icon: Badge(
-              isLabelVisible: _filterStatus != null || _filterPaymentStatus != null,
-              label: const Text('!'),
-              child: getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list),
-            ),
-            onSelected: (value) {
-              if (value is OrderStatus?) {
-                setState(() {
-                  _filterStatus = value;
-                });
-              } else if (value is PaymentStatus?) {
-                setState(() {
-                  _filterPaymentStatus = value;
-                });
-              } else if (value == 'clear_all') {
-                setState(() {
-                  _filterStatus = null;
-                  _filterPaymentStatus = null;
-                });
-              }
-            },
-            itemBuilder: (context) => [
-              if (_filterStatus != null || _filterPaymentStatus != null)
-                const PopupMenuItem(
-                  value: 'clear_all',
-                  child: Row(
-                    children: [
-                      Icon(Icons.clear, size: 20),
-                      SizedBox(width: 8),
-                      Text('Filter zurücksetzen'),
-                    ],
+        title: Row(
+          children: [
+            const Text('Aufträge', style: TextStyle(fontWeight: FontWeight.w600)),
+            if (OrderFilterService.hasActiveFilters(_activeFilters))
+              Container(
+                margin: const EdgeInsets.only(left: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${_getFilteredOrdersCount()} gefiltert',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
-              if (_filterStatus != null || _filterPaymentStatus != null)
-                const PopupMenuDivider(),
-              const PopupMenuItem(
-                enabled: false,
-                child: Text('Auftragsstatus:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
               ),
-              const PopupMenuItem(
-                value: null,
-                child: Text('Alle Status'),
+          ],
+        ),
+        actions: [
+
+          // Filter-Button
+          IconButton(
+            icon: Badge(
+              isLabelVisible: OrderFilterService.hasActiveFilters(_activeFilters),
+              label: const Text('!'),
+              child: getAdaptiveIcon(
+                iconName: 'filter_list',
+                defaultIcon: Icons.filter_list,
               ),
-              ...OrderStatus.values.map((status) => PopupMenuItem(
-                value: status,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: _getStatusColor(status),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(status.displayName),
-                  ],
-                ),
-              )),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
-                enabled: false,
-                child: Text('Zahlungsstatus:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              ),
-              ...PaymentStatus.values.map((status) => PopupMenuItem(
-                value: status,
-                child: Row(
-                  children: [
-                    Icon(Icons.euro, size: 16, color: _getPaymentStatusColor(status)),
-                    const SizedBox(width: 8),
-                    Text(status.displayName, style: const TextStyle(fontSize: 14)),
-                  ],
-                ),
-              )),
-            ],
+            ),
+            onPressed: _showFilterDialog,
+          ),
+          // Favoriten
+          IconButton(
+            icon: getAdaptiveIcon(
+              iconName: 'star',
+              defaultIcon: Icons.star,
+              color: OrderFilterService.hasActiveFilters(_activeFilters)
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+            ),
+            onPressed: _showFilterFavorites,
+            tooltip: 'Filter-Favoriten',
           ),
         ],
       ),
       body: Column(
         children: [
-          // Suchleiste
           Container(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: TextField(
@@ -140,14 +119,17 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                 hintText: 'Suche nach Kunde, Auftragsnummer...',
                 hintStyle: const TextStyle(fontSize: 14),
                 prefixIcon: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
+                suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
-                  icon: const Icon(Icons.clear, size: 20),
+                  icon: getAdaptiveIcon(
+                      iconName: 'clear',
+                      defaultIcon: Icons.clear, size: 20),
                   onPressed: () {
                     setState(() {
                       _searchController.clear();
-                      _searchQuery = '';
+                      _activeFilters['searchText'] = '';
                     });
+                    OrderFilterService.saveFilters(_activeFilters);
                   },
                 )
                     : null,
@@ -161,8 +143,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
               ),
               onChanged: (value) {
                 setState(() {
-                  _searchQuery = value.toLowerCase();
+                  _activeFilters['searchText'] = value;
                 });
+                OrderFilterService.saveFilters(_activeFilters);
               },
             ),
           ),
@@ -188,50 +171,104 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final orders = snapshot.data!.docs
+                // Wende Client-seitige Filter an
+                final allOrders = snapshot.data!.docs
                     .map((doc) => OrderX.fromFirestore(doc))
-                    .where((order) {
-                  // Suchfilter
-                  if (_searchQuery.isNotEmpty) {
-                    final searchLower = _searchQuery.toLowerCase();
-                    return order.orderNumber.toLowerCase().contains(searchLower) ||
-                        order.customer['company'].toString().toLowerCase().contains(searchLower) ||
-                        order.customer['fullName'].toString().toLowerCase().contains(searchLower);
-                  }
-                  return true;
-                })
                     .toList();
 
-                if (orders.isEmpty) {
+                final filteredOrders = OrderFilterService.applyClientSideFilters(
+                    allOrders,
+                    _activeFilters
+                );
+
+                if (filteredOrders.isEmpty) {
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.inbox_outlined,
+                        getAdaptiveIcon(
+                          iconName: 'inbox_outlined',
+                          defaultIcon: Icons.inbox_outlined,
                           size: 48,
                           color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'Keine Aufträge gefunden',
+                          OrderFilterService.hasActiveFilters(_activeFilters)
+                              ? 'Keine Aufträge gefunden'
+                              : 'Noch keine Aufträge vorhanden',
                           style: TextStyle(
                             fontSize: 16,
                             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                           ),
                         ),
+                        if (OrderFilterService.hasActiveFilters(_activeFilters)) ...[
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            icon: const Icon(Icons.clear),
+                            label: const Text('Filter zurücksetzen'),
+                            onPressed: () async {
+                              await OrderFilterService.resetFilters();
+                              _searchController.clear();
+                            },
+                          ),
+                        ],
                       ],
                     ),
                   );
                 }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: orders.length,
-                  itemBuilder: (context, index) {
-                    final order = orders[index];
-                    return _buildCompactOrderCard(order);
-                  },
+                // Zeige aktive Filter
+                return Column(
+                  children: [
+                    if (OrderFilterService.hasActiveFilters(_activeFilters))
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.filter_list,
+                                      size: 16,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      OrderFilterService.getFilterSummary(_activeFilters),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context).colorScheme.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () async {
+                                await OrderFilterService.resetFilters();
+                                _searchController.clear();
+                              },
+                              child: const Text('Zurücksetzen', style: TextStyle(fontSize: 12)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: filteredOrders.length,
+                        itemBuilder: (context, index) {
+                          final order = filteredOrders[index];
+                          return _buildCompactOrderCard(order);
+                        },
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
@@ -240,6 +277,60 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
       ),
     );
   }
+
+  // Neue Methode für die Suchfunktion:
+  void _showSearchDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Aufträge durchsuchen'),
+        content: TextField(
+          controller: _searchController,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Kunde, Auftragsnummer...',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) {
+            Navigator.pop(context);
+            _performSearch();
+          },
+        ),
+        actions: [
+          if (_searchController.text.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                _searchController.clear();
+                _performSearch();
+                Navigator.pop(context);
+              },
+              child: const Text('Löschen'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _performSearch();
+            },
+            child: const Text('Suchen'),
+          ),
+        ],
+      ),
+    );
+  }
+
+// Helper Methode für gefilterte Anzahl:
+  int _getFilteredOrdersCount() {
+    // Diese Zahl wird später durch einen StreamBuilder aktualisiert
+    return 0;
+  }
+
+
+
+
 
   Widget _buildCompactStatistics() {
     return StreamBuilder<QuerySnapshot>(
@@ -270,6 +361,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                   'Offen',
                   openOrders.toString(),
                   Icons.schedule,
+                  'schedule',
                   OrderColors.pending,
                 ),
               ),
@@ -278,7 +370,8 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                 child: _buildCompactStatCard(
                   'Unbezahlt',
                   unpaidOrders.toString(),
-                  Icons.euro_outlined,
+                  Icons.euro,
+                  'euro',
                   OrderColors.paymentPending,
                 ),
               ),
@@ -289,7 +382,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
     );
   }
 
-  Widget _buildCompactStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildCompactStatCard(String title, String value, IconData icon,String iconName, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -299,7 +392,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
       ),
       child: Row(
         children: [
-          Icon(icon, color: color, size: 20),
+          getAdaptiveIcon(
+              iconName: iconName,
+              defaultIcon:icon, color: color, size: 20),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -332,19 +427,113 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
     );
   }
 
-  Stream<QuerySnapshot> _buildOrdersQuery() {
-    Query query = FirebaseFirestore.instance.collection('orders');
 
-    if (_filterStatus != null) {
-      query = query.where('status', isEqualTo: _filterStatus!.name);
-    }
-
-    if (_filterPaymentStatus != null) {
-      query = query.where('paymentStatus', isEqualTo: _filterPaymentStatus!.name);
-    }
-
-    return query.orderBy('orderDate', descending: true).snapshots();
+  void _loadFilters() {
+    _filterSubscription = OrderFilterService.loadSavedFilters().listen((filters) {
+      if (mounted) {
+        setState(() {
+          _activeFilters = filters;
+          _searchController.text = filters['searchText'] ?? '';
+          _isLoadingFilters = false;
+        });
+      }
+    });
   }
+
+  void _performSearch() {
+    setState(() {
+      _activeFilters['searchText'] = _searchController.text;
+    });
+    OrderFilterService.saveFilters(_activeFilters);
+  }
+
+  void _showFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => OrderFilterDialog(
+        currentFilters: _activeFilters,
+        onApply: (filters) {
+          setState(() {
+            _activeFilters = filters;
+          });
+          OrderFilterService.saveFilters(filters);
+        },
+      ),
+    );
+  }
+
+  void _showFilterFavorites() {
+    OrderFilterFavoritesSheet.show(
+      context,
+      onFavoriteSelected: (favoriteData) {
+        setState(() {
+          _activeFilters = Map<String, dynamic>.from(favoriteData['filters']);
+          _searchController.text = _activeFilters['searchText'] ?? '';
+        });
+        OrderFilterService.saveFilters(_activeFilters);
+      },
+      onCreateNew: () => _saveCurrentFilterAsFavorite(),
+    );
+  }
+
+  Future<void> _saveCurrentFilterAsFavorite() async {
+    final nameController = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Filter-Favorit speichern'),
+        content: TextField(
+          controller: nameController,
+          decoration: const InputDecoration(
+            labelText: 'Name für diesen Filter',
+            border: OutlineInputBorder(),
+            hintText: 'z.B. Offene Aufträge',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, nameController.text.trim()),
+            child: const Text('Speichern'),
+          ),
+        ],
+      ),
+    );
+
+    if (name != null && name.isNotEmpty) {
+      try {
+        await OrderFilterService.saveFavorite(name, _activeFilters);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Filter-Favorit "$name" gespeichert'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Fehler beim Speichern: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+
+  Stream<QuerySnapshot> _buildOrdersQuery() {
+    return OrderFilterService.buildFilteredQuery(_activeFilters).snapshots();
+  }
+
 
   Widget _buildCompactOrderCard(OrderX order) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -403,8 +592,10 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                               ),
                               Row(
                                 children: [
-                                  Icon(
-                                    Icons.description_outlined,
+                                  getAdaptiveIcon(
+                                    iconName: 'description',
+                                    defaultIcon:
+                                    Icons.description,
                                     size: 11,
                                     color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
                                   ),
@@ -446,8 +637,10 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                   Expanded(
                     child: Row(
                       children: [
-                        Icon(
-                            Icons.business_outlined,
+                        getAdaptiveIcon(
+                            iconName: 'business',
+                            defaultIcon:
+                            Icons.business,
                             size: 14,
                             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)
                         ),
@@ -485,9 +678,30 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
               const SizedBox(height: 8),
 
               // Aktionen
+              // Aktionen
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+
+                  // NEU: Veranlagungsverfügung Icon (als erstes in der Reihe)
+                  if (_needsVeranlagungsverfuegung(order)) ...[
+
+                    _buildCompactActionButton(
+                      icon: _hasVeranlagungsnummer(order)
+                          ? Icons.assignment_turned_in
+                          : Icons.assignment_late,
+                      iconName: _hasVeranlagungsnummer(order)
+                          ? 'assignment_turned_in'
+                          : 'assignment_late',
+                      onPressed: () => _showVeranlagungsverfuegungDialog(order),
+                      tooltip: 'Veranlagungsverfügung Ausfuhr',
+                      color: _hasVeranlagungsnummer(order)
+                          ? Colors.green
+                          : Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
@@ -503,9 +717,12 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       ),
                     ),
                   ),
+
                   // Status ändern
+                  const SizedBox(width: 4),
                   _buildCompactActionButton(
-                    icon: Icons.edit_outlined,
+                    icon: Icons.edit,
+                    iconName: 'edit',
                     onPressed: () => _showQuickStatusMenu(order),
                     tooltip: 'Status ändern',
                   ),
@@ -513,27 +730,31 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                   // History
                   _buildCompactActionButton(
                     icon: Icons.history,
+                    iconName: 'history',
                     onPressed: () => _showOrderHistory(order),
                     tooltip: 'Verlauf',
                   ),
                   const SizedBox(width: 4),
                   // Dokumente
                   _buildCompactActionButton(
-                    icon: Icons.folder_outlined,
+                    icon: Icons.folder,
+                    iconName:'folder',
                     onPressed: () => _viewOrderDocuments(order),
                     tooltip: 'Dokumente',
                   ),
                   const SizedBox(width: 4),
                   // Teilen
                   _buildCompactActionButton(
-                    icon: Icons.share_outlined,
+                    icon: Icons.share,
+                    iconName:'share',
                     onPressed: () => _shareOrder(order),
                     tooltip: 'Teilen',
                   ),
                   if (order.status == OrderStatus.pending || order.status == OrderStatus.processing) ...[
                     const SizedBox(width: 4),
                     _buildCompactActionButton(
-                      icon: Icons.cancel_outlined,
+                      icon: Icons.cancel,
+                      iconName:'cancel',
                       onPressed: () => _releaseOrder(order),
                       tooltip: 'Stornieren',
                       color: Colors.red,
@@ -594,6 +815,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
 
   Widget _buildCompactActionButton({
     required IconData icon,
+    required String iconName,
     required VoidCallback onPressed,
     required String tooltip,
     Color? color,
@@ -607,8 +829,10 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
           message: tooltip,
           child: Container(
             padding: const EdgeInsets.all(8),
-            child: Icon(
-              icon,
+            child:
+            getAdaptiveIcon(
+              iconName: iconName,
+              defaultIcon:icon,
               size: 18,
               color: color ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
             ),
@@ -664,7 +888,10 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.euro, size: 10, color: color),
+        getAdaptiveIcon(
+        iconName: 'euro',
+        defaultIcon:
+          Icons.euro, size: 10, color: color),
           const SizedBox(width: 2),
           Text(
             status.displayName,
@@ -809,6 +1036,12 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                           final total = item['total'] as num? ?? (quantity * pricePerUnit);
                           final hasDiscount = (item['discount_amount'] as num? ?? 0) > 0;
 
+                          // NEU: Gratisartikel-Logik
+                          final isGratisartikel = item['is_gratisartikel'] == true;
+                          final proformaValue = (item['proforma_value'] as num?)?.toDouble();
+
+
+
                           return Container(
                             margin: const EdgeInsets.only(bottom: 12),
                             decoration: BoxDecoration(
@@ -869,16 +1102,39 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                               decoration: BoxDecoration(
-                                                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                                                // GEÄNDERT: Hintergrundfarbe abhängig von Gratisartikel
+                                                color: isGratisartikel
+                                                    ? Colors.green.withOpacity(0.1)
+                                                    : Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
                                                 borderRadius: BorderRadius.circular(8),
                                               ),
-                                              child: Text(
-                                                'CHF ${total.toStringAsFixed(2)}',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
-                                                  color: Theme.of(context).colorScheme.primary,
-                                                ),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.end,
+                                                children: [
+                                                  Text(
+                                                    // GEÄNDERT: Text abhängig von Gratisartikel
+                                                    isGratisartikel
+                                                        ? 'GRATIS'
+                                                        : '${currentOrder.metadata?['currency'] ?? 'CHF'} ${_convertPrice(total.toDouble(), currentOrder).toStringAsFixed(2)}',
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 16,
+                                                      color: isGratisartikel
+                                                          ? Colors.green[700]
+                                                          : Theme.of(context).colorScheme.primary,
+                                                    ),
+                                                  ),
+                                                  // NEU: Pro-forma Wert anzeigen wenn Gratisartikel
+                                                  if (isGratisartikel && proformaValue != null)
+                                                    Text(
+                                                      'Pro-forma: ${currentOrder.metadata?['currency'] ?? 'CHF'} ${_convertPrice(proformaValue, currentOrder).toStringAsFixed(2)}',
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: Colors.green[600],
+                                                        fontStyle: FontStyle.italic,
+                                                      ),
+                                                    ),
+                                                ],
                                               ),
                                             ),
                                           ],
@@ -899,8 +1155,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                               Expanded(
                                                 child: Row(
                                                   children: [
-                                                    Icon(
-                                                      Icons.inventory_2_outlined,
+                                                    getAdaptiveIcon(
+                                                      iconName: 'inventory',
+                                                      defaultIcon: Icons.inventory,
                                                       size: 16,
                                                       color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                                                     ),
@@ -925,15 +1182,23 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                                 child: Row(
                                                   mainAxisAlignment: MainAxisAlignment.center,
                                                   children: [
-                                                    Icon(
-                                                      Icons.attach_money,
+                                                    getAdaptiveIcon(
+                                                      iconName: 'attach_money',
+                                                      defaultIcon: Icons.attach_money,
                                                       size: 16,
                                                       color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                                                     ),
                                                     const SizedBox(width: 6),
                                                     Text(
-                                                      'CHF ${pricePerUnit.toStringAsFixed(2)}',
-                                                      style: const TextStyle(fontSize: 13),
+                                                      // GEÄNDERT: Text abhängig von Gratisartikel
+                                                      isGratisartikel
+                                                          ? 'GRATIS'
+                                                          : '${currentOrder.metadata?['currency'] ?? 'CHF'} ${_convertPrice(pricePerUnit.toDouble(), currentOrder).toStringAsFixed(2)}',
+                                                      style: TextStyle(
+                                                        fontSize: 13,
+                                                        color: isGratisartikel ? Colors.green[700] : null,
+                                                        fontWeight: isGratisartikel ? FontWeight.w500 : null,
+                                                      ),
                                                     ),
                                                   ],
                                                 ),
@@ -959,8 +1224,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                                         child: Row(
                                                           mainAxisSize: MainAxisSize.min,
                                                           children: [
-                                                            Icon(
-                                                              Icons.discount_outlined,
+                                                            getAdaptiveIcon(
+                                                              iconName: 'discount',
+                                                              defaultIcon: Icons.discount,
                                                               size: 14,
                                                               color: Colors.green[700],
                                                             ),
@@ -991,8 +1257,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                           const SizedBox(height: 8),
                                           Row(
                                             children: [
-                                              Icon(
-                                                Icons.straighten,
+                                              getAdaptiveIcon(
+                                                iconName: 'straighten',
+                                                defaultIcon: Icons.straighten,
                                                 size: 14,
                                                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                                               ),
@@ -1020,8 +1287,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                             child: Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
-                                                Icon(
-                                                  Icons.edit_note,
+                                                getAdaptiveIcon(
+                                                  iconName: 'edit_note',
+                                                  defaultIcon: Icons.edit_note,
                                                   size: 14,
                                                   color: Colors.blue[700],
                                                 ),
@@ -1046,6 +1314,13 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                             ),
                           );
                         }).toList(),
+
+
+
+
+
+
+
                       ],
                     ),
                   ),
@@ -1103,7 +1378,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   child: Row(
                     children: [
-                      Icon(
+                      getAdaptiveIcon(
+                        iconName: 'straighten',
+                        defaultIcon:
                         Icons.straighten,
                         color: Theme.of(context).colorScheme.primary,
                       ),
@@ -1156,8 +1433,10 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(
-                              Icons.info_outline,
+                            getAdaptiveIcon(
+                              iconName: 'info',
+                              defaultIcon:
+                              Icons.info,
                               size: 20,
                               color: Theme.of(context).colorScheme.primary,
                             ),
@@ -1348,7 +1627,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                     'timestamp': FieldValue.serverTimestamp(),
                                     'user_id': user?.uid ?? 'unknown',
                                     'user_email': user?.email ?? 'Unknown User',
-                                    'user_name': user?.displayName ?? user?.email?.split('@')[0] ?? 'Unknown',
+                                    'user_name': user?.email ?? 'Unknown',
                                     'action': 'measurements_updated',
                                     'product_name': item['product_name'],
                                     'item_index': itemIndex,
@@ -1390,7 +1669,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                   }
                                 }
                               },
-                              icon: const Icon(Icons.save),
+                              icon:  getAdaptiveIcon(
+                                  iconName: 'save',
+                                  defaultIcon:Icons.save),
                               label: const Text('Speichern'),
                               style: ElevatedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(vertical: 12),
@@ -1514,7 +1795,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Row(
                         children: [
-                          Icon(Icons.assignment, size: 16, color: Theme.of(context).colorScheme.primary),
+                          getAdaptiveIcon(
+                              iconName: 'assignment',
+                              defaultIcon:Icons.assignment, size: 16, color: Theme.of(context).colorScheme.primary),
                           const SizedBox(width: 8),
                           Text(
                             'Auftragsstatus',
@@ -1541,7 +1824,12 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       ),
                       title: Text(status.displayName, style: const TextStyle(fontSize: 14)),
                       trailing: order.status == status
-                          ? Icon(Icons.check_circle, color: _getStatusColor(status), size: 20)
+                          ?
+                      getAdaptiveIcon(
+                          iconName: 'check_circle',
+                          defaultIcon:
+
+                          Icons.check_circle, color: _getStatusColor(status), size: 20)
                           : null,
                       onTap: () async {
                         Navigator.pop(context);
@@ -1556,7 +1844,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Row(
                         children: [
-                          Icon(Icons.payments, size: 16, color: Theme.of(context).colorScheme.primary),
+                          getAdaptiveIcon(
+                              iconName: 'payments',
+                              defaultIcon:Icons.payments, size: 16, color: Theme.of(context).colorScheme.primary),
                           const SizedBox(width: 8),
                           Text(
                             'Zahlungsstatus',
@@ -1573,10 +1863,18 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                     ...PaymentStatus.values.map((status) => ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 20),
                       dense: true,
-                      leading: Icon(Icons.euro, size: 16, color: _getPaymentStatusColor(status)),
+                      leading:
+
+                      getAdaptiveIcon(
+                          iconName: 'euro',
+                          defaultIcon:Icons.euro, size: 16, color: _getPaymentStatusColor(status)),
                       title: Text(status.displayName, style: const TextStyle(fontSize: 14)),
                       trailing: order.paymentStatus == status
-                          ? Icon(Icons.check_circle, color: _getPaymentStatusColor(status), size: 20)
+                          ?
+
+                      getAdaptiveIcon(
+                          iconName: 'check_circle',
+                          defaultIcon:Icons.check_circle, color: _getPaymentStatusColor(status), size: 20)
                           : null,
                       onTap: () async {
                         Navigator.pop(context);
@@ -1619,7 +1917,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
         'timestamp': FieldValue.serverTimestamp(),
         'user_id': user?.uid ?? 'unknown',
         'user_email': user?.email ?? 'Unknown User',
-        'user_name': user?.displayName ?? user?.email?.split('@')[0] ?? 'Unknown',
+        'user_name': user?.email ?? 'Unknown',
         'action': 'status_change',
         'changes': {
           'field': 'status',
@@ -1684,7 +1982,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
         'timestamp': FieldValue.serverTimestamp(),
         'user_id': user?.uid ?? 'unknown',
         'user_email': user?.email ?? 'Unknown User',
-        'user_name': user?.displayName ?? user?.email?.split('@')[0] ?? 'Unknown',
+        'user_name': user?.email ?? 'Unknown',
         'action': 'payment_status_change',
         'changes': {
           'field': 'paymentStatus',
@@ -1752,7 +2050,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               child: Row(
                 children: [
-                  const Icon(Icons.history),
+                  getAdaptiveIcon(
+                      iconName: 'history',
+                      defaultIcon:Icons.history),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -1764,7 +2064,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon:     getAdaptiveIcon(
+                        iconName: 'close',
+                        defaultIcon:Icons.close),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -1793,7 +2095,8 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       padding: const EdgeInsets.all(20),
                       children: [
                         _buildHistoryEntry(
-                          icon: Icons.add_circle_outline,
+                          icon: Icons.add_circle,
+                          iconName: 'add_circle',
                           color: Colors.green,
                           title: 'Auftrag erstellt',
                           subtitle: 'Initiale Erstellung des Auftrags',
@@ -1813,7 +2116,8 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       // Erster Eintrag ist immer die Erstellung
                       if (index == historyEntries.length) {
                         return _buildHistoryEntry(
-                          icon: Icons.add_circle_outline,
+                          icon: Icons.add_circle,
+                          iconName:'add_circle',
                           color: Colors.green,
                           title: 'Auftrag erstellt',
                           subtitle: 'Initiale Erstellung des Auftrags',
@@ -1830,6 +2134,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
 
                       // Bestimme Icon und Farbe basierend auf der Aktion
                       IconData icon;
+                      String iconName;
                       Color color;
                       String title;
                       String subtitle;
@@ -1837,6 +2142,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       switch (action) {
                         case 'status_change':
                           icon = Icons.swap_horiz;
+                          iconName='swap_horiz';
                           color = _getStatusColor(OrderStatus.values.firstWhere(
                                 (s) => s.name == changes['new_value'],
                             orElse: () => OrderStatus.pending,
@@ -1846,6 +2152,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                           break;
                         case 'payment_status_change':
                           icon = Icons.payment;
+                          iconName='payment';
                           color = _getPaymentStatusColor(PaymentStatus.values.firstWhere(
                                 (s) => s.name == changes['new_value'],
                             orElse: () => PaymentStatus.pending,
@@ -1855,12 +2162,14 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                           break;
                         case 'order_cancelled':
                           icon = Icons.cancel;
+                          iconName='cancel';
                           color = Colors.red;
                           title = 'Auftrag storniert';
                           subtitle = data['reason'] ?? 'Manuell storniert';
                           break;
                         default:
-                          icon = Icons.info_outline;
+                          icon = Icons.info;
+                          iconName='info';
                           color = Colors.grey;
                           title = 'Änderung';
                           subtitle = action;
@@ -1868,6 +2177,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
 
                       return _buildHistoryEntry(
                         icon: icon,
+                        iconName:iconName,
                         color: color,
                         title: title,
                         subtitle: subtitle,
@@ -1885,9 +2195,684 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
     );
   }
 
+// Prüfe ob Veranlagungsverfügung benötigt wird (Warenwert > 1000 CHF)
+  bool _needsVeranlagungsverfuegung(OrderX order) {
+    final total = (order.calculations['total'] as num? ?? 0).toDouble();
+
+    // Bei anderen Währungen in CHF umrechnen
+    final currency = order.metadata?['currency'] ?? 'CHF';
+    if (currency != 'CHF') {
+      final exchangeRates = order.metadata?['exchangeRates'] as Map<String, dynamic>? ?? {};
+      final rate = (exchangeRates['CHF'] as num?)?.toDouble() ?? 1.0;
+      return (total / rate) > 1000.0;
+    }
+
+    return total > 1000.0;
+  }
+
+// Prüfe ob Veranlagungsnummer bereits vorhanden ist
+  bool _hasVeranlagungsnummer(OrderX order) {
+    return order.metadata?['veranlagungsnummer'] != null &&
+        order.metadata!['veranlagungsnummer'].toString().isNotEmpty;
+  }
+
+
+  void _showVeranlagungsverfuegungDialog(OrderX order) {
+    final veranlagungsnummerController = TextEditingController(
+      text: order.metadata?['veranlagungsnummer']?.toString() ?? '',
+    );
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Drag Handle
+                Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+
+                // Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.assignment_turned_in,
+                        color: _hasVeranlagungsnummer(order)
+                            ? Colors.green
+                            : Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Veranlagungsverfügung Ausfuhr',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              'Auftrag ${order.orderNumber}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const Divider(),
+
+                // Content
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Info Box
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.info, color: Colors.blue[700], size: 20),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'Information',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Warenwert: CHF ${_convertPrice((order.calculations['total'] as num? ?? 0).toDouble(), order).toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Bei Lieferungen mit einem Warenwert über CHF 1\'000.00 muss die Veranlagungsverfügung Ausfuhr gespeichert werden.',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // Status
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _hasVeranlagungsnummer(order)
+                              ? Colors.green.withOpacity(0.1)
+                              : Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _hasVeranlagungsnummer(order)
+                                ? Colors.green.withOpacity(0.3)
+                                : Colors.orange.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _hasVeranlagungsnummer(order)
+                                  ? Icons.check_circle
+                                  : Icons.warning,
+                              color: _hasVeranlagungsnummer(order)
+                                  ? Colors.green[700]
+                                  : Colors.orange[700],
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _hasVeranlagungsnummer(order)
+                                    ? 'Veranlagungsnummer erfasst'
+                                    : 'Veranlagungsnummer fehlt',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: _hasVeranlagungsnummer(order)
+                                      ? Colors.green[700]
+                                      : Colors.orange[700],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Eingabefeld für Veranlagungsnummer
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Veranlagungsnummer',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: veranlagungsnummerController,
+                            decoration: InputDecoration(
+                              hintText: 'z.B. 25CH04EXA83JFTR0N8',
+                              hintStyle: TextStyle(fontSize: 14),
+                              prefixIcon: Icon(Icons.pin),
+                              suffixIcon: _hasVeranlagungsnummer(order)
+                                  ? Icon(Icons.check, color: Colors.green)
+                                  : null,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              filled: true,
+                              fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                            ),
+                            textCapitalization: TextCapitalization.characters,
+                          ),
+                        ],
+                      ),
+
+                      if (_hasVeranlagungsnummer(order)) ...[
+                        const SizedBox(height: 16),
+                        // Dokument-Upload Status
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.picture_as_pdf,
+                                size: 20,
+                                color: order.documents.containsKey('veranlagungsverfuegung_pdf')
+                                    ? Colors.green
+                                    : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'PDF-Dokument',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    Text(
+                                      order.documents.containsKey('veranlagungsverfuegung_pdf')
+                                          ? 'Dokument hochgeladen'
+                                          : 'Noch kein Dokument hochgeladen',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Im _showVeranlagungsverfuegungDialog, ersetze die PDF-Status Row mit:
+
+                              if (order.documents.containsKey('veranlagungsverfuegung_pdf'))
+                                Row(
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                                      onPressed: () async {
+                                        final confirmed = await showDialog<bool>(
+                                          context: context,
+                                          builder: (context) => AlertDialog(
+                                            title: Text('PDF löschen'),
+                                            content: Text('Möchten Sie die Veranlagungsverfügung wirklich löschen?'),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () => Navigator.pop(context, false),
+                                                child: Text('Abbrechen'),
+                                              ),
+                                              ElevatedButton(
+                                                onPressed: () => Navigator.pop(context, true),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                                child: Text('Löschen'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+
+                                        if (confirmed == true) {
+                                          await _deleteDocument(order, 'veranlagungsverfuegung_pdf');
+                                          Navigator.pop(context);
+                                        }
+                                      },
+                                      tooltip: 'PDF löschen',
+                                    ),
+                                    IconButton(
+                                      icon: Icon(Icons.visibility, size: 20),
+                                      onPressed: () => _openDocument(order.documents['veranlagungsverfuegung_pdf']!),
+                                      tooltip: 'Dokument anzeigen',
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 32),
+
+                      // Action Buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(context),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: const Text('Schließen'),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () async {
+                                final nummer = veranlagungsnummerController.text.trim();
+
+                                if (nummer.isEmpty && !_hasVeranlagungsnummer(order)) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Bitte Veranlagungsnummer eingeben'),
+                                      backgroundColor: Colors.orange,
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                try {
+                                  // Update Firestore
+                                  await FirebaseFirestore.instance
+                                      .collection('orders')
+                                      .doc(order.id)
+                                      .update({
+                                    'metadata.veranlagungsnummer': nummer.isNotEmpty ? nummer : FieldValue.delete(),
+                                    'metadata.veranlagungsnummer_updated_at': FieldValue.serverTimestamp(),
+                                    'updated_at': FieldValue.serverTimestamp(),
+                                  });
+
+                                  // History Entry
+                                  final user = FirebaseAuth.instance.currentUser;
+                                  await FirebaseFirestore.instance
+                                      .collection('orders')
+                                      .doc(order.id)
+                                      .collection('history')
+                                      .add({
+                                    'timestamp': FieldValue.serverTimestamp(),
+                                    'user_id': user?.uid ?? 'unknown',
+                                    'user_email': user?.email ?? 'Unknown User',
+                                    'user_name': user?.email ?? 'Unknown',
+                                    'action': 'veranlagungsnummer_updated',
+                                    'veranlagungsnummer': nummer,
+                                    'old_value': order.metadata?['veranlagungsnummer'],
+                                    'new_value': nummer.isNotEmpty ? nummer : null,
+                                  });
+
+                                  if (mounted) {
+                                    Navigator.pop(context);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(nummer.isNotEmpty
+                                            ? 'Veranlagungsnummer gespeichert'
+                                            : 'Veranlagungsnummer entfernt'),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Fehler: $e'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                              icon: Icon(Icons.save),
+                              label: const Text('Speichern'),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      // Upload Button für PDF
+                      if (_hasVeranlagungsnummer(order) && !order.documents.containsKey('veranlagungsverfuegung_pdf')) ...[
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _uploadVeranlagungsPDF(order),
+                            icon: Icon(Icons.upload_file),
+                            label: const Text('PDF hochladen'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Theme.of(context).colorScheme.secondary,
+                              foregroundColor: Theme.of(context).colorScheme.onSecondary,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+// 4. Füge diese neue Methode für den PDF-Upload hinzu:
+
+  Future<void> _uploadVeranlagungsPDF(OrderX order) async {
+    try {
+      // Importiere diese am Anfang der Datei:
+      // import 'package:file_picker/file_picker.dart';
+
+      // Wähle PDF-Datei
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+      );
+
+      if (result != null) {
+        // Zeige Ladeindikator
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => Dialog(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 320),
+              decoration: BoxDecoration(
+                color: Theme.of(context).dialogBackgroundColor,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.15),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Animiertes Upload Icon
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.cloud_upload_outlined,
+                            size: 32,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 80,
+                          height: 80,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Veranlagungsverfügung',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Dokument wird hochgeladen...',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    // Subtiler Progress Indicator
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        minHeight: 4,
+                        backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+
+        // Hole Datei-Bytes
+        Uint8List? fileBytes = result.files.first.bytes;
+        String fileName = result.files.first.name;
+
+        // Falls Web, verwende bytes, sonst path
+        if (fileBytes == null) {
+          final path = result.files.first.path;
+          if (path != null) {
+            final file = await File(path).readAsBytes();
+            fileBytes = file;
+          }
+        }
+
+        if (fileBytes != null) {
+          // Erstelle Storage-Referenz
+          final storageRef = FirebaseStorage.instance
+              .ref()
+              .child('orders')
+              .child(order.id)
+              .child('veranlagungsverfuegung')
+              .child('veranlagungsverfuegung_${DateTime.now().millisecondsSinceEpoch}.pdf');
+
+          // Lade Datei hoch
+          final uploadTask = await storageRef.putData(
+            fileBytes,
+            SettableMetadata(
+              contentType: 'application/pdf',
+              customMetadata: {
+                'orderNumber': order.orderNumber,
+                'documentType': 'Veranlagungsverfügung',
+                'veranlagungsnummer': order.metadata?['veranlagungsnummer'] ?? '',
+                'uploadedAt': DateTime.now().toIso8601String(),
+                'originalFileName': fileName,
+              },
+            ),
+          );
+
+          // Hole Download-URL
+          final downloadUrl = await uploadTask.ref.getDownloadURL();
+
+          // Update Firestore
+          await FirebaseFirestore.instance
+              .collection('orders')
+              .doc(order.id)
+              .update({
+            'documents.veranlagungsverfuegung_pdf': downloadUrl,
+            'metadata.veranlagungsverfuegung_uploaded_at': FieldValue.serverTimestamp(),
+            'updated_at': FieldValue.serverTimestamp(),
+          });
+
+          // Erstelle History-Eintrag
+          final user = FirebaseAuth.instance.currentUser;
+          await FirebaseFirestore.instance
+              .collection('orders')
+              .doc(order.id)
+              .collection('history')
+              .add({
+            'timestamp': FieldValue.serverTimestamp(),
+            'user_id': user?.uid ?? 'unknown',
+            'user_email': user?.email ?? 'Unknown User',
+            'user_name': user?.email ?? 'Unknown',
+            'action': 'veranlagungsverfuegung_uploaded',
+            'document_type': 'Veranlagungsverfügung Ausfuhr',
+            'file_name': fileName,
+            'veranlagungsnummer': order.metadata?['veranlagungsnummer'] ?? '',
+          });
+
+          if (mounted) {
+            Navigator.pop(context); // Schließe Ladeindikator
+            Navigator.pop(context); // Schließe Modal
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Veranlagungsverfügung wurde erfolgreich hochgeladen'),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+                margin: const EdgeInsets.all(8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Schließe Ladeindikator falls offen
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Upload: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    }
+  }
+
+// 5. Erweitere _getDocumentTypeName um den neuen Dokumenttyp:
+// In der _getDocumentTypeName Methode, füge diesen Fall hinzu:
+
+  String _getDocumentTypeName(String docType) {
+    switch (docType) {
+      case 'quote_pdf':
+        return 'Angebot';
+      case 'invoice_pdf':
+        return 'Rechnung';
+      case 'delivery_note_pdf':
+        return 'Lieferschein';
+      case 'commercial_invoice_pdf':
+        return 'Handelsrechnung';
+      case 'packing_list_pdf':
+        return 'Packliste';
+      case 'veranlagungsverfuegung_pdf':  // NEU
+        return 'Veranlagungsverfügung Ausfuhr';
+      default:
+        return docType.replaceAll('_', ' ').replaceAll('-', ' ');
+    }
+  }
+
 
   Widget _buildHistoryEntry({
     required IconData icon,
+    required String iconName,
     required Color color,
     required String title,
     required String subtitle,
@@ -1912,7 +2897,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                   shape: BoxShape.circle,
                   border: Border.all(color: color.withOpacity(0.3), width: 2),
                 ),
-                child: Icon(icon, color: color, size: 20),
+                child:  getAdaptiveIcon(
+                    iconName: iconName,
+                    defaultIcon:icon, color: color, size: 20),
               ),
             ],
           ),
@@ -1952,8 +2939,10 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Icon(
-                      Icons.person_outline,
+                    getAdaptiveIcon(
+                      iconName: 'person',
+                      defaultIcon:
+                      Icons.person,
                       size: 14,
                       color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                     ),
@@ -2061,8 +3050,10 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.description_outlined,
+                        getAdaptiveIcon(
+                          iconName: 'description',
+                          defaultIcon:
+                          Icons.description,
                           size: 40,
                           color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
                         ),
@@ -2104,24 +3095,32 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
-                                icon: const Icon(Icons.visibility, size: 20),
+                                icon:   getAdaptiveIcon(
+                                    iconName: 'visibility',
+                                    defaultIcon:Icons.visibility, size: 20),
                                 onPressed: () => _openDocument(docUrl),
                                 tooltip: 'Öffnen',
                               ),
                               IconButton(
-                                icon: const Icon(Icons.share, size: 20),
+                                icon:   getAdaptiveIcon(
+                                    iconName: 'share',
+                                    defaultIcon:Icons.share, size: 20),
                                 onPressed: () => _shareDocument(docUrl, docType, currentOrder.orderNumber),
                                 tooltip: 'Weiterleiten',
                               ),
                               if (isDeletable)
                                 IconButton(
-                                  icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                                  icon:  getAdaptiveIcon(
+                                      iconName: 'delete',
+                                      defaultIcon:Icons.delete, size: 20, color: Colors.red),
                                   onPressed: () => _deleteDocument(currentOrder, docType),
                                   tooltip: 'Löschen',
                                 ),
                               if (!isDeletable)
                                 IconButton(
-                                  icon: const Icon(Icons.delete_outline, size: 20, color: Colors.transparent),
+                                  icon:   getAdaptiveIcon(
+                                      iconName: 'delete',
+                                      defaultIcon:Icons.delete, size: 20, color: Colors.transparent),
                                   onPressed:(){},
                                   tooltip: 'Löschen',
                                 ),
@@ -2145,7 +3144,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                         Navigator.pop(context); // Schließe zuerst das aktuelle Modal
                         await OrderDocumentManager.showCreateDocumentsDialog(context, currentOrder);
                       },
-                      icon: const Icon(Icons.add),
+                      icon:   getAdaptiveIcon(
+                          iconName: 'add',
+                          defaultIcon:Icons.add),
                       label: const Text('Dokumente erstellen'),
                       style: ElevatedButton.styleFrom(
                         minimumSize: const Size(double.infinity, 48),
@@ -2180,12 +3181,15 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.orange.withOpacity(0.3)),
               ),
-              child: const Column(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.warning, color: Colors.orange, size: 20),
+
+                      getAdaptiveIcon(
+                          iconName: 'warning',
+                          defaultIcon:Icons.warning, color: Colors.orange, size: 20),
                       SizedBox(width: 8),
                       Text(
                         'Hinweis:',
@@ -2304,7 +3308,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
           'timestamp': FieldValue.serverTimestamp(),
           'user_id': user?.uid ?? 'unknown',
           'user_email': user?.email ?? 'Unknown User',
-          'user_name': user?.displayName ?? user?.email?.split('@')[0] ?? 'Unknown',
+          'user_name': user?.email ?? 'Unknown',
           'action': 'document_deleted',
           'document_type': _getDocumentTypeName(docType),
           'document_key': docType,
@@ -2358,23 +3362,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
     return Icons.description;
   }
 
-  String _getDocumentTypeName(String docType) {
-    switch (docType) {
-      case 'quote_pdf':
-        return 'Angebot';
-      case 'invoice_pdf':
-        return 'Rechnung';
-      case 'delivery_note_pdf':
-        return 'Lieferschein';
 
-      case 'commercial_invoice_pdf':
-        return 'Handelsrechnung';
-      case 'packing_list_pdf':
-        return 'Packliste';
-      default:
-        return docType.replaceAll('_', ' ').replaceAll('-', ' ');
-    }
-  }
 
   String _getDocumentTypeDescription(String docType) {
     switch (docType) {
@@ -2486,7 +3474,9 @@ Zahlungsstatus: ${order.paymentStatus.displayName}
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.warning, color: Colors.orange, size: 20),
+                      getAdaptiveIcon(
+                          iconName: 'warning',
+                          defaultIcon:Icons.warning, color: Colors.orange, size: 20),
                       const SizedBox(width: 8),
                       const Text(
                         'Wichtiger Hinweis:',
@@ -2544,7 +3534,7 @@ Zahlungsstatus: ${order.paymentStatus.displayName}
               .doc(item['product_id']);
 
           batch.update(inventoryRef, {
-            'quantity': FieldValue.increment(item['quantity'] as int),
+            'quantity': FieldValue.increment(item['quantity'] as double),
             'last_modified': FieldValue.serverTimestamp(),
           });
 
@@ -2564,7 +3554,7 @@ Zahlungsstatus: ${order.paymentStatus.displayName}
             'timestamp': FieldValue.serverTimestamp(),
             'user_id': user?.uid ?? 'unknown',
             'user_email': user?.email ?? 'Unknown User',
-            'user_name': user?.displayName ?? user?.email?.split('@')[0] ?? 'Unknown',
+            'user_name': user?.email ?? 'Unknown',
             'action': 'order_cancelled',
             'reason': 'Manuell storniert - Reservierungen aufgehoben',
             'changes': {
@@ -2622,7 +3612,17 @@ Zahlungsstatus: ${order.paymentStatus.displayName}
 
   @override
   void dispose() {
+    _filterSubscription?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  double _convertPrice(double priceInCHF, OrderX order) {
+    final currency = order.metadata['currency'] ?? 'CHF';
+    if (currency == 'CHF') return priceInCHF;
+
+    final exchangeRates = order.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
+    final rate = (exchangeRates[currency] as num?)?.toDouble() ?? 1.0;
+    return priceInCHF * rate;
   }
 }

@@ -1239,7 +1239,7 @@ class SalesHistoryScreenState extends State<SalesHistoryScreen> {
                               itemCount: items.length,
                               itemBuilder: (context, index) {
                                 final item = items[index];
-                                final quantity = item['quantity'] as int;
+                                final quantity = item['quantity'] as double;
                                 final pricePerUnit = item['price_per_unit'] as double;
                                 final subtotal = quantity * pricePerUnit;
                                 final discount = item['discount'] as Map<String, dynamic>?;

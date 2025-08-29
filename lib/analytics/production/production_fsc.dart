@@ -214,7 +214,7 @@
 //                     borderRadius: BorderRadius.circular(8),
 //                   ),
 //                   child: Icon(
-//                     Icons.info_outline,
+//                     Icons.info,
 //                     color: Theme.of(context).colorScheme.primary,
 //                   ),
 //                 ),

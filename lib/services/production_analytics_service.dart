@@ -18,7 +18,7 @@ class ProductionAnalyticsService {
 
       // Hole alle Batches für jedes Produkt
       int totalBatches = 0;
-      int totalQuantity = 0;
+      double totalQuantity = 0;
       Map<String, int> batchSizes = {
         '1-10': 0,
         '11-25': 0,
@@ -42,7 +42,7 @@ class ProductionAnalyticsService {
         // Verarbeite jede Charge
         for (var batch in batchSnapshot.docs) {
           final data = batch.data();
-          final quantity = data['quantity'] as int? ?? 0;
+          final quantity = data['quantity'] as double? ?? 0;
           totalQuantity += quantity;
 
           // Kategorisiere die Chargengröße
@@ -139,7 +139,7 @@ class ProductionAnalyticsService {
           }
 
           // Verarbeite Menge
-          final quantity = data['quantity'] as int? ?? 0;
+          final quantity = data['quantity'] as double? ?? 0;
           final sizeKey = _getBatchSizeKey(quantity);
           batchStats['batches_by_size'][sizeKey] =
               (batchStats['batches_by_size'][sizeKey] ?? 0) + 1;
@@ -154,10 +154,12 @@ class ProductionAnalyticsService {
       print('Stack trace: $stackTrace');
       rethrow;
     }
+
+
   }
 
 // Hilfsmethode für die Kategorisierung der Chargengrößen
-  static String _getBatchSizeKey(int quantity) {
+  static String _getBatchSizeKey(double quantity) {
     if (quantity <= 10) return '1-10';
     if (quantity <= 25) return '11-25';
     if (quantity <= 50) return '26-50';

@@ -1667,7 +1667,8 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                   _buildSectionHeader(
                     context,
                     'Basis-Informationen',
-                    Icons.info_outline,
+                    Icons.info,
+                    'info'
                   ),
                   const SizedBox(height: 16),
 
@@ -1752,7 +1753,8 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                     _buildSectionHeader(
                       context,
                       'Wissenschaftliche Bezeichnungen',
-                      Icons.science_outlined,
+                      Icons.science,
+                      'science'
                     ),
                     const SizedBox(height: 16),
 
@@ -1806,7 +1808,8 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                     _buildSectionHeader(
                       context,
                       'Physikalische Eigenschaften',
-                      Icons.straighten_outlined,
+                      Icons.straighten,
+                      'straighten'
                     ),
                     const SizedBox(height: 16),
 
@@ -1843,7 +1846,8 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                     _buildSectionHeader(
                       context,
                       'Klassifizierung',
-                      Icons.category_outlined,
+                      Icons.category,
+                      'category'
                     ),
                     const SizedBox(height: 16),
 
@@ -1897,7 +1901,8 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                     _buildSectionHeader(
                       context,
                       'Zolltarife',
-                      Icons.receipt_long_outlined,
+                      Icons.receipt_long,
+                      'receipt_long'
                     ),
                     const SizedBox(height: 16),
 
@@ -2007,7 +2012,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
     );
   }
 
-  Widget _buildSectionHeader(BuildContext context, String title, IconData icon) {
+  Widget _buildSectionHeader(BuildContext context, String title, IconData icon,String iconName) {
     return Row(
       children: [
         Container(
@@ -2016,7 +2021,9 @@ class _AddItemDialogState extends State<_AddItemDialog> {
             color: Theme.of(context).colorScheme.primaryContainer,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(
+          child: getAdaptiveIcon(
+            iconName: iconName,
+            defaultIcon:
             icon,
             size: 20,
             color: Theme.of(context).colorScheme.primary,
@@ -2250,7 +2257,8 @@ class _ExtendedEditNameDialogState extends State<ExtendedEditNameDialog> {
                   _buildSectionHeader(
                     context,
                     'Basis-Informationen',
-                    Icons.info_outline,
+                    Icons.info,
+                    'info'
                   ),
                   const SizedBox(height: 16),
 
@@ -2333,7 +2341,8 @@ class _ExtendedEditNameDialogState extends State<ExtendedEditNameDialog> {
                     _buildSectionHeader(
                       context,
                       'Wissenschaftliche Bezeichnungen',
-                      Icons.science_outlined,
+                      Icons.science,
+                      'science'
                     ),
                     const SizedBox(height: 16),
 
@@ -2385,7 +2394,8 @@ class _ExtendedEditNameDialogState extends State<ExtendedEditNameDialog> {
                     _buildSectionHeader(
                       context,
                       'Physikalische Eigenschaften',
-                      Icons.straighten_outlined,
+                      Icons.straighten,
+                      'straighten'
                     ),
                     const SizedBox(height: 16),
 
@@ -2421,7 +2431,8 @@ class _ExtendedEditNameDialogState extends State<ExtendedEditNameDialog> {
                     _buildSectionHeader(
                       context,
                       'Klassifizierung',
-                      Icons.category_outlined,
+                      Icons.category,
+                      'category'
                     ),
                     const SizedBox(height: 16),
 
@@ -2473,7 +2484,8 @@ class _ExtendedEditNameDialogState extends State<ExtendedEditNameDialog> {
                     _buildSectionHeader(
                       context,
                       'Zolltarife',
-                      Icons.receipt_long_outlined,
+                      Icons.receipt_long,
+                      'receipt_long'
                     ),
                     const SizedBox(height: 16),
 
@@ -2581,7 +2593,7 @@ class _ExtendedEditNameDialogState extends State<ExtendedEditNameDialog> {
     );
   }
 
-  Widget _buildSectionHeader(BuildContext context, String title, IconData icon) {
+  Widget _buildSectionHeader(BuildContext context, String title, IconData icon,String iconName) {
     return Row(
       children: [
         Container(
@@ -2590,7 +2602,9 @@ class _ExtendedEditNameDialogState extends State<ExtendedEditNameDialog> {
             color: Theme.of(context).colorScheme.primaryContainer,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(
+          child: getAdaptiveIcon(
+            iconName: iconName,
+            defaultIcon:
             icon,
             size: 20,
             color: Theme.of(context).colorScheme.primary,

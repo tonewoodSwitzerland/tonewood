@@ -43,6 +43,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
   }
 
   static Future<Uint8List> generateCommercialInvoicePdf({
+    String? orderId,
     required List<Map<String, dynamic>> items,
     required Map<String, dynamic> customerData,
     required Map<String, dynamic>? fairData,
@@ -69,7 +70,9 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     // Gruppiere Items nach Zolltarifnummer
     final groupedItems = await _groupItemsByTariffNumber(items, language);
     final additionalTextsWidget = await _addInlineAdditionalTexts(language);
-    final standardTextsWidget = await _addCommercialInvoiceStandardTexts(language);
+    final standardTextsWidget = await _addCommercialInvoiceStandardTexts( language,
+        taraSettings: taraSettings,
+        orderId: orderId);
     // Übersetzungsfunktion
     String getTranslation(String key) {
       // Sichere den currency Wert
@@ -163,50 +166,104 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
 
   static Future<pw.Widget> _addCommercialInvoiceStandardTexts(
-      String language
+      String language,
+      {Map<String, dynamic>? taraSettings, String? orderId}  // NEU: Optional orderId
       ) async {
     try {
-      // Lade aus den temporären Tara-Einstellungen
-      final settingsDoc = await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
-          .doc('tara_settings')
-          .get();
+      // Lade die Standardtexte aus AdditionalTextsManager
+      await AdditionalTextsManager.loadDefaultTextsFromFirebase();
 
-      if (!settingsDoc.exists) return pw.SizedBox.shrink();
+      Map<String, dynamic> settings = {};
 
-      final settings = settingsDoc.data()!;
+      // Entscheidungslogik für Datenquelle
+      if (taraSettings != null) {
+        // 1. Priorität: Übergebene taraSettings (von Order)
+        settings = taraSettings;
+        print('Verwende übergebene taraSettings');
+      } else if (orderId != null && orderId.isNotEmpty) {
+        // 2. Priorität: Lade aus Order-spezifischen Einstellungen
+        final orderSettingsDoc = await FirebaseFirestore.instance
+            .collection('orders')
+            .doc(orderId)
+            .collection('settings')
+            .doc('tara_settings')
+            .get();
+
+        if (orderSettingsDoc.exists) {
+          settings = orderSettingsDoc.data()!;
+          print('Verwende Order-spezifische Einstellungen');
+        } else {
+          // Fallback zu temporären Einstellungen wenn keine Order-Settings existieren
+          final tempSettingsDoc = await FirebaseFirestore.instance
+              .collection('temporary_document_settings')
+              .doc('tara_settings')
+              .get();
+
+          if (tempSettingsDoc.exists) {
+            settings = tempSettingsDoc.data()!;
+            print('Verwende temporäre Einstellungen (Fallback von Order)');
+          } else {
+            return pw.SizedBox.shrink();
+          }
+        }
+      } else {
+        // 3. Priorität: Angebotsphase - lade aus temporären Einstellungen
+        final tempSettingsDoc = await FirebaseFirestore.instance
+            .collection('temporary_document_settings')
+            .doc('tara_settings')
+            .get();
+
+        if (!tempSettingsDoc.exists) return pw.SizedBox.shrink();
+        settings = tempSettingsDoc.data()!;
+        print('Verwende temporäre Einstellungen (Angebotsphase)');
+      }
+
       final List<pw.Widget> textWidgets = [];
 
       // Ursprungserklärung
-      if (settings['commercial_invoice_origin_declaration'] == true) {
-        textWidgets.add(
-          pw.Container(
-            alignment: pw.Alignment.centerLeft,
-            margin: const pw.EdgeInsets.only(bottom: 3),
-            child: pw.Text(
-              language == 'EN'
-                  ? 'Origin Declaration: The exporter of the goods covered by this commercial paper declares that these goods are, unless otherwise stated, preferential Swiss origin goods.'
-                  : 'Ursprungserklärung: Der Ausführer der Waren, auf die sich dieses Handelspapier bezieht, erklärt, dass diese Waren, soweit nicht anders angegeben, präferenzbegünstigte Schweizer Ursprungswaren sind.',
-              style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
-            ),
-          ),
+      if (settings['commercial_invoice_origin_declaration'] == true ||
+          settings['origin_declaration'] == true) {  // Unterstütze beide Varianten
+        final originText = AdditionalTextsManager.getTextContent(
+            {'selected': true, 'type': 'standard'},
+            'origin_declaration',
+            language: language
         );
+
+        if (originText.isNotEmpty) {
+          textWidgets.add(
+            pw.Container(
+              alignment: pw.Alignment.centerLeft,
+              margin: const pw.EdgeInsets.only(bottom: 3),
+              child: pw.Text(
+                originText,
+                style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+              ),
+            ),
+          );
+        }
       }
 
       // CITES
-      if (settings['commercial_invoice_cites'] == true) {
-        textWidgets.add(
-          pw.Container(
-            alignment: pw.Alignment.centerLeft,
-            margin: const pw.EdgeInsets.only(bottom: 3),
-            child: pw.Text(
-              language == 'EN'
-                  ? 'The above mentioned goods are NOT on the list of CITES protected species.'
-                  : 'Die oben genannten Waren stehen NICHT auf der Liste der in CITES geschützten Arten.',
-              style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
-            ),
-          ),
+      if (settings['commercial_invoice_cites'] == true ||
+          settings['cites'] == true) {  // Unterstütze beide Varianten
+        final citesText = AdditionalTextsManager.getTextContent(
+            {'selected': true, 'type': 'standard'},
+            'cites',
+            language: language
         );
+
+        if (citesText.isNotEmpty) {
+          textWidgets.add(
+            pw.Container(
+              alignment: pw.Alignment.centerLeft,
+              margin: const pw.EdgeInsets.only(bottom: 3),
+              child: pw.Text(
+                citesText,
+                style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+              ),
+            ),
+          );
+        }
       }
 
       // Grund des Exports - mit Freitext
@@ -494,7 +551,18 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       }
 
       // Gewicht berechnen
-      final weight = totalVolume * density;
+      double weight = 0.0;
+
+// Workaround: Wenn Einheit kg ist, verwende Quantity als Gewicht
+      if (item['unit']?.toString().toLowerCase() == 'kg') {
+        weight = quantity;
+      } else if (totalVolume > 0) {
+        // Normale Berechnung über Volumen * Dichte nur wenn Volumen vorhanden
+        weight = totalVolume * density;
+      } else {
+        // Fallback: Versuche manuell eingegebenes Gewicht
+        weight = (item['custom_weight'] as num?)?.toDouble() ?? 0.0;
+      }
 
       // Verwende name_english wenn Sprache EN ist
       final woodName = language == 'EN'
@@ -590,8 +658,10 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       double groupVolume = 0.0;
       double groupWeight = 0.0;
       for (final item in items) {
-        groupVolume += (item['volume_m3'] as double? ?? 0.0);
-        groupWeight += (item['weight_kg'] as double? ?? 0.0);
+
+        print("weight:${item['weight_kg']}");
+        groupVolume += (item['volume_m3'] as num?)?.toDouble() ?? 0.0;
+        groupWeight += (item['weight_kg'] as num?)?.toDouble() ?? 0.0;
       }
       totalVolume += groupVolume;
       totalWeight += groupWeight;
@@ -653,8 +723,17 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
       // Items der Gruppe
       for (final item in items) {
+        // NEU: Gratisartikel-Check
+        final isGratisartikel = item['is_gratisartikel'] == true;
+        final proformaValue = item['proforma_value'] as num?;
+
         final quantity = (item['quantity'] as num? ?? 0).toDouble();
-        final pricePerUnit = (item['price_per_unit'] as num? ?? 0).toDouble();
+
+        // ÄNDERUNG: Bei Gratisartikeln den Pro-forma-Wert verwenden
+        final pricePerUnit = isGratisartikel && proformaValue != null
+            ? proformaValue.toDouble()
+            : (item['price_per_unit'] as num? ?? 0).toDouble();
+
         final itemTotal = quantity * pricePerUnit;
         final volumeM3 = (item['volume_m3'] as double? ?? 0.0);
 
@@ -736,8 +815,16 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     double totalAmount = 0.0;
     groupedItems.forEach((key, items) {
       for (final item in items) {
+        final isGratisartikel = item['is_gratisartikel'] == true;
+        final proformaValue = item['proforma_value'] as num?;
+
         final quantity = (item['quantity'] as num? ?? 0).toDouble();
-        final pricePerUnit = (item['price_per_unit'] as num? ?? 0).toDouble();
+
+        // Bei Gratisartikeln Pro-forma-Wert verwenden
+        final pricePerUnit = isGratisartikel && proformaValue != null
+            ? proformaValue.toDouble()
+            : (item['price_per_unit'] as num? ?? 0).toDouble();
+
         totalAmount += quantity * pricePerUnit;
       }
     });

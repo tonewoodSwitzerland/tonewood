@@ -67,9 +67,9 @@ class ProductionBatches extends StatelessWidget {
                   //     context,
                   //     'Gesamtmenge',
                   //     NumberFormat('#,##0').format(
-                  //       batches.fold<int>(0, (sum, b) => sum + (b['quantity'] as int)),
+                  //       batches.fold<int>(0, (sum, b) => sum + (b['quantity'] as double)),
                   //     ),
-                  //     Icons.inventory_2,
+                  //     Icons.inventory,
                   //     Colors.green,
                   //   ),
                   // ),
@@ -285,7 +285,7 @@ class ProductionBatches extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.inventory_2, size: 16, color: Colors.grey[600]),
+                      Icon(Icons.inventory, size: 16, color: Colors.grey[600]),
                       const SizedBox(width: 4),
                       Text(
                         '${NumberFormat('#,##0').format(batch['quantity'])} ${batch['unit']}',
@@ -434,7 +434,7 @@ class ProductionBatches extends StatelessWidget {
 
                       _buildDetailSection(
                         'Produktinformationen',
-                        Icons.info_outline,
+                        Icons.info,
                         Column(
                           children: [
                             _buildDetailRow('Instrument', batch['instrument_name'], Icons.piano),
@@ -453,7 +453,7 @@ class ProductionBatches extends StatelessWidget {
                             _buildDetailRow(
                               'Menge',
                               '${NumberFormat('#,##0').format(batch['quantity'])} ${batch['unit']}',
-                              Icons.inventory_2,
+                              Icons.inventory,
                             ),
                             _buildDetailRow(
                               'Preis pro ${batch['unit']}',

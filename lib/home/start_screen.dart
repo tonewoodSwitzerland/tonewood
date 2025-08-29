@@ -17,6 +17,7 @@ import '../components/circular_avatar_shadowed.dart';
 import '../components/custom_dialog_box_crew.dart';
 import '../components/feedback_list.dart';
 import '../constants.dart';
+import '../services/admin_additional_text_manager.dart';
 import '../services/customer_export_service.dart';
 import '../services/customer_import_service.dart';
 import '../services/feedback_functions.dart';
@@ -461,7 +462,7 @@ class StartScreenState extends State<StartScreen> {
           const Divider(),
 
           ListTile(
-            leading: getAdaptiveIcon(iconName: 'inventory_2', defaultIcon: Icons.inventory_2),
+            leading: getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory),
             title: const Text('Standardprodukte'),
             onTap: () {
               // Schließe das Drawer-Menü
@@ -577,6 +578,25 @@ class StartScreenState extends State<StartScreen> {
           // ),
 
           const Divider(),
+
+          ListTile(
+            leading: getAdaptiveIcon(iconName: 'text_fields', defaultIcon: Icons.text_fields),
+            title: const Text('Standardtexte'),
+
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AdminTextsEditor(),
+                ),
+              );
+            },
+          ),
+          const Divider(),
+
+
+
           // Footer mit Version und Copyright
           const Spacer(),
           const Divider(),

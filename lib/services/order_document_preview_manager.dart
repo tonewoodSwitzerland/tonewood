@@ -322,7 +322,7 @@ class OrderDocumentPreviewManager {
         _openPdfViewer(context, pdfBytes, 'Handelsrechnung_${order.orderNumber}.pdf');
       }
     } catch (e) {
-      print('Fehler bei Handelsrechnung-Preview: $e');
+      print('XXFehler bei Handelsrechnung-Preview: $e');
       rethrow;
     }
   }

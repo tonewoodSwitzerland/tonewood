@@ -142,12 +142,15 @@ class QuoteService {
 
       final movementRef = _firestore.collection('stock_movements').doc();
 
+      // Sichere Konvertierung der Quantity
+      final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+
       final movement = StockMovement(
         id: movementRef.id,
         type: StockMovementType.reservation,
         quoteId: quoteId,
         productId: item['product_id'],
-        quantity: -(item['quantity'] as int), // Negativ für Abgang
+        quantity: -quantity, // Negativ für Abgang
         status: StockMovementStatus.reserved,
         timestamp: DateTime.now(),
       );
@@ -248,7 +251,7 @@ class QuoteService {
   }
 
 // Prüfe Verfügbarkeit (unter Berücksichtigung von Reservierungen)
-  static Future<Map<String, int>> checkAvailability(
+  static Future<Map<String, double>> checkAvailability(
       List<Map<String, dynamic>> items,
       {String? excludeQuoteId}  // NEU: Optional Quote-ID zum Ausschließen
       ) async {
@@ -256,7 +259,7 @@ class QuoteService {
     print('Anzahl zu prüfender Items: ${items.length}');
     print('Exclude Quote ID: $excludeQuoteId');  // NEU
 
-    final availability = <String, int>{};
+    final availability = <String, double>{};
 
     for (final item in items) {
       // ... (Debug-Ausgaben bleiben gleich)
@@ -279,7 +282,7 @@ class QuoteService {
         continue;
       }
 
-      final currentStock = (inventoryDoc.data()?['quantity'] ?? 0) as int;
+      final currentStock = (inventoryDoc.data()?['quantity'] as num?)?.toDouble() ?? 0.0;
       print('Aktueller Lagerbestand: $currentStock');
 
       // Hole alle aktiven Reservierungen
@@ -294,7 +297,7 @@ class QuoteService {
 
       print('Anzahl gefundener Reservierungen: ${reservations.docs.length}');
 
-      final reservedQuantity = reservations.docs.fold<int>(
+      final reservedQuantity = reservations.docs.fold<double>(
         0,
             (sum, doc) {
           final data = doc.data();
@@ -306,7 +309,7 @@ class QuoteService {
             return sum;
           }
 
-          final qty = (data['quantity'] as int).abs();
+          final qty = (data['quantity'] as num?)?.toDouble().abs() ?? 0.0;
           print('  -> Addiere ${qty} zur Gesamtreservierung (Quote: $quoteId)');
           return sum + qty;
         },

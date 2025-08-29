@@ -151,7 +151,7 @@ class FeedbackListState extends State<FeedbackList> {
                                               AppToast.show(message: "feedbackDeleted".tr, height: h);
 }else{ AppToast.show(message: "feedbackAlreadyDeleted".tr, height: h);}
                                             },
-                                            child: IconContent(iconStyle:  Icons.delete_forever, iconSize: h * textFactor25, label:  "deleteFeedback".tr,color: alreadyChecked==false?primaryAppColor:Colors.grey)),
+                                            child: IconContent(iconStyle:  Icons.delete, iconSize: h * textFactor25, label:  "deleteFeedback".tr,color: alreadyChecked==false?primaryAppColor:Colors.grey)),
                                       ],
                                     )
 

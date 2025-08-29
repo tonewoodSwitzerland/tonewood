@@ -511,8 +511,8 @@ print("sB:$searchBarcode");
                         child: Row(
                           children: [
                             getAdaptiveIcon(
-                              iconName: 'inventory_2',
-                              defaultIcon: Icons.inventory_2,
+                              iconName: 'inventory',
+                              defaultIcon: Icons.inventory,
                               color: const Color(0xFF0F4A29),
                               size: 28,
                             ),
@@ -1282,6 +1282,7 @@ print("sB:$searchBarcode");
         'FSC_100': fsc100,
         'year': int.parse(year),
         'product_id': newProductId,
+        'barcode': newProductId,
         'last_modified': FieldValue.serverTimestamp(),
         'modified_from': oldProductId,
       };
@@ -1766,7 +1767,7 @@ print("sB:$searchBarcode");
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Produktion buchen',
+                'Produktion',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
@@ -1967,7 +1968,7 @@ print("sB:$searchBarcode");
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Preis / Bestand bearbeiten',
+            'Produkt',
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
@@ -2502,183 +2503,372 @@ print("sB:$searchBarcode");
     );
   }
 
-
-
   Widget _buildMobileLayout() {
-    return LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-              child: Container(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight, // Wichtig für volle Höhe
-                ),
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      body: SafeArea(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-
-
-            SizedBox(
-              width: double.infinity,
-              child: Card(
-                margin: const EdgeInsets.fromLTRB(16,8,16,8),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
+            // Header
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  getAdaptiveIcon(
+                    iconName: 'inventory',
+                    defaultIcon: Icons.inventory,
+                    color: const Color(0xFF0F4A29),
+                    size: 32,
+                  ),
+                  const SizedBox(width: 16),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      const Icon(Icons.add_shopping_cart, size: 40),
-                      const SizedBox(height: 16),
                       const Text(
-                        'Produktion buchen',
+                        'Produktverwaltung',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 24,
                           fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F4A29),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          ElevatedButton(
-                            onPressed:  _showProductionDialog,
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 12,
-                              ),
-                            ),
-                            child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search,),
-
-                          ),
-                          ElevatedButton(
-                            onPressed: () => _scanBarcode(),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 12,
-                              ),
-                            ),
-                              child: const Icon(Icons.qr_code_scanner),
-
-                          ),
-                          ElevatedButton(
-                            onPressed: _showBarcodeInputDialog,
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 12,
-                              ),
-                            ),
-                            child: getAdaptiveIcon(iconName: 'keyboard', defaultIcon: Icons.keyboard,),
-
-                          ),
-                        ],
                       ),
 
                     ],
                   ),
-                ),
+                ],
               ),
             ),
-            SizedBox(
-              width: double.infinity,
-              child: Card(
-                margin: const EdgeInsets.fromLTRB(16,8,16,8),
-                child: InkWell(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const RoundwoodEntryScreen(),
+
+            // Content
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    // Produktion buchen Card
+                    _buildMobileActionCard(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.grey[100]!,
+                          Colors.grey[200]!,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                    );
-                  },
-                  child: const Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        Icon(Icons.forest, size: 40),
-                        SizedBox(height: 16),
-                        Text(
-                          'Einschnitt Rundholz',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(
-              width: double.infinity,
-              child: Card(
-                margin: const EdgeInsets.fromLTRB(16,8,16,8),
-                child: InkWell(
-                  onTap: _showEditBarcodeInputDialog,
-                  child: const Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        Icon(Icons.edit, size: 40),
-                        SizedBox(height: 16),
-                        Text(
-                          'Preis / Bestand bearbeiten',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(
-              width: double.infinity,
-              child: Card(
-                margin:const EdgeInsets.fromLTRB(16,8,16,8),
-                child: InkWell(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => AddProductScreen(editMode: false, isProduction: true,),
+                      borderColor: const Color(0xFF0F4A29).withOpacity(0.3),
+                      contentColor: const Color(0xFF0F4A29),
+                      icon: getAdaptiveIcon(
+                        iconName: 'precision_manufacturing',
+                        defaultIcon: Icons.precision_manufacturing,
+                        color: const Color(0xFF0F4A29),
+                        size: 36,
                       ),
-                    );
-                  },
-                  child: const Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        Icon(Icons.add_circle_outline, size: 40),
-                        SizedBox(height: 16),
-                        Text(
-                          'Neues Produkt anlegen',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+                      title: 'Produktion',
+                      subtitle: 'Produktion buchen / ändern',
+                      actions: [
+                        _buildActionChip(
+                          icon: Icons.search,
+                          label: 'Suchen',
+                          onTap: _showProductionDialog,
                         ),
-
+                        _buildActionChip(
+                          icon: Icons.qr_code_scanner,
+                          label: 'Scanner',
+                          onTap: _scanBarcode,
+                        ),
+                        _buildActionChip(
+                          icon: Icons.keyboard,
+                          label: 'Eingabe',
+                          onTap: _showBarcodeInputDialog,
+                        ),
                       ],
                     ),
-                  ),
+
+                    const SizedBox(height: 16),
+
+                    // Preis/Bestand bearbeiten Card
+                    _buildMobileActionCard(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.grey[100]!,
+                          Colors.grey[200]!,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderColor: Colors.grey[400],
+                      contentColor: Colors.grey[800]!,
+                      icon: getAdaptiveIcon(
+                        iconName: 'edit',
+                        defaultIcon: Icons.edit,
+                        color: Colors.grey[800],
+                        size: 36,
+                      ),
+                      title: 'Produkt',
+                      subtitle: 'Preis / Bestand bearbeiten',
+                      onTap: _showEditBarcodeInputDialog,
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Zwei Cards nebeneinander
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildMobileCompactCard(
+                            color: const Color(0xFF0F4A29).withOpacity(0.8),
+                            icon: getAdaptiveIcon(
+                              iconName: 'add_circle',
+                              defaultIcon: Icons.add_circle,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                            title: 'Neues Produkt',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => AddProductScreen(
+                                    editMode: false,
+                                    isProduction: true,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildMobileCompactCard(
+                            color: Colors.grey[600]!,
+                            icon: getAdaptiveIcon(
+                              iconName: 'forest',
+                              defaultIcon: Icons.forest,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                            title: 'Rundholz',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const RoundwoodEntryScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
           ],
         ),
-              ),
-          );
-        },
+      ),
     );
   }
+
+// Hilfsmethode für große Action Cards
+  Widget _buildMobileActionCard({
+    required Gradient gradient,
+    required Widget icon,
+    required String title,
+    required String subtitle,
+    List<Widget>? actions,
+    VoidCallback? onTap,
+    Color? borderColor,
+    Color contentColor = Colors.white,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(20),
+        border: borderColor != null ? Border.all(color: borderColor, width: 1) : null,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: contentColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: icon,
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: contentColor,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitle,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: contentColor.withOpacity(0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (actions != null && actions.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  Container(
+                    height: 1,
+                    color: contentColor.withOpacity(0.2),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: actions,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+// Hilfsmethode für Action Chips innerhalb der Cards
+  Widget _buildActionChip({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F4A29).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: const Color(0xFF0F4A29).withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: const Color(0xFF0F4A29),
+              size: 24,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF0F4A29),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+// Hilfsmethode für kompakte Cards
+  Widget _buildMobileCompactCard({
+    required Color color,
+    required Widget icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      height: 120,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.3),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: icon,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+
 
   @override
   void dispose() {

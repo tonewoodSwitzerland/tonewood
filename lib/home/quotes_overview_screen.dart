@@ -10,7 +10,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../components/order_service.dart';
 import '../components/quote_model.dart';
 // Oben bei den Imports ergänzen:
+import '../services/additional_text_manager.dart';
 import '../services/icon_helper.dart';
+import '../services/pdf_generators/invoice_generator.dart';
+import '../services/preview_pdf_viewer_screen.dart';
 
 
 // Zentrale Farbdefinitionen für Angebote
@@ -57,6 +60,16 @@ extension QuoteViewStatusExtension on QuoteViewStatus {
   }
 }
 
+double _convertPrice(double priceInCHF, Quote quote) {
+  final currency = quote.metadata['currency'] ?? 'CHF';
+  if (currency == 'CHF') return priceInCHF;
+
+  final exchangeRates = quote.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
+  final rate = (exchangeRates[currency] as num?)?.toDouble() ?? 1.0;
+  return priceInCHF * rate;
+}
+
+
 class QuotesOverviewScreen extends StatefulWidget {
   const QuotesOverviewScreen({Key? key}) : super(key: key);
 
@@ -99,11 +112,13 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
             },
             itemBuilder: (context) => [
               if (_filterStatus != null)
-                const PopupMenuItem(
+                 PopupMenuItem(
                   value: 'clear_all',
                   child: Row(
                     children: [
-                      Icon(Icons.clear, size: 20),
+                      getAdaptiveIcon(
+                          iconName: 'clear',
+                          defaultIcon:Icons.clear, size: 20),
                       SizedBox(width: 8),
                       Text('Filter zurücksetzen'),
                     ],
@@ -150,10 +165,13 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                 prefixIcon: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                  icon: const Icon(Icons.clear, size: 20),
+                  icon:  getAdaptiveIcon(
+                      iconName: 'clear',
+                      defaultIcon:Icons.clear, size: 20),
                   onPressed: () {
                     setState(() {
-                      _searchController.clear();
+                     _searchController.clear();
+
                       _searchQuery = '';
                     });
                   },
@@ -222,8 +240,10 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.description_outlined,
+                        getAdaptiveIcon(
+                          iconName: 'description',
+                          defaultIcon:
+                          Icons.description,
                           size: 48,
                           color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
                         ),
@@ -286,6 +306,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                   'Offen',
                   openQuotes.toString(),
                   Icons.schedule,
+                  'schedule',
                   QuoteColors.open,
                 ),
               ),
@@ -295,6 +316,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                   'Abgelaufen',
                   expiredQuotes.toString(),
                   Icons.timer_off,
+                  'timer_off',
                   QuoteColors.expired,
                 ),
               ),
@@ -305,7 +327,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
     );
   }
 
-  Widget _buildCompactStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildCompactStatCard(String title, String value, IconData icon,String iconName, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -315,7 +337,9 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
       ),
       child: Row(
         children: [
-          Icon(icon, color: color, size: 20),
+          getAdaptiveIcon(
+              iconName: iconName,
+              defaultIcon:icon, color: color, size: 20),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -429,8 +453,10 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                   Expanded(
                     child: Row(
                       children: [
-                        Icon(
-                            Icons.business_outlined,
+                        getAdaptiveIcon(
+                            iconName: 'business',
+                            defaultIcon:
+                            Icons.business,
                             size: 14,
                             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)
                         ),
@@ -454,7 +480,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      'CHF ${quote.calculations['total'].toStringAsFixed(2)}',
+                      '${quote.metadata['currency']} ${_convertPrice((quote.calculations['total'] as num).toDouble(), quote).toStringAsFixed(2)}',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -470,8 +496,10 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
               // Dritte Zeile: Gültigkeit
               Row(
                 children: [
-                  Icon(
-                    Icons.timer_outlined,
+                  getAdaptiveIcon(
+                    iconName: 'timer',
+                    defaultIcon:
+                    Icons.timer,
                     size: 12,
                     color: viewStatus == QuoteViewStatus.expired
                         ? QuoteColors.expired
@@ -498,14 +526,16 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                 children: [
                   if (viewStatus == QuoteViewStatus.open) ...[
                     _buildCompactActionButton(
-                      icon: Icons.shopping_cart_outlined,
+                      icon: Icons.shopping_cart,
+                      iconName:'shopping_cart',
                       onPressed: () => _convertToOrder(quote),
                       tooltip: 'Beauftragen',
                       color: QuoteColors.accepted,
                     ),
                     const SizedBox(width: 4),
                     _buildCompactActionButton(
-                      icon: Icons.cancel_outlined,
+                      icon: Icons.cancel,
+                      iconName:'cancel',
                       onPressed: () => _rejectQuote(quote),
                       tooltip: 'Ablehnen',
                       color: QuoteColors.rejected,
@@ -514,18 +544,22 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                   ],
                   _buildCompactActionButton(
                     icon: Icons.history,
+                    iconName:'history',
                     onPressed: () => _showQuoteHistory(quote),
                     tooltip: 'Verlauf',
                   ),
                   const SizedBox(width: 4),
                   _buildCompactActionButton(
-                    icon: Icons.picture_as_pdf_outlined,
+                    icon: Icons.picture_as_pdf,
+                    iconName:'picture_as_pdf',
                     onPressed: () => _viewQuotePdf(quote),
                     tooltip: 'PDF anzeigen',
                   ),
                   const SizedBox(width: 4),
                   _buildCompactActionButton(
-                    icon: Icons.share_outlined,
+                    icon: Icons.share,
+                    iconName:'share',
+
                     onPressed: () => _shareQuote(quote),
                     tooltip: 'Teilen',
                   ),
@@ -540,6 +574,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
 
   Widget _buildCompactActionButton({
     required IconData icon,
+    required String iconName,
     required VoidCallback onPressed,
     required String tooltip,
     Color? color,
@@ -553,7 +588,9 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
           message: tooltip,
           child: Container(
             padding: const EdgeInsets.all(8),
-            child: Icon(
+            child:  getAdaptiveIcon(
+              iconName: iconName,
+              defaultIcon:
               icon,
               size: 18,
               color: color ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
@@ -673,9 +710,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
 
                     const SizedBox(height: 20),
 
-                    // Ersetze den Artikel-Bereich in der _showQuoteDetails Methode:
 
-// Artikel
                     Text(
                       'Artikel',
                       style: TextStyle(
@@ -686,10 +721,12 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                     ),
                     const SizedBox(height: 12),
                     ...quote.items.map((item) {
-                      final quantity = item['quantity'] ?? 0;
-                      final pricePerUnit = item['price_per_unit'] ?? 0;
+                      final quantity = (item['quantity'] as num? ?? 0).toDouble();
+                      final pricePerUnit = (item['price_per_unit'] as num?)?.toDouble() ?? 0.0;
                       final total = item['total'] ?? (quantity * pricePerUnit);
                       final hasDiscount = (item['discount_amount'] ?? 0) > 0;
+                      final isGratisartikel = item['is_gratisartikel'] == true;
+                      final proformaValue = (item['proforma_value'] as num?)?.toDouble();
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: 12),
@@ -748,19 +785,40 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                                           ),
                                         ),
                                         // Gesamtpreis prominent rechts
+
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                           decoration: BoxDecoration(
-                                            color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                                            color: isGratisartikel
+                                                ? Colors.green.withOpacity(0.1)
+                                                : Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
                                             borderRadius: BorderRadius.circular(8),
                                           ),
-                                          child: Text(
-                                            'CHF ${total.toStringAsFixed(2)}',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 16,
-                                              color: Theme.of(context).colorScheme.primary,
-                                            ),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.end,
+                                            children: [
+                                              Text(
+                                                isGratisartikel
+                                                    ? 'GRATIS'
+                                                    : '${quote.metadata['currency']} ${_convertPrice((quote.calculations['total'] as num).toDouble(), quote).toStringAsFixed(2)}',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 16,
+                                                  color: isGratisartikel
+                                                      ? Colors.green[700]
+                                                      : Theme.of(context).colorScheme.primary,
+                                                ),
+                                              ),
+                                              if (isGratisartikel && proformaValue != null)
+                                                Text(
+                                                  'Pro-forma: ${quote.metadata['currency']} ${_convertPrice(proformaValue, quote).toStringAsFixed(2)}',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    color: Colors.green[600],
+                                                    fontStyle: FontStyle.italic,
+                                                  ),
+                                                ),
+                                            ],
                                           ),
                                         ),
                                       ],
@@ -781,11 +839,14 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                                           Expanded(
                                             child: Row(
                                               children: [
-                                                Icon(
-                                                  Icons.inventory_2_outlined,
+                                                getAdaptiveIcon(
+                                                  iconName: 'inventory',
+                                                  defaultIcon: Icons.inventory,
                                                   size: 16,
                                                   color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                                                 ),
+
+
                                                 const SizedBox(width: 6),
                                                 Text(
                                                   '$quantity ${item['unit'] ?? 'Stk'}',
@@ -807,15 +868,23 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                                             child: Row(
                                               mainAxisAlignment: MainAxisAlignment.center,
                                               children: [
-                                                Icon(
+                                                getAdaptiveIcon(
+                                                  iconName: 'attach_money',
+                                                  defaultIcon:
                                                   Icons.attach_money,
                                                   size: 16,
                                                   color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                                                 ),
                                                 const SizedBox(width: 6),
                                                 Text(
-                                                  'CHF ${pricePerUnit.toStringAsFixed(2)}',
-                                                  style: const TextStyle(fontSize: 13),
+                                                  isGratisartikel
+                                                      ? 'GRATIS'
+                                                      : '${quote.metadata['currency']} ${_convertPrice(pricePerUnit, quote).toStringAsFixed(2)}',
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    color: isGratisartikel ? Colors.green[700] : null,
+                                                    fontWeight: isGratisartikel ? FontWeight.w500 : null,
+                                                  ),
                                                 ),
                                               ],
                                             ),
@@ -841,8 +910,10 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                                                     child: Row(
                                                       mainAxisSize: MainAxisSize.min,
                                                       children: [
-                                                        Icon(
-                                                          Icons.discount_outlined,
+                                                        getAdaptiveIcon(
+                                                          iconName: 'discount',
+                                                          defaultIcon:
+                                                          Icons.discount,
                                                           size: 14,
                                                           color: Colors.green[700],
                                                         ),
@@ -871,7 +942,9 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                                       const SizedBox(height: 8),
                                       Row(
                                         children: [
-                                          Icon(
+                                          getAdaptiveIcon(
+                                            iconName: 'straighten',
+                                            defaultIcon:
                                             Icons.straighten,
                                             size: 14,
                                             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
@@ -1002,7 +1075,9 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               child: Row(
                 children: [
-                  const Icon(Icons.history),
+                  getAdaptiveIcon(
+                      iconName: 'history',
+                      defaultIcon:Icons.history),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -1014,7 +1089,9 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon:  getAdaptiveIcon(
+                        iconName: 'close',
+                        defaultIcon:Icons.close),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -1046,7 +1123,8 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                       // Letzter Eintrag ist immer die Erstellung
                       if (index == historyEntries.length) {
                         return _buildHistoryEntry(
-                          icon: Icons.add_circle_outline,
+                          icon: Icons.add_circle,
+                          iconName:'add_circle',
                           color: Colors.green,
                           title: 'Angebot erstellt',
                           subtitle: 'Initiale Erstellung des Angebots',
@@ -1063,6 +1141,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
 
                       // Bestimme Icon und Farbe basierend auf der Aktion
                       IconData icon;
+                      String iconName;
                       Color color;
                       String title;
                       String subtitle;
@@ -1070,30 +1149,36 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                       switch (action) {
                         case 'status_change':
                           icon = Icons.swap_horiz;
+                          iconName='swap_horiz';
                           color = _getStatusColorFromString(changes['new_value'] ?? '');
                           title = 'Status geändert';
                           subtitle = '${changes['old_display'] ?? 'Unbekannt'} → ${changes['new_display'] ?? 'Unbekannt'}';
                           break;
                         case 'converted_to_order':
                           icon = Icons.shopping_cart;
+                          iconName='shopping_cart';
                           color = QuoteColors.accepted;
                           title = 'In Auftrag umgewandelt';
                           subtitle = 'Auftragsnummer: ${data['order_number'] ?? 'Unbekannt'}';
                           break;
                         case 'pdf_viewed':
                           icon = Icons.picture_as_pdf;
+                          iconName='picture_as_pdf';
                           color = Colors.blue;
                           title = 'PDF angezeigt';
                           subtitle = 'Angebots-PDF wurde geöffnet';
                           break;
                         case 'shared':
                           icon = Icons.share;
+                          iconName='share';
                           color = Colors.purple;
                           title = 'Angebot geteilt';
                           subtitle = 'Angebot wurde weitergeleitet';
                           break;
                         default:
-                          icon = Icons.info_outline;
+                          icon = Icons.info;
+                          iconName='info';
+
                           color = Colors.grey;
                           title = 'Änderung';
                           subtitle = action;
@@ -1101,6 +1186,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
 
                       return _buildHistoryEntry(
                         icon: icon,
+                        iconName: iconName,
                         color: color,
                         title: title,
                         subtitle: subtitle,
@@ -1120,6 +1206,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
 
   Widget _buildHistoryEntry({
     required IconData icon,
+    required String iconName,
     required Color color,
     required String title,
     required String subtitle,
@@ -1142,7 +1229,9 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
               shape: BoxShape.circle,
               border: Border.all(color: color.withOpacity(0.3), width: 2),
             ),
-            child: Icon(icon, color: color, size: 20),
+            child: getAdaptiveIcon(
+                iconName: iconName,
+                defaultIcon:icon, color: color, size: 20),
           ),
           const SizedBox(width: 16),
           // Content
@@ -1180,8 +1269,10 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Icon(
-                      Icons.person_outline,
+                    getAdaptiveIcon(
+                      iconName: 'person',
+                      defaultIcon:
+                      Icons.person,
                       size: 14,
                       color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                     ),
@@ -1232,6 +1323,18 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
   }
 
   Future<void> _convertToOrder(Quote quote) async {
+    // Zeige zuerst das Konfigurationsdialog
+    final configResult = await showModalBottomSheet<Map<String, dynamic>?>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _OrderConfigurationSheet(quote: quote),
+    );
+
+    // Wenn abgebrochen wurde
+    if (configResult == null) return;
+
+    // Bestätigungs-Dialog
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1254,7 +1357,9 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.info, color: QuoteColors.accepted, size: 20),
+                      getAdaptiveIcon(
+                          iconName: 'info',
+                          defaultIcon:Icons.info, color: QuoteColors.accepted, size: 20),
                       const SizedBox(width: 8),
                       const Text(
                         'Was passiert:',
@@ -1267,7 +1372,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                     '• Ein neuer Auftrag wird erstellt\n'
                         '• Das Angebot wird als "Angenommen" markiert\n'
                         '• Lagerbestände werden reserviert\n'
-                        '• Dokumente müssen im Auftragsmenü erstellt werden!',
+                        '• Die Rechnung wird mit Ihren Einstellungen erstellt',
                     style: TextStyle(fontSize: 12),
                   ),
                 ],
@@ -1303,11 +1408,14 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
           ),
         );
 
-        // Erstelle Auftrag aus Angebot
-        final order = await OrderService.createOrderFromQuote(quote.id);
+        // Erstelle Auftrag aus Angebot MIT den Konfigurationen
+        final order = await OrderService.createOrderFromQuoteWithConfig(
+          quote.id,
+          configResult['additionalTexts'] as Map<String, dynamic>,
+          configResult['invoiceSettings'] as Map<String, dynamic>,
+        );
 
         // History Entry wird automatisch durch OrderService erstellt
-        // Zusätzlicher History Entry für UI
         final user = FirebaseAuth.instance.currentUser;
         await FirebaseFirestore.instance
             .collection('quotes')
@@ -1317,7 +1425,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
           'timestamp': FieldValue.serverTimestamp(),
           'user_id': user?.uid ?? 'unknown',
           'user_email': user?.email ?? 'Unknown User',
-          'user_name': user?.displayName ?? user?.email?.split('@')[0] ?? 'Unknown',
+          'user_name': user?.email ?? 'Unknown',
           'action': 'converted_to_order',
           'order_number': order.orderNumber,
         });
@@ -1332,7 +1440,6 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
               behavior: SnackBarBehavior.floating,
               margin: const EdgeInsets.all(8),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-
             ),
           );
         }
@@ -1442,7 +1549,9 @@ Status: ${_getViewStatus(quote).displayName}
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.warning, color: QuoteColors.rejected, size: 20),
+                      getAdaptiveIcon(
+                          iconName: 'warning',
+                          defaultIcon:Icons.warning, color: QuoteColors.rejected, size: 20),
                       const SizedBox(width: 8),
                       const Text(
                         'Was passiert:',
@@ -1529,7 +1638,7 @@ Status: ${_getViewStatus(quote).displayName}
           'timestamp': FieldValue.serverTimestamp(),
           'user_id': user?.uid ?? 'unknown',
           'user_email': user?.email ?? 'Unknown User',
-          'user_name': user?.displayName ?? user?.email?.split('@')[0] ?? 'Unknown',
+          'user_name': user?.email ?? 'Unknown',
           'action': 'status_change',
           'changes': {
             'field': 'status',
@@ -1604,7 +1713,7 @@ Status: ${_getViewStatus(quote).displayName}
         'timestamp': FieldValue.serverTimestamp(),
         'user_id': user?.uid ?? 'unknown',
         'user_email': user?.email ?? 'Unknown User',
-        'user_name': user?.displayName ?? user?.email?.split('@')[0] ?? 'Unknown',
+        'user_name': user?.email ?? 'Unknown',
         'action': action,
       });
     } catch (e) {
@@ -1616,6 +1725,636 @@ Status: ${_getViewStatus(quote).displayName}
   @override
   void dispose() {
     _searchController.dispose();
+    super.dispose();
+  }
+}
+
+class _OrderConfigurationSheet extends StatefulWidget {
+  final Quote quote;
+
+  const _OrderConfigurationSheet({required this.quote});
+
+  @override
+  State<_OrderConfigurationSheet> createState() => _OrderConfigurationSheetState();
+}
+
+class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
+  final ValueNotifier<bool> _additionalTextsSelectedNotifier = ValueNotifier<bool>(false);
+  Map<String, dynamic> _invoiceSettings = {
+    'down_payment_amount': 0.0,
+    'down_payment_reference': '',
+    'down_payment_date': null,
+  };
+
+  final _downPaymentController = TextEditingController();
+  final _referenceController = TextEditingController();
+  DateTime? _downPaymentDate;
+  bool _isDownPaymentExpanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAdditionalTexts();
+  }
+
+  Future<void> _checkAdditionalTexts() async {
+    final hasTexts = await AdditionalTextsManager.hasTextsSelected();
+    _additionalTextsSelectedNotifier.value = hasTexts;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          // Drag Handle
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.outline.withOpacity(0.4),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.settings,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Auftragseinstellungen',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      Text(
+                        'Angebot ${widget.quote.quoteNumber}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(),
+
+          // Content
+
+
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Alle weiteren Dokumente werden im Auftragsbereich erstellt',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),),
+                  // Zusatztexte Section mit bestehender Logik
+                  const SizedBox(height: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        onTap: () {
+                          showAdditionalTextsBottomSheet(
+                            context,
+                            textsSelectedNotifier: _additionalTextsSelectedNotifier,
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.text_fields,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Zusatztexte konfigurieren',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Theme.of(context).colorScheme.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    ValueListenableBuilder<bool>(
+                                      valueListenable: _additionalTextsSelectedNotifier,
+                                      builder: (context, hasTexts, child) {
+                                        return Text(
+                                          hasTexts
+                                              ? 'Zusatztexte ausgewählt'
+                                              : 'Keine Zusatztexte ausgewählt',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: hasTexts
+                                                ? Colors.green[700]
+                                                : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                Icons.arrow_forward_ios,
+                                size: 16,
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // Anzahlung Section
+                  Text(
+                    'Anzahlung (optional)',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Gesamtbetrag anzeigen
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Bruttobetrag',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+
+                        Text(
+                          '${widget.quote.metadata['currency']} ${_convertPrice(widget.quote.calculations['total'], widget.quote).toStringAsFixed(2)}',
+
+
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Anzahlungsbetrag
+                  TextField(
+                    controller: _downPaymentController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: 'Anzahlung (${widget.quote.metadata['currency']})',
+                      prefixIcon: const Icon(Icons.payments),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      helperText: 'Betrag der bereits geleisteten Anzahlung',
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        _invoiceSettings['down_payment_amount'] = double.tryParse(value) ?? 0.0;
+                      });
+                    },
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Belegnummer/Notiz
+                  TextField(
+                    controller: _referenceController,
+                    decoration: InputDecoration(
+                      labelText: 'Belegnummer / Notiz',
+                      prefixIcon: const Icon(Icons.description),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      helperText: 'z.B. Anzahlung AR-2025-0004 vom 15.05.2025',
+                    ),
+                    onChanged: (value) {
+                      _invoiceSettings['down_payment_reference'] = value;
+                    },
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Datum der Anzahlung
+                  InkWell(
+                    onTap: () async {
+                      final DateTime? picked = await showDatePicker(
+                        context: context,
+                        initialDate: _downPaymentDate ?? DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now(),
+                        locale: const Locale('de', 'DE'),
+                      );
+                      if (picked != null) {
+                        setState(() {
+                          _downPaymentDate = picked;
+                          _invoiceSettings['down_payment_date'] = picked;
+                        });
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.calendar_today),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Datum der Anzahlung',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                Text(
+                                  _downPaymentDate != null
+                                      ? DateFormat('dd.MM.yyyy').format(_downPaymentDate!)
+                                      : 'Datum auswählen',
+                                  style: const TextStyle(fontSize: 16),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (_downPaymentDate != null)
+                            IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                setState(() {
+                                  _downPaymentDate = null;
+                                  _invoiceSettings['down_payment_date'] = null;
+                                });
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+
+
+
+                  // Vorschau der Anzahlung
+                  if (_invoiceSettings['down_payment_amount'] > 0) ...[
+                    const SizedBox(height: 24),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Bruttobetrag:'),
+                              Text('${widget.quote.metadata['currency']} ${_convertPrice(widget.quote.calculations['total'], widget.quote).toStringAsFixed(2)}'),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Anzahlung:'),
+                              Text(
+                                '- ${widget.quote.metadata['currency']} ${_invoiceSettings['down_payment_amount'].toStringAsFixed(2)}',
+                                style: const TextStyle(color: Colors.red),
+                              ),
+                            ],
+                          ),
+                          const Divider(),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Restbetrag:',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                '${widget.quote.metadata['currency']} ${(_convertPrice(widget.quote.calculations['total'], widget.quote) - _invoiceSettings['down_payment_amount']).toStringAsFixed(2)}',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          // NEU: Vorschau-Button
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Center(
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  try {
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (dialogContext) => const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+
+                    final additionalTexts = await AdditionalTextsManager.loadAdditionalTexts();
+                    print('✓ additionalTexts geladen');
+
+                    final previewInvoiceSettings = {
+                      'down_payment_amount': double.tryParse(_downPaymentController.text) ?? 0.0,
+                      'down_payment_reference': _referenceController.text,
+                      'down_payment_date': _downPaymentDate,
+                    };
+                    print('✓ previewInvoiceSettings erstellt');
+
+                    final rawExchangeRates = widget.quote.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
+                    final exchangeRates = <String, double>{
+                      'CHF': 1.0,
+                    };
+                    rawExchangeRates.forEach((key, value) {
+                      if (value != null) {
+                        exchangeRates[key] = (value as num).toDouble();
+                      }
+                    });
+                    print('✓ exchangeRates konvertiert');
+
+                    // Sichere Konvertierung aller numerischen Werte
+                    final safeCalculations = <String, dynamic>{};
+                    widget.quote.calculations.forEach((key, value) {
+                      if (value is num) {
+                        safeCalculations[key] = value.toDouble();
+                      } else {
+                        safeCalculations[key] = value;
+                      }
+                    });
+                    print('✓ safeCalculations konvertiert');
+
+                    print('→ Rufe InvoiceGenerator.generateInvoicePdf auf...');
+
+                    final pdfBytes = await InvoiceGenerator.generateInvoicePdf(
+                      items: widget.quote.items,
+                      customerData: widget.quote.customer,
+                      fairData: widget.quote.fair,
+                      costCenterCode: widget.quote.costCenter?['code'] ?? '00000',
+                      currency: widget.quote.metadata['currency'] ?? 'CHF',
+                      exchangeRates: exchangeRates,
+                      language: widget.quote.customer['language'] ?? 'DE',
+                      invoiceNumber: 'PREVIEW',
+                      quoteNumber: widget.quote.quoteNumber,
+                      shippingCosts: widget.quote.metadata['shippingCosts'] as Map<String, dynamic>?,
+                      calculations: safeCalculations,
+                      paymentTermDays: 30,
+                      taxOption: widget.quote.metadata['taxOption'] ?? 0,
+                      vatRate: (widget.quote.metadata['vatRate'] as num?)?.toDouble() ?? 8.1,
+                      downPaymentSettings: previewInvoiceSettings,
+                      additionalTexts: additionalTexts,
+                    );
+
+                    print('✓ PDF erfolgreich generiert');
+
+                    if (mounted) {
+                      Navigator.pop(context);
+
+                      await showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (bottomSheetContext) => Container(
+                          height: MediaQuery.of(context).size.height * 0.95,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).scaffoldBackgroundColor,
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                          ),
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 4,
+                                margin: const EdgeInsets.symmetric(vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.outline.withOpacity(0.4),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.picture_as_pdf,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        'Rechnung Vorschau',
+                                        style: Theme.of(context).textTheme.titleLarge,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.close),
+                                      onPressed: () => Navigator.pop(bottomSheetContext),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Divider(),
+                              Expanded(
+                                child: PreviewPDFViewerScreen(
+                                  pdfBytes: pdfBytes,
+                                  title: 'Rechnung Vorschau',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                  } catch (e, stackTrace) {
+                    print('Fehler bei der Vorschau:');
+                    print('Error: $e');
+                    print('StackTrace:\n$stackTrace');
+
+                    if (mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Fehler: $e'),
+                          backgroundColor: Colors.red,
+                          behavior: SnackBarBehavior.floating,
+                          margin: const EdgeInsets.all(8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.visibility),
+                label: const Text('Rechnung Vorschau'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Actions
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -5),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Abbrechen'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      // Lade die aktuellen Zusatztexte
+                      final additionalTexts = await AdditionalTextsManager.loadAdditionalTexts();
+
+                      Navigator.pop(context, {
+                        'additionalTexts': additionalTexts,
+                        'invoiceSettings': _invoiceSettings,
+                      });
+                    },
+                    child: const Text('Weiter'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _downPaymentController.dispose();
+    _referenceController.dispose();
+    _additionalTextsSelectedNotifier.dispose();
     super.dispose();
   }
 }

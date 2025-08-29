@@ -42,8 +42,9 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.inventory_2_outlined,
+                  getAdaptiveIcon(
+                    iconName: 'inventory',
+                    defaultIcon: Icons.inventory,
                     size: 64,
                     color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
                   ),
@@ -79,7 +80,9 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showPackageDialog(null, null),
-        child: const Icon(Icons.add),
+        child:  getAdaptiveIcon(
+            iconName: 'add',
+            defaultIcon:Icons.add),
         tooltip: 'Neues Standardpaket',
       ),
     );
@@ -101,8 +104,9 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
             color: Theme.of(context).colorScheme.primaryContainer,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(
-            Icons.inventory_2,
+          child:  getAdaptiveIcon(
+            iconName: 'inventory',
+            defaultIcon: Icons.inventory,
             color: Theme.of(context).colorScheme.primary,
           ),
         ),
@@ -116,7 +120,9 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
             const SizedBox(height: 4),
             Row(
               children: [
-                Icon(Icons.straighten, size: 14, color: Colors.grey[600]),
+                getAdaptiveIcon(
+                    iconName: 'straighten',
+                    defaultIcon:Icons.straighten, size: 14, color: Colors.grey[600]),
                 const SizedBox(width: 4),
                 Text(
                   '${length.toStringAsFixed(1)} × ${width.toStringAsFixed(1)} × ${height.toStringAsFixed(1)} cm',
@@ -127,7 +133,9 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
             const SizedBox(height: 2),
             Row(
               children: [
-                Icon(Icons.scale, size: 14, color: Colors.grey[600]),
+                getAdaptiveIcon(
+                    iconName: 'scale',
+                    defaultIcon:Icons.scale, size: 14, color: Colors.grey[600]),
                 const SizedBox(width: 4),
                 Text(
                   '${weight.toStringAsFixed(2)} kg',
@@ -143,12 +151,16 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-              icon: const Icon(Icons.edit, size: 20),
+              icon:  getAdaptiveIcon(
+                  iconName: 'edit',
+                  defaultIcon:Icons.edit, size: 20),
               onPressed: () => _showPackageDialog(packageId, data),
               tooltip: 'Bearbeiten',
             ),
             IconButton(
-              icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+              icon:  getAdaptiveIcon(
+                  iconName: 'delete',
+                  defaultIcon:Icons.delete, size: 20, color: Colors.red),
               onPressed: () => _showDeleteConfirmation(packageId, data['name']),
               tooltip: 'Löschen',
             ),
@@ -317,8 +329,10 @@ class _PackageDialogState extends State<PackageDialog> {
                   color: Theme.of(context).colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(
-                  Icons.inventory_2,
+                child:  getAdaptiveIcon(
+                  iconName: 'inventory',
+                  defaultIcon:
+                  Icons.inventory,
                   color: Theme.of(context).colorScheme.primary,
                 ),
               ),
@@ -330,7 +344,9 @@ class _PackageDialogState extends State<PackageDialog> {
               const Spacer(),
               IconButton(
                 onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close),
+                icon:  getAdaptiveIcon(
+                    iconName: 'close',
+                    defaultIcon:Icons.close),
               ),
             ],
           ),
@@ -353,7 +369,9 @@ class _PackageDialogState extends State<PackageDialog> {
                     decoration: InputDecoration(
                       labelText: 'Paketname *',
                       hintText: 'z.B. Kartonschachtel Klein',
-                      prefixIcon: const Icon(Icons.label),
+                      prefixIcon:  getAdaptiveIcon(
+                          iconName:  'label',
+                          defaultIcon:Icons.label),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -373,7 +391,9 @@ class _PackageDialogState extends State<PackageDialog> {
                     decoration: InputDecoration(
                       labelText: 'Package name (English) *',
                       hintText: 'e.g. Small Cardboard Box',
-                      prefixIcon: const Icon(Icons.translate),
+                      prefixIcon:  getAdaptiveIcon(
+                          iconName: 'translate',
+                          defaultIcon:Icons.translate),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -393,7 +413,9 @@ class _PackageDialogState extends State<PackageDialog> {
                     decoration: InputDecoration(
                       labelText: 'Beschreibung (optional)',
                       hintText: 'z.B. Für kleine Bauteile',
-                      prefixIcon: const Icon(Icons.description),
+                      prefixIcon:  getAdaptiveIcon(
+                          iconName: 'description',
+                          defaultIcon:Icons.description),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -421,7 +443,9 @@ class _PackageDialogState extends State<PackageDialog> {
                           controller: _lengthController,
                           decoration: InputDecoration(
                             labelText: 'Länge (cm) *',
-                            prefixIcon: const Icon(Icons.straighten),
+                            prefixIcon:  getAdaptiveIcon(
+                                iconName: 'straighten',
+                                defaultIcon:Icons.straighten),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -449,7 +473,9 @@ class _PackageDialogState extends State<PackageDialog> {
                           controller: _widthController,
                           decoration: InputDecoration(
                             labelText: 'Breite (cm) *',
-                            prefixIcon: const Icon(Icons.swap_horiz),
+                            prefixIcon:  getAdaptiveIcon(
+                                iconName: 'swap_horiz',
+                                defaultIcon:Icons.swap_horiz),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -477,7 +503,9 @@ class _PackageDialogState extends State<PackageDialog> {
                           controller: _heightController,
                           decoration: InputDecoration(
                             labelText: 'Höhe (cm) *',
-                            prefixIcon: const Icon(Icons.height),
+                            prefixIcon: getAdaptiveIcon(
+                                iconName: 'height',
+                                defaultIcon:Icons.height),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -518,7 +546,9 @@ class _PackageDialogState extends State<PackageDialog> {
                     decoration: InputDecoration(
                       labelText: 'Leergewicht (kg) *',
                       hintText: 'Gewicht der leeren Verpackung',
-                      prefixIcon: const Icon(Icons.scale),
+                      prefixIcon:  getAdaptiveIcon(
+                          iconName: 'scale',
+                          defaultIcon:Icons.scale),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -552,7 +582,9 @@ class _PackageDialogState extends State<PackageDialog> {
                     ),
                     child: Row(
                       children: [
-                        Icon(
+                        getAdaptiveIcon(
+                          iconName: 'square_foot',
+                          defaultIcon:
                           Icons.square_foot,
                           color: Theme.of(context).colorScheme.primary,
                         ),
@@ -613,7 +645,9 @@ class _PackageDialogState extends State<PackageDialog> {
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: _save,
-                  icon: const Icon(Icons.save),
+                  icon: getAdaptiveIcon(
+                      iconName: 'save',
+                      defaultIcon:Icons.save),
                   label: const Text('Speichern'),
                 ),
               ),

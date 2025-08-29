@@ -142,7 +142,7 @@ class SalesPdfService {
                 sale['receipt_number'] ?? '-',
                 customer['company'],
                 '${items.length} Artikel',
-                items.fold<int>(0, (sum, item) => sum + (item['quantity'] as int)),
+                items.fold<double>(0, (sum, item) => sum + (item['quantity'] as double)),
                 NumberFormat('#,##0.00').format(calculations['net_amount']),
                 NumberFormat('#,##0.00').format(calculations['vat_amount']),
                 NumberFormat('#,##0.00').format(calculations['total']),

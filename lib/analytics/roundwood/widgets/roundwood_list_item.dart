@@ -201,7 +201,7 @@ class RoundwoodListItem extends StatelessWidget {
           Row(
             children: [
               Icon(
-                Icons.info_outline,
+                Icons.info,
                 size: 12,
                 color: theme.colorScheme.onSurfaceVariant,
               ),

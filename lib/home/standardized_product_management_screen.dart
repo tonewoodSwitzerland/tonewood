@@ -318,8 +318,8 @@ class StandardizedProductManagementScreenState extends State<StandardizedProduct
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   getAdaptiveIcon(
-                    iconName: 'inventory_2',
-                    defaultIcon: Icons.inventory_2,
+                    iconName: 'inventory',
+                    defaultIcon: Icons.inventory,
                     size: 48,
                     color: Colors.grey,
                   ),
@@ -949,7 +949,7 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
                   _buildSectionHeader(
                     context,
                     'Grunddaten',
-                    Icons.info_outline,
+                    Icons.info,
                   ),
                   const SizedBox(height: 16),
 

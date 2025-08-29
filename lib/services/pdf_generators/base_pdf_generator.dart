@@ -8,12 +8,24 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 abstract class BasePdfGenerator {
   // Gemeinsame Formatierungslogik
-  static String formatCurrency(double amount, String currency, Map<String, double> exchangeRates) {
-    double convertedAmount = amount;
-    if (currency != 'CHF') {
-      convertedAmount = amount * exchangeRates[currency]!;
+  static String formatCurrency(dynamic amount, String currency, Map<String, double> exchangeRates) {
+    // Konvertiere sicher zu double
+    double doubleAmount = 0.0;
+    if (amount != null) {
+      if (amount is num) {
+        doubleAmount = amount.toDouble();
+      } else if (amount is String) {
+        doubleAmount = double.tryParse(amount) ?? 0.0;
+      }
     }
-    return '${convertedAmount.toStringAsFixed(2)} $currency';
+
+    // Konvertiere Währung
+    double convertedAmount = doubleAmount;
+    if (currency != 'CHF' && exchangeRates.containsKey(currency)) {
+      convertedAmount = doubleAmount * (exchangeRates[currency] ?? 1.0);
+    }
+
+    return '$currency ${convertedAmount.toStringAsFixed(2)}';
   }
 
   // Gemeinsame Header-Erstellung
