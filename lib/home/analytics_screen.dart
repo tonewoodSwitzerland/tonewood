@@ -44,6 +44,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
   List<String> selectedPurposeCodes = []; // Für die ausgewählten Verwendungszwecke
   final TextEditingController additionalPurposeController = TextEditingController();
 
+  bool _roundwoodSortAscending = true; // Standard: aufsteigend nach Stammnummer
   String selectedMainSection = 'roundwood'; // 'roundwood' oder 'sales'
   String selectedRoundwoodSection = 'list'; // 'list' oder 'analysis'
   String selectedTimeRange = 'month';
@@ -1803,6 +1804,18 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                 ),
                 const Spacer(),
                 IconButton(
+                  icon: Icon(_roundwoodSortAscending ? Icons.arrow_upward : Icons.arrow_downward),
+                  tooltip: _roundwoodSortAscending
+                      ? 'Stammnummer aufsteigend'
+                      : 'Stammnummer absteigend',
+                  onPressed: () {
+                    setState(() {
+                      _roundwoodSortAscending = !_roundwoodSortAscending;
+                    });
+                  },
+                ),
+                const Spacer(),
+                IconButton(
                   onPressed: () async {
                     final pdfBytes = await _generateRoundwoodPdf(
                         await _getFilteredRoundwoodData()
@@ -1851,7 +1864,23 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final roundwoods = snapshot.data!.docs;
+                // HIER ERSETZEN: Liste kopieren und nach internal_number (= Stammnummer) sortieren
+                final roundwoods = snapshot.data!.docs.toList();
+
+                roundwoods.sort((a, b) {
+                  final am = a.data() as Map<String, dynamic>;
+                  final bm = b.data() as Map<String, dynamic>;
+
+                  // 'internal_number' = Stammnummer (falls bei dir anders benannt, hier anpassen)
+                  final aiRaw = am['internal_number'];
+                  final biRaw = bm['internal_number'];
+
+                  // robust in Zahl umwandeln (falls als String gespeichert)
+                  final ai = aiRaw is num ? aiRaw.toInt() : int.tryParse(aiRaw?.toString() ?? '') ?? 0;
+                  final bi = biRaw is num ? biRaw.toInt() : int.tryParse(biRaw?.toString() ?? '') ?? 0;
+
+                  return _roundwoodSortAscending ? ai.compareTo(bi) : bi.compareTo(ai);
+                });
 
                 return ListView.builder(
                   itemCount: roundwoods.length,
@@ -2890,7 +2919,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
     // Content basierend auf Hauptbereich und ausgewähltem Tab
     if (selectedMainSection == 'roundwood') {
       switch (selectedTab) {
+
         case 'list':
+          print("yuyu");
           return _buildRoundwoodList();
         case 'analysis':
           return _buildRoundwoodSection();

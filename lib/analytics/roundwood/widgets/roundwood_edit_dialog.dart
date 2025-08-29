@@ -9,11 +9,12 @@ import '../models/roundwood_models.dart';
 class RoundwoodEditDialog extends StatefulWidget {
   final RoundwoodItem item;
   final bool isDesktopLayout;
-
+  final bool readOnly;
   const RoundwoodEditDialog({
     Key? key,
     required this.item,
     required this.isDesktopLayout,
+    this.readOnly = false, // Standard: bearbeitbar
   }) : super(key: key);
 
   @override
@@ -53,147 +54,173 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      child: Container(
-        width: MediaQuery.of(context).size.width * 0.9,
-        constraints: BoxConstraints(
-          maxWidth: widget.isDesktopLayout ? 800 : 600,
-          maxHeight: MediaQuery.of(context).size.height * 0.9,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.1),
-                    spreadRadius: 1,
-                    blurRadius: 3,
-                    offset: const Offset(0, 1),
+    return DraggableScrollableSheet(
+        initialChildSize: 0.95,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              children: [
+                // Drag Handle
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0F4A29).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.forest,
-                      color: Color(0xFF0F4A29),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Rundholz ${widget.item.internalNumber}',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF0F4A29),
-                          ),
+                ),
+
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F4A29).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        if (widget.item.woodName != null)
-                          Text(
-                            widget.item.woodName!,
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 14,
+                        child: const Icon(
+                          Icons.forest,
+                          color: Color(0xFF0F4A29),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Rundholz ${widget.item.internalNumber}',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0F4A29),
+                              ),
                             ),
-                          ),
+                            if (widget.item.woodName != null)
+                              Text(
+                                widget.item.woodName!,
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 14,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ), // Nach dem Header:
+
+                      IconButton(
+                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                        onPressed: () => Navigator.of(context).pop(),
+                        color: Colors.grey[600],
+                      ),
+                    ],
+                  ),
+                ),
+                if (widget.readOnly)
+                  Container(
+                    margin: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue[200]!),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.lock, color: Colors.blue[700], size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Nur-Lesen-Modus',
+                          style: TextStyle(color: Colors.blue[700]),
+                        ),
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
-                    onPressed: () => Navigator.of(context).pop(),
-                    color: Colors.grey[600],
-                  ),
-                ],
-              ),
-            ),
-
             // Content
-            Flexible(
+           Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
-                child: Form(
-                  key: formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Identifikation Section
-                      _buildDetailSection(
-                        title: 'Identifikation',
-                        icon: Icons.badge,
-                        content: Column(
-                          children: [
-                            _buildNumberInfo(),
-                            const SizedBox(height: 16),
-                            _buildWoodTypeSelection(),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Eigenschaften Section
-                      _buildDetailSection(
-                        title: 'Eigenschaften',
-                        icon: Icons.category,
-                        content: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildPurposeSection(),
-                            const SizedBox(height: 16),
-                            _buildMoonwoodSwitch(),
-                            const SizedBox(height: 16),
-                            _buildVolumeInput(),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Zusätzliche Informationen Section
-                      _buildDetailSection(
-                        title: 'Zusätzliche Informationen',
-                        icon: Icons.info,
-                        content: Column(
-                          children: [
-                            _buildQualitySelection(),
-                            const SizedBox(height: 16),
-                            _buildDatePicker(),
-                            const SizedBox(height: 16),
-                            _buildColorSelection(),
-                            const SizedBox(height: 16),
-                            _buildRemarksInput(),
-                          ],
-                        ),
-                      ),
-                      Center(
-                        child: TextButton.icon(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          label: const Text('Löschen'),
-                          onPressed: _confirmDelete,
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.red,
+                child: AbsorbPointer(
+                  absorbing: widget.readOnly,
+                  child: Form(
+                    key: formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Identifikation Section
+                        _buildDetailSection(
+                          title: 'Identifikation',
+                          icon: Icons.badge,
+                          content: Column(
+                            children: [
+                              _buildNumberInfo(),
+                              const SizedBox(height: 16),
+                              _buildWoodTypeSelection(),
+                            ],
                           ),
                         ),
-                      ),
-                    ],
+
+                        const SizedBox(height: 24),
+
+                        // Eigenschaften Section
+                        _buildDetailSection(
+                          title: 'Eigenschaften',
+                          icon: Icons.category,
+                          content: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildPurposeSection(),
+                              const SizedBox(height: 16),
+                              _buildMoonwoodSwitch(),
+                              const SizedBox(height: 16),
+
+                              _buildFSCSwitch(),
+                              const SizedBox(height: 16),
+                              _buildVolumeInput(),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Zusätzliche Informationen Section
+                        _buildDetailSection(
+                          title: 'Zusätzliche Informationen',
+                          icon: Icons.info,
+                          content: Column(
+                            children: [
+                              _buildQualitySelection(),
+                              const SizedBox(height: 16),
+                              _buildDatePicker(),
+                              const SizedBox(height: 16),
+                              _buildColorSelection(),
+                              const SizedBox(height: 16),
+                              _buildRemarksInput(),
+                            ],
+                          ),
+                        ),
+                        Center(
+                          child: TextButton.icon(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            label: const Text('Löschen'),
+                            onPressed: _confirmDelete,
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.red,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -227,9 +254,10 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                 ],
               ),
             )
-          ],
-        ),
-      ),
+              ],
+            ),
+          );
+        },
     );
   }
 
@@ -271,47 +299,74 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
   }
 
   Widget _buildNumberInfo() {
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Interne Nummer',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
-                ),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Interne Nummer',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.item.internalNumber,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                widget.item.internalNumber,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Original Nummer',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.item.originalNumber ?? 'Keine',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.blue[50],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.blue[200]!),
+          ),
+          child: Row(
             children: [
+              Icon(Icons.calendar_month, color: Colors.blue[700], size: 20),
+              const SizedBox(width: 8),
               Text(
-                'Original Nummer',
+                'Jahrgang: ${editedData['year'] ?? DateTime.now().year}',
                 style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                widget.item.originalNumber ?? 'Keine',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                  color: Colors.blue[700],
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
                 ),
               ),
             ],
@@ -572,7 +627,20 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
       contentPadding: EdgeInsets.zero,
     );
   }
-
+  Widget _buildFSCSwitch() {
+    return SwitchListTile(
+      title: const Text('FSC-zertifiziert'),
+      value: editedData['is_fsc'] ?? false,
+      onChanged: (value) {
+        setState(() {
+          editedData['is_fsc'] = value;
+        });
+      },
+      secondary: const Icon(Icons.eco, color: Color(0xFF0F4A29)),
+      activeColor: const Color(0xFF0F4A29),
+      contentPadding: EdgeInsets.zero,
+    );
+  }
   Widget _buildQualitySelection() {
     return FutureBuilder<QuerySnapshot>(
       future: FirebaseFirestore.instance.collection('qualities').get(),

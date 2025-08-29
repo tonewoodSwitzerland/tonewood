@@ -38,6 +38,7 @@ class RoundwoodList extends StatefulWidget {
 }
 
 class RoundwoodListState extends State<RoundwoodList> {
+  bool   _roundwoodSortAscending=false;
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -84,18 +85,69 @@ class RoundwoodListState extends State<RoundwoodList> {
                   ),
                 );
               }
+              final sortedDocs = roundwoods.toList()
+                ..sort((a, b) {
+                  final am = a.data() as Map<String, dynamic>;
+                  final bm = b.data() as Map<String, dynamic>;
 
-              return ListView.builder(
-                itemCount: roundwoods.length,
-                itemBuilder: (context, index) {
-                  final item = RoundwoodItem.fromFirestore(roundwoods[index]);
-                  return RoundwoodListItem(
-                    item: item,
-                    onTap: () => _showEditDialog(item),
-                    isDesktopLayout: widget.isDesktopLayout,
-                  );
-                },
+                  final aiRaw = am['internal_number'];
+                  final biRaw = bm['internal_number'];
+                  final ai = aiRaw is num ? aiRaw.toInt() : int.tryParse(aiRaw?.toString() ?? '') ?? 0;
+                  final bi = biRaw is num ? biRaw.toInt() : int.tryParse(biRaw?.toString() ?? '') ?? 0;
+
+                  return _roundwoodSortAscending ? ai.compareTo(bi) : bi.compareTo(ai);
+                });
+
+              return Column(
+                children: [
+                  // Toolbar oberhalb der Liste
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Row(
+                      children: [
+                        const Text(
+                          "Sortierung",
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                        const Spacer(),
+
+                        // Sortier-Button im IconButton-Stil
+                        IconButton(
+                          tooltip: _roundwoodSortAscending
+                              ? 'Stammnummer aufsteigend'
+                              : 'Stammnummer absteigend',
+                          icon: Icon(
+                            _roundwoodSortAscending
+                                ? Icons.arrow_upward
+                                : Icons.arrow_downward,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _roundwoodSortAscending = !_roundwoodSortAscending;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Die eigentliche Liste
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: sortedDocs.length,
+                      itemBuilder: (context, index) {
+                        final item = RoundwoodItem.fromFirestore(sortedDocs[index]);
+                        return RoundwoodListItem(
+                          item: item,
+                          onTap: () => _showEditDialog(item),
+                          isDesktopLayout: widget.isDesktopLayout,
+                        );
+                      },
+                    ),
+                  ),
+                ],
               );
+
             },
           ),
         ),
@@ -174,16 +226,21 @@ class RoundwoodListState extends State<RoundwoodList> {
   }
 
   void _showEditDialog(RoundwoodItem item) async {
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) => RoundwoodEditDialog(
         item: item,
         isDesktopLayout: widget.isDesktopLayout,
+        readOnly: true,
       ),
     );
 
-    if (result != null) {
-      await widget.service.updateRoundwood(item.id, result);
+    if (result != null && result['action'] == 'update') {
+      await widget.service.updateRoundwood(item.id, result['data']);
+    } else if (result != null && result['action'] == 'delete') {
+      // Handle delete if needed
     }
   }
 

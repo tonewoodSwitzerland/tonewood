@@ -6,6 +6,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:tonewood/home/production_screen.dart';
 import 'package:tonewood/home/roundwood_entry_screen.dart';
 import 'package:tonewood/home/warehouse_screen.dart';
+import '../analytics/roundwood/models/roundwood_models.dart';
+import '../analytics/roundwood/roundwood_list.dart';
+import '../analytics/roundwood/services/roundwood_service.dart';
 import '../constants.dart';
 import '../services/icon_helper.dart';
 import 'add_product_screen.dart';
@@ -1651,8 +1654,8 @@ print("sB:$searchBarcode");
                     _buildActionButton(
                       iconName: 'forest',
                       icon: Icons.forest,
-                      title: 'Einschnitt Rundholz',
-                      subtitle: 'Rundholz erfassen und bearbeiten',
+                      title: 'Rundholz',
+                      subtitle: 'Rundholz verwalten',
                       onTap: () => setState(() => selectedAction = 'rundholz'),
                       isSelected: selectedAction == 'rundholz',
                     ),
@@ -1750,7 +1753,7 @@ print("sB:$searchBarcode");
       case 'bearbeiten':
         return _buildBearbeitenPanel();
       case 'rundholz':
-        return RoundwoodEntryScreen();
+        return _buildRundholzManagementPanel();
       default:
         return const Center(
           child: Text('Bitte wähle eine Aktion aus'),
@@ -1885,12 +1888,223 @@ print("sB:$searchBarcode");
   }
 
 
-  ////TODO weitermachen.
-  //Product screen sieht scheiße AUS
-  //Kompletttes umbhcuhen von pRODUKTIONSRPODUKT fehlt noch die firebase erlaubnis
+  Widget _buildRundholzManagementPanel() {
+    return Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Rundholz',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF0F4A29),
+                  ),
+                ),
+                IconButton(
+                  icon: getAdaptiveIcon(
+                    iconName: 'help',
+                    defaultIcon: Icons.help,
+                    color: Colors.grey[600],
+                  ),
+                  onPressed: () {
+                    // Show help dialog
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Was möchtest du tun?',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Wähle eine der folgenden Optionen',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isWideScreen = constraints.maxWidth > 800;
 
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildOptionButton(
+                              icon: getAdaptiveIcon(
+                                iconName: 'add_circle',
+                                defaultIcon: Icons.add_circle,
+                                color: Colors.white,
+                              ),
+                              label: 'Neues Rundholz',
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const RoundwoodEntryScreen(),
+                                  ),
+                                );
+                              },
+                              isWideScreen: isWideScreen,
+                              color: const Color(0xFF0F4A29),
+                            ),
+                            SizedBox(width: isWideScreen ? 48 : 24),
+                            _buildOptionButton(
+                              icon: getAdaptiveIcon(
+                                iconName: 'edit',
+                                defaultIcon: Icons.edit,
+                                color: Colors.white,
+                              ),
+                              label: 'Rundholz bearbeiten',
+                              onPressed: _showRoundwoodListDialog,
+                              isWideScreen: isWideScreen,
+                              color: const Color(0xFF0F4A29).withOpacity(0.8),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 32),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0F4A29).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF0F4A29).withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          getAdaptiveIcon(
+                            iconName: 'info',
+                            defaultIcon: Icons.info,
+                            color: const Color(0xFF0F4A29),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Hier kannst du Rundholz erfassen und bearbeiten. Wähle "Neues Rundholz" für einen neuen Eintrag oder "Rundholz bearbeiten" um bestehende Einträge zu verwalten.',
+                              style: TextStyle(
+                                color: const Color(0xFF0F4A29),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ));
+    }
 
-
+  void _showRoundwoodListDialog() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.9,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
+            children: [
+              // Drag Handle
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // Header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Colors.grey[200]!,
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    getAdaptiveIcon(
+                      iconName: 'forest',
+                      defaultIcon: Icons.forest,
+                      color: const Color(0xFF0F4A29),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Rundholz bearbeiten',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F4A29),
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: getAdaptiveIcon(
+                        iconName: 'close',
+                        defaultIcon: Icons.close,
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      color: Colors.grey[600],
+                    ),
+                  ],
+                ),
+              ),
+              // RoundwoodList
+              Expanded(
+                child: RoundwoodList(
+                  showHeaderActions: true,
+                  filter: RoundwoodFilter(),
+                  onFilterChanged: (filter) {
+                    // Handle filter changes if needed
+                  },
+                  service: RoundwoodService(),
+                  isDesktopLayout: false,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
 // Verbesserte Methode für die Option-Buttons
   Widget _buildOptionButton({
@@ -2505,135 +2719,131 @@ print("sB:$searchBarcode");
 
   Widget _buildMobileLayout() {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  getAdaptiveIcon(
-                    iconName: 'inventory',
-                    defaultIcon: Icons.inventory,
-                    color: const Color(0xFF0F4A29),
-                    size: 32,
-                  ),
-                  const SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+        backgroundColor: Colors.grey[50],
+        body: SafeArea(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+
+              // // Header bleibt unverändert
+              // Container(
+              //   padding: const EdgeInsets.all(24),
+              //   decoration: BoxDecoration(
+              //     color: Colors.white,
+              //     boxShadow: [
+              //       BoxShadow(
+              //         color: Colors.black.withOpacity(0.05),
+              //         blurRadius: 10,
+              //         offset: const Offset(0, 2),
+              //       ),
+              //     ],
+              //   ),
+              //   child: Row(
+              //     children: [
+              //       getAdaptiveIcon(
+              //         iconName: 'inventory',
+              //         defaultIcon: Icons.inventory,
+              //         color: const Color(0xFF0F4A29),
+              //         size: 32,
+              //       ),
+              //       const SizedBox(width: 16),
+              //       Column(
+              //         crossAxisAlignment: CrossAxisAlignment.center,
+              //         children: [
+              //           const Text(
+              //             'Produktverwaltung',
+              //             style: TextStyle(
+              //               fontSize: 24,
+              //               fontWeight: FontWeight.bold,
+              //               color: Color(0xFF0F4A29),
+              //             ),
+              //           ),
+              //         ],
+              //       ),
+              //     ],
+              //   ),
+              // ),
+
+              // Content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
                     children: [
-                      const Text(
-                        'Produktverwaltung',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF0F4A29),
+                      // Produktion Card - bleibt wie sie war
+                      _buildMobileActionCard(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.grey[100]!,
+                            Colors.grey[200]!,
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                      ),
-
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            // Content
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    // Produktion buchen Card
-                    _buildMobileActionCard(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.grey[100]!,
-                          Colors.grey[200]!,
+                        borderColor: const Color(0xFF0F4A29).withOpacity(0.3),
+                        contentColor: const Color(0xFF0F4A29),
+                        icon: getAdaptiveIcon(
+                          iconName: 'precision_manufacturing',
+                          defaultIcon: Icons.precision_manufacturing,
+                          color: const Color(0xFF0F4A29),
+                          size: 36,
+                        ),
+                        title: 'Produktion',
+                        subtitle: 'Produktion buchen / ändern',
+                        actions: [
+                          _buildActionChip(
+                            icon: Icons.search,
+                            label: 'Suchen',
+                            onTap: _showProductionDialog,
+                            width:100,  // Feste Breite
+                          ),
+                          _buildActionChip(
+                            icon: Icons.qr_code_scanner,
+                            label: 'Scanner',
+                            onTap: _scanBarcode,
+                            width:100,  // Feste Breite
+                          ),
+                          _buildActionChip(
+                            icon: Icons.keyboard,
+                            label: 'Eingabe',
+                            onTap: _showBarcodeInputDialog,
+                            width:100,  // Feste Breite
+                          ),
                         ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
                       ),
-                      borderColor: const Color(0xFF0F4A29).withOpacity(0.3),
-                      contentColor: const Color(0xFF0F4A29),
-                      icon: getAdaptiveIcon(
-                        iconName: 'precision_manufacturing',
-                        defaultIcon: Icons.precision_manufacturing,
-                        color: const Color(0xFF0F4A29),
-                        size: 36,
-                      ),
-                      title: 'Produktion',
-                      subtitle: 'Produktion buchen / ändern',
-                      actions: [
-                        _buildActionChip(
-                          icon: Icons.search,
-                          label: 'Suchen',
-                          onTap: _showProductionDialog,
+
+                      const SizedBox(height: 16),
+
+                      // Produkt Card - gleiche Farben wie Produktion
+                      _buildMobileActionCard(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.grey[100]!,
+                            Colors.grey[200]!,
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                        _buildActionChip(
-                          icon: Icons.qr_code_scanner,
-                          label: 'Scanner',
-                          onTap: _scanBarcode,
+                        borderColor: const Color(0xFF0F4A29).withOpacity(0.3),
+                        contentColor: const Color(0xFF0F4A29),
+                        icon: getAdaptiveIcon(
+                          iconName: 'inventory_2',
+                          defaultIcon: Icons.inventory_2,
+                          color: const Color(0xFF0F4A29),
+                          size: 36,
                         ),
-                        _buildActionChip(
-                          icon: Icons.keyboard,
-                          label: 'Eingabe',
-                          onTap: _showBarcodeInputDialog,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Preis/Bestand bearbeiten Card
-                    _buildMobileActionCard(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.grey[100]!,
-                          Colors.grey[200]!,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderColor: Colors.grey[400],
-                      contentColor: Colors.grey[800]!,
-                      icon: getAdaptiveIcon(
-                        iconName: 'edit',
-                        defaultIcon: Icons.edit,
-                        color: Colors.grey[800],
-                        size: 36,
-                      ),
-                      title: 'Produkt',
-                      subtitle: 'Preis / Bestand bearbeiten',
-                      onTap: _showEditBarcodeInputDialog,
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Zwei Cards nebeneinander
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildMobileCompactCard(
-                            color: const Color(0xFF0F4A29).withOpacity(0.8),
-                            icon: getAdaptiveIcon(
-                              iconName: 'add_circle',
-                              defaultIcon: Icons.add_circle,
-                              color: Colors.white,
-                              size: 32,
-                            ),
-                            title: 'Neues Produkt',
+                        title: 'Produkt',
+                        subtitle: 'Preis / Bestand bearbeiten',
+                        actions: [
+                          _buildActionChip(
+                            icon: Icons.edit,
+                            label: 'Bearbeiten',
+                            onTap: _showEditBarcodeInputDialog,
+                            width:100,  // Feste Breite
+                          ),
+                          _buildActionChip(
+                            icon: Icons.add,
+                            label: 'Neu',
                             onTap: () {
                               Navigator.push(
                                 context,
@@ -2645,19 +2855,37 @@ print("sB:$searchBarcode");
                                 ),
                               );
                             },
+                            width:100,  // Feste Breite
                           ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Rundholz Card - gleiche Farben wie die anderen
+                      _buildMobileActionCard(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.grey[100]!,
+                            Colors.grey[200]!,
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildMobileCompactCard(
-                            color: Colors.grey[600]!,
-                            icon: getAdaptiveIcon(
-                              iconName: 'forest',
-                              defaultIcon: Icons.forest,
-                              color: Colors.white,
-                              size: 32,
-                            ),
-                            title: 'Rundholz',
+                        borderColor: const Color(0xFF0F4A29).withOpacity(0.3),
+                        contentColor: const Color(0xFF0F4A29),
+                        icon: getAdaptiveIcon(
+                          iconName: 'forest',
+                          defaultIcon: Icons.forest,
+                          color: const Color(0xFF0F4A29),
+                          size: 36,
+                        ),
+                        title: 'Rundholz',
+                        subtitle: 'Rundholz verwalten',
+                        actions: [
+                          _buildActionChip(
+                            icon: Icons.add,
+                            label: 'Neu',
                             onTap: () {
                               Navigator.push(
                                 context,
@@ -2666,19 +2894,24 @@ print("sB:$searchBarcode");
                                 ),
                               );
                             },
+                            width:100,  // Feste Breite
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                          _buildActionChip(
+                            icon: Icons.edit,
+                            label: 'Bearbeiten',
+                            onTap: _showRoundwoodListDialog,
+                            width:100,  // Feste Breite
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+            ],
+          ),
+        ));
+    }
 
 // Hilfsmethode für große Action Cards
   Widget _buildMobileActionCard({
@@ -2737,14 +2970,14 @@ print("sB:$searchBarcode");
                               color: contentColor,
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            subtitle,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: contentColor.withOpacity(0.7),
-                            ),
-                          ),
+                          // const SizedBox(height: 4),
+                          // Text(
+                          //   subtitle,
+                          //   style: TextStyle(
+                          //     fontSize: 14,
+                          //     color: contentColor.withOpacity(0.7),
+                          //   ),
+                          // ),
                         ],
                       ),
                     ),
@@ -2775,38 +3008,45 @@ print("sB:$searchBarcode");
     required IconData icon,
     required String label,
     required VoidCallback onTap,
+    double? width,
+    Color? chipColor,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0F4A29).withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: const Color(0xFF0F4A29).withOpacity(0.3),
-            width: 1,
+    final color = chipColor ?? const Color(0xFF0F4A29);
+
+    return SizedBox(
+      width: width ?? 80, // Feste Breite für einheitliches Layout
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: color.withOpacity(0.3),
+              width: 1,
+            ),
           ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: const Color(0xFF0F4A29),
-              size: 24,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xFF0F4A29),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: color,
+                size: 24,
               ),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

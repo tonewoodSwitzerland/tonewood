@@ -3,12 +3,18 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../components/country_dropdown_widget.dart';
 import '../services/customer.dart';
 import '../services/customer_export_service.dart';
 import '../services/icon_helper.dart';
 
 import 'package:intl/intl.dart';
+
+import 'customer_filter_dialog.dart';
+import 'customer_filter_favorite_sheet.dart';
+import 'customer_filter_service.dart';
+import 'customer_label_print_screen.dart';
 
 
 /// Zentrale Klasse für alle Kundenfunktionen
@@ -2441,6 +2447,10 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
   Timer? _debounce;
   String _lastSearchTerm = '';
 
+
+
+
+
   @override
   void initState() {
     super.initState();
@@ -2939,22 +2949,25 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
   Timer? _debounce;
   String _lastSearchTerm = '';
   List<Customer> _allLoadedCustomers = [];
-
+// Filter-bezogene Variablen
+  Map<String, dynamic> _activeFilters = CustomerFilterService.createEmptyFilter();
+  StreamSubscription<Map<String, dynamic>>? _filterSubscription;
+  bool _isFilteredDataLoading = false;
   @override
   void initState() {
     super.initState();
+    _loadFilters(); // NEU
     _loadInitialCustomers();
 
-    // Add listener for scroll events
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 &&
           !_isLoading &&
-          _hasMore) {
+          _hasMore &&
+          !CustomerFilterService.hasActiveFilters(_activeFilters)) { // NEU: Check für aktive Filter
         _loadMoreCustomers();
       }
     });
 
-    // Add listener for search input with debounce
     searchController.addListener(_onSearchChanged);
   }
   void _onSearchChanged() {
@@ -2978,7 +2991,144 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       }
     });
   }
+  void _loadFilters() {
+    _filterSubscription = CustomerFilterService.loadSavedFilters().listen((filters) {
+      if (mounted) {
+        setState(() {
+          _activeFilters = filters;
+          searchController.text = filters['searchText'] ?? '';
+        });
+        _applyFilters();
+      }
+    });
+  }
 
+  Future<void> _applyFilters() async {
+    if (!CustomerFilterService.hasActiveFilters(_activeFilters)) {
+      // Wenn keine Filter aktiv sind, lade normale Daten
+      _loadInitialCustomers();
+      return;
+    }
+
+    setState(() {
+      _isFilteredDataLoading = true;
+    });
+
+    try {
+      // Lade alle Kunden für die Filterung
+      final allCustomersSnapshot = await FirebaseFirestore.instance
+          .collection('customers')
+          .get();
+
+      final allCustomers = allCustomersSnapshot.docs
+          .map((doc) => {
+        ...doc.data() as Map<String, dynamic>,
+        'id': doc.id,
+      })
+          .toList();
+
+      // Wende Filter an
+      final filteredCustomers = await CustomerFilterService.applyClientSideFilters(
+        allCustomers,
+        _activeFilters,
+      );
+
+      // Konvertiere zurück zu DocumentSnapshots für die Anzeige
+      setState(() {
+        _customerDocs = filteredCustomers.map((customerData) {
+          // Erstelle ein Mock-DocumentSnapshot
+          return _MockDocumentSnapshot(customerData);
+        }).toList();
+        _hasMore = false; // Bei gefilterten Daten kein weiteres Laden
+        _isFilteredDataLoading = false;
+      });
+    } catch (e) {
+      print('Fehler beim Anwenden der Filter: $e');
+      setState(() {
+        _isFilteredDataLoading = false;
+      });
+    }
+  }
+
+  void _showFilterDialog() {
+    CustomerFilterDialog.show(
+      context,
+      currentFilters: _activeFilters,
+      onApply: (filters) {
+        setState(() {
+          _activeFilters = filters;
+        });
+        CustomerFilterService.saveFilters(filters);
+      },
+    );
+  }
+
+  void _showFilterFavorites() {
+    CustomerFilterFavoritesSheet.show(
+      context,
+      onFavoriteSelected: (favoriteData) {
+        setState(() {
+          _activeFilters = Map<String, dynamic>.from(favoriteData['filters']);
+          searchController.text = _activeFilters['searchText'] ?? '';
+        });
+        CustomerFilterService.saveFilters(_activeFilters);
+      },
+      onCreateNew: () => _saveCurrentFilterAsFavorite(),
+    );
+  }
+
+  Future<void> _saveCurrentFilterAsFavorite() async {
+    final nameController = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Filter-Favorit speichern'),
+        content: TextField(
+          controller: nameController,
+          decoration: const InputDecoration(
+            labelText: 'Name für diesen Filter',
+            border: OutlineInputBorder(),
+            hintText: 'z.B. Premium-Kunden',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, nameController.text.trim()),
+            child: const Text('Speichern'),
+          ),
+        ],
+      ),
+    );
+
+    if (name != null && name.isNotEmpty) {
+      try {
+        await CustomerFilterService.saveFavorite(name, _activeFilters);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Filter-Favorit "$name" gespeichert'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Fehler beim Speichern: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
   void _performSearch() {
     setState(() {
       _isLoading = true;
@@ -3127,11 +3277,84 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kundenverwaltung'),
+        title: Row(
+          children: [
+            const Text('Kunden'),
+            // Nach dem Suchfeld
+            if (CustomerFilterService.hasActiveFilters(_activeFilters))
+              Container(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            Icon(Icons.filter_list, size: 16, color: Theme.of(context).colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Text(
+                              CustomerFilterService.getFilterSummary(_activeFilters),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        await CustomerFilterService.resetFilters();
+                      },
+                      child: const Text('Zurücksetzen', style: TextStyle(fontSize: 12)),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
         actions: [
+          IconButton(
+            icon: getAdaptiveIcon(iconName: 'print', defaultIcon: Icons.print),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const CustomerLabelPrintScreen(),
+                ),
+              );
+            },
+            tooltip: 'Adressetiketten drucken',
+          ),
           IconButton(
             icon: getAdaptiveIcon(iconName: 'download', defaultIcon: Icons.download),
             onPressed: () => CustomerExportService.exportCustomersCsv(context),
+          ),
+          // NEU: Filter-Button
+          IconButton(
+            icon: Badge(
+              isLabelVisible: CustomerFilterService.hasActiveFilters(_activeFilters),
+              label: const Text('!'),
+              child: getAdaptiveIcon(
+                iconName: 'filter_list',
+                defaultIcon: Icons.filter_list,
+              ),
+            ),
+            onPressed: _showFilterDialog,
+          ),
+          // NEU: Favoriten-Button
+          IconButton(
+            icon: getAdaptiveIcon(
+              iconName: 'star',
+              defaultIcon: Icons.star,
+              color: CustomerFilterService.hasActiveFilters(_activeFilters)
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+            ),
+            onPressed: _showFilterFavorites,
+            tooltip: 'Filter-Favoriten',
           ),
         ],
       ),
@@ -3139,28 +3362,213 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       body: Column(
         children: [
           // Suchfeld
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: TextFormField(
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: TextField(
               controller: searchController,
+              style: const TextStyle(fontSize: 14),
               decoration: InputDecoration(
-                labelText: 'Suchen',
-                prefixIcon: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
+                hintText: 'Suchen',
+                hintStyle: const TextStyle(fontSize: 14),
+                prefixIcon: getAdaptiveIcon(
+                  iconName: 'search',
+                  defaultIcon: Icons.search,
+                ),
                 suffixIcon: searchController.text.isNotEmpty
                     ? IconButton(
-                  icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear),
+                  icon: getAdaptiveIcon(
+                    iconName: 'clear',
+                    defaultIcon: Icons.clear,
+                    size: 20,
+                  ),
                   onPressed: () {
-                    searchController.clear();
+                    setState(() {
+                      searchController.clear();
+                    });
                   },
                 )
                     : null,
-                border: const OutlineInputBorder(),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
                 filled: true,
-                fillColor: Theme.of(context).colorScheme.surface,
+                fillColor: Theme.of(context)
+                    .colorScheme
+                    .surfaceVariant
+                    .withOpacity(0.5),
+                contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
             ),
           ),
+SizedBox(height:8),
+// Filter-Chips anzeigen
+          if (CustomerFilterService.hasActiveFilters(_activeFilters))
+            Container(
+              height: 40,
+              margin: const EdgeInsets.only(top: 0,),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  // Umsatz-Chip
+                  if (_activeFilters['minRevenue'] != null || _activeFilters['maxRevenue'] != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Chip(
+                        label: Text(
+                          'Umsatz: ${_activeFilters['minRevenue'] != null ? 'ab CHF ${_activeFilters['minRevenue']}' : ''}${_activeFilters['minRevenue'] != null && _activeFilters['maxRevenue'] != null ? ' - ' : ''}${_activeFilters['maxRevenue'] != null ? 'bis CHF ${_activeFilters['maxRevenue']}' : ''}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        deleteIcon: const Icon(Icons.close, size: 16),
+                        onDeleted: () {
+                          setState(() {
+                            _activeFilters['minRevenue'] = null;
+                            _activeFilters['maxRevenue'] = null;
+                          });
+                          CustomerFilterService.saveFilters(_activeFilters);
+                        },
+                      ),
+                    ),
 
+                  // Zeitraum-Chip
+                  if (_activeFilters['revenueStartDate'] != null || _activeFilters['revenueEndDate'] != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Chip(
+                        label: Text(
+                          'Zeitraum: ${_activeFilters['revenueStartDate'] != null ? DateFormat('dd.MM.yy').format(_activeFilters['revenueStartDate']) : ''}${_activeFilters['revenueStartDate'] != null && _activeFilters['revenueEndDate'] != null ? ' - ' : ''}${_activeFilters['revenueEndDate'] != null ? DateFormat('dd.MM.yy').format(_activeFilters['revenueEndDate']) : ''}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        deleteIcon: const Icon(Icons.close, size: 16),
+                        onDeleted: () {
+                          setState(() {
+                            _activeFilters['revenueStartDate'] = null;
+                            _activeFilters['revenueEndDate'] = null;
+                          });
+                          CustomerFilterService.saveFilters(_activeFilters);
+                        },
+                      ),
+                    ),
+
+                  // Aufträge-Chip
+                  if (_activeFilters['minOrderCount'] != null || _activeFilters['maxOrderCount'] != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Chip(
+                        label: Text(
+                          'Aufträge: ${_activeFilters['minOrderCount'] ?? ''}${_activeFilters['minOrderCount'] != null && _activeFilters['maxOrderCount'] != null ? '-' : ''}${_activeFilters['maxOrderCount'] ?? ''}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        deleteIcon: const Icon(Icons.close, size: 16),
+                        onDeleted: () {
+                          setState(() {
+                            _activeFilters['minOrderCount'] = null;
+                            _activeFilters['maxOrderCount'] = null;
+                          });
+                          CustomerFilterService.saveFilters(_activeFilters);
+                        },
+                      ),
+                    ),
+
+                  // Weihnachtskarte-Chip
+                  if (_activeFilters['wantsChristmasCard'] != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Chip(
+                        label: Text(
+                          'Weihnachtskarte: ${_activeFilters['wantsChristmasCard'] ? 'JA' : 'NEIN'}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        deleteIcon: const Icon(Icons.close, size: 16),
+                        onDeleted: () {
+                          setState(() {
+                            _activeFilters['wantsChristmasCard'] = null;
+                          });
+                          CustomerFilterService.saveFilters(_activeFilters);
+                        },
+                      ),
+                    ),
+
+                  // MwSt-Nummer-Chip
+                  if (_activeFilters['hasVatNumber'] != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Chip(
+                        label: Text(
+                          'MwSt-Nr: ${_activeFilters['hasVatNumber'] ? 'Vorhanden' : 'Fehlt'}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        deleteIcon: const Icon(Icons.close, size: 16),
+                        onDeleted: () {
+                          setState(() {
+                            _activeFilters['hasVatNumber'] = null;
+                          });
+                          CustomerFilterService.saveFilters(_activeFilters);
+                        },
+                      ),
+                    ),
+
+                  // EORI-Nummer-Chip
+                  if (_activeFilters['hasEoriNumber'] != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Chip(
+                        label: Text(
+                          'EORI-Nr: ${_activeFilters['hasEoriNumber'] ? 'Vorhanden' : 'Fehlt'}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        deleteIcon: const Icon(Icons.close, size: 16),
+                        onDeleted: () {
+                          setState(() {
+                            _activeFilters['hasEoriNumber'] = null;
+                          });
+                          CustomerFilterService.saveFilters(_activeFilters);
+                        },
+                      ),
+                    ),
+
+                  // Länder-Chip
+                  if ((_activeFilters['countries'] as List?)?.isNotEmpty == true)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Chip(
+                        label: Text(
+                          '${(_activeFilters['countries'] as List).length} Länder',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        deleteIcon: const Icon(Icons.close, size: 16),
+                        onDeleted: () {
+                          setState(() {
+                            _activeFilters['countries'] = [];
+                          });
+                          CustomerFilterService.saveFilters(_activeFilters);
+                        },
+                      ),
+                    ),
+
+                  // Sprachen-Chip
+                  if ((_activeFilters['languages'] as List?)?.isNotEmpty == true)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Chip(
+                        label: Text(
+                          '${(_activeFilters['languages'] as List).length} Sprachen',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        deleteIcon: const Icon(Icons.close, size: 16),
+                        onDeleted: () {
+                          setState(() {
+                            _activeFilters['languages'] = [];
+                          });
+                          CustomerFilterService.saveFilters(_activeFilters);
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
           // Search status
           if (_lastSearchTerm.isNotEmpty)
             Padding(
@@ -3290,6 +3698,7 @@ SizedBox(height: 8,),
         ],
       ),
       floatingActionButton: FloatingActionButton(
+
         onPressed: () async {
           final newCustomer = await CustomerSelectionSheet.showNewCustomerDialog(context);
           if (newCustomer != null) {
@@ -3639,11 +4048,12 @@ SizedBox(height: 8,),
     );
   }
 
-// Tab 2: Kaufhistorie
+// In der _buildPurchaseHistoryTab Methode, ersetze den StreamBuilder mit:
+
   Widget _buildPurchaseHistoryTab(BuildContext context, Customer customer) {
     return Column(
       children: [
-        // Statistiken-Header
+        // Statistiken-Header bleibt gleich
         FutureBuilder<Map<String, dynamic>>(
           future: _getCustomerStats(customer.id),
           builder: (context, snapshot) {
@@ -3656,49 +4066,74 @@ SizedBox(height: 8,),
                   color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Row(
+                child: Column(
                   children: [
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Text(
-                            '${stats['totalPurchases']}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(
+                                '${stats['totalQuotes']}',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const Text('Angebote'),
+                            ],
                           ),
-                          const Text('Käufe'),
-                        ],
-                      ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(
+                                '${stats['totalOrders']}',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const Text('Aufträge'),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(
+                                'CHF ${stats['totalSpent'].toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const Text('Gesamt'),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Text(
-                            '${stats['totalSpent'].toStringAsFixed(0)} CHF',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
+                    const SizedBox(height: 8),
+                    // Info-Text
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Alle Beträge in CHF (Basis-Währung)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontStyle: FontStyle.italic,
                           ),
-                          const Text('Gesamt'),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Text(
-                            '${stats['averageOrderValue'].toStringAsFixed(0)} CHF',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Text('Ø Bestellung'),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -3708,83 +4143,966 @@ SizedBox(height: 8,),
           },
         ),
 
-        // Kaufliste
+        // Tab-Ansicht für Angebote und Aufträge
         Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('sales_receipts')
-                .where('customer.id', isEqualTo: customer.id)
-                .orderBy('metadata.timestamp', descending: true)
-                .limit(50)
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+          child: DefaultTabController(
+            length: 2,
+            child: Column(
+              children: [
+                TabBar(
+                  tabs: [
+                    Tab(text: 'Aufträge'),
+                    Tab(text: 'Angebote'),
+                  ],
+                ),
+                Expanded(
+                  child: TabBarView(
                     children: [
-                      getAdaptiveIcon(iconName: 'error', defaultIcon: Icons.error, size: 48),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Fehler beim Laden der Kaufhistorie',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
+                      // Aufträge Tab
+                      _buildOrdersList(customer),
+                      // Angebote Tab
+                      _buildQuotesList(customer),
                     ],
                   ),
-                );
-              }
-
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              final purchases = snapshot.data?.docs ?? [];
-
-              if (purchases.isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      getAdaptiveIcon(iconName: 'shopping_bag_outlined', defaultIcon: Icons.shopping_bag_outlined, size: 48),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Noch keine Käufe',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.outline,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Dieser Kunde hat noch nichts gekauft',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.outline,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              return ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: purchases.length,
-                itemBuilder: (context, index) {
-                  final purchaseDoc = purchases[index];
-                  final purchase = purchaseDoc.data() as Map<String, dynamic>;
-                  return _buildPurchaseListTile(context, purchaseDoc.id, purchase);
-                },
-              );
-            },
+                ),
+              ],
+            ),
           ),
         ),
       ],
     );
   }
 
+// Neue Methode für Aufträge
+  Widget _buildOrdersList(Customer customer) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('orders')
+          .where('customer.id', isEqualTo: customer.id)
+          .orderBy('orderDate', descending: true)
+          .limit(50)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                getAdaptiveIcon(iconName: 'error', defaultIcon: Icons.error, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  'Fehler beim Laden der Aufträge',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final orders = snapshot.data?.docs ?? [];
+
+        if (orders.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                getAdaptiveIcon(iconName: 'shopping_bag_outlined', defaultIcon: Icons.shopping_bag_outlined, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  'Noch keine Aufträge',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.outline,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Dieser Kunde hat noch keine Aufträge',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: orders.length,
+          itemBuilder: (context, index) {
+            final orderDoc = orders[index];
+            final order = orderDoc.data() as Map<String, dynamic>;
+            return _buildOrderListTile(context, orderDoc.id, order);
+          },
+        );
+      },
+    );
+  }
+
+// Neue Methode für Angebote
+  Widget _buildQuotesList(Customer customer) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('quotes')
+          .where('customer.id', isEqualTo: customer.id)
+          .orderBy('createdAt', descending: true)
+          .limit(50)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                getAdaptiveIcon(iconName: 'error', defaultIcon: Icons.error, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  'Fehler beim Laden der Angebote',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final quotes = snapshot.data?.docs ?? [];
+
+        if (quotes.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                getAdaptiveIcon(iconName: 'description_outlined', defaultIcon: Icons.description_outlined, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  'Noch keine Angebote',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.outline,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Dieser Kunde hat noch keine Angebote erhalten',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: quotes.length,
+          itemBuilder: (context, index) {
+            final quoteDoc = quotes[index];
+            final quote = quoteDoc.data() as Map<String, dynamic>;
+            return _buildQuoteListTile(context, quoteDoc.id, quote);
+          },
+        );
+      },
+    );
+  }
+
+// Für Orders
+  Widget _buildOrderListTile(BuildContext context, String orderId, Map<String, dynamic> order) {
+    final calculations = order['calculations'] as Map<String, dynamic>? ?? {};
+    final items = order['items'] as List<dynamic>? ?? [];
+    final orderDate = (order['orderDate'] as Timestamp?)?.toDate() ?? DateTime.now();
+
+    // Der total ist in CHF gespeichert
+    final totalInCHF = (calculations['total'] as num?)?.toDouble() ?? 0;
+
+    // Hole Währung und Exchange Rates
+    final currency = order['metadata']?['currency'] ?? 'CHF';
+    final exchangeRates = order['metadata']?['exchangeRates'] as Map<String, dynamic>? ?? {};
+    final rate = (exchangeRates[currency] as num?)?.toDouble() ?? 1.0;
+
+    // Rechne um falls nicht CHF
+    final displayTotal = currency == 'CHF' ? totalInCHF : totalInCHF * rate;
+
+    final orderNumber = order['orderNumber'] as String? ?? orderId;
+    final status = order['status'] as String? ?? 'pending';
+    final paymentStatus = order['paymentStatus'] as String? ?? 'pending';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+          child: getAdaptiveIcon(iconName: 'shopping_bag', defaultIcon: Icons.shopping_bag),
+        ),
+        title: Text(
+          'Auftrag $orderNumber',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(DateFormat('dd.MM.yyyy HH:mm').format(orderDate)),
+            Text('${items.length} Artikel'),
+            Row(
+              children: [
+                _buildStatusChip(status),
+                const SizedBox(width: 8),
+                _buildPaymentStatusChip(paymentStatus),
+              ],
+            ),
+          ],
+        ),
+        trailing: Text(
+          '$currency ${displayTotal.toStringAsFixed(2)}',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        onTap: () => _showOrderDetails(context, orderId, order),
+      ),
+    );
+  }
+
+// Für Quotes
+  Widget _buildQuoteListTile(BuildContext context, String quoteId, Map<String, dynamic> quote) {
+    final calculations = quote['calculations'] as Map<String, dynamic>? ?? {};
+    final items = quote['items'] as List<dynamic>? ?? [];
+    final createdAt = (quote['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final validUntil = (quote['validUntil'] as Timestamp?)?.toDate() ?? DateTime.now();
+
+    // Der total ist in CHF gespeichert
+    final totalInCHF = (calculations['total'] as num?)?.toDouble() ?? 0;
+
+    // Hole Währung und Exchange Rates
+    final currency = quote['metadata']?['currency'] ?? 'CHF';
+    final exchangeRates = quote['metadata']?['exchangeRates'] as Map<String, dynamic>? ?? {};
+    final rate = (exchangeRates[currency] as num?)?.toDouble() ?? 1.0;
+
+    // Rechne um falls nicht CHF
+    final displayTotal = currency == 'CHF' ? totalInCHF : totalInCHF * rate;
+
+    final quoteNumber = quote['quoteNumber'] as String? ?? quoteId;
+    final status = quote['status'] as String? ?? 'open';
+
+    // Prüfe ob Angebot abgelaufen ist
+    final isExpired = validUntil.isBefore(DateTime.now());
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+          child: getAdaptiveIcon(iconName: 'description', defaultIcon: Icons.description),
+        ),
+        title: Text(
+          'Angebot $quoteNumber',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(DateFormat('dd.MM.yyyy').format(createdAt)),
+            Text('${items.length} Artikel'),
+            Row(
+              children: [
+                _buildQuoteStatusChip(status, isExpired),
+                const SizedBox(width: 8),
+                if (!isExpired && status == 'open')
+                  Text(
+                    'Gültig bis ${DateFormat('dd.MM.yyyy').format(validUntil)}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+        trailing: Text(
+          '$currency ${displayTotal.toStringAsFixed(2)}',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        onTap: () => _showQuoteDetails(context, quoteId, quote),
+      ),
+    );
+  }
+  void _showOrderDetails(BuildContext context, String orderId, Map<String, dynamic> order) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (bottomSheetContext) => Container(
+        height: MediaQuery.of(context).size.height * 0.6,
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // Drag Handle
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.outline.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  getAdaptiveIcon(iconName: 'shopping_bag', defaultIcon: Icons.shopping_bag),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Auftrag ${order['orderNumber']}',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          DateFormat('dd.MM.yyyy').format(
+                              (order['orderDate'] as Timestamp).toDate()
+                          ),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(bottomSheetContext),
+                    icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                  ),
+                ],
+              ),
+            ),
+
+            const Divider(),
+
+            // Dokumente Liste
+            Expanded(
+              child: (order['documents'] as Map<String, dynamic>?)?.isNotEmpty ?? false
+                  ? ListView(
+                padding: const EdgeInsets.all(16),
+                children: (order['documents'] as Map<String, dynamic>).entries.map((entry) {
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.red.withOpacity(0.1),
+                        child: const Icon(
+                          Icons.picture_as_pdf,
+                          color: Colors.red,
+                        ),
+                      ),
+                      title: Text(_getDocumentTypeName(entry.key)),
+                      trailing: IconButton(
+                        icon: getAdaptiveIcon(
+                          iconName: 'open_in_new',
+                          defaultIcon: Icons.open_in_new,
+                        ),
+                        onPressed: () => _openDocument(entry.value),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              )
+                  : Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    getAdaptiveIcon(
+                      iconName: 'description',
+                      defaultIcon: Icons.description,
+                      size: 48,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Keine Dokumente verfügbar',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getDocumentTypeName(String key) {
+    switch (key) {
+      case 'quote_pdf':
+        return 'Angebot';
+      case 'invoice_pdf':
+        return 'Rechnung';
+      case 'delivery_note_pdf':
+        return 'Lieferschein';
+      case 'commercial_invoice_pdf':
+        return 'Handelsrechnung';
+      case 'packing_list_pdf':
+        return 'Packliste';
+      case 'veranlagungsverfuegung_pdf':
+        return 'Veranlagungsverfügung';
+      default:
+        return key.replaceAll('_', ' ').replaceAll('-', ' ').toUpperCase();
+    }
+  }
+// Helper Widget für Order Status
+  Widget _buildOrderStatusCard(BuildContext context, String label, String status, IconData icon) {
+    Color color;
+    String text;
+
+    switch (status) {
+      case 'pending':
+        color = Colors.orange;
+        text = 'Ausstehend';
+        break;
+      case 'processing':
+        color = Colors.blue;
+        text = 'In Bearbeitung';
+        break;
+      case 'shipped':
+        color = Colors.purple;
+        text = 'Versendet';
+        break;
+      case 'delivered':
+        color = Colors.green;
+        text = 'Geliefert';
+        break;
+      case 'cancelled':
+        color = Colors.red;
+        text = 'Storniert';
+        break;
+      default:
+        color = Colors.grey;
+        text = status;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+          ),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+// Helper Widget für Payment Status
+  Widget _buildOrderPaymentStatusCard(BuildContext context, String label, String status, IconData icon) {
+    Color color;
+    String text;
+
+    switch (status) {
+      case 'pending':
+        color = Colors.orange;
+        text = 'Offen';
+        break;
+      case 'partial':
+        color = Colors.blue;
+        text = 'Teilzahlung';
+        break;
+      case 'paid':
+        color = Colors.green;
+        text = 'Bezahlt';
+        break;
+      default:
+        color = Colors.grey;
+        text = status;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+          ),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  void _showQuoteDetails(BuildContext context, String quoteId, Map<String, dynamic> quote) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (bottomSheetContext) => Container(
+        height: MediaQuery.of(context).size.height * 0.6,
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // Drag Handle
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.outline.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  getAdaptiveIcon(iconName: 'description', defaultIcon: Icons.description),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Angebot ${quote['quoteNumber']}',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          DateFormat('dd.MM.yyyy').format(
+                              (quote['createdAt'] as Timestamp).toDate()
+                          ),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(bottomSheetContext),
+                    icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                  ),
+                ],
+              ),
+            ),
+
+            const Divider(),
+
+            // Dokumente Liste
+            Expanded(
+              child: (quote['documents'] as Map<String, dynamic>?)?.isNotEmpty ?? false
+                  ? ListView(
+                padding: const EdgeInsets.all(16),
+                children: (quote['documents'] as Map<String, dynamic>).entries.map((entry) {
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.red.withOpacity(0.1),
+                        child: const Icon(
+                          Icons.picture_as_pdf,
+                          color: Colors.red,
+                        ),
+                      ),
+                      title: Text(_getDocumentTypeName(entry.key)),
+                      trailing: IconButton(
+                        icon: getAdaptiveIcon(
+                          iconName: 'open_in_new',
+                          defaultIcon: Icons.open_in_new,
+                        ),
+                        onPressed: () => _openDocument(entry.value),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              )
+                  : Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    getAdaptiveIcon(
+                      iconName: 'picture_as_pdf',
+                      defaultIcon: Icons.picture_as_pdf,
+                      size: 48,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Kein PDF verfügbar',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+// Hilfsmethode zum Öffnen von Dokumenten (aus deinem orders_overview_screen)
+  Future<void> _openDocument(String url) async {
+    try {
+      final uri = Uri.parse(url);
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        if (!await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication)) {
+          await launchUrl(uri, mode: LaunchMode.inAppWebView);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        await Clipboard.setData(ClipboardData(text: url));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Link wurde in die Zwischenablage kopiert'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
+  }
+// Helper für Quote Status
+  Widget _buildQuoteStatusWidget(BuildContext context, Map<String, dynamic> quote) {
+    final status = quote['status'] as String? ?? 'open';
+    final validUntil = (quote['validUntil'] as Timestamp).toDate();
+    final isExpired = validUntil.isBefore(DateTime.now());
+
+    Color color;
+    IconData icon;
+    String text;
+
+    if (isExpired && status == 'open') {
+      color = Colors.grey;
+      icon = Icons.timer_off;
+      text = 'Angebot ist abgelaufen';
+    } else {
+      switch (status) {
+        case 'accepted':
+          color = Colors.green;
+          icon = Icons.check_circle;
+          text = 'Angebot wurde angenommen';
+          break;
+        case 'rejected':
+          color = Colors.red;
+          icon = Icons.cancel;
+          text = 'Angebot wurde abgelehnt';
+          break;
+        default:
+          color = Colors.blue;
+          icon = Icons.schedule;
+          text = 'Angebot ist offen';
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 12),
+          Text(
+            text,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+// Helper für Status-Chips
+  Widget _buildStatusChip(String status) {
+    Color color;
+    String displayText;
+
+    switch (status) {
+      case 'pending':
+        color = Colors.orange;
+        displayText = 'Ausstehend';
+        break;
+      case 'processing':
+        color = Colors.blue;
+        displayText = 'In Bearbeitung';
+        break;
+      case 'shipped':
+        color = Colors.purple;
+        displayText = 'Versendet';
+        break;
+      case 'delivered':
+        color = Colors.green;
+        displayText = 'Geliefert';
+        break;
+      case 'cancelled':
+        color = Colors.red;
+        displayText = 'Storniert';
+        break;
+      default:
+        color = Colors.grey;
+        displayText = status;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        displayText,
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentStatusChip(String status) {
+    Color color;
+    String displayText;
+
+    switch (status) {
+      case 'pending':
+        color = Colors.orange;
+        displayText = 'Offen';
+        break;
+      case 'partial':
+        color = Colors.blue;
+        displayText = 'Teilweise';
+        break;
+      case 'paid':
+        color = Colors.green;
+        displayText = 'Bezahlt';
+        break;
+      default:
+        color = Colors.grey;
+        displayText = status;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          getAdaptiveIcon(iconName: 'euro', defaultIcon: Icons.euro, size: 10, color: color),
+          const SizedBox(width: 2),
+          Text(
+            displayText,
+            style: TextStyle(
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuoteStatusChip(String status, bool isExpired) {
+    Color color;
+    String displayText;
+
+    if (isExpired && status == 'open') {
+      color = Colors.grey;
+      displayText = 'Abgelaufen';
+    } else {
+      switch (status) {
+        case 'open':
+          color = Colors.blue;
+          displayText = 'Offen';
+          break;
+        case 'accepted':
+          color = Colors.green;
+          displayText = 'Angenommen';
+          break;
+        case 'rejected':
+          color = Colors.red;
+          displayText = 'Abgelehnt';
+          break;
+        default:
+          color = Colors.grey;
+          displayText = status;
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        displayText,
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+// Aktualisierte Statistiken-Methode
+  Future<Map<String, dynamic>> _getCustomerStats(String customerId) async {
+    try {
+      // Hole Aufträge
+      final orders = await FirebaseFirestore.instance
+          .collection('orders')
+          .where('customer.id', isEqualTo: customerId)
+          .get();
+
+      // Hole Angebote
+      final quotes = await FirebaseFirestore.instance
+          .collection('quotes')
+          .where('customer.id', isEqualTo: customerId)
+          .get();
+
+      // Gruppiere Beträge nach Währung
+      Map<String, double> totalsByurrency = {
+        'CHF': 0.0,
+        'EUR': 0.0,
+        'USD': 0.0,
+      };
+
+      DateTime? lastActivity;
+
+      // Verarbeite Aufträge
+      for (var doc in orders.docs) {
+        final data = doc.data();
+        final calculations = data['calculations'] as Map<String, dynamic>?;
+        final currency = data['metadata']?['currency'] ?? 'CHF';
+
+        if (calculations != null) {
+          final total = (calculations['total'] as num?)?.toDouble() ?? 0;
+          totalsByurrency[currency] = (totalsByurrency[currency] ?? 0) + total;
+        }
+
+        final orderDate = (data['orderDate'] as Timestamp?)?.toDate();
+        if (orderDate != null) {
+          if (lastActivity == null || orderDate.isAfter(lastActivity)) {
+            lastActivity = orderDate;
+          }
+        }
+      }
+
+      // Bestimme Hauptwährung (die am häufigsten verwendet wird)
+      String primaryCurrency = 'CHF';
+      double maxAmount = 0;
+
+      totalsByurrency.forEach((currency, amount) {
+        if (amount > maxAmount) {
+          maxAmount = amount;
+          primaryCurrency = currency;
+        }
+      });
+
+      return {
+        'totalOrders': orders.docs.length,
+        'totalQuotes': quotes.docs.length,
+        'totalSpent': totalsByurrency[primaryCurrency] ?? 0.0,
+        'currency': primaryCurrency,
+        'totalsByCurrency': totalsByurrency, // Falls du alle Währungen anzeigen möchtest
+        'lastActivity': lastActivity,
+      };
+    } catch (e) {
+      print('Fehler beim Berechnen der Kundenstatistiken: $e');
+      return {
+        'totalOrders': 0,
+        'totalQuotes': 0,
+        'totalSpent': 0.0,
+        'currency': 'CHF',
+        'totalsByCurrency': {'CHF': 0.0},
+        'lastActivity': null,
+      };
+    }
+  }
 // Einzelner Kauf in der Liste
   Widget _buildPurchaseListTile(BuildContext context, String receiptId, Map<String, dynamic> purchase) {
     final calculations = purchase['calculations'] as Map<String, dynamic>;
@@ -3929,52 +5247,6 @@ SizedBox(height: 8,),
     );
   }
 
-// Statistiken berechnen
-  Future<Map<String, dynamic>> _getCustomerStats(String customerId) async {
-    try {
-      final purchases = await FirebaseFirestore.instance
-          .collection('sales_receipts')
-          .where('customer.id', isEqualTo: customerId)
-          .get();
-
-      double totalSpent = 0;
-      int totalPurchases = purchases.docs.length;
-      DateTime? lastPurchase;
-
-      for (var doc in purchases.docs) {
-        final data = doc.data();
-        final calculations = data['calculations'] as Map<String, dynamic>?;
-        if (calculations != null) {
-          totalSpent += (calculations['total'] as num?)?.toDouble() ?? 0;
-        }
-
-        final metadata = data['metadata'] as Map<String, dynamic>?;
-        final timestamp = metadata?['timestamp'] as Timestamp?;
-        if (timestamp != null) {
-          final purchaseDate = timestamp.toDate();
-          if (lastPurchase == null || purchaseDate.isAfter(lastPurchase)) {
-            lastPurchase = purchaseDate;
-          }
-        }
-      }
-
-      return {
-        'totalSpent': totalSpent,
-        'totalPurchases': totalPurchases,
-        'lastPurchase': lastPurchase,
-        'averageOrderValue': totalPurchases > 0 ? totalSpent / totalPurchases : 0,
-      };
-    } catch (e) {
-      print('Fehler beim Berechnen der Kundenstatistiken: $e');
-      return {
-        'totalSpent': 0.0,
-        'totalPurchases': 0,
-        'lastPurchase': null,
-        'averageOrderValue': 0.0,
-      };
-    }
-  }
-
   // Hilfsmethode für Abschnittsdarstellung
   Widget _buildDetailSection(
       BuildContext context,
@@ -4033,4 +5305,35 @@ SizedBox(height: 8,),
       ),
     );
   }
+}
+
+// Hilfsklasse für gefilterte Daten
+class _MockDocumentSnapshot implements DocumentSnapshot {
+  final Map<String, dynamic> _data;
+  final String _id;
+
+  _MockDocumentSnapshot(Map<String, dynamic> data)
+      : _data = Map<String, dynamic>.from(data),
+        _id = data['id'] ?? '';
+
+  @override
+  Map<String, dynamic> data() => _data;
+
+  @override
+  String get id => _id;
+
+  @override
+  bool get exists => true;
+
+  @override
+  dynamic get(Object field) => _data[field];
+
+  @override
+  dynamic operator [](Object field) => _data[field];
+
+  @override
+  SnapshotMetadata get metadata => throw UnimplementedError();
+
+  @override
+  DocumentReference get reference => throw UnimplementedError();
 }

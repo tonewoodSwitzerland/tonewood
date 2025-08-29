@@ -31,6 +31,14 @@ import 'customer_management_screen.dart';
 import 'customer_selection.dart';
 import 'orders_overview_screen.dart';
 
+
+import 'package:package_info_plus/package_info_plus.dart';
+
+
+
+
+
+
 class StartScreen extends StatefulWidget {
   static String id = 'start_screen';
   const StartScreen({required Key key}) : super(key: key);
@@ -47,14 +55,21 @@ class StartScreenState extends State<StartScreen> {
   int _currentIndex = 0;
   int userGroup = 1;
   String name = '';
+  PackageInfo? packageInfo;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   @override
   void initState() {
     super.initState();
     getCurrUserFuture = getCurrUser();
     _setOrientation();
+    initPackageInfo();
   }
-
+  Future<void> initPackageInfo() async {
+    final info = await PackageInfo.fromPlatform();
+    setState(() {
+      packageInfo = info;
+    });
+  }
   void _setOrientation() {
     if (!kIsWeb) {
       SystemChrome.setPreferredOrientations([
@@ -601,16 +616,17 @@ class StartScreenState extends State<StartScreen> {
           const Spacer(),
           const Divider(),
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 32),
             width: double.infinity,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+
                 Text(
-                  'Version 1.0.0',
+                  'Version: ${packageInfo?.version ?? ""}',
                   style: TextStyle(
-                    color: Colors.grey[600],
                     fontSize: 12,
+                    color: Colors.grey.shade600,
                   ),
                 ),
                 const SizedBox(height: 4),

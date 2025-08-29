@@ -39,6 +39,7 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
   // Selections
   DateTime? _selectedDate;
   bool _isMoonwood = false;
+  bool _isFSC = false;
   String? _selectedWoodType;
   String? _selectedQuality;
   String? _selectedColor;
@@ -120,6 +121,29 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.blue[50],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.blue[200]!),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Jahrgang: ${DateTime.now().year}',
+                style: TextStyle(
+                  color: Colors.blue[700],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
         TextFormField(
           controller: _internalNumberController,
           decoration: _getInputDecoration(
@@ -195,7 +219,8 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
     final data = widget.roundwoodData!;
     _internalNumberController.text = data['internal_number'] ?? '';
     _originalNumberController.text = data['original_number'] ?? '';
-
+    _isMoonwood = data['is_moonwood'] ?? false;
+    _isFSC = data['is_fsc'] ?? false;  // NEU
     _volumeController.text = data['volume']?.toString() ?? '';
     _remarksController.text = data['remarks'] ?? '';
     _originController.text = data['origin'] ?? '';
@@ -620,6 +645,32 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
               ),
             ),
             const SizedBox(height: 16),
+
+
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey[400]!),
+                borderRadius: BorderRadius.circular(8),
+                color: Colors.grey[100],
+              ),
+              child: SwitchListTile(
+                  title: const Text(
+                    'FSC',
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  value: _isFSC,
+                  onChanged: (value) => setState(() => _isFSC = value),
+                  secondary: getAdaptiveIcon(
+                    iconName: 'eco',
+                    defaultIcon: Icons.eco,
+                    color: const Color(0xFF0F4A29),
+                  )
+              ),
+            ),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _volumeController,
     decoration: _getInputDecoration(
@@ -817,6 +868,8 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
     if (_formKey.currentState!.validate()) {
       try {
         final roundwoodData = {
+
+          'is_fsc': _isFSC,  // NEU
           'internal_number': _internalNumberController.text,
           'original_number': _originalNumberController.text,
           'wood_type': _selectedWoodType,
