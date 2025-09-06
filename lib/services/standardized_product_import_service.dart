@@ -6,6 +6,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:csv/csv.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+import 'icon_helper.dart';
+
 
 class StandardizedProductImportService {
   static Future<void> showImportDialog(BuildContext context, VoidCallback onComplete) async {
@@ -40,7 +42,7 @@ class StandardizedProductImportService {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.warning, color: Colors.orange.shade700),
+                     getAdaptiveIcon(iconName: 'warning',defaultIcon:Icons.warning, color: Colors.orange.shade700),
                     const SizedBox(width: 8),
                     const Expanded(
                       child: Text(
@@ -63,7 +65,7 @@ class StandardizedProductImportService {
                 // Starte den Import direkt mit dem Root-Context
                 await _importFromFile(context, onComplete, dialogContext);
               },
-              icon: const Icon(Icons.upload_file),
+              icon:  getAdaptiveIcon(iconName: 'upload_file',defaultIcon:Icons.upload_file),
               label: const Text('Datei auswählen'),
             ),
           ],

@@ -22,11 +22,11 @@ class WarehouseScreen extends StatefulWidget {
   final String mode;
 
   const WarehouseScreen({
-    required Key key,
+    super.key,  // Verwenden Sie die neue super.key Syntax
     this.isDialog = false,
     this.onBarcodeSelected,
     this.mode = 'lookup',
-  }) : super(key: key);
+  });
 
   @override
   WarehouseScreenState createState() => WarehouseScreenState();
@@ -57,10 +57,13 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
   @override
   void initState() {
+
     super.initState();
+    print('WarehouseScreen initState - isDialog: ${widget.isDialog}, mode: ${widget.mode}');
+
     _loadDropdownData();
     _loadSavedFilters();
-    _updateProductStream();
+
   }
   @override
   void dispose() {
@@ -76,6 +79,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   String _activeSearchText = '';
 
   void _updateProductStream() {
+    print('_updateProductStream aufgerufen');
+    print('Aktive Filter: instruments=${selectedInstrumentCodes}, parts=${selectedPartCodes}');
     setState(() {
       _productStream = buildQuery().snapshots();
     });
@@ -239,7 +244,6 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     _updateProductStream();
   }
 
-
   void _loadSavedFilters() {
     _filterSubscription = FirebaseFirestore.instance
         .collection('general_data')
@@ -281,10 +285,17 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           }
           _isLoadingFilters = false;
         });
+
+        // DIESER TEIL FEHLT BEI IHNEN:
+        print('Filter geladen: instruments=${selectedInstrumentCodes}, parts=${selectedPartCodes}');
+        _updateProductStream(); // WICHTIG: Auch hier aufrufen!
+
       } else {
         setState(() {
           _isLoadingFilters = false;
         });
+        print("stellep");
+        _updateProductStream();
       }
     });
   }
@@ -613,7 +624,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                               ),
                               child: Row(
                                 children: [
-                                  Icon(Icons.tag, color: Colors.grey[600], size: 20),
+                                   getAdaptiveIcon(iconName: 'tag',defaultIcon:Icons.tag, color: Colors.grey[600], size: 20),
                                   const SizedBox(width: 8),
                                   Text(
                                     data['barcode']?.toString() ?? 'N/A',
@@ -684,10 +695,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                               ),
                               child: Row(
                                 children: [
-                                  Icon(
-                                    data['sold'] == true ? Icons.sell : Icons.store,
-                                    color: data['sold'] == true ? Colors.red : Colors.green,
-                                  ),
+                                getAdaptiveIcon(iconName: data['sold'] == true ? 'sell':'store', defaultIcon: data['sold'] == true ? Icons.sell : Icons.store, color: data['sold'] == true ? Colors.red : Colors.green,),
+
                                   const SizedBox(width: 8),
                                   Text(
                                     data['sold'] == true ? 'Verkauft' : 'Im Shop',
@@ -825,7 +834,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                               color: Colors.red.withOpacity(0.1),
                                               borderRadius: BorderRadius.circular(8),
                                             ),
-                                            child: const Icon(
+                                            child:  getAdaptiveIcon(iconName: 'warning', defaultIcon:
                                               Icons.warning,
                                               color: Colors.red,
                                             ),
@@ -867,7 +876,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                   disabledForegroundColor: Colors.grey.withOpacity(0.5),
                                   disabledBackgroundColor: Colors.grey.withOpacity(0.1),
                                 ),
-                                icon: const Icon(Icons.remove_shopping_cart),
+                                icon: getAdaptiveIcon(iconName: 'remove_shopping_cart',defaultIcon:Icons.remove_shopping_cart),
                                 label: Text(isInCart ? 'Im Warenkorb' : 'Entfernen'),
                               ),
                             ),
@@ -888,7 +897,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                             color: const Color(0xFF0F4A29).withOpacity(0.1),
                                             borderRadius: BorderRadius.circular(8),
                                           ),
-                                          child: const Icon(
+                                          child:  getAdaptiveIcon(iconName: 'sell', defaultIcon:
                                             Icons.sell,
                                             color: Color(0xFF0F4A29),
                                           ),
@@ -1601,7 +1610,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     required IconData icon,
     required Widget content,
     Map<String, dynamic>? data,
-    String? iconName,
+    required String iconName,
     Widget? customTitleWidget, // NEU
   }) {
     if (title == 'Bestand & Preis' && data != null) {
@@ -1621,14 +1630,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               ),
               child: Row(
                 children: [
-                  iconName != null
-                      ? getAdaptiveIcon(
+                    getAdaptiveIcon(
                     iconName: iconName,
                     defaultIcon: icon,
                     size: 20,
                     color: const Color(0xFF0F4A29),
-                  )
-                      : Icon(icon, size: 20, color: const Color(0xFF0F4A29)),
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     title,
@@ -1782,14 +1789,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
             ),
             child: Row(
               children: [
-                iconName != null
-                    ? getAdaptiveIcon(
+                getAdaptiveIcon(
                   iconName: iconName,
                   defaultIcon: icon,
                   size: 20,
                   color: const Color(0xFF0F4A29),
-                )
-                    : Icon(icon, size: 20, color: const Color(0xFF0F4A29)),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: customTitleWidget ?? Text(
@@ -2105,7 +2110,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
-                    Icon(Icons.search, size: 16, color: Colors.grey[600]),
+                     getAdaptiveIcon(iconName: 'search',defaultIcon:Icons.search, size: 16, color: Colors.grey[600]),
                     const SizedBox(width: 8),
                     Text(
                       '${filteredDocs.length} Ergebnis${filteredDocs.length == 1 ? '' : 'se'} für "${_activeSearchText}"',  // Hier auch ändern
@@ -2313,10 +2318,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                           height: 36,
                           child: TextFormField(
                             controller: _searchController,
+
                             decoration: InputDecoration(
                               hintText: 'Suche nach Produkten...',
                               hintStyle: TextStyle(fontSize: 14),
-                              prefixIcon: Icon(
+                              prefixIcon:
+                              getAdaptiveIcon(iconName: 'search', defaultIcon:
                                 Icons.search,
                                 size: 20,
                                 color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -2326,7 +2333,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                 children: [
                                   if (_activeSearchText.isNotEmpty)
                                     IconButton(
-                                      icon: Icon(
+                                      icon:
+                                      getAdaptiveIcon(iconName: 'clear', defaultIcon:
                                         Icons.clear,
                                         size: 18,
                                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -2341,7 +2349,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                       },
                                     ),
                                   IconButton(
-                                    icon: Icon(
+                                    icon:  getAdaptiveIcon(iconName: 'search', defaultIcon:
                                       Icons.search,
                                       color: _hasUnsearchedChanges ? Colors.orange : primaryAppColor,
                                     ),
@@ -2524,11 +2532,16 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
   Widget _buildActiveFiltersChips() {
     String getNameForCode(List<QueryDocumentSnapshot> docs, String code) {
+      if (docs == null || docs.isEmpty) {
+        return code;
+      }
+
       try {
         final doc = docs.firstWhere(
               (doc) => (doc.data() as Map<String, dynamic>)['code'] == code,
         );
-        return (doc.data() as Map<String, dynamic>)['name'] as String;
+        final data = doc.data() as Map<String, dynamic>?;
+        return data?['name'] as String? ?? code;
       } catch (e) {
         return code;
       }
@@ -2644,9 +2657,10 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           ),
           child: TextFormField(
             controller: _searchController,
+
             decoration: InputDecoration(
               hintText: 'Suche nach Produkten...',
-              prefixIcon: Icon(
+              prefixIcon:  getAdaptiveIcon(iconName: 'search', defaultIcon:
                 Icons.search,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -2655,7 +2669,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                 children: [
                   if (_activeSearchText.isNotEmpty)
                     IconButton(
-                      icon: Icon(
+                      icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:
                         Icons.clear,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -2669,7 +2683,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                       },
                     ),
                   IconButton(
-                    icon: Icon(
+                    icon: getAdaptiveIcon(iconName: 'search', defaultIcon:
                       Icons.search,
                       color: _hasUnsearchedChanges ? Colors.orange : primaryAppColor,
                     ),
@@ -2893,7 +2907,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     required dynamic icon,  // Kann IconData oder ein Widget von getAdaptiveIcon sein
     required String title,
     required Widget child,
-    String? iconName,      // Optional: Für getAdaptiveIcon
+    required String iconName,      // Optional: Für getAdaptiveIcon
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -2927,20 +2941,13 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               ),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: iconName != null
-                ? getAdaptiveIcon(
+            child:getAdaptiveIcon(
               iconName: iconName,
               defaultIcon: icon is IconData ? icon : Icons.category,
               color: const Color(0xFF0F4A29),
               size: 24,
             )
-                : icon is IconData
-                ? Icon(
-              icon,
-              color: const Color(0xFF0F4A29),
-              size: 24,
-            )
-                : icon, // Direkte Verwendung, wenn bereits ein Widget
+
           ),
           title: Text(
             title,
@@ -2961,22 +2968,42 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       spacing: 8,
       runSpacing: 8,
       children: [
-        ...selectedInstrumentCodes.map((code) => _buildFilterChip(
-          label: _getNameForCode(instruments!, code),
-          onRemove: () => setState(() => selectedInstrumentCodes.remove(code)),
-        )),
-        ...selectedPartCodes.map((code) => _buildFilterChip(
-          label: _getNameForCode(parts!, code),
-          onRemove: () => setState(() => selectedPartCodes.remove(code)),
-        )),
-        ...selectedWoodCodes.map((code) => _buildFilterChip(
-          label: _getNameForCode(woodTypes!, code),
-          onRemove: () => setState(() => selectedWoodCodes.remove(code)),
-        )),
-        ...selectedQualityCodes.map((code) => _buildFilterChip(
-          label: _getNameForCode(qualities!, code),
-          onRemove: () => setState(() => selectedQualityCodes.remove(code)),
-        )),
+        if (instruments != null)
+          ...selectedInstrumentCodes.map((code) => _buildFilterChip(
+            label: _getNameForCode(instruments, code),
+            onRemove: () {
+              setState(() => selectedInstrumentCodes.remove(code));
+              _saveFilters();
+              _updateProductStream();
+            },
+          )),
+        if (parts != null)
+          ...selectedPartCodes.map((code) => _buildFilterChip(
+            label: _getNameForCode(parts, code),
+            onRemove: () {
+              setState(() => selectedPartCodes.remove(code));
+              _saveFilters();
+              _updateProductStream();
+            },
+          )),
+        if (woodTypes != null)
+          ...selectedWoodCodes.map((code) => _buildFilterChip(
+            label: _getNameForCode(woodTypes, code),
+            onRemove: () {
+              setState(() => selectedWoodCodes.remove(code));
+              _saveFilters();
+              _updateProductStream();
+            },
+          )),
+        if (qualities != null)
+          ...selectedQualityCodes.map((code) => _buildFilterChip(
+            label: _getNameForCode(qualities, code),
+            onRemove: () {
+              setState(() => selectedQualityCodes.remove(code));
+              _saveFilters();
+              _updateProductStream();
+            },
+          )),
       ],
     );
   }
@@ -2998,12 +3025,20 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     );
   }
 
-  String _getNameForCode(List<QueryDocumentSnapshot> docs, String code) {
+  String _getNameForCode(List<QueryDocumentSnapshot>? docs, String code) {
+    if (docs == null || docs.isEmpty) {
+      return code;
+    }
+
     try {
       final doc = docs.firstWhere(
             (doc) => (doc.data() as Map<String, dynamic>)['code'] == code,
       );
-      return '${(doc.data() as Map<String, dynamic>)['name']} ($code)';
+      final data = doc.data() as Map<String, dynamic>?;
+      if (data != null && data['name'] != null) {
+        return '${data['name']} ($code)';
+      }
+      return code;
     } catch (e) {
       return code;
     }
@@ -3231,7 +3266,7 @@ getAdaptiveIcon(
             ),
             const SizedBox(width: 4),
             Text(
-              '$value',
+              value.toStringAsFixed(3),
               style: TextStyle(
                 color: color,
                 fontWeight: FontWeight.bold,

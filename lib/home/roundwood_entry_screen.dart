@@ -131,7 +131,7 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
           ),
           child: Row(
             children: [
-              Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
+               getAdaptiveIcon(iconName: 'info', defaultIcon:Icons.info, color: Colors.blue[700], size: 20),
               const SizedBox(width: 8),
               Text(
                 'Jahrgang: ${DateTime.now().year}',
@@ -781,7 +781,7 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
                     style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                   onTap: () => _selectDate(context),
-                  trailing: Icon(Icons.arrow_drop_down, color: Colors.grey[600]),
+                  trailing:  getAdaptiveIcon(iconName: 'arrow_drop_down',defaultIcon:Icons.arrow_drop_down, color: Colors.grey[600]),
                 ),
               )
             ),

@@ -904,7 +904,39 @@ class DocumentSelectionManager {
 
 
 
+  static Future<Map<String, bool>> _loadRoundingSettings() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('currency_settings')
+          .get();
 
+      if (doc.exists && doc.data()!.containsKey('rounding_settings')) {
+        final settings = doc.data()!['rounding_settings'] as Map<String, dynamic>;
+        return {
+          'CHF': settings['CHF'] ?? true,
+          'EUR': settings['EUR'] ?? false,
+          'USD': settings['USD'] ?? false,
+        };
+      }
+
+      // Fallback zu Standard-Einstellungen
+      print('Keine Rundungseinstellungen in Firebase gefunden, verwende Standard-Werte');
+      return {
+        'CHF': true,  // Standard: CHF wird gerundet
+        'EUR': false,
+        'USD': false,
+      };
+    } catch (e) {
+      print('Fehler beim Laden der Rundungseinstellungen: $e');
+      // Fallback zu Standard-Einstellungen
+      return {
+        'CHF': true,
+        'EUR': false,
+        'USD': false,
+      };
+    }
+  }
 // NEUE VERSION - Ersetze mit:
   static Future<Map<String, double>> _fetchCurrentExchangeRates() async {
     try {
@@ -942,34 +974,67 @@ class DocumentSelectionManager {
     }
   }
 
-
   static Future<void> _showQuotePreview(BuildContext context, Map<String, dynamic> data, {String? language}) async {
     try {
+      print('=== START _showQuotePreview DEBUG ===');
+      print('Received data keys: ${data.keys}');
+      print('Language parameter: $language');
+
+      // Customer Data Debug
       final customerData = data['customer'] as Map<String, dynamic>;
+      print('Customer data type: ${customerData.runtimeType}');
+      print('Customer data keys: ${customerData.keys}');
+      print('Customer language field: ${customerData['language']}');
+      print('Customer language type: ${customerData['language']?.runtimeType}');
+
       final documentLanguage = language ?? customerData['language'] ?? 'DE';
+      print('Final document language: $documentLanguage');
+
+      // Shipping Costs Debug
+      print('Loading shipping costs...');
       final shippingCosts = await ShippingCostsManager.loadShippingCosts();
+      print('Shipping costs loaded: ${shippingCosts.keys}');
+
+      // Tax Settings Debug
       final taxOption = data['taxOption'] ?? 0;
       final vatRate = data['vatRate'] ?? 8.1;
+      print('Tax option: $taxOption, VAT rate: $vatRate');
+
+      // Basket Items Debug
       final basketItems = data['basketItems'] as List<Map<String, dynamic>>;
+      print('Number of basket items: ${basketItems.length}');
 
-      // NEU: Lade Quote-Einstellungen
+      // Quote Settings Debug
+      print('Loading quote settings...');
       final quoteSettings = await DocumentSelectionManager.loadQuoteSettings();
+      print('Quote settings: $quoteSettings');
 
-      // Berechne Rabatte für Preview - das lädt bereits den Gesamtrabatt!
+      // Calculations Debug
+      print('Calculating discounts...');
       final calculations = await _calculateDiscountsForPreview(basketItems);
+      print('Calculations result: $calculations');
 
-      // Konvertiere Basket-Items zu Items für PDF
+      // Items Processing Debug
+      print('Processing items...');
       final items = basketItems.map((basketItem) {
+        print('  Processing item: ${basketItem['product_name']}');
+
         final customPriceValue = basketItem['custom_price_per_unit'];
+        print('    Custom price value: $customPriceValue');
+
         final pricePerUnit = customPriceValue != null
             ? (customPriceValue as num).toDouble()
             : (basketItem['price_per_unit'] as num).toDouble();
+        print('    Price per unit: $pricePerUnit');
 
         final quantity = (basketItem['quantity'] as num).toDouble();
-        final itemSubtotal = quantity * pricePerUnit;
+        print('    Quantity: $quantity');
 
-        // Rabatt ist BEREITS im basketItem gespeichert!
+        final itemSubtotal = quantity * pricePerUnit;
+        print('    Item subtotal: $itemSubtotal');
+
         final discount = basketItem['discount'] as Map<String, dynamic>? ?? {'percentage': 0.0, 'absolute': 0.0};
+        print('    Discount: $discount');
 
         double discountAmount = 0.0;
         if (discount != null) {
@@ -977,6 +1042,7 @@ class DocumentSelectionManager {
           final absolute = (discount['absolute'] as num? ?? 0).toDouble();
           discountAmount = (itemSubtotal * (percentage / 100)) + absolute;
         }
+        print('    Discount amount: $discountAmount');
 
         return {
           ...basketItem,
@@ -986,19 +1052,55 @@ class DocumentSelectionManager {
           'total': itemSubtotal - discountAmount,
         };
       }).toList();
+      print('Items processed successfully');
 
+      // Currency Settings Debug
+      print('Loading currency settings...');
       final currencySettings = await _loadCurrencySettings();
+      print('Currency settings: $currencySettings');
+
       final currency = currencySettings['currency'] as String;
+      print('Currency: $currency');
+
+      // Exchange Rates Debug
+      print('Fetching exchange rates...');
       final exchangeRates = await _fetchCurrentExchangeRates();
-
+      print('Exchange rates: $exchangeRates');
+// NEU: Lade Rundungseinstellungen
+      print('Loading rounding settings...');
+      final roundingSettings = await _loadRoundingSettings();
+      print('Rounding settings: $roundingSettings');
+      // Cost Center Debug
       final costCenter = data['costCenter'];
+      print('Cost center data: $costCenter');
+      print('Cost center type: ${costCenter?.runtimeType}');
+
       final costCenterCode = costCenter != null ? costCenter['code'] : '00000';
+      print('Cost center code: $costCenterCode');
+      print('Cost center code type: ${costCenterCode.runtimeType}');
 
-      // Debug
-      print('Total discount from calculations: ${calculations['total_discount_amount']}');
+      // Fair Data Debug
+      print('Fair data: ${data['fair']}');
+      print('Fair data type: ${data['fair']?.runtimeType}');
 
+      // Final Debug before PDF generation
+      print('=== CALLING QuoteGenerator.generateQuotePdf ===');
+      print('items: ${items.length} items');
+      print('customerData: ${customerData.keys}');
+      print('fairData: ${data['fair']}');
+      print('costCenterCode: $costCenterCode (type: ${costCenterCode.runtimeType})');
+      print('currency: $currency');
+      print('exchangeRates: $exchangeRates');
+      print('language: $documentLanguage');
+      print('quoteNumber: PREVIEW');
+      print('shippingCosts: ${shippingCosts.keys}');
+      print('calculations: $calculations');
+      print('taxOption: $taxOption');
+      print('vatRate: $vatRate');
+      print('validityDate: ${quoteSettings['validity_date']}');
 
       final pdfBytes = await QuoteGenerator.generateQuotePdf(
+        roundingSettings: roundingSettings,
         items: items,
         customerData: data['customer'],
         fairData: data['fair'],
@@ -1008,18 +1110,26 @@ class DocumentSelectionManager {
         language: documentLanguage,
         quoteNumber: 'PREVIEW',
         shippingCosts: shippingCosts,
-        calculations: calculations, // Hier wird der Gesamtrabatt übergeben!
+        calculations: calculations,
         taxOption: taxOption,
         vatRate: vatRate,
-        validityDate: quoteSettings['validity_date'], // NEU: Hier wird die Gültigkeit übergeben
+        validityDate: quoteSettings['validity_date'],
       );
+
+      print('PDF generated successfully');
 
       if (context.mounted) {
         Navigator.pop(context);
         _openPdfViewer(context, pdfBytes, 'Offerte_Preview.pdf');
       }
-    } catch (e) {
-      print('Fehler bei Offerte-Preview: $e');
+
+      print('=== END _showQuotePreview DEBUG ===');
+    } catch (e, stackTrace) {
+      print('=== ERROR in _showQuotePreview ===');
+      print('Error: $e');
+      print('Stack trace:');
+      print(stackTrace);
+      print('=== END ERROR ===');
       rethrow;
     }
   }
@@ -1503,23 +1613,23 @@ Widget _buildPackageCard(
   // State für ausgewähltes Standardpaket
   String? selectedStandardPackageId = package['standard_package_id'];
 
-  // Hole Controller aus der Map
-  final controllers = packageControllers[package['id']]!;
-  final lengthController = controllers['length']!;
-  final widthController = controllers['width']!;
-  final heightController = controllers['height']!;
-  final weightController = controllers['weight']!;
-  final customNameController = controllers['custom_name']!;
-
-  // NEU: Controller für Bruttogewicht
-  if (!controllers.containsKey('gross_weight')) {
-    controllers['gross_weight'] = TextEditingController(
-      text: package['gross_weight']?.toString() ?? '',
-    );
+  // Sichere Controller-Referenz
+  final packageId = package['id'] as String;
+  if (!packageControllers.containsKey(packageId)) {
+    // Falls Controller fehlen, erstelle sie
+    packageControllers[packageId] = {
+      'length': TextEditingController(text: package['length']?.toString() ?? '0.0'),
+      'width': TextEditingController(text: package['width']?.toString() ?? '0.0'),
+      'height': TextEditingController(text: package['height']?.toString() ?? '0.0'),
+      'weight': TextEditingController(text: package['tare_weight']?.toString() ?? '0.0'),
+      'custom_name': TextEditingController(text: package['packaging_type'] ?? ''),
+      'gross_weight': TextEditingController(text: package['gross_weight']?.toString() ?? ''),
+    };
   }
-  final grossWeightController = controllers['gross_weight']!;
 
-  // NEU: Berechne Nettogewicht (Summe aller Produkte im Paket)
+  final controllers = packageControllers[packageId]!;
+
+  // NEU: Berechne Nettogewicht (gleiche Funktion wie vorher)
   double calculateNetWeight() {
     double netWeight = 0.0;
     final packageItems = package['items'] as List<dynamic>? ?? [];
@@ -1529,15 +1639,14 @@ Widget _buildPackageCard(
       final unit = item['unit'] ?? 'Stk';
 
       if (unit.toLowerCase() == 'kg') {
-        // Bei kg-Einheit ist quantity bereits das Gewicht
         netWeight += quantity;
       } else {
-        // Volumen berechnen (gleiche Logik wie in packing_list_generator)
         double volumePerPiece = 0.0;
+        final volumePerUnit = item['volume_per_unit'];
+        final density = (item['density'] as num?)?.toDouble() ?? 0.0;
 
-        // Priorisierung für Volumenberechnung
-        if (item['volume_per_unit'] != null && (item['volume_per_unit'] as num) > 0) {
-          volumePerPiece = (item['volume_per_unit'] as num).toDouble();
+        if (volumePerUnit != null && (volumePerUnit as num) > 0) {
+          volumePerPiece = (volumePerUnit as num).toDouble();
         } else {
           final length = (item['custom_length'] as num?)?.toDouble() ?? 0.0;
           final width = (item['custom_width'] as num?)?.toDouble() ?? 0.0;
@@ -1548,9 +1657,6 @@ Widget _buildPackageCard(
           }
         }
 
-        // Gewicht aus Volumen und Dichte
-        final woodCode = item['wood_code'] as String? ?? '';
-        final density = 450.0; // Default-Dichte, sollte aus woodTypeCache kommen
         final weightPerPiece = volumePerPiece * density;
         netWeight += weightPerPiece * quantity;
       }
@@ -1560,6 +1666,7 @@ Widget _buildPackageCard(
   }
 
   return Card(
+    key: ValueKey(packageId), // Wichtig: Eindeutiger Key
     margin: const EdgeInsets.only(bottom: 16),
     child: Padding(
       padding: const EdgeInsets.all(16),
@@ -1570,7 +1677,7 @@ Widget _buildPackageCard(
           Row(
             children: [
               Text(
-                package['name'],
+                'Paket ${index + 1}', // Verwende index statt package['name']
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -1581,15 +1688,15 @@ Widget _buildPackageCard(
                 IconButton(
                   onPressed: () {
                     setModalState(() {
-                      final packageId = package['id'] as String;
-                      packageControllers[packageId]?.forEach((key, controller) {
-                        controller.dispose();
-                      });
-                      packageControllers.remove(packageId);
                       packages.removeAt(index);
+                      // Controller werden beim Dialog-Schließen disposed
                     });
                   },
-                  icon: Icon(Icons.delete_outline, color: Colors.red[400]),
+                  icon: getAdaptiveIcon(
+                    iconName: 'delete',
+                    defaultIcon: Icons.delete,
+                    color: Colors.red[400],
+                  ),
                   iconSize: 20,
                 ),
             ],
@@ -1597,7 +1704,7 @@ Widget _buildPackageCard(
 
           const SizedBox(height: 12),
 
-          // Dropdown für Standardpakete
+          // Dropdown für Standardpakete (gleich wie vorher)
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('standardized_packages')
@@ -1617,7 +1724,10 @@ Widget _buildPackageCard(
                     decoration: InputDecoration(
                       labelText: 'Verpackungsvorlage',
                       hintText: 'Bitte auswählen',
-                      prefixIcon: Icon(Icons.inventory),
+                      prefixIcon: getAdaptiveIcon(
+                        iconName: 'inventory',
+                        defaultIcon: Icons.inventory,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -1654,10 +1764,10 @@ Widget _buildPackageCard(
                           package['height'] = packageData['height'] ?? 0.0;
                           package['tare_weight'] = packageData['weight'] ?? 0.0;
 
-                          lengthController.text = package['length'].toString();
-                          widthController.text = package['width'].toString();
-                          heightController.text = package['height'].toString();
-                          weightController.text = package['tare_weight'].toString();
+                          controllers['length']!.text = package['length'].toString();
+                          controllers['width']!.text = package['width'].toString();
+                          controllers['height']!.text = package['height'].toString();
+                          controllers['weight']!.text = package['tare_weight'].toString();
                         } else if (value == 'custom') {
                           package['packaging_type'] = '';
                           package['length'] = 0.0;
@@ -1665,11 +1775,11 @@ Widget _buildPackageCard(
                           package['height'] = 0.0;
                           package['tare_weight'] = 0.0;
 
-                          lengthController.text = '0.0';
-                          widthController.text = '0.0';
-                          heightController.text = '0.0';
-                          weightController.text = '0.0';
-                          customNameController.text = '';
+                          controllers['length']!.text = '0.0';
+                          controllers['width']!.text = '0.0';
+                          controllers['height']!.text = '0.0';
+                          controllers['weight']!.text = '0.0';
+                          controllers['custom_name']!.text = '';
                         }
                       });
                     },
@@ -1686,8 +1796,9 @@ Widget _buildPackageCard(
                         ),
                         child: Row(
                           children: [
-                            Icon(
-                              Icons.info,
+                            getAdaptiveIcon(
+                              iconName: 'info',
+                              defaultIcon: Icons.info,
                               size: 16,
                               color: Theme.of(context).colorScheme.primary,
                             ),
@@ -1715,11 +1826,14 @@ Widget _buildPackageCard(
           // Freitextfeld für benutzerdefinierten Namen
           if (selectedStandardPackageId == 'custom') ...[
             TextFormField(
-              controller: customNameController,
+              controller: controllers['custom_name']!,
               decoration: InputDecoration(
                 labelText: 'Verpackungsbezeichnung',
                 hintText: 'z.B. Spezialverpackung',
-                prefixIcon: Icon(Icons.edit),
+                prefixIcon: getAdaptiveIcon(
+                  iconName: 'edit',
+                  defaultIcon: Icons.edit,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -1737,7 +1851,7 @@ Widget _buildPackageCard(
             children: [
               Expanded(
                 child: TextFormField(
-                  controller: lengthController,
+                  controller: controllers['length']!,
                   decoration: InputDecoration(
                     labelText: 'Länge (cm)',
                     border: OutlineInputBorder(
@@ -1756,7 +1870,7 @@ Widget _buildPackageCard(
               const SizedBox(width: 8),
               Expanded(
                 child: TextFormField(
-                  controller: widthController,
+                  controller: controllers['width']!,
                   decoration: InputDecoration(
                     labelText: 'Breite (cm)',
                     border: OutlineInputBorder(
@@ -1775,7 +1889,7 @@ Widget _buildPackageCard(
               const SizedBox(width: 8),
               Expanded(
                 child: TextFormField(
-                  controller: heightController,
+                  controller: controllers['height']!,
                   decoration: InputDecoration(
                     labelText: 'Höhe (cm)',
                     border: OutlineInputBorder(
@@ -1796,7 +1910,7 @@ Widget _buildPackageCard(
 
           // Tara-Gewicht
           TextFormField(
-            controller: weightController,
+            controller: controllers['weight']!,
             decoration: InputDecoration(
               labelText: 'Verpackungsgewicht / Tara (kg)',
               border: OutlineInputBorder(
@@ -1812,30 +1926,39 @@ Widget _buildPackageCard(
 
           const SizedBox(height: 12),
 
-          // NEU: Bruttogewicht mit automatischer Tara-Berechnung
+          // Bruttogewicht
           TextFormField(
-            controller: grossWeightController,
+            controller: controllers['gross_weight']!,
             decoration: InputDecoration(
               labelText: 'Bruttogewicht (gemessen) (kg)',
               helperText: 'Leer lassen für automatische Berechnung',
-              prefixIcon: Icon(Icons.scale),
-              suffixIcon: grossWeightController.text.isNotEmpty
+              prefixIcon: getAdaptiveIcon(
+                iconName: 'scale',
+                defaultIcon: Icons.scale,
+              ),
+              suffixIcon: controllers['gross_weight']!.text.isNotEmpty
                   ? IconButton(
-                icon: Icon(Icons.clear),
+                icon: getAdaptiveIcon(
+                  iconName: 'clear',
+                  defaultIcon: Icons.clear,
+                ),
                 onPressed: () {
                   setModalState(() {
-                    grossWeightController.clear();
+                    controllers['gross_weight']!.clear();
                     package['gross_weight'] = null;
-                    // Setze Tara auf Standardwert zurück
+
                     if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom') {
-                      final selectedPackage = FirebaseFirestore.instance
+                      FirebaseFirestore.instance
                           .collection('standardized_packages')
-                          .doc(selectedStandardPackageId);
-                      selectedPackage.get().then((doc) {
+                          .doc(selectedStandardPackageId)
+                          .get()
+                          .then((doc) {
                         if (doc.exists) {
                           final data = doc.data() as Map<String, dynamic>;
-                          package['tare_weight'] = data['weight'] ?? 0.0;
-                          weightController.text = package['tare_weight'].toString();
+                          setModalState(() {
+                            package['tare_weight'] = data['weight'] ?? 0.0;
+                            controllers['weight']!.text = package['tare_weight'].toString();
+                          });
                         }
                       });
                     }
@@ -1854,12 +1977,9 @@ Widget _buildPackageCard(
                 final grossWeight = double.tryParse(value);
 
                 if (value.isEmpty || grossWeight == null) {
-                  // Feld wurde geleert - zurück zum Standardgewicht
                   package['gross_weight'] = null;
 
-                  // Setze Tara auf Standardwert zurück
                   if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom') {
-                    // Lade Standardgewicht aus der Datenbank
                     FirebaseFirestore.instance
                         .collection('standardized_packages')
                         .doc(selectedStandardPackageId)
@@ -1869,27 +1989,23 @@ Widget _buildPackageCard(
                         final data = doc.data() as Map<String, dynamic>;
                         setModalState(() {
                           package['tare_weight'] = data['weight'] ?? 0.0;
-                          weightController.text = package['tare_weight'].toString();
+                          controllers['weight']!.text = package['tare_weight'].toString();
                         });
                       }
                     });
-                  } else {
-                    // Bei custom bleibt das manuell eingegebene Tara-Gewicht
-                    // Keine Änderung nötig
                   }
                 } else if (grossWeight > 0) {
-                  // Bruttogewicht eingegeben, berechne Tara neu
                   package['gross_weight'] = grossWeight;
                   final netWeight = calculateNetWeight();
                   final calculatedTara = grossWeight - netWeight;
                   package['tare_weight'] = calculatedTara > 0 ? calculatedTara : 0.0;
-                  weightController.text = package['tare_weight'].toStringAsFixed(2);
+                  controllers['weight']!.text = package['tare_weight'].toStringAsFixed(2);
                 }
               });
             },
           ),
 
-          // NEU: Info-Box mit Gewichtsübersicht
+          // Gewichtsübersicht (gleich wie vorher)
           if (package['items'].isNotEmpty) ...[
             const SizedBox(height: 8),
             Container(
@@ -1904,27 +2020,27 @@ Widget _buildPackageCard(
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Nettogewicht (Produkte):', style: TextStyle(fontSize: 12)),
+                      const Text('Nettogewicht (Produkte):', style: TextStyle(fontSize: 12)),
                       Text('${calculateNetWeight().toStringAsFixed(2)} kg',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Tara (Verpackung):', style: TextStyle(fontSize: 12)),
+                      const Text('Tara (Verpackung):', style: TextStyle(fontSize: 12)),
                       Text('${package['tare_weight'].toStringAsFixed(2)} kg',
-                          style: TextStyle(fontSize: 12)),
+                          style: const TextStyle(fontSize: 12)),
                     ],
                   ),
                   const Divider(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Bruttogewicht:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      const Text('Bruttogewicht:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       Text('${(calculateNetWeight() + (package['tare_weight'] ?? 0.0)).toStringAsFixed(2)} kg',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ],
@@ -1934,7 +2050,7 @@ Widget _buildPackageCard(
 
           const SizedBox(height: 16),
 
-          // Produkte zuweisen
+          // Zugewiesene Produkte
           Text(
             'Zugewiesene Produkte',
             style: TextStyle(
@@ -1946,7 +2062,7 @@ Widget _buildPackageCard(
 
           const SizedBox(height: 8),
 
-          // Zugewiesene Produkte anzeigen
+          // Produkte anzeigen
           if (package['items'].isNotEmpty) ...[
             ...package['items'].map<Widget>((assignedItem) {
               return Container(
@@ -1968,16 +2084,19 @@ Widget _buildPackageCard(
                       onPressed: () {
                         setModalState(() {
                           package['items'].remove(assignedItem);
-                          // Wenn Bruttogewicht manuell gesetzt war, Tara neu berechnen
                           if (package['gross_weight'] != null) {
                             final netWeight = calculateNetWeight();
                             final grossWeight = package['gross_weight'] as double;
                             package['tare_weight'] = grossWeight - netWeight;
-                            weightController.text = package['tare_weight'].toStringAsFixed(2);
+                            controllers['weight']!.text = package['tare_weight'].toStringAsFixed(2);
                           }
                         });
                       },
-                      icon: Icon(Icons.remove_circle_outline, color: Colors.red[400]),
+                      icon: getAdaptiveIcon(
+                        iconName: 'remove',
+                        defaultIcon: Icons.remove,
+                        color: Colors.red[400],
+                      ),
                       iconSize: 16,
                     ),
                   ],
@@ -1996,7 +2115,11 @@ Widget _buildPackageCard(
               packages,
               setModalState,
             ),
-            icon: const Icon(Icons.add, size: 16),
+            icon: getAdaptiveIcon(
+              iconName: 'add',
+              defaultIcon: Icons.add,
+              size: 16,
+            ),
             label: const Text('Produkt hinzufügen'),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -2028,7 +2151,7 @@ void _showAddProductDialog(
           itemBuilder: (context, index) {
             final item = availableItems[index];
             final assignedQuantity = _getAssignedQuantity(item, packages);
-            final remainingQuantity = (item['quantity'] as double) - assignedQuantity;
+            final remainingQuantity = (item['quantity'] as num? ?? 0).toDouble() - assignedQuantity;
 
             if (remainingQuantity <= 0) return const SizedBox.shrink();
 
@@ -2074,7 +2197,7 @@ void _showQuantityDialog(
   print('custom_length: ${item['custom_length']}');
   print('custom_width: ${item['custom_width']}');
   print('custom_thickness: ${item['custom_thickness']}');
-
+  print('densityX: ${item['density']}');
   showDialog(
     context: dialogContext,
     builder: (context) => StatefulBuilder(
@@ -2093,7 +2216,10 @@ void _showQuantityDialog(
                       selectedQuantity--;
                     });
                   } : null,
-                  icon: const Icon(Icons.remove),
+                  icon: getAdaptiveIcon(
+                    iconName: 'remove',
+                    defaultIcon: Icons.remove,
+                  ),
                 ),
                 Expanded(
                   child: Text(
@@ -2108,7 +2234,10 @@ void _showQuantityDialog(
                       selectedQuantity++;
                     });
                   } : null,
-                  icon: const Icon(Icons.add),
+                  icon: getAdaptiveIcon(
+                    iconName: 'add',
+                    defaultIcon: Icons.add,
+                  ),
                 ),
               ],
             ),
@@ -2133,12 +2262,14 @@ void _showQuantityDialog(
                   'product_name': item['product_name'],
                   'product_name_en': item['product_name_en'] ?? '',
                   'quantity': selectedQuantity,
-                  'weight_per_unit': item['weight'] ?? 0.0,
-                  'volume_per_unit': item['volume'] ?? 0.0,
                   // Maße korrekt übernehmen
                   'custom_length': item['custom_length'] ?? 0.0,
                   'custom_width': item['custom_width'] ?? 0.0,
                   'custom_thickness': item['custom_thickness'] ?? 0.0,
+                  'density': item['density'] ?? 0.0,
+                  'volume_per_unit': item['volume_per_unit'] ?? 0.0,
+
+
                   // Weitere wichtige Felder
                   'wood_code': item['wood_code'] ?? '',
                   'wood_name': item['wood_name'] ?? '',
@@ -2529,8 +2660,8 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                 showDimensions = value ?? false;
                               });
                             },
-                            secondary: Icon(
-                              Icons.straighten,
+                            secondary:
+                            getAdaptiveIcon(iconName: 'straighten', defaultIcon: Icons.straighten, size: 16,
                               color: Theme.of(context).colorScheme.primary,
                             ),
                           ),
@@ -2914,8 +3045,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                 showDimensions = value ?? false;
                               });
                             },
-                            secondary: Icon(
-                              Icons.straighten,
+                            secondary:   getAdaptiveIcon(iconName: 'straighten', defaultIcon: Icons.straighten,
                               color: Theme.of(context).colorScheme.primary,
                             ),
                           ),
@@ -3493,7 +3623,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                               ),
                               child: Row(
                                 children: [
-                                  Icon(
+                                  getAdaptiveIcon(iconName: 'info', defaultIcon:
                                     Icons.info,
                                     color: Theme.of(context).colorScheme.primary,
                                     size: 20,
@@ -3530,8 +3660,10 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                   ? 'Wert aus Packliste'
                                   : 'Anzahl der Verpackungseinheiten',
                               suffixIcon: valuesFromPackingList
-                                  ? Icon(
-                                Icons.lock_outline,
+                                  ?
+
+                              getAdaptiveIcon(iconName: 'lock', defaultIcon:
+                                Icons.lock,
                                 size: 20,
                                 color: Theme.of(context).colorScheme.outline,
                               )
@@ -3564,8 +3696,10 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                   ? 'Summe der Tara-Gewichte aus Packliste'
                                   : 'Gesamtgewicht der Verpackung in kg',
                               suffixIcon: valuesFromPackingList
-                                  ? Icon(
-                                Icons.lock_outline,
+                                  ?
+
+                              getAdaptiveIcon(iconName: 'lock', defaultIcon:
+                                Icons.lock,
                                 size: 20,
                                 color: Theme.of(context).colorScheme.outline,
                               )
@@ -3690,8 +3824,8 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                 ),
                               ),
                               IconButton(
-                                icon: Icon(
-                                  Icons.info_outline,
+                                icon:    getAdaptiveIcon(iconName: 'info', defaultIcon:
+                                  Icons.info,
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
                                 onPressed: () async {
@@ -3703,7 +3837,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                     builder: (context) => AlertDialog(
                                       title: Row(
                                         children: [
-                                          Icon(
+                                          getAdaptiveIcon(iconName: 'info', defaultIcon:
                                             Icons.info,
                                             color: Theme.of(context).colorScheme.primary,
                                           ),
@@ -3730,7 +3864,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                             const SizedBox(height: 16),
                                             Row(
                                               children: [
-                                                Icon(
+                                                getAdaptiveIcon(iconName: 'edit', defaultIcon:
                                                   Icons.edit,
                                                   size: 16,
                                                   color: Theme.of(context).colorScheme.secondary,
@@ -3780,8 +3914,8 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                 ),
                               ),
                               IconButton(
-                                icon: Icon(
-                                  Icons.info_outline,
+                                icon: getAdaptiveIcon(iconName: 'info', defaultIcon:
+                                  Icons.info,
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
                                 onPressed: () async {
@@ -3793,7 +3927,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                     builder: (context) => AlertDialog(
                                       title: Row(
                                         children: [
-                                          Icon(
+                                          getAdaptiveIcon(iconName: 'info', defaultIcon:
                                             Icons.info,
                                             color: Theme.of(context).colorScheme.primary,
                                           ),
@@ -3820,8 +3954,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                             const SizedBox(height: 16),
                                             Row(
                                               children: [
-                                                Icon(
-                                                  Icons.edit,
+                                                getAdaptiveIcon(iconName: 'edit', defaultIcon:  Icons.edit,
                                                   size: 16,
                                                   color: Theme.of(context).colorScheme.secondary,
                                                 ),
@@ -4055,7 +4188,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                           });
                                         }
                                       },
-                                      icon: Icon(Icons.calendar_today),
+                                      icon:getAdaptiveIcon(iconName: 'calendar_today', defaultIcon:Icons.calendar_today),
                                       label: Text(selectedDeliveryDate != null
                                           ? '${selectedDeliveryDate!.day}.${selectedDeliveryDate!.month}.${selectedDeliveryDate!.year}'
                                           : 'Datum auswählen'),
@@ -4331,12 +4464,14 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
           'product_name': item['product_name'],
           'product_name_en': item['product_name_en'] ?? '',
           'quantity': totalQuantity,
-          'weight_per_unit': item['weight'] ?? 0.0,
-          'volume_per_unit': item['volume'] ?? 0.0,
+
           // Maße korrekt übernehmen
           'custom_length': item['custom_length'] ?? 0.0,
           'custom_width': item['custom_width'] ?? 0.0,
           'custom_thickness': item['custom_thickness'] ?? 0.0,
+          'density': item['density'] ?? 0.0,
+          'volume_per_unit': item['volume_per_unit'] ?? 0.0,
+
           // Weitere wichtige Felder
           'wood_code': item['wood_code'] ?? '',
           'wood_name': item['wood_name'] ?? '',
@@ -4366,26 +4501,29 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
         .collection('temporary_basket')
         .get();
 
-    // WICHTIG: Stelle sicher, dass ALLE Felder kopiert werden
+
+// WICHTIG: Stelle sicher, dass ALLE Felder kopiert werden
     List<Map<String, dynamic>> items = basketSnapshot.docs.map((doc) {
       final data = doc.data();
       print('Lade Item aus Basket: ${data['product_name']}');
       print('  custom_length: ${data['custom_length']}');
       print('  custom_width: ${data['custom_width']}');
       print('  custom_thickness: ${data['custom_thickness']}');
-
+      print('  density: ${data['density']}');
       return {
         ...data,  // Das kopiert ALLE Felder aus dem Dokument
         'doc_id': doc.id,
       };
     }).toList();
 
-    // Debug-Ausgabe
-    print('=== Verfügbare Items mit Maßen ===');
+// NEU: Filtere Dienstleistungen heraus
+    items = items.where((item) => item['is_service'] != true).toList();
+
+// Debug-Ausgabe
+    print('=== Verfügbare Items mit Maßen (ohne Dienstleistungen) ===');
     for (final item in items) {
       print('${item['product_name']}: ${item['custom_length']}×${item['custom_width']}×${item['custom_thickness']}');
     }
-
     // Falls noch keine Pakete existieren, erstelle Paket 1
     // Falls noch keine Pakete existieren, erstelle Paket 1
     if (packages.isEmpty) {
@@ -4400,6 +4538,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
         'tare_weight': 0.0,
         'items': <Map<String, dynamic>>[],
         'standard_package_id': null,
+        'gross_weight': null,
       });
 
       // Controller für das erste Paket
@@ -4409,6 +4548,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
         'height': TextEditingController(text: '0.0'),
         'weight': TextEditingController(text: '0.0'),
         'custom_name': TextEditingController(text: ''),
+        'gross_weight': TextEditingController(text: ''),
       };
     } else {
       // Initialisiere Controller für existierende Pakete
@@ -4419,7 +4559,11 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
           'width': TextEditingController(text: package['width'].toString()),
           'height': TextEditingController(text: package['height'].toString()),
           'weight': TextEditingController(text: package['tare_weight'].toString()),
+
           'custom_name': TextEditingController(text: package['packaging_type'] ?? ''),
+          'gross_weight': TextEditingController(
+              text: package['gross_weight'] != null ? package['gross_weight'].toString() : ''
+          ), // NEU: von Anfang an hinzufügen
         };
       }
     }
@@ -4432,18 +4576,25 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       useSafeArea: true,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: Container(
-              height: MediaQuery.of(context).size.height * 0.9,
-              decoration: BoxDecoration(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
-                ),
+          // NEU: AnimatedPadding für Keyboard-Anpassung
+          return AnimatedPadding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(dialogContext).viewInsets.bottom,
               ),
+              duration: const Duration(milliseconds: 100),
+              curve: Curves.easeOut,
+              child: DraggableScrollableSheet(
+                initialChildSize: 0.9,
+                minChildSize: 0.5,
+                maxChildSize: 0.95,
+                expand: false,
+                builder: (context, scrollController) => Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
+                  ),
               child: Column(
                 children: [
                   // Drag Handle
@@ -4495,6 +4646,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                   // Content
                   Expanded(
                     child: SingleChildScrollView(
+                        controller: scrollController,
                       padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4539,7 +4691,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                             ),
                                           );
                                         },
-                                        icon: Icon(
+                                        icon:getAdaptiveIcon(iconName: 'inbox', defaultIcon:
                                           Icons.inbox,
                                           size: 16,
                                         ),
@@ -4557,7 +4709,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                 const SizedBox(height: 8),
                                 ...items.map((item) {
                                   final assignedQuantity = _getAssignedQuantity(item, packages);
-                                  final remainingQuantity = (item['quantity'] as double) - assignedQuantity;
+                                  final remainingQuantity = (item['quantity'] as num? ?? 0).toDouble() - assignedQuantity;
 
                                   return Padding(
                                     padding: const EdgeInsets.symmetric(vertical: 2),
@@ -4619,6 +4771,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                       'height': TextEditingController(text: '0.0'),
                                       'weight': TextEditingController(text: '0.0'),
                                       'custom_name': TextEditingController(text: ''),
+                                      'gross_weight': TextEditingController(text: ''),
                                     };
 
                                     packages.add({
@@ -4631,10 +4784,11 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                       'tare_weight': 0.0,
                                       'items': <Map<String, dynamic>>[],
                                       'standard_package_id': null,
+                                      'gross_weight': null,
                                     });
                                   });
                                 },
-                                icon: Icon(Icons.add, size: 16),
+                                icon: getAdaptiveIcon(iconName: 'add', defaultIcon:Icons.add, size: 16),
                                 label: const Text('Paket hinzufügen'),
                                 style: ElevatedButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -4673,7 +4827,24 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: () => Navigator.pop(dialogContext),
+                            onPressed: () {
+                              // Schließe den Dialog
+                              Navigator.pop(dialogContext);
+
+                              // Dispose alle Controller nach dem Schließen
+                              Future.delayed(const Duration(milliseconds: 100), () {
+                                packageControllers.forEach((packageId, controllers) {
+                                  controllers.forEach((_, controller) {
+                                    try {
+                                      controller.dispose();
+                                    } catch (e) {
+                                      // Controller war bereits disposed
+                                    }
+                                  });
+                                });
+                                packageControllers.clear();
+                              });
+                            },
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(
@@ -4687,23 +4858,36 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                         Expanded(
                           child: ElevatedButton.icon(
                             onPressed: () async {
+                              // Speichere die Packlisten-Einstellungen
                               await DocumentSelectionManager.savePackingListSettings(packages);
 
-                              // Dispose all controllers
-                              packageControllers.forEach((key, controllers) {
-                                controllers.forEach((_, controller) {
-                                  controller.dispose();
-                                });
-                              });
-
+                              // Schließe den Dialog
                               if (dialogContext.mounted) {
                                 Navigator.pop(dialogContext);
+
+                                // Zeige Erfolgsmeldung
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                     content: Text('Packliste-Einstellungen gespeichert'),
                                     backgroundColor: Colors.green,
                                   ),
                                 );
+
+                                // Dispose ALLE Controller nach dem Schließen des Dialogs
+                                // Dies verhindert den "controller used after dispose" Fehler
+                                Future.delayed(const Duration(milliseconds: 100), () {
+                                  packageControllers.forEach((packageId, controllers) {
+                                    controllers.forEach((_, controller) {
+                                      // Prüfe ob der Controller noch nicht disposed wurde
+                                      try {
+                                        controller.dispose();
+                                      } catch (e) {
+                                        // Controller war bereits disposed
+                                      }
+                                    });
+                                  });
+                                  packageControllers.clear();
+                                });
                               }
                             },
                             icon: getAdaptiveIcon(
@@ -4728,7 +4912,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                 ],
               ),
             ),
-          );
+          ));
         },
       ),
     );
@@ -4850,8 +5034,8 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                           ),
                           child: Row(
                             children: [
-                              Icon(
-                                Icons.warning_amber_rounded,
+                              getAdaptiveIcon(iconName: 'warning', defaultIcon:
+                                Icons.warning,
                                 color: Colors.orange[700],
                                 size: 20,
                               ),

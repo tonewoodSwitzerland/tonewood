@@ -8,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../authenticate/verify_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../components/reusable_cart.dart';
+import '../services/icon_helper.dart';
 
 class RegistrationScreen extends StatefulWidget {
   static String id = 'registration_screen';
@@ -123,6 +124,7 @@ class RegistrationScreenState extends State<RegistrationScreen> {
           focusNode: _focusMail,
           hintText: 'mail'.tr,
           icon: Icons.mail,
+          iconName: 'mail',
           onChanged: (value) => email = value,
           validator: (value) => value!.isEmpty ? 'emptyMail'.tr : null,
           keyboardType: TextInputType.emailAddress,
@@ -131,7 +133,8 @@ class RegistrationScreenState extends State<RegistrationScreen> {
         _buildTextField(
           focusNode: _focusPW,
           hintText: 'password'.tr,
-          icon: Icons.remove_red_eye_outlined,
+          icon: Icons.visibility,
+          iconName:'visibility',
           isPassword: true,
           onChanged: (value) => password = value,
           validator: (value) => value!.length < 6 ? 'passwordError'.tr : null,
@@ -141,6 +144,7 @@ class RegistrationScreenState extends State<RegistrationScreen> {
           focusNode: _focusInvite,
           hintText: 'inviteCode'.tr,
           icon: Icons.link,
+          iconName: 'link',
           onChanged: (value) => invitationCode = value,
           validator: (value) => value!.isEmpty ? 'emptyInvite'.tr : null,
         ),
@@ -152,6 +156,7 @@ class RegistrationScreenState extends State<RegistrationScreen> {
     required FocusNode focusNode,
     required String hintText,
     required IconData icon,
+    required String iconName,
     required Function(String) onChanged,
     required String? Function(String?) validator,
     bool isPassword = false,
@@ -177,9 +182,9 @@ class RegistrationScreenState extends State<RegistrationScreen> {
           icon: isPassword
               ? GestureDetector(
             onTap: () => setState(() => _obscureText = !_obscureText),
-            child: Icon(icon, size: AppSizes.h * 0.03, color: primaryAppColor),
+            child:getAdaptiveIcon(iconName: iconName, defaultIcon:icon, size: AppSizes.h * 0.03, color: primaryAppColor),
           )
-              : Icon(icon, size: AppSizes.h * 0.03, color: primaryAppColor),
+              : getAdaptiveIcon(iconName: iconName, defaultIcon:icon, size: AppSizes.h * 0.03, color: primaryAppColor),
         ),
       ),
     );

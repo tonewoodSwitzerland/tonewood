@@ -1018,7 +1018,7 @@ class GeneralDataScreenState extends State<GeneralDataScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.warning_amber, color: Colors.orange, size: 16),
+                   getAdaptiveIcon(iconName: 'warning',defaultIcon:Icons.warning, color: Colors.orange, size: 16),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1146,7 +1146,7 @@ class GeneralDataScreenState extends State<GeneralDataScreen> {
           builder: (context) => AlertDialog(
             title: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.green),
+                 getAdaptiveIcon(iconName: 'check_circle',defaultIcon:Icons.check_circle, color: Colors.green),
                 const SizedBox(width: 8),
                 const Text('Migration abgeschlossen'),
               ],

@@ -1190,7 +1190,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
 
             Text('Rundholz ${data['internal_number']}',style: smallHeadline,),
             IconButton(
-              icon: const Icon(Icons.delete, color: Colors.red),
+              icon: getAdaptiveIcon(iconName: 'delete',defaultIcon:Icons.delete, color: Colors.red),
               onPressed: () {
                 // Zeige Bestätigungsdialog
                 showDialog(
@@ -1911,7 +1911,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                               style: const TextStyle(fontWeight: FontWeight.bold),
                             ),
                             if (data['is_moonwood'] == true)
-                              const Icon(Icons.nightlight, size: 16),
+                              getAdaptiveIcon(iconName: 'nightlight',defaultIcon:Icons.nightlight, size: 16),
                           ],
                         ),
                         isThreeLine: true,
@@ -2127,7 +2127,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                   const SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: () => selectedFilters.value = {},
-                    icon: const Icon(Icons.clear, size: 18),
+                    icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:Icons.clear, size: 18),
                     label: const Text('Filter zurücksetzen'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red.withOpacity(0.1),
@@ -3371,7 +3371,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                   onPressed: () {
                     selectedFilters.value = {};
                   },
-                  icon: const Icon(Icons.clear),
+                  icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:Icons.clear),
                   label: const Text('Filter zurücksetzen'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red.withOpacity(0.1),

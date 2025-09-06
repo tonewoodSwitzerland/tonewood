@@ -46,43 +46,63 @@ class CustomerSelectionSheet {
 
   /// Zeigt einen Dialog zum Bearbeiten eines Kunden an
   static Future<void> showEditCustomerDialog(BuildContext context, Customer customer) async {
+    final customerDoc = await FirebaseFirestore.instance
+        .collection('customers')
+        .doc(customer.id)
+        .get();
+
+    if (!customerDoc.exists) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Kunde nicht gefunden'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Erstelle Customer-Objekt mit aktuellen Daten
+    final currentCustomer = Customer.fromMap(customerDoc.data()!, customerDoc.id);
+
+    print( currentCustomer.houseNumber);
+
     final formKey = GlobalKey<FormState>();
-    final companyController = TextEditingController(text: customer.company);
-    final firstNameController = TextEditingController(text: customer.firstName);
-    final lastNameController = TextEditingController(text: customer.lastName);
-    final streetController = TextEditingController(text: customer.street);
-    final houseNumberController = TextEditingController(text: customer.houseNumber);
-    final zipCodeController = TextEditingController(text: customer.zipCode);
-    final cityController = TextEditingController(text: customer.city);
-    final countryController = TextEditingController(text: customer.country);
-    final countryCodeController = TextEditingController(text: customer.countryCode);
-    final emailController = TextEditingController(text: customer.email);
-    final phone1Controller = TextEditingController(text: customer.phone1);
-    final phone2Controller = TextEditingController(text: customer.phone2);
-    final vatNumberController = TextEditingController(text: customer.vatNumber);
-    final eoriNumberController = TextEditingController(text: customer.eoriNumber);
-    final languageController = TextEditingController(text: customer.language);
-    final christmasLetterController = TextEditingController(text: customer.wantsChristmasCard ? 'JA' : 'NEIN');
-    final notesController = TextEditingController(text: customer.notes);
-    final addressSupplementController = TextEditingController(text: customer?.addressSupplement ?? '');
-    final districtPOBoxController = TextEditingController(text: customer?.districtPOBox ?? '');
-
-
+    final companyController = TextEditingController(text: currentCustomer.company);
+    final firstNameController = TextEditingController(text: currentCustomer.firstName);
+    final lastNameController = TextEditingController(text: currentCustomer.lastName);
+    final streetController = TextEditingController(text: currentCustomer.street);
+    final houseNumberController = TextEditingController(text: currentCustomer.houseNumber);
+    final zipCodeController = TextEditingController(text: currentCustomer.zipCode);
+    final cityController = TextEditingController(text: currentCustomer.city);
+    final countryController = TextEditingController(text: currentCustomer.country);
+    final countryCodeController = TextEditingController(text: currentCustomer.countryCode);
+    final emailController = TextEditingController(text: currentCustomer.email);
+    final phone1Controller = TextEditingController(text: currentCustomer.phone1);
+    final phone2Controller = TextEditingController(text: currentCustomer.phone2);
+    final vatNumberController = TextEditingController(text: currentCustomer.vatNumber);
+    final eoriNumberController = TextEditingController(text: currentCustomer.eoriNumber);
+    final languageController = TextEditingController(text: currentCustomer.language);
+    final christmasLetterController = TextEditingController(text: currentCustomer.wantsChristmasCard ? 'JA' : 'NEIN');
+    final notesController = TextEditingController(text: currentCustomer.notes);
+    final addressSupplementController = TextEditingController(text: currentCustomer.addressSupplement ?? '');
+    final districtPOBoxController = TextEditingController(text: currentCustomer.districtPOBox ?? '');
 
     // Lieferadresse
-    final shippingCompanyController = TextEditingController(text: customer.shippingCompany);
-    final shippingFirstNameController = TextEditingController(text: customer.shippingFirstName);
-    final shippingLastNameController = TextEditingController(text: customer.shippingLastName);
-    final shippingStreetController = TextEditingController(text: customer.shippingStreet);
-    final shippingHouseNumberController = TextEditingController(text: customer.shippingHouseNumber);
-    final shippingZipCodeController = TextEditingController(text: customer.shippingZipCode);
-    final shippingCityController = TextEditingController(text: customer.shippingCity);
-    final shippingCountryController = TextEditingController(text: customer.shippingCountry);
-    final shippingCountryCodeController = TextEditingController(text: customer.shippingCountryCode);
-    final shippingEmailController = TextEditingController(text: customer.shippingEmail);
-    final shippingPhoneController = TextEditingController(text: customer.shippingPhone);
+    final shippingCompanyController = TextEditingController(text: currentCustomer.shippingCompany);
+    final shippingFirstNameController = TextEditingController(text: currentCustomer.shippingFirstName);
+    final shippingLastNameController = TextEditingController(text: currentCustomer.shippingLastName);
+    final shippingStreetController = TextEditingController(text: currentCustomer.shippingStreet);
+    final shippingHouseNumberController = TextEditingController(text: currentCustomer.shippingHouseNumber);
+    final shippingZipCodeController = TextEditingController(text: currentCustomer.shippingZipCode);
+    final shippingCityController = TextEditingController(text: currentCustomer.shippingCity);
+    final shippingCountryController = TextEditingController(text: currentCustomer.shippingCountry);
+    final shippingCountryCodeController = TextEditingController(text: currentCustomer.shippingCountryCode);
+    final shippingEmailController = TextEditingController(text: currentCustomer.shippingEmail);
+    final shippingPhoneController = TextEditingController(text: currentCustomer.shippingPhone);
 
-    bool _useShippingAddress = customer.hasDifferentShippingAddress;
+    bool _useShippingAddress = currentCustomer.hasDifferentShippingAddress;
 
     await showModalBottomSheet(
       context: context,
@@ -516,6 +536,66 @@ class CustomerSelectionSheet {
                                     ],
                                   ),
                                   const SizedBox(height: 16),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        flex: 3,
+                                        child: TextFormField(
+                                          controller: houseNumberController,
+                                          decoration: InputDecoration(
+                                            labelText: 'Hausnummer *',
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            filled: true,
+                                            fillColor: Colors.grey.shade50,
+                                            prefixIcon: Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                                              child: getAdaptiveIcon(
+                                                iconName: 'add_road',
+                                                defaultIcon: Icons.add_road,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(12),
+                                              borderSide: BorderSide(color: Colors.grey.shade300),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(12),
+                                              borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                                            ),
+                                          ),
+                                          validator: (value) => value?.isEmpty == true ? 'Bitte Hausnr. eingeben' : null,
+                                        ),
+                                      ),
+                                      // const SizedBox(width: 16),
+                                      // Expanded(
+                                      //   child: TextFormField(
+                                      //     controller: houseNumberController,
+                                      //     decoration: InputDecoration(
+                                      //       labelText: 'Nr. *',
+                                      //       border: OutlineInputBorder(
+                                      //         borderRadius: BorderRadius.circular(12),
+                                      //       ),
+                                      //       filled: true,
+                                      //       fillColor: Colors.grey.shade50,
+                                      //       enabledBorder: OutlineInputBorder(
+                                      //         borderRadius: BorderRadius.circular(12),
+                                      //         borderSide: BorderSide(color: Colors.grey.shade300),
+                                      //       ),
+                                      //       focusedBorder: OutlineInputBorder(
+                                      //         borderRadius: BorderRadius.circular(12),
+                                      //         borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                                      //       ),
+                                      //     ),
+                                      //     validator: (value) => value?.isEmpty == true ? 'Bitte Nr. eingeben' : null,
+                                      //   ),
+                                      // ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+
                                   // PLZ und Ort
                                   Row(
                                     children: [
@@ -773,31 +853,32 @@ class CustomerSelectionSheet {
                                                 : null,
                                           ),
                                         ),
-                                        // const SizedBox(width: 16),
-                                        // Expanded(
-                                        //   child: TextFormField(
-                                        //     controller: shippingHouseNumberController,
-                                        //     decoration: InputDecoration(
-                                        //       labelText: 'Nr. *',
-                                        //       border: OutlineInputBorder(
-                                        //         borderRadius: BorderRadius.circular(12),
-                                        //       ),
-                                        //       filled: true,
-                                        //       fillColor: Colors.grey.shade50,
-                                        //       enabledBorder: OutlineInputBorder(
-                                        //         borderRadius: BorderRadius.circular(12),
-                                        //         borderSide: BorderSide(color: Colors.grey.shade300),
-                                        //       ),
-                                        //       focusedBorder: OutlineInputBorder(
-                                        //         borderRadius: BorderRadius.circular(12),
-                                        //         borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-                                        //       ),
-                                        //     ),
-                                        //     validator: (value) => _useShippingAddress && value?.isEmpty == true
-                                        //         ? 'Bitte Nr. eingeben'
-                                        //         : null,
-                                        //   ),
-                                        // ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          flex:1,
+                                          child: TextFormField(
+                                            controller: shippingHouseNumberController,
+                                            decoration: InputDecoration(
+                                              labelText: 'Nr. *',
+                                              border: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              filled: true,
+                                              fillColor: Colors.grey.shade50,
+                                              enabledBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(12),
+                                                borderSide: BorderSide(color: Colors.grey.shade300),
+                                              ),
+                                              focusedBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(12),
+                                                borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                                              ),
+                                            ),
+                                            validator: (value) => _useShippingAddress && value?.isEmpty == true
+                                                ? 'Bitte Nr. eingeben'
+                                                : null,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                     const SizedBox(height: 16),
@@ -904,12 +985,19 @@ class CustomerSelectionSheet {
                                             ),
                                           ),
                                         ),
-                                        const SizedBox(width: 16),
+
+
+                                      ],
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Row(
+                                      children: [
+
                                         Expanded(
                                           child: TextFormField(
                                             controller: shippingPhoneController,
                                             decoration: InputDecoration(
-                                              labelText: 'Telefon',
+                                              labelText: 'Telefon 1',
                                               border: OutlineInputBorder(
                                                 borderRadius: BorderRadius.circular(12),
                                               ),
@@ -1123,7 +1211,7 @@ class CustomerSelectionSheet {
                                                   shippingPhone: _useShippingAddress ? shippingPhoneController.text.trim() : '',
                                                   shippingEmail: _useShippingAddress ? shippingEmailController.text.trim() : '',
                                                 );
-
+                                                print("streetcontr:${streetController.text.trim()},");
 
                                                 print("test111");
 
@@ -1190,6 +1278,7 @@ class CustomerSelectionSheet {
       ),
     );
   }
+
   /// Zeigt einen Dialog zum Erstellen eines neuen Kunden an
   /// Zeigt einen Dialog zum Erstellen eines neuen Kunden an
   static Future<Customer?> showNewCustomerDialog(BuildContext context) async {
@@ -1669,6 +1758,65 @@ class CustomerSelectionSheet {
     ],
     ),
     const SizedBox(height: 16),
+      Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: TextFormField(
+              controller: houseNumberController,
+              decoration: InputDecoration(
+                labelText: 'Hausnummer *',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: Colors.grey.shade50,
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: getAdaptiveIcon(
+                    iconName: 'add_road',
+                    defaultIcon: Icons.add_road,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                ),
+              ),
+              validator: (value) => value?.isEmpty == true ? 'Bitte Hausnummer eingeben' : null,
+            ),
+          ),
+          // const SizedBox(width: 16),
+          // Expanded(
+          // child: TextFormField(
+          // controller: houseNumberController,
+          // decoration: InputDecoration(
+          // labelText: 'Nr. *',
+          // border: OutlineInputBorder(
+          // borderRadius: BorderRadius.circular(12),
+          // ),
+          // filled: true,
+          // fillColor: Colors.grey.shade50,
+          // enabledBorder: OutlineInputBorder(
+          // borderRadius: BorderRadius.circular(12),
+          // borderSide: BorderSide(color: Colors.grey.shade300),
+          // ),
+          // focusedBorder: OutlineInputBorder(
+          // borderRadius: BorderRadius.circular(12),
+          // borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+          // ),
+          // ),
+          // validator: (value) => value?.isEmpty == true ? 'Bitte Nr. eingeben' : null,
+          // ),
+          // ),
+        ],
+      ),
+      const SizedBox(height: 16),
     // PLZ und Ort
     Row(
     children: [
@@ -1801,6 +1949,7 @@ class CustomerSelectionSheet {
     ),
     ),
     const SizedBox(height: 16),
+
       // Im showEditCustomerDialog und showNewCustomerDialog,
 // ersetze den bestehenden Code für Vor- und Nachname in der Lieferadresse:
 
@@ -1933,31 +2082,32 @@ class CustomerSelectionSheet {
         : null,
     ),
     ),
-    // const SizedBox(width: 16),
-    // Expanded(
-    // child: TextFormField(
-    // controller: shippingHouseNumberController,
-    // decoration: InputDecoration(
-    // labelText: 'Nr. *',
-    // border: OutlineInputBorder(
-    // borderRadius: BorderRadius.circular(12),
-    // ),
-    // filled: true,
-    // fillColor: Colors.grey.shade50,
-    // enabledBorder: OutlineInputBorder(
-    // borderRadius: BorderRadius.circular(12),
-    // borderSide: BorderSide(color: Colors.grey.shade300),
-    // ),
-    // focusedBorder: OutlineInputBorder(
-    // borderRadius: BorderRadius.circular(12),
-    // borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-    // ),
-    // ),
-    // validator: (value) => _useShippingAddress && value?.isEmpty == true
-    // ? 'Bitte Nr. eingeben'
-    //     : null,
-    // ),
-    // ),
+    const SizedBox(width: 16),
+    Expanded(
+      flex:1,
+    child: TextFormField(
+    controller: shippingHouseNumberController,
+    decoration: InputDecoration(
+    labelText: 'Nr. *',
+    border: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    ),
+    filled: true,
+    fillColor: Colors.grey.shade50,
+    enabledBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: Colors.grey.shade300),
+    ),
+    focusedBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+    ),
+    ),
+    validator: (value) => _useShippingAddress && value?.isEmpty == true
+    ? 'Bitte Nr. eingeben'
+        : null,
+    ),
+    ),
     ],
     ),
     const SizedBox(height: 16),
@@ -2242,6 +2392,7 @@ class CustomerSelectionSheet {
                     onPressed: () async {
                       if (formKey.currentState?.validate() == true) {
                         try {
+                          print("streetcontr:${streetController.text.trim()},");
                           final customerData = Customer(
                             id: '',
                             name: companyController.text.trim(),
@@ -3291,7 +3442,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: [
-                            Icon(Icons.filter_list, size: 16, color: Theme.of(context).colorScheme.primary),
+                             getAdaptiveIcon(iconName: 'filter_list',defaultIcon:Icons.filter_list, size: 16, color: Theme.of(context).colorScheme.primary),
                             const SizedBox(width: 8),
                             Text(
                               CustomerFilterService.getFilterSummary(_activeFilters),
@@ -3421,7 +3572,7 @@ SizedBox(height:8),
                           'Umsatz: ${_activeFilters['minRevenue'] != null ? 'ab CHF ${_activeFilters['minRevenue']}' : ''}${_activeFilters['minRevenue'] != null && _activeFilters['maxRevenue'] != null ? ' - ' : ''}${_activeFilters['maxRevenue'] != null ? 'bis CHF ${_activeFilters['maxRevenue']}' : ''}',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon: const Icon(Icons.close, size: 16),
+                        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['minRevenue'] = null;
@@ -3441,7 +3592,7 @@ SizedBox(height:8),
                           'Zeitraum: ${_activeFilters['revenueStartDate'] != null ? DateFormat('dd.MM.yy').format(_activeFilters['revenueStartDate']) : ''}${_activeFilters['revenueStartDate'] != null && _activeFilters['revenueEndDate'] != null ? ' - ' : ''}${_activeFilters['revenueEndDate'] != null ? DateFormat('dd.MM.yy').format(_activeFilters['revenueEndDate']) : ''}',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon: const Icon(Icons.close, size: 16),
+                        deleteIcon:  getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['revenueStartDate'] = null;
@@ -3461,7 +3612,7 @@ SizedBox(height:8),
                           'Aufträge: ${_activeFilters['minOrderCount'] ?? ''}${_activeFilters['minOrderCount'] != null && _activeFilters['maxOrderCount'] != null ? '-' : ''}${_activeFilters['maxOrderCount'] ?? ''}',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon: const Icon(Icons.close, size: 16),
+                        deleteIcon:  getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['minOrderCount'] = null;
@@ -3481,7 +3632,7 @@ SizedBox(height:8),
                           'Weihnachtskarte: ${_activeFilters['wantsChristmasCard'] ? 'JA' : 'NEIN'}',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon: const Icon(Icons.close, size: 16),
+                        deleteIcon:getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['wantsChristmasCard'] = null;
@@ -3500,7 +3651,7 @@ SizedBox(height:8),
                           'MwSt-Nr: ${_activeFilters['hasVatNumber'] ? 'Vorhanden' : 'Fehlt'}',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon: const Icon(Icons.close, size: 16),
+                        deleteIcon:  getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['hasVatNumber'] = null;
@@ -3519,7 +3670,7 @@ SizedBox(height:8),
                           'EORI-Nr: ${_activeFilters['hasEoriNumber'] ? 'Vorhanden' : 'Fehlt'}',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon: const Icon(Icons.close, size: 16),
+                        deleteIcon:   getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['hasEoriNumber'] = null;
@@ -3538,7 +3689,7 @@ SizedBox(height:8),
                           '${(_activeFilters['countries'] as List).length} Länder',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon: const Icon(Icons.close, size: 16),
+                        deleteIcon:   getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['countries'] = [];
@@ -3557,7 +3708,7 @@ SizedBox(height:8),
                           '${(_activeFilters['languages'] as List).length} Sprachen',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon: const Icon(Icons.close, size: 16),
+                        deleteIcon:   getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['languages'] = [];
@@ -3688,6 +3839,7 @@ SizedBox(height: 8,),
                       ],
                     ),
                     onTap: () {
+                      print("yop");
                       _showCustomerDetails(context, customer);
                     },
                   ),
@@ -3762,167 +3914,217 @@ SizedBox(height: 8,),
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.9,
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black26,
-              blurRadius: 10,
-              spreadRadius: 0,
-              offset: const Offset(0, -1),
-            ),
-          ],
-        ),
-        child: DefaultTabController(
-          length: 2,
-          child: Column(
-            children: [
-              // Drag Handle
-              Center(
-                child: Container(
-                  margin: const EdgeInsets.only(top: 12, bottom: 8),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+      builder: (context) => FutureBuilder<DocumentSnapshot>(
+        future: FirebaseFirestore.instance
+            .collection('customers')
+            .doc(customer.id)
+            .get(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.9,
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: const Center(child: CircularProgressIndicator()),
+            );
+          }
+
+          if (!snapshot.hasData || !snapshot.data!.exists) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.9,
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    getAdaptiveIcon(
+                      iconName: 'error',
+                      defaultIcon: Icons.error,
+                      size: 48,
+                      color: Colors.red,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('Kunde nicht gefunden'),
+                  ],
                 ),
               ),
+            );
+          }
 
-              // Header
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: Theme.of(context).primaryColor,
-                      child: Text(
-                        customer.name.isNotEmpty
-                            ? customer.name.substring(0, 1).toUpperCase()
-                            : '?',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
+          // Erstelle Customer-Objekt mit aktuellen Daten
+          final currentCustomer = Customer.fromMap(
+            snapshot.data!.data() as Map<String, dynamic>,
+            snapshot.data!.id,
+          );
+
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.9,
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 10,
+                  spreadRadius: 0,
+                  offset: const Offset(0, -1),
+                ),
+              ],
+            ),
+            child: DefaultTabController(
+              length: 2,
+              child: Column(
+                children: [
+                  // Drag Handle
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 12, bottom: 8),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: Theme.of(context).primaryColor,
+                          child: Text(
+                            currentCustomer.name.isNotEmpty
+                                ? currentCustomer.name.substring(0, 1).toUpperCase()
+                                : '?',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                currentCustomer.name.isNotEmpty ? currentCustomer.name : 'Unbenannter Kunde',
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (currentCustomer.countryCode?.isNotEmpty == true)
+                                Text(
+                                  'Länderkürzel: ${currentCustomer.countryCode}',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Tab-Bar
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Colors.grey.shade200,
+                          width: 1,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    child: TabBar(
+                      tabs: [
+                        Tab(
+                          icon: getAdaptiveIcon(iconName: 'person', defaultIcon: Icons.person),
+                          text: 'Details',
+                        ),
+                        Tab(
+                          icon: getAdaptiveIcon(iconName: 'shopping_bag', defaultIcon: Icons.shopping_bag),
+                          text: 'Kaufhistorie',
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Tab-Views
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        // Tab 1: Kundendetails
+                        _buildCustomerDetailsTab(context, currentCustomer),
+
+                        // Tab 2: Kaufhistorie
+                        _buildPurchaseHistoryTab(context, currentCustomer),
+                      ],
+                    ),
+                  ),
+
+                  // Aktionsbuttons
+                  SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Row(
                         children: [
-                          Text(
-                            customer.name.isNotEmpty ? customer.name : 'Unbenannter Kunde',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                CustomerSelectionSheet.showEditCustomerDialog(context, currentCustomer);
+                              },
+                              icon: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit),
+                              label: const Text('Bearbeiten'),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
                             ),
-                            overflow: TextOverflow.ellipsis,
                           ),
-                          if (customer.countryCode?.isNotEmpty == true)
-                            Text(
-                              'Länderkürzel: ${customer.countryCode}',
-                              style: Theme.of(context).textTheme.bodySmall,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _showDeleteConfirmation(context, currentCustomer);
+                              },
+                              icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete),
+                              label: const Text('Löschen'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
                             ),
+                          ),
                         ],
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Tab-Bar
-              Container(
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: Colors.grey.shade200,
-                      width: 1,
-                    ),
                   ),
-                ),
-                child: TabBar(
-                  tabs: [
-                    Tab(
-                      icon: getAdaptiveIcon(iconName: 'person', defaultIcon: Icons.person),
-                      text: 'Details',
-                    ),
-                    Tab(
-                      icon: getAdaptiveIcon(iconName: 'shopping_bag', defaultIcon: Icons.shopping_bag),
-                      text: 'Kaufhistorie',
-                    ),
-                  ],
-                ),
+                ],
               ),
-
-              // Tab-Views
-              Expanded(
-                child: TabBarView(
-                  children: [
-                    // Tab 1: Kundendetails
-                    _buildCustomerDetailsTab(context, customer),
-
-                    // Tab 2: Kaufhistorie
-                    _buildPurchaseHistoryTab(context, customer),
-                  ],
-                ),
-              ),
-
-              // Aktionsbuttons
-              SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            CustomerSelectionSheet.showEditCustomerDialog(context, customer);
-                          },
-                          icon: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit),
-                          label: const Text('Bearbeiten'),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _showDeleteConfirmation(context, customer);
-                          },
-                          icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete),
-                          label: const Text('Löschen'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -3971,10 +4173,13 @@ SizedBox(height: 8,),
           // Rechnungsadresse
           _buildDetailSection(
             context,
-            'Rechnungsadresse',
+            'RechnungsadresseX',
             [
               if (customer.street?.isNotEmpty == true)
-                _buildDetailRow('Straße', '${customer.street}${customer.houseNumber?.isNotEmpty == true ? ' ${customer.houseNumber}' : ''}'),
+                _buildDetailRow('Straße', '${customer.street}'),
+              if (customer.street?.isNotEmpty == true)
+                _buildDetailRow('Hausnummer', '${customer.houseNumber}'),
+
               if (customer.addressSupplement?.isNotEmpty == true)
                 _buildDetailRow('Adresszusatz', customer.addressSupplement!),
               if (customer.districtPOBox?.isNotEmpty == true)
@@ -4119,8 +4324,8 @@ SizedBox(height: 8,),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.info_outline,
+                        getAdaptiveIcon(iconName: 'info', defaultIcon:
+                          Icons.info,
                           size: 12,
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -4583,115 +4788,8 @@ SizedBox(height: 8,),
         return key.replaceAll('_', ' ').replaceAll('-', ' ').toUpperCase();
     }
   }
-// Helper Widget für Order Status
-  Widget _buildOrderStatusCard(BuildContext context, String label, String status, IconData icon) {
-    Color color;
-    String text;
 
-    switch (status) {
-      case 'pending':
-        color = Colors.orange;
-        text = 'Ausstehend';
-        break;
-      case 'processing':
-        color = Colors.blue;
-        text = 'In Bearbeitung';
-        break;
-      case 'shipped':
-        color = Colors.purple;
-        text = 'Versendet';
-        break;
-      case 'delivered':
-        color = Colors.green;
-        text = 'Geliefert';
-        break;
-      case 'cancelled':
-        color = Colors.red;
-        text = 'Storniert';
-        break;
-      default:
-        color = Colors.grey;
-        text = status;
-    }
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 11, color: Colors.grey),
-          ),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-// Helper Widget für Payment Status
-  Widget _buildOrderPaymentStatusCard(BuildContext context, String label, String status, IconData icon) {
-    Color color;
-    String text;
-
-    switch (status) {
-      case 'pending':
-        color = Colors.orange;
-        text = 'Offen';
-        break;
-      case 'partial':
-        color = Colors.blue;
-        text = 'Teilzahlung';
-        break;
-      case 'paid':
-        color = Colors.green;
-        text = 'Bezahlt';
-        break;
-      default:
-        color = Colors.grey;
-        text = status;
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 11, color: Colors.grey),
-          ),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
   void _showQuoteDetails(BuildContext context, String quoteId, Map<String, dynamic> quote) {
     showModalBottomSheet(
       context: context,
@@ -4832,61 +4930,7 @@ SizedBox(height: 8,),
       }
     }
   }
-// Helper für Quote Status
-  Widget _buildQuoteStatusWidget(BuildContext context, Map<String, dynamic> quote) {
-    final status = quote['status'] as String? ?? 'open';
-    final validUntil = (quote['validUntil'] as Timestamp).toDate();
-    final isExpired = validUntil.isBefore(DateTime.now());
 
-    Color color;
-    IconData icon;
-    String text;
-
-    if (isExpired && status == 'open') {
-      color = Colors.grey;
-      icon = Icons.timer_off;
-      text = 'Angebot ist abgelaufen';
-    } else {
-      switch (status) {
-        case 'accepted':
-          color = Colors.green;
-          icon = Icons.check_circle;
-          text = 'Angebot wurde angenommen';
-          break;
-        case 'rejected':
-          color = Colors.red;
-          icon = Icons.cancel;
-          text = 'Angebot wurde abgelehnt';
-          break;
-        default:
-          color = Colors.blue;
-          icon = Icons.schedule;
-          text = 'Angebot ist offen';
-      }
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(width: 12),
-          Text(
-            text,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
 // Helper für Status-Chips
   Widget _buildStatusChip(String status) {

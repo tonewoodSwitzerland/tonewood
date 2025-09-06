@@ -162,35 +162,35 @@ class PackingListGenerator extends BasePdfGenerator {
 
               if (standardProductQuery.docs.isNotEmpty) {
                 final standardProduct = standardProductQuery.docs.first.data();
-                final mm3Volume = standardProduct['volume']?['mm3_standard'];
-                final dm3Volume = standardProduct['volume']?['dm3_standard'];
+                final mm3Volume = standardProduct['volume_per_unit']?['mm3_standard'];
+                final dm3Volume = standardProduct['volume_per_unit']?['dm3_standard'];
 
                 if (mm3Volume != null && mm3Volume > 0) {
                   standardVolumeCache[articleNumber] = {
-                    'volume': mm3Volume,
+                    'volume_per_unit': mm3Volume,
                     'type': 'mm3'
                   };
                 } else if (dm3Volume != null && dm3Volume > 0) {
                   standardVolumeCache[articleNumber] = {
-                    'volume': dm3Volume,
+                    'volume_per_unit': dm3Volume,
                     'type': 'dm3'
                   };
                 } else {
                   standardVolumeCache[articleNumber] = {
-                    'volume': 0,
+                    'volume_per_unit': 0,
                     'type': 'mm3'
                   };
                 }
               } else {
                 standardVolumeCache[articleNumber] = {
-                  'volume': 0,
+                  'volume_per_unit': 0,
                   'type': 'mm3'
                 };
               }
             } catch (e) {
               print('Fehler beim Laden des Standard-Volumens für $articleNumber: $e');
               standardVolumeCache[articleNumber] = {
-                'volume': 0,
+                'volume_per_unit': 0,
                 'type': 'mm3'
               };
             }
@@ -228,12 +228,14 @@ class PackingListGenerator extends BasePdfGenerator {
           'total_summary': 'GESAMTÜBERSICHT',
           'product': 'Produkt',
           'qty': 'Menge',
+          'quality': 'Qual.',
+          'unit': 'Einh.',
           'weight_pc': 'Gewicht/Stk',
           'volume_pc': 'Volumen/Stk',
           'total_weight': 'Gesamt Gewicht',
           'total_volume': 'Gesamt Volumen',
-          'package_total_net': 'Paket Summe (Netto)',
-          'package_total_gross': 'Paket Summe (Brutto)',
+          'package_total_net': 'Paket Gewicht (Netto)',
+          'package_total_gross': 'Paket Gewicht (Brutto)',
         },
         'EN': {
           'packing_list': 'PACKING LIST',
@@ -246,13 +248,15 @@ class PackingListGenerator extends BasePdfGenerator {
           'gross_weight': 'Gross Weight',
           'total_summary': 'TOTAL SUMMARY',
           'product': 'Product',
+          'unit': 'unit',
+          'quality': 'qual.',
           'qty': 'Qty',
           'weight_pc': 'Weight/pc',
           'volume_pc': 'Volume/pc',
           'total_weight': 'Total Weight',
           'total_volume': 'Total Volume',
-          'package_total_net': 'Package Total (Net)',
-          'package_total_gross': 'Package Total (Gross)',
+          'package_total_net': 'Package weight (Net)',
+          'package_total_gross': 'Package weight (Gross)',
         }
       };
       return translations[language]?[key] ?? translations['DE']?[key] ?? '';
@@ -280,7 +284,7 @@ class PackingListGenerator extends BasePdfGenerator {
                 pw.SizedBox(height: 20),
 
                 // Kundenadresse
-               BasePdfGenerator.buildCustomerAddress(customerData, language: language),
+               BasePdfGenerator.buildCustomerAddress(customerData,'packing_list', language: language),
 
                 pw.Expanded(
                   child: pw.Center(
@@ -324,7 +328,7 @@ class PackingListGenerator extends BasePdfGenerator {
           content.add(pw.SizedBox(height: 20));
 
           // Kundenadresse
-          content.add(BasePdfGenerator.buildCustomerAddress(customerData));
+          content.add(BasePdfGenerator.buildCustomerAddress(customerData,'packing_list'));
           content.add(pw.SizedBox(height: 20));
 
           // Für jedes Paket eine Tabelle
@@ -453,9 +457,9 @@ class PackingListGenerator extends BasePdfGenerator {
         decoration: const pw.BoxDecoration(color: PdfColors.blueGrey50),
         children: [
           BasePdfGenerator.buildHeaderCell(getTranslation('product'), 8),
-          BasePdfGenerator.buildHeaderCell('L×B×D (mm)', 8),
+          BasePdfGenerator.buildHeaderCell(getTranslation('quality'), 8),
           BasePdfGenerator.buildHeaderCell(getTranslation('qty'), 8, align: pw.TextAlign.right),
-          BasePdfGenerator.buildHeaderCell('Einh', 8),
+          BasePdfGenerator.buildHeaderCell(getTranslation('unit'), 8),
           BasePdfGenerator.buildHeaderCell(getTranslation('weight_pc'), 8, align: pw.TextAlign.right),
           BasePdfGenerator.buildHeaderCell(getTranslation('volume_pc'), 8, align: pw.TextAlign.right),
           BasePdfGenerator.buildHeaderCell(getTranslation('total_weight'), 8, align: pw.TextAlign.right),
@@ -468,6 +472,7 @@ class PackingListGenerator extends BasePdfGenerator {
     for (final item in packageItems) {
       final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
       final productId = item['product_id'] as String? ?? '';
+      final quality = item['quality_name'] as String? ?? '';
 
       // Einheit normalisieren
       String unit = item['unit'] ?? 'Stk';
@@ -490,13 +495,18 @@ class PackingListGenerator extends BasePdfGenerator {
       // Holzart-Info für Dichte
       final woodCode = item['wood_code'] as String? ?? '';
       final woodInfo = woodTypeCache[woodCode] ?? {};
-      final density = (woodInfo['density'] as num?)?.toDouble() ?? 450.0;
+      final density = (woodInfo['density'] as num?)?.toDouble() ?? 0.0;
 
       // Volumen berechnen
       double volumePerPiece = 0.0;
 
-      // 1. Priorität: Manuell eingegebenes Volumen
-      if (measurements['custom_volume'] != null && (measurements['custom_volume'] as num) > 0) {
+      final volumeFromItem = item['volume_per_unit'];
+      if (volumeFromItem != null && (volumeFromItem as num) > 0) {
+        volumePerPiece = (volumeFromItem as num).toDouble();
+        print("Verwende volume_per_unit aus Item: $volumePerPiece");
+      }
+// 2. Priorität: Manuell eingegebenes Volumen
+      else if  (measurements['custom_volume'] != null && (measurements['custom_volume'] as num) > 0) {
         volumePerPiece = (measurements['custom_volume'] as num).toDouble();
       }
       // 2. Priorität: Berechnetes Volumen aus Maßen
@@ -512,8 +522,9 @@ class PackingListGenerator extends BasePdfGenerator {
           final articleNumber = instrumentCode + partCode;
           final standardVolumeData = standardVolumeCache[articleNumber];
 
+          print("standardVolumeData:$standardVolumeData");
           if (standardVolumeData != null) {
-            final standardVolume = standardVolumeData['volume'] ?? 0;
+            final standardVolume = standardVolumeData['volume_per_unit'] ?? 0;
             final volumeType = standardVolumeData['type'] ?? 'mm3';
 
             if (standardVolume > 0) {
@@ -531,12 +542,22 @@ class PackingListGenerator extends BasePdfGenerator {
       double weightPerPiece = 0.0;
       double totalWeight = 0.0;
       double totalVolume = 0.0;
-
+      print("Item: ${item['product_name']}");
+      print("  Unit: $unit");
+      print("  Quantity: $quantity");
+      print("  Density: $density");
+      print("  Volume per piece: $volumePerPiece");
+      print("  Total weight: $totalWeight");
+      print("  Total volume: $totalVolume");
       if (unit.toLowerCase() == 'kg') {
         // Wenn Einheit kg ist, ist quantity bereits das Gesamtgewicht
         totalWeight = quantity;
         // Volumen berechnen aus Gewicht und Dichte
-        totalVolume = totalWeight / density;
+        if (density > 0) {
+          totalVolume = totalWeight / density;
+        } else {
+          totalVolume = 0.0; // oder Standardwert
+        }  totalVolume = totalWeight / density;
         // weightPerPiece bleibt 0, da es bei kg keinen Sinn macht
       } else {
         // Standard-Berechnung für andere Einheiten
@@ -577,7 +598,7 @@ class PackingListGenerator extends BasePdfGenerator {
               ),
             ),
             BasePdfGenerator.buildContentCell(
-              pw.Text(dimensionsText, style: const pw.TextStyle(fontSize: 8)),
+              pw.Text(quality, style: const pw.TextStyle(fontSize: 8)),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(

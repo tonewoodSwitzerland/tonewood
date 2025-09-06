@@ -138,7 +138,8 @@ class QuoteService {
 
     for (final item in items) {
       // Überspringe manuelle Produkte
-      if (item['is_manual_product'] == true) continue;
+      // Überspringe manuelle Produkte und Dienstleistungen
+      if (item['is_manual_product'] == true || item['is_service'] == true) continue;
 
       final movementRef = _firestore.collection('stock_movements').doc();
 
@@ -165,6 +166,9 @@ class QuoteService {
   static Future<void> _generateQuotePdf(Quote quote) async {
     try {
       final rawExchangeRates = quote.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
+
+
+
       final exchangeRates = <String, double>{
         'CHF': 1.0,
       };
@@ -174,8 +178,52 @@ class QuoteService {
           exchangeRates[key] = (value as num).toDouble();
         }
       });
+      // NEU: Lade Rundungseinstellungen aus den Metadaten oder aus Firebase
+      Map<String, bool> roundingSettings;
 
+      // Versuche zuerst aus den Quote-Metadaten zu laden
+      if (quote.metadata.containsKey('roundingSettings')) {
+        final rawSettings = quote.metadata['roundingSettings'] as Map<String, dynamic>;
+        roundingSettings = {
+          'CHF': rawSettings['CHF'] ?? true,
+          'EUR': rawSettings['EUR'] ?? false,
+          'USD': rawSettings['USD'] ?? false,
+        };
+      } else {
+        // Fallback: Lade aus Firebase
+        try {
+          final doc = await FirebaseFirestore.instance
+              .collection('general_data')
+              .doc('currency_settings')
+              .get();
+
+          if (doc.exists && doc.data()!.containsKey('rounding_settings')) {
+            final settings = doc.data()!['rounding_settings'] as Map<String, dynamic>;
+            roundingSettings = {
+              'CHF': settings['CHF'] ?? true,
+              'EUR': settings['EUR'] ?? false,
+              'USD': settings['USD'] ?? false,
+            };
+          } else {
+            // Standard-Einstellungen
+            roundingSettings = {
+              'CHF': true,
+              'EUR': false,
+              'USD': false,
+            };
+          }
+        } catch (e) {
+          print('Fehler beim Laden der Rundungseinstellungen: $e');
+          // Fallback zu Standard-Einstellungen
+          roundingSettings = {
+            'CHF': true,
+            'EUR': false,
+            'USD': false,
+          };
+        }
+      }
       final pdfBytes = await QuoteGenerator.generateQuotePdf(
+        roundingSettings: roundingSettings,
         items: quote.items,
         customerData: quote.customer,
         fairData: quote.fair,
@@ -264,8 +312,8 @@ class QuoteService {
     for (final item in items) {
       // ... (Debug-Ausgaben bleiben gleich)
 
-      if (item['is_manual_product'] == true) {
-        print('-> Überspringe manuelles Produkt');
+      if (item['is_manual_product'] == true || item['is_service'] == true) {
+        print('-> Überspringe manuelles Produkt oder Dienstleistung');
         continue;
       }
 

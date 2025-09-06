@@ -45,6 +45,16 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
   final TextEditingController _widthController = TextEditingController();
   final TextEditingController _thicknessController = TextEditingController();
 
+  // NEU: Zusätzliche Controller für Gewichtslogik
+  final TextEditingController _volumeController = TextEditingController();
+  final TextEditingController _densityController = TextEditingController();
+  final TextEditingController _notesController = TextEditingController();
+
+  // NEU: Gratisartikel-Variablen
+  bool _isGratisartikel = false;
+  final TextEditingController _proformaController = TextEditingController();
+
+
   // Ausgewählte Werte
   Map<String, dynamic>? _selectedInstrument;
   Map<String, dynamic>? _selectedPart;
@@ -94,6 +104,7 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
     return 'MANUAL_${DateTime.now().millisecondsSinceEpoch}';
   }
 
+// Erweitere die _submitProduct Methode:
   void _submitProduct() {
     if (_formKey.currentState!.validate()) {
       if (_selectedInstrument == null ||
@@ -119,7 +130,7 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
             ? '${_selectedInstrument!['name']} - ${_selectedPart!['name']} - ${_selectedWood!['name']} - ${_selectedQuality!['name']}'
             : _productNameController.text.trim(),
         'quantity': quantity,
-        'price_per_unit': price,
+        'price_per_unit': _isGratisartikel ? 0.0 : price, // NEU: 0 bei Gratisartikel
         'unit': _selectedUnit,
         'instrument_name': _selectedInstrument!['name'],
         'instrument_code': _selectedInstrument!['code'],
@@ -130,9 +141,20 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
         'quality_name': _selectedQuality!['name'],
         'quality_code': _selectedQuality!['code'],
         'fsc_status': _selectedFscStatus,
-        'is_manual_product': true, // Wichtige Markierung!
+        'is_manual_product': true,
         'timestamp': FieldValue.serverTimestamp(),
       };
+
+      // NEU: Englische Bezeichnungen hinzufügen falls vorhanden
+      if (_selectedInstrument!['name_en'] != null) {
+        manualProduct['instrument_name_en'] = _selectedInstrument!['name_en'];
+      }
+      if (_selectedPart!['name_en'] != null) {
+        manualProduct['part_name_en'] = _selectedPart!['name_en'];
+      }
+      if (_selectedWood!['name_en'] != null) {
+        manualProduct['wood_name_en'] = _selectedWood!['name_en'];
+      }
 
       // Füge Maße hinzu, falls vorhanden
       if (_lengthController.text.isNotEmpty) {
@@ -145,8 +167,64 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
         manualProduct['custom_thickness'] = double.tryParse(_thicknessController.text.replaceAll(',', '.'));
       }
 
+      // NEU: Volumen hinzufügen
+      if (_volumeController.text.isNotEmpty) {
+        manualProduct['volume_per_unit'] = double.tryParse(_volumeController.text.replaceAll(',', '.')) ?? 0.0;
+      }
+
+      // NEU: Dichte hinzufügen
+      if (_densityController.text.isNotEmpty) {
+        manualProduct['density'] = double.tryParse(_densityController.text.replaceAll(',', '.')) ?? 0.0;
+      }
+
+      // NEU: Notizen hinzufügen
+      if (_notesController.text.trim().isNotEmpty) {
+        manualProduct['notes'] = _notesController.text.trim();
+      }
+
+      // NEU: Gratisartikel-Logik
+      if (_isGratisartikel) {
+        manualProduct['is_gratisartikel'] = true;
+        final proformaValue = double.tryParse(_proformaController.text.replaceAll(',', '.')) ?? price;
+        manualProduct['proforma_value'] = proformaValue;
+      }
+
       widget.onProductAdded(manualProduct);
       Navigator.pop(context);
+    }
+  }
+  void _calculateVolumeFromDimensions() {
+    // Parse die Maße
+    final lengthText = _lengthController.text.replaceAll(',', '.');
+    final widthText = _widthController.text.replaceAll(',', '.');
+    final thicknessText = _thicknessController.text.replaceAll(',', '.');
+
+    final length = double.tryParse(lengthText);
+    final width = double.tryParse(widthText);
+    final thickness = double.tryParse(thicknessText);
+
+    // Nur berechnen wenn alle drei Werte vorhanden sind
+    if (length != null && length > 0 &&
+        width != null && width > 0 &&
+        thickness != null && thickness > 0) {
+
+      // Berechne Volumen in m³ (Maße sind in mm)
+      final volumeInM3 = (length * width * thickness) / 1000000000.0;
+
+      // Setze das berechnete Volumen
+      setState(() {
+        _volumeController.text = volumeInM3.toStringAsFixed(5);
+      });
+    }
+  }
+
+
+  // NEU: Hilfsmethode für Dichte aus Holzart
+  Future<void> _updateDensityFromWood(Map<String, dynamic>? wood) async {
+    if (wood != null && wood['density'] != null) {
+      setState(() {
+        _densityController.text = wood['density'].toString();
+      });
     }
   }
 
@@ -275,14 +353,21 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
 
                     const SizedBox(height: 8),
 
-                    _buildDropdown(
-                      label: 'Holzart *',
-                      icon: Icons.forest,
-                      iconName: 'forest',
-                      items: _woodTypes,
-                      value: _selectedWood,
-                      onChanged: (value) => setState(() => _selectedWood = value),
-                    ),
+
+            _buildDropdown(
+            label: 'Holzart *',
+            icon: Icons.forest,
+                iconName: 'forest',
+                items: _woodTypes,
+                value: _selectedWood,
+                onChanged: (value) {
+          setState(() => _selectedWood = value);
+          // NEU: Setze Dichte automatisch wenn Holzart gewählt wird
+          if (value != null && value['density'] != null) {
+          _densityController.text = value['density'].toString();
+          }
+          },
+          ),
 
                     const SizedBox(height: 8),
 
@@ -432,12 +517,41 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                       onChanged: (value) => setState(() => _selectedFscStatus = value!),
                     ),
 
+
+
+// Füge diese UI-Abschnitte nach dem FSC-Status Dropdown ein:
+
+// Nach FSC-Status Dropdown:
                     const SizedBox(height: 24),
 
-                    // Maße (optional)
-                    _buildSectionTitle('Maße (optional)', Icons.straighten),
+// NEU: Notizen-Bereich
+                    _buildSectionTitle('Hinweise', Icons.note_alt),
                     const SizedBox(height: 12),
 
+                    TextFormField(
+                      controller: _notesController,
+                      decoration: InputDecoration(
+                        labelText: 'Spezielle Hinweise (optional)',
+                        hintText: 'z.B. besondere Qualitätsmerkmale, Lagerort, etc.',
+                        border: const OutlineInputBorder(),
+                        filled: true,
+                        fillColor: Theme.of(context).colorScheme.surface,
+                        prefixIcon: getAdaptiveIcon(
+                          iconName: 'note',
+                          defaultIcon: Icons.note_alt,
+                        ),
+                      ),
+                      maxLines: 3,
+                      minLines: 2,
+                    ),
+
+                    const SizedBox(height: 24),
+
+// Ersetze den bestehenden Maße-Bereich mit diesem erweiterten Bereich:
+                    _buildSectionTitle('Maße & Gewicht (optional)', Icons.straighten),
+                    const SizedBox(height: 12),
+
+// Maße in einer Reihe
                     Row(
                       children: [
                         Expanded(
@@ -449,15 +563,16 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                               border: const OutlineInputBorder(),
                               filled: true,
                               fillColor: Theme.of(context).colorScheme.surface,
-                              prefixIcon: Icon(Icons.straighten, size: 20),
+                              prefixIcon: getAdaptiveIcon(iconName: 'straighten', defaultIcon: Icons.straighten, size: 20),
                             ),
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             inputFormatters: [
                               FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
                             ],
+                            onChanged: (value) => setState(() {  _calculateVolumeFromDimensions();}), // Für Gewichtsberechnung
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: TextFormField(
                             controller: _widthController,
@@ -467,15 +582,16 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                               border: const OutlineInputBorder(),
                               filled: true,
                               fillColor: Theme.of(context).colorScheme.surface,
-                              prefixIcon: Icon(Icons.swap_horiz, size: 20),
+                              prefixIcon: getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon: Icons.swap_horiz, size: 20),
                             ),
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             inputFormatters: [
                               FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
                             ],
+                            onChanged: (value) => setState(() {_calculateVolumeFromDimensions(); }), // Für Gewichtsberechnung
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: TextFormField(
                             controller: _thicknessController,
@@ -485,16 +601,253 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                               border: const OutlineInputBorder(),
                               filled: true,
                               fillColor: Theme.of(context).colorScheme.surface,
-                              prefixIcon: Icon(Icons.layers, size: 20),
+                              prefixIcon: getAdaptiveIcon(iconName: 'layers', defaultIcon: Icons.layers, size: 20),
                             ),
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             inputFormatters: [
                               FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
                             ],
+                            onChanged: (value) => setState(() {_calculateVolumeFromDimensions(); }), // Für Gewichtsberechnung
                           ),
                         ),
                       ],
                     ),
+
+                    const SizedBox(height: 12),
+
+// NEU: Volumen-Eingabe
+                    TextFormField(
+                      controller: _volumeController,
+                      decoration: InputDecoration(
+                        labelText: 'Volumen (m³)',
+                        border: const OutlineInputBorder(),
+                        filled: true,
+                        fillColor: Theme.of(context).colorScheme.surface,
+                        prefixIcon: getAdaptiveIcon(
+                            iconName: 'view_in_ar',
+                            defaultIcon: Icons.view_in_ar,
+                            size: 20
+                        ),
+                        helperText: 'Optional: Volumen manuell eingeben oder aus Maßen berechnen lassen',
+                      ),
+                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,5}')),
+                      ],
+                      onChanged: (value) => setState(() {}), // Für Gewichtsberechnung
+                    ),
+
+                    const SizedBox(height: 12),
+
+// NEU: Dichte-Eingabe
+                    TextFormField(
+                      controller: _densityController,
+                      decoration: InputDecoration(
+                        labelText: 'Spezifisches Gewicht (kg/m³)',
+                        border: const OutlineInputBorder(),
+                        filled: true,
+                        fillColor: Theme.of(context).colorScheme.surface,
+                        prefixIcon: getAdaptiveIcon(
+                            iconName: 'grain',
+                            defaultIcon: Icons.grain,
+                            size: 20
+                        ),
+                        helperText: _selectedWood != null && _selectedWood!['density'] != null
+                            ? 'Dichte aus Holzart: ${_selectedWood!['density']} kg/m³'
+                            : 'Manuell eingeben falls nicht automatisch geladen',
+                      ),
+                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,0}')),
+                      ],
+                      onChanged: (value) => setState(() {}), // Für Gewichtsberechnung
+                    ),
+
+// NEU: Gewichtsberechnung anzeigen
+                    const SizedBox(height: 16),
+                    Builder(
+                      builder: (context) {
+                        // Parse Werte
+                        final quantityText = _quantityController.text.replaceAll(',', '.');
+                        final volumeText = _volumeController.text.replaceAll(',', '.');
+                        final densityText = _densityController.text.replaceAll(',', '.');
+
+                        final quantity = double.tryParse(quantityText) ?? 0.0;
+                        final volumePerUnit = double.tryParse(volumeText) ?? 0.0;
+                        final density = double.tryParse(densityText) ?? 0.0;
+
+                        // Berechne Gewicht
+                        final weightPerUnit = volumePerUnit * density; // kg pro Einheit
+                        final totalWeight = weightPerUnit * quantity; // Gesamtgewicht
+
+                        if (volumePerUnit > 0 && density > 0) {
+                          return Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    getAdaptiveIcon(
+                                      iconName: 'scale',
+                                      defaultIcon: Icons.scale,
+                                      size: 20,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Gewichtsberechnung',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Theme.of(context).colorScheme.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Volumen: ${volumePerUnit.toStringAsFixed(5)} m³ × Dichte: ${density.toStringAsFixed(0)} kg/m³',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Gewicht pro ${_selectedUnit}:'),
+                                    Text(
+                                      '${weightPerUnit.toStringAsFixed(2)} kg',
+                                      style: TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                                if (quantity > 0) ...[
+                                  const SizedBox(height: 4),
+                                  Divider(),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Gesamtgewicht:',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${totalWeight.toStringAsFixed(2)} kg',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                          color: Theme.of(context).colorScheme.primary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          );
+                        } else {
+                          return Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Colors.orange.withOpacity(0.3),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                getAdaptiveIcon(
+                                  iconName: 'info',
+                                  defaultIcon: Icons.info,
+                                  size: 16,
+                                  color: Colors.orange,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Gewichtsberechnung erfordert Volumen und Dichte',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.orange[800],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                      },
+                    ),
+
+                    const SizedBox(height: 24),
+
+// NEU: Gratisartikel-Bereich
+                    _buildSectionTitle('Gratisartikel', Icons.card_giftcard),
+                    const SizedBox(height: 12),
+
+                    StatefulBuilder(
+                      builder: (context, setCheckboxState) {
+                        return Column(
+                          children: [
+                            CheckboxListTile(
+                              title: const Text('Als Gratisartikel markieren'),
+                              subtitle: const Text(
+                                'Artikel wird mit 0.00 berechnet, Pro-forma-Wert nur für Handelsrechnung',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                              value: _isGratisartikel,
+                              onChanged: (value) {
+                                setCheckboxState(() {
+                                  _isGratisartikel = value ?? false;
+                                  if (_isGratisartikel && _proformaController.text.isEmpty) {
+                                    _proformaController.text = _priceController.text;
+                                  }
+                                });
+                              },
+                            ),
+
+                            // Pro-forma-Wert Eingabe (nur sichtbar wenn Checkbox aktiv)
+                            if (_isGratisartikel) ...[
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _proformaController,
+                                decoration: InputDecoration(
+                                  labelText: 'Pro-forma-Wert für Handelsrechnung',
+                                  suffixText: 'CHF',
+                                  border: const OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: Theme.of(context).colorScheme.surface,
+                                  prefixIcon: getAdaptiveIcon(
+                                      iconName: 'receipt_long',
+                                      defaultIcon: Icons.receipt_long
+                                  ),
+                                  helperText: 'Dieser Wert erscheint nur auf der Handelsrechnung',
+                                ),
+                                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                                ],
+                              ),
+                            ],
+                          ],
+                        );
+                      },
+                    ),
+
+
+
+
                   ],
                 ),
               ),
@@ -632,6 +985,10 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
     _lengthController.dispose();
     _widthController.dispose();
     _thicknessController.dispose();
+    _volumeController.dispose(); // NEU
+    _densityController.dispose(); // NEU
+    _notesController.dispose(); // NEU
+    _proformaController.dispose(); // NEU
     super.dispose();
   }
 }

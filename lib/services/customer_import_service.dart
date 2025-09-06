@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../services/customer.dart';
+import 'icon_helper.dart';
 
 class CustomerImportService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -17,7 +18,7 @@ class CustomerImportService {
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            Icon(Icons.upload_file, color: Theme.of(context).primaryColor),
+             getAdaptiveIcon(iconName: 'upload_file',defaultIcon:Icons.upload_file, color: Theme.of(context).primaryColor),
             const SizedBox(width: 8),
             const Text('Kundendaten importieren'),
           ],
@@ -43,7 +44,7 @@ class CustomerImportService {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.info, color: Colors.blue.shade700, size: 20),
+                       getAdaptiveIcon(iconName: 'info', defaultIcon:Icons.info, color: Colors.blue.shade700, size: 20),
                       const SizedBox(width: 8),
                       Text(
                         'CSV-Format:',
@@ -78,7 +79,7 @@ class CustomerImportService {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.warning_amber, color: Colors.orange.shade700, size: 20),
+                       getAdaptiveIcon(iconName: 'warning',defaultIcon:Icons.warning, color: Colors.orange.shade700, size: 20),
                       const SizedBox(width: 8),
                       Text(
                         'Wichtige Hinweise:',
@@ -111,7 +112,7 @@ class CustomerImportService {
               Navigator.pop(context);
               _pickAndImportFile(context);
             },
-            icon: const Icon(Icons.upload),
+            icon: getAdaptiveIcon(iconName: 'upload',defaultIcon:Icons.upload),
             label: const Text('CSV-Datei auswählen'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Theme.of(context).primaryColor,
@@ -547,7 +548,7 @@ class CustomerImportService {
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            const Icon(Icons.warning, color: Colors.orange, size: 28),
+             getAdaptiveIcon(iconName: 'warning',defaultIcon:Icons.warning, color: Colors.orange, size: 28),
             const SizedBox(width: 8),
             const Text('Import teilweise erfolgreich'),
           ],
@@ -578,7 +579,7 @@ class CustomerImportService {
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 28),
+             getAdaptiveIcon(iconName: 'check_circle',defaultIcon:Icons.check_circle, color: Colors.green, size: 28),
             const SizedBox(width: 8),
             const Text('Import erfolgreich'),
           ],
@@ -608,7 +609,7 @@ class CustomerImportService {
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            const Icon(Icons.error, color: Colors.red, size: 28),
+            getAdaptiveIcon(iconName: 'error',defaultIcon:Icons.error, color: Colors.red, size: 28),
             const SizedBox(width: 8),
             const Text('Fehler'),
           ],

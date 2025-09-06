@@ -765,7 +765,9 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                item['product_name'] ?? 'Unbekanntes Produkt',
+                                                item['is_service'] == true
+                                                    ? (item['name']?.toString() ?? 'Unbenannte Dienstleistung')
+                                                    : (item['product_name']?.toString() ?? 'Unbekanntes Produkt'),
                                                 style: const TextStyle(
                                                   fontWeight: FontWeight.w600,
                                                   fontSize: 15,
@@ -1794,7 +1796,8 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                     color: Theme.of(context).colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(
+                  child:
+                  getAdaptiveIcon(iconName: 'settings', defaultIcon:
                     Icons.settings,
                     color: Theme.of(context).colorScheme.primary,
                   ),
@@ -1820,7 +1823,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                 ),
                 IconButton(
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
+                  icon: getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
                 ),
               ],
             ),
@@ -1849,8 +1852,8 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                     ),
                     child: Row(
                       children: [
-                        Icon(
-                          Icons.info_outline,
+                        getAdaptiveIcon(iconName: 'info', defaultIcon:
+                          Icons.info,
                           color: Theme.of(context).colorScheme.primary,
                           size: 24,
                         ),
@@ -1890,7 +1893,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                           padding: const EdgeInsets.all(16),
                           child: Row(
                             children: [
-                              Icon(
+                              getAdaptiveIcon(iconName: 'text_fields', defaultIcon:
                                 Icons.text_fields,
                                 color: Theme.of(context).colorScheme.primary,
                               ),
@@ -1927,8 +1930,8 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                                   ],
                                 ),
                               ),
-                              Icon(
-                                Icons.arrow_forward_ios,
+                              getAdaptiveIcon(iconName:'arrow_forward', defaultIcon:
+                                Icons.arrow_forward,
                                 size: 16,
                                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                               ),
@@ -1996,7 +1999,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     decoration: InputDecoration(
                       labelText: 'Anzahlung (${widget.quote.metadata['currency']})',
-                      prefixIcon: const Icon(Icons.payments),
+                      prefixIcon:  getAdaptiveIcon(iconName: 'payment',defaultIcon:Icons.payment),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -2016,7 +2019,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                     controller: _referenceController,
                     decoration: InputDecoration(
                       labelText: 'Belegnummer / Notiz',
-                      prefixIcon: const Icon(Icons.description),
+                      prefixIcon: getAdaptiveIcon(iconName: 'description',defaultIcon:Icons.description),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -2056,7 +2059,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.calendar_today),
+                          getAdaptiveIcon(iconName: 'calendar_today',defaultIcon:Icons.calendar_today),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -2080,7 +2083,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                           ),
                           if (_downPaymentDate != null)
                             IconButton(
-                              icon: const Icon(Icons.clear),
+                              icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:Icons.clear),
                               onPressed: () {
                                 setState(() {
                                   _downPaymentDate = null;
@@ -2246,7 +2249,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                                 child: Row(
                                   children: [
-                                    Icon(
+                                    getAdaptiveIcon(iconName: 'picture_as_pdf', defaultIcon:
                                       Icons.picture_as_pdf,
                                       color: Theme.of(context).colorScheme.primary,
                                     ),
@@ -2258,7 +2261,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                                       ),
                                     ),
                                     IconButton(
-                                      icon: const Icon(Icons.close),
+                                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
                                       onPressed: () => Navigator.pop(bottomSheetContext),
                                     ),
                                   ],
@@ -2297,7 +2300,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                     }
                   }
                 },
-                icon: const Icon(Icons.visibility),
+                icon: getAdaptiveIcon(iconName: 'visibility',defaultIcon:Icons.visibility),
                 label: const Text('Rechnung Vorschau'),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),

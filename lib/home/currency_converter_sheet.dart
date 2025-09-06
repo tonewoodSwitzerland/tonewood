@@ -20,16 +20,132 @@ class CurrencyConverterSheet {
     );
     String currentCurrency = currencyNotifier.value;
 
+    Map<String, bool>? roundingEnabled;
+
+    Widget _buildRoundingRow(String from, String to, String currency) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          children: [
+            Text(
+              '$currency $from',
+              style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: getAdaptiveIcon(
+                iconName: 'arrow_forward',
+                defaultIcon: Icons.arrow_forward,
+                size: 12,
+                color: Colors.grey,
+              ),
+            ),
+            Text(
+              '$currency $to',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    Widget _buildRoundingExample(String currency) {
+      return Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Rundungsbeispiele:',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildRoundingRow('10.01', '10.00', currency),
+                      _buildRoundingRow('10.03', '10.05', currency),
+                      _buildRoundingRow('10.06', '10.05', currency),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildRoundingRow('10.02', '10.00', currency),
+                      _buildRoundingRow('10.04', '10.05', currency),
+                      _buildRoundingRow('10.08', '10.10', currency),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (BuildContext context, StateSetter setState) {
+
+
+
           // Hilfsfunktion für die Umrechnung
           double convertFromCHF(double chfAmount, double rate) => chfAmount * rate;
           double convertToCHF(double foreignAmount, double rate) =>
               rate > 0 ? foreignAmount / rate : 0;
+
+
+// Lade die Rundungseinstellungen, falls noch nicht geschehen
+          if (roundingEnabled == null) {
+            // Setze Standardwerte
+            roundingEnabled = {
+              'CHF': true,
+              'EUR': false,
+              'USD': false,
+            };
+
+            // Lade aus Firebase
+            FirebaseFirestore.instance
+                .collection('general_data')
+                .doc('currency_settings')
+                .get()
+                .then((doc) {
+              if (doc.exists && doc.data()!.containsKey('rounding_settings')) {
+                final settings = doc.data()!['rounding_settings'] as Map<String, dynamic>;
+                setState(() {
+                  roundingEnabled = {
+                    'CHF': settings['CHF'] ?? true,
+                    'EUR': settings['EUR'] ?? false,
+                    'USD': settings['USD'] ?? false,
+                  };
+                });
+              }
+            });
+          }
+
+
 
           // Füge diese Methode am Anfang des StatefulBuilder hinzu:
           double parseControllerValue(TextEditingController controller) {
@@ -196,7 +312,7 @@ class CurrencyConverterSheet {
                                   ),
                                   child: Row(
                                     children: [
-                                      Icon(
+                                      getAdaptiveIcon(iconName: 'update', defaultIcon:
                                         Icons.update,
                                         size: 16,
                                         color: Theme.of(context).colorScheme.tertiary,
@@ -228,8 +344,8 @@ class CurrencyConverterSheet {
                               ),
                               child: Row(
                                 children: [
-                                  Icon(
-                                    Icons.info_outline,
+                                  getAdaptiveIcon(iconName: 'info', defaultIcon:
+                                    Icons.info,
                                     size: 16,
                                     color: Colors.orange[700],
                                   ),
@@ -347,7 +463,7 @@ class CurrencyConverterSheet {
                                           padding: const EdgeInsets.symmetric(horizontal: 16),
                                           child: Column(
                                             children: [
-                                              Icon(
+                                              getAdaptiveIcon(iconName:'swap_horiz', defaultIcon:
                                                 Icons.swap_horiz,
                                                 color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
                                                 size: 24,
@@ -475,7 +591,7 @@ class CurrencyConverterSheet {
                                           padding: const EdgeInsets.symmetric(horizontal: 16),
                                           child: Column(
                                             children: [
-                                              Icon(
+                                              getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon:
                                                 Icons.swap_horiz,
                                                 color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
                                                 size: 24,
@@ -675,6 +791,233 @@ class CurrencyConverterSheet {
                             ),
                           ),
                         ),
+
+
+                        const SizedBox(height: 16),
+
+// NEU: Rundungseinstellungen
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  getAdaptiveIcon(
+                                    iconName: 'rule',
+                                    defaultIcon: Icons.rule,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Rundungseinstellungen',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Wählen Sie für welche Währungen die Rappenrundung (0.05) angewendet werden soll:',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              // CHF Rundung
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surface,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: roundingEnabled!['CHF']!
+                                        ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+                                        : Theme.of(context).dividerColor.withOpacity(0.2),
+                                  ),
+                                ),
+                                child: Column(
+                                  children: [
+                                    CheckboxListTile(
+                                      title: Row(
+                                        children: [
+                                          Text(
+                                            'CHF - Schweizer Franken',
+                                            style: TextStyle(fontWeight: FontWeight.w600),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blue.withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              'STANDARD',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.blue[700],
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      subtitle: const Text(
+                                        'Schweizer Rappenrundung auf 0.05',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
+                                      value: roundingEnabled?['CHF'] ?? true,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          if (roundingEnabled != null) {
+                                            roundingEnabled!['CHF'] = value ?? true;
+                                          }
+                                        });
+                                      },
+                                      controlAffinity: ListTileControlAffinity.leading,
+                                      contentPadding: EdgeInsets.zero,
+                                    ),
+                                    if (roundingEnabled?['CHF'] ?? true) ...[
+                                      const Divider(height: 16),
+                                      _buildRoundingExample('CHF'),
+                                    ],
+                                  ],
+                                ),
+                              ),
+
+                              // EUR Rundung
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surface,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: roundingEnabled!['EUR']!
+                                        ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+                                        : Theme.of(context).dividerColor.withOpacity(0.2),
+                                  ),
+                                ),
+                                child: Column(
+                                  children: [
+                                    CheckboxListTile(
+                                      title: const Text(
+                                        'EUR - Euro',
+                                        style: TextStyle(fontWeight: FontWeight.w600),
+                                      ),
+                                      subtitle: const Text(
+                                        '5-Cent Rundung',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
+                                      value: roundingEnabled!['EUR']!,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          roundingEnabled!['EUR'] = value ?? false;
+                                        });
+                                      },
+                                      controlAffinity: ListTileControlAffinity.leading,
+                                      contentPadding: EdgeInsets.zero,
+                                    ),
+                                    if (roundingEnabled?['EUR'] ?? true) ...[
+                                      const Divider(height: 16),
+                                      _buildRoundingExample('EUR'),
+                                    ],
+                                  ],
+                                ),
+                              ),
+
+                              // USD Rundung
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surface,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: roundingEnabled!['USD']!
+                                        ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+                                        : Theme.of(context).dividerColor.withOpacity(0.2),
+                                  ),
+                                ),
+                                child: Column(
+                                  children: [
+                                    CheckboxListTile(
+                                      title: const Text(
+                                        'USD - US-Dollar',
+                                        style: TextStyle(fontWeight: FontWeight.w600),
+                                      ),
+                                      subtitle: const Text(
+                                        '5-Cent Rundung',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
+                                      value: roundingEnabled!['USD']!,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          roundingEnabled!['USD'] = value ?? false;
+                                        });
+                                      },
+                                      controlAffinity: ListTileControlAffinity.leading,
+                                      contentPadding: EdgeInsets.zero,
+                                    ),
+                                    if (roundingEnabled?['USD'] ?? true) ...[
+                                      const Divider(height: 16),
+                                      _buildRoundingExample('USD'),
+                                    ],
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(height: 16),
+
+                              // Info-Box
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    getAdaptiveIcon(
+                                      iconName: 'info',
+                                      defaultIcon: Icons.info,
+                                      size: 20,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        'Die Rundung wird nur auf den Endbetrag angewendet, nicht auf Zwischensummen oder Steuern.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    
+                    
+                    
+                    
+                    
                       ],
                     ),
                   ),
@@ -754,15 +1097,33 @@ class CurrencyConverterSheet {
                                 };
                                 currencyNotifier.value = currentCurrency;
 
-                                // Speichere über Callback
+                                // Speichere über Callback mit Rundungseinstellungen
                                 onSave();
+
+                                // NEU: Speichere auch die Rundungseinstellungen
+                                FirebaseFirestore.instance
+                                    .collection('general_data')
+                                    .doc('currency_settings')
+                                    .set({
+                                  'selected_currency': currentCurrency,
+                                  'exchange_rates': {
+                                    'EUR': eurRate,
+                                    'USD': usdRate,
+                                  },
+                                  'rounding_settings': roundingEnabled ?? {
+                                    'CHF': true,
+                                    'EUR': false,
+                                    'USD': false,
+                                  },  // NEU
+                                  'last_updated': FieldValue.serverTimestamp(),
+                                }, SetOptions(merge: true));
 
                                 Navigator.pop(context);
 
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      'Währung auf $currentCurrency umgestellt',
+                                      'Währung auf $currentCurrency umgestellt${roundingEnabled![currentCurrency]! ? ' (mit Rundung)' : ''}',
                                     ),
                                     backgroundColor: Colors.green,
                                   ),
@@ -906,6 +1267,8 @@ class CurrencyConverterSheet {
       }
     }
   }
+
+
 
 
 }

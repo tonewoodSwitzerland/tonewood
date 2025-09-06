@@ -257,7 +257,7 @@ ScaffoldMessenger.of(context).showSnackBar(
 SnackBar(
 content: Row(
 children: [
-const Icon(Icons.download_done, color: Colors.white),
+getAdaptiveIcon(iconName: 'download',defaultIcon:Icons.download_done, color: Colors.white),
 const SizedBox(width: 12),
 Expanded(
 child: Column(

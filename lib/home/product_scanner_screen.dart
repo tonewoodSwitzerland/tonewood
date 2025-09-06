@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../components/product_cart.dart';
 import '../constants.dart';
+import '../services/icon_helper.dart';
 import 'barcode_scanner.dart';
 
 class ScannerScreen extends StatefulWidget {
@@ -95,7 +96,7 @@ class ScannerScreenState extends State<ScannerScreen> {
                           padding: const EdgeInsets.all(24),
                           shape: const CircleBorder(),
                         ),
-                        child: const Icon(
+                        child: getAdaptiveIcon(iconName: 'qr_code_scanner', defaultIcon:
                           Icons.qr_code_scanner,
                           size: 64,
                         ),
@@ -155,7 +156,7 @@ class ScannerScreenState extends State<ScannerScreen> {
                         const SizedBox(height: 24),
                         ElevatedButton.icon(
                           onPressed: _startScanner,
-                          icon: const Icon(Icons.qr_code_scanner),
+                          icon:  getAdaptiveIcon(iconName: 'qr_code_scanner', defaultIcon:Icons.qr_code_scanner),
                           label: const Text('Neuen Scan starten'),
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.all(16),
@@ -172,7 +173,7 @@ class ScannerScreenState extends State<ScannerScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(
+                          getAdaptiveIcon(iconName: 'error', defaultIcon:
                             Icons.error,
                             size: 64,
                             color: Colors.orange,
@@ -186,7 +187,7 @@ class ScannerScreenState extends State<ScannerScreen> {
                           const SizedBox(height: 24),
                           ElevatedButton.icon(
                             onPressed: _startScanner,
-                            icon: const Icon(Icons.qr_code_scanner),
+                            icon:  getAdaptiveIcon(iconName: 'qr_code_scanner', defaultIcon:Icons.qr_code_scanner),
                             label: const Text('Neuen Scan starten'),
                           ),
                         ],
@@ -236,7 +237,7 @@ class ScannerScreenState extends State<ScannerScreen> {
               ),
             ),
           ),
-          Icon(
+          getAdaptiveIcon(iconName: value ?  'check_circle':'canel', defaultIcon:
             value ? Icons.check_circle : Icons.cancel,
             color: value ? Colors.green : Colors.red,
           ),

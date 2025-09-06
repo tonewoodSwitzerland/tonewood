@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../authenticate/login_screen.dart';
 import '../services/auth.dart';
 import '../constants.dart';
+import '../services/icon_helper.dart';
 
 class VerifyScreen extends StatefulWidget {
 
@@ -56,7 +57,7 @@ final AuthService _auth = AuthService();
         elevation: .5,
         actions: <Widget>[
           TextButton.icon(
-            icon: const Icon(Icons.person, color: Colors.white,), label: const Text('logout', style: TextStyle(color:Colors.white),),onPressed: () async{
+            icon:   getAdaptiveIcon(iconName: 'person',defaultIcon:Icons.person, color: Colors.white,), label: const Text('logout', style: TextStyle(color:Colors.white),),onPressed: () async{
             await logout(context);
 
           },
@@ -83,7 +84,7 @@ backgroundColor: Colors.white,
 
       items:
       [BottomNavigationBarItem(icon: const FaIcon(FontAwesomeIcons.house), label: "dashboard".tr),
-        BottomNavigationBarItem(icon: const Icon(Icons.document_scanner_outlined), label: "scanner".tr),
+        BottomNavigationBarItem(icon:  getAdaptiveIcon(iconName: 'document_scanner',defaultIcon:Icons.document_scanner), label: "scanner".tr),
       ],
       ),
     );

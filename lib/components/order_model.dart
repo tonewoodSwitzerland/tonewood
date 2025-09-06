@@ -85,7 +85,29 @@ class OrderX {
       quoteId: data['quoteId'] as String?, // GEÄNDERT: Kann null sein
       customer: Map<String, dynamic>.from(data['customer'] ?? {}), // GEÄNDERT: Sichere Map-Konvertierung
       items: List<Map<String, dynamic>>.from(
-          (data['items'] ?? []).map((item) => Map<String, dynamic>.from(item))
+          (data['items'] ?? []).map((item) {
+            final itemMap = Map<String, dynamic>.from(item);
+            // Konvertiere alle numerischen Werte zu double
+
+            print("yuuuuuuuuuu");
+
+            return {
+              ...itemMap,
+              'quantity': (itemMap['quantity'] as num?)?.toDouble() ?? 0.0,
+              'price_per_unit': (itemMap['price_per_unit'] as num?)?.toDouble() ?? 0.0,
+              'volume_per_unit': (itemMap['volume_per_unit'] as num?)?.toDouble() ?? 0.0,
+              'density': (itemMap['density'] as num?)?.toDouble() ??0.0,
+              'weight': (itemMap['weight'] as num?)?.toDouble() ?? 0.0,
+              'custom_length': (itemMap['custom_length'] as num?)?.toDouble() ?? 0.0,
+              'custom_width': (itemMap['custom_width'] as num?)?.toDouble() ?? 0.0,
+              'custom_thickness': (itemMap['custom_thickness'] as num?)?.toDouble() ?? 0.0,
+              // Discount handling
+              'discount': itemMap['discount'] != null ? {
+                'percentage': ((itemMap['discount']['percentage'] ?? 0) as num).toDouble(),
+                'absolute': ((itemMap['discount']['absolute'] ?? 0) as num).toDouble(),
+              } : {'percentage': 0.0, 'absolute': 0.0},
+            };
+          })
       ),
       calculations: Map<String, dynamic>.from(data['calculations'] ?? {}),
       orderDate: (data['orderDate'] as Timestamp?)?.toDate() ?? DateTime.now(), // GEÄNDERT: Fallback auf jetzt

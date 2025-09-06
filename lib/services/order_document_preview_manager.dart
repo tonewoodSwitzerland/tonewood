@@ -130,7 +130,39 @@ class OrderDocumentPreviewManager {
       return null;
     }
   }
+  static Future<Map<String, bool>> _loadRoundingSettings() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('currency_settings')
+          .get();
 
+      if (doc.exists && doc.data()!.containsKey('rounding_settings')) {
+        final settings = doc.data()!['rounding_settings'] as Map<String, dynamic>;
+        return {
+          'CHF': settings['CHF'] ?? true,
+          'EUR': settings['EUR'] ?? false,
+          'USD': settings['USD'] ?? false,
+        };
+      }
+
+      // Fallback zu Standard-Einstellungen
+      print('Keine Rundungseinstellungen in Firebase gefunden, verwende Standard-Werte');
+      return {
+        'CHF': true,  // Standard: CHF wird gerundet
+        'EUR': false,
+        'USD': false,
+      };
+    } catch (e) {
+      print('Fehler beim Laden der Rundungseinstellungen: $e');
+      // Fallback zu Standard-Einstellungen
+      return {
+        'CHF': true,
+        'EUR': false,
+        'USD': false,
+      };
+    }
+  }
   // Preview für Angebot
   static Future<void> _showQuotePreview(
       BuildContext context,
@@ -144,12 +176,13 @@ class OrderDocumentPreviewManager {
 
       // Lade Versandkosten aus Order-Metadaten
       final shippingCosts = metadata['shippingCosts'] ?? {};
-
+      final roundingSettings = await _loadRoundingSettings();
       final currency = metadata['currency'] ?? 'CHF';
       final exchangeRates = Map<String, double>.from(metadata['exchangeRates'] ?? {'CHF': 1.0});
       final costCenterCode = orderData['costCenter']?['code'] ?? '00000';
 
       final pdfBytes = await QuoteGenerator.generateQuotePdf(
+        roundingSettings: roundingSettings,
         items: orderData['items'],
         customerData: customer,
         fairData: orderData['fair'],
@@ -270,59 +303,149 @@ class OrderDocumentPreviewManager {
     }
   }
   // Preview für Handelsrechnung
+
   static Future<void> _showCommercialInvoicePreview(
       BuildContext context,
       Map<String, dynamic> orderData,
       OrderX order,
       ) async {
     try {
+      print('=== _showCommercialInvoicePreview DEBUG START ===');
+
       final customer = orderData['customer'] as Map<String, dynamic>;
-    final language = orderData['metadata']?['language'] ?? customer['language'] ?? 'DE';
+      print('Customer loaded: ${customer.keys.toList()}');
+
+      final language = orderData['metadata']?['language'] ?? customer['language'] ?? 'DE';
+      print('Language: $language');
+
       final metadata = orderData['metadata'] ?? {};
+      print('Metadata keys: ${metadata.keys.toList()}');
 
+      // Debug shippingCosts
       final shippingCosts = metadata['shippingCosts'] ?? {};
+      print('ShippingCosts type: ${shippingCosts.runtimeType}');
+      print('ShippingCosts content: $shippingCosts');
+      if (shippingCosts is Map) {
+        shippingCosts.forEach((key, value) {
+          print('  $key: $value (${value.runtimeType})');
+        });
+      }
+
       final currency = metadata['currency'] ?? 'CHF';
-      final exchangeRates = Map<String, double>.from(metadata['exchangeRates'] ?? {'CHF': 1.0});
+      print('Currency: $currency');
+
+      // Debug exchangeRates VOR der Konvertierung
+      final rawExchangeRates = metadata['exchangeRates'] ?? {'CHF': 1.0};
+      print('Raw exchangeRates type: ${rawExchangeRates.runtimeType}');
+      print('Raw exchangeRates content: $rawExchangeRates');
+      if (rawExchangeRates is Map) {
+        rawExchangeRates.forEach((key, value) {
+          print('  $key: $value (${value.runtimeType})');
+        });
+      }
+
+      // Sichere Konvertierung
+      final exchangeRates = <String, double>{};
+      rawExchangeRates.forEach((key, value) {
+        print('Converting exchange rate $key: $value (${value.runtimeType})');
+        if (value is int) {
+          exchangeRates[key as String] = value.toDouble();
+        } else if (value is double) {
+          exchangeRates[key as String] = value;
+        } else {
+          print('WARNING: Unexpected type for exchange rate $key: ${value.runtimeType}');
+          exchangeRates[key as String] = 1.0; // Fallback
+        }
+      });
+      print('Converted exchangeRates: $exchangeRates');
+
       final costCenterCode = orderData['costCenter']?['code'] ?? '00000';
+      print('CostCenterCode: $costCenterCode');
 
-      // Lade Tara-Einstellungen für diesen Auftrag
+      // Lade Tara-Einstellungen
+      print('Loading tara settings for order: ${order.id}');
       final taraSettings = await _loadOrderTaraSettings(order.id);
+      print('TaraSettings loaded: ${taraSettings.keys.toList()}');
 
+      // Debug Tara Settings
+      taraSettings.forEach((key, value) {
+        print('  $key: $value (${value.runtimeType})');
+      });
 
-      // NEU: Extrahiere das Datum aus den Tara-Einstellungen
+      // Extrahiere das Datum
       DateTime? invoiceDate;
       if (taraSettings['commercial_invoice_date'] != null) {
         final dateValue = taraSettings['commercial_invoice_date'];
+        print('Date value type: ${dateValue.runtimeType}');
         if (dateValue is Timestamp) {
           invoiceDate = dateValue.toDate();
         } else if (dateValue is DateTime) {
           invoiceDate = dateValue;
         }
       }
+      print('Invoice date: $invoiceDate');
 
-      print("testxxx:$invoiceDate");
+      // Debug vatRate
+      final rawVatRate = metadata['vatRate'] ?? 8.1;
+      print('Raw vatRate: $rawVatRate (${rawVatRate.runtimeType})');
+      final vatRate = (rawVatRate is int) ? rawVatRate.toDouble() : rawVatRate as double;
+      print('Converted vatRate: $vatRate');
+
+      // Debug taxOption
+      final taxOption = metadata['taxOption'] ?? 0;
+      print('TaxOption: $taxOption (${taxOption.runtimeType})');
+
+      // Debug calculations
+      print('Calculations type: ${orderData['calculations']?.runtimeType}');
+      print('Calculations content: ${orderData['calculations']}');
+      if (orderData['calculations'] is Map) {
+        (orderData['calculations'] as Map).forEach((key, value) {
+          print('  $key: $value (${value.runtimeType})');
+        });
+      }
+
+      // Debug items
+      print('Items count: ${orderData['items']?.length}');
+      if (orderData['items'] != null && (orderData['items'] as List).isNotEmpty) {
+        final firstItem = orderData['items'][0];
+        print('First item keys: ${firstItem.keys.toList()}');
+        firstItem.forEach((key, value) {
+          print('  $key: $value (${value.runtimeType})');
+        });
+      }
+
+      print('Calling CommercialInvoiceGenerator.generateCommercialInvoicePdf...');
+
       final pdfBytes = await CommercialInvoiceGenerator.generateCommercialInvoicePdf(
-        items: orderData['items'],
-        customerData: customer,
-        fairData: orderData['fair'],
-        costCenterCode: costCenterCode,
-        currency: currency,
-        exchangeRates: exchangeRates,
-        language: language,
-        invoiceNumber: '${order.orderNumber}-CI',
-        shippingCosts: shippingCosts,
-        calculations: orderData['calculations'],
-        taxOption: metadata['taxOption'] ?? 0,
-        vatRate: (metadata['vatRate'] ?? 8.1).toDouble(),
-        taraSettings: taraSettings,
+          items: orderData['items'],
+          customerData: customer,
+          fairData: orderData['fair'],
+          costCenterCode: costCenterCode,
+          currency: currency,
+          exchangeRates: exchangeRates,
+          language: language,
+          invoiceNumber: '${order.orderNumber}-CI',
+          shippingCosts: shippingCosts,
+          calculations: orderData['calculations'],
+          taxOption: taxOption,
+          vatRate: vatRate,
+          taraSettings: taraSettings,
           invoiceDate: invoiceDate
       );
+
+      print('PDF generated successfully');
 
       if (context.mounted) {
         _openPdfViewer(context, pdfBytes, 'Handelsrechnung_${order.orderNumber}.pdf');
       }
-    } catch (e) {
-      print('XXFehler bei Handelsrechnung-Preview: $e');
+
+      print('=== _showCommercialInvoicePreview DEBUG END ===');
+    } catch (e, stackTrace) {
+      print('=== ERROR DETAILS ===');
+      print('Error: $e');
+      print('Stack trace:');
+      print(stackTrace);
+      print('=== END ERROR ===');
       rethrow;
     }
   }

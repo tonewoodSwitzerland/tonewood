@@ -67,7 +67,7 @@ class ProductManagementScreenState extends State<ProductManagementScreen> {
                       Navigator.pop(context);
                       _scanBarcodeForEdit();
                     },
-                    icon: const Icon(Icons.qr_code_scanner),
+                    icon:  getAdaptiveIcon(iconName: 'qr_code_scanner', defaultIcon:Icons.qr_code_scanner),
                     label: const Text('Scanner nutzen'),
                   ),
                   ElevatedButton(
@@ -205,7 +205,7 @@ print("sB:$searchBarcode");
                       Navigator.pop(context);
                       _scanBarcode();
                     },
-                    icon: const Icon(Icons.qr_code_scanner),
+                    icon:  getAdaptiveIcon(iconName: 'qr_code_scanner', defaultIcon:Icons.qr_code_scanner),
                     label: const Text('Scanner nutzen'),
                   ),
                   ElevatedButton(
@@ -589,7 +589,7 @@ print("sB:$searchBarcode");
                                   ),
                                   child: Row(
                                     children: [
-                                      Icon(
+                                      getAdaptiveIcon(iconName: 'warning', defaultIcon:
                                         Icons.warning,
                                         color: Colors.orange[700],
                                       ),
@@ -1011,7 +1011,7 @@ print("sB:$searchBarcode");
         return AlertDialog(
           title: Row(
             children: [
-              Icon(
+              getAdaptiveIcon(iconName: 'warning', defaultIcon:
                 Icons.warning,
                 color: Colors.orange[700],
                 size: 28,
@@ -1186,7 +1186,7 @@ print("sB:$searchBarcode");
             return AlertDialog(
               title: Row(
                 children: [
-                  Icon(Icons.error, color: Colors.red, size: 28),
+                  getAdaptiveIcon(iconName: 'error',defaultIcon:Icons.error, color: Colors.red, size: 28),
                   const SizedBox(width: 12),
                   const Text('Fehler: Produkt existiert bereits'),
                 ],
@@ -1528,7 +1528,8 @@ print("sB:$searchBarcode");
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
+
+                getAdaptiveIcon(iconName:value ?  'check_circle':'cancel', defaultIcon:
                   value ? Icons.check_circle : Icons.cancel,
                   color: value ? Colors.green[700] : Colors.red[700],
                   size: 16,
@@ -1679,7 +1680,7 @@ print("sB:$searchBarcode");
     required String subtitle,
     required VoidCallback onTap,
     required bool isSelected,
-    String? iconName,  // Neuer Parameter für adaptive Icons
+    required String iconName,  // Neuer Parameter für adaptive Icons
   }) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
@@ -1693,18 +1694,13 @@ print("sB:$searchBarcode");
             padding: const EdgeInsets.all(16.0),
             child: Row(
               children: [
-                iconName != null
-                    ? getAdaptiveIcon(
+               getAdaptiveIcon(
                   iconName: iconName,
                   defaultIcon: icon,
                   size: 24,
                   color: isSelected ? primaryAppColor : Colors.grey.shade700,
-                )
-                    : Icon(
-                    icon,
-                    size: 24,
-                    color: isSelected ? primaryAppColor : Colors.grey.shade700
                 ),
+
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -2616,7 +2612,7 @@ print("sB:$searchBarcode");
                                   DataCell(Row(
                                     children: [
                                       IconButton(
-                                        icon: const Icon(Icons.edit),
+                                        icon: getAdaptiveIcon(iconName: 'edit',defaultIcon:Icons.edit),
                                         onPressed: () {
                                           Navigator.push(
                                             context,
@@ -2793,18 +2789,21 @@ print("sB:$searchBarcode");
                         actions: [
                           _buildActionChip(
                             icon: Icons.search,
+                            iconName: 'search',
                             label: 'Suchen',
                             onTap: _showProductionDialog,
                             width:100,  // Feste Breite
                           ),
                           _buildActionChip(
                             icon: Icons.qr_code_scanner,
+                            iconName: 'qr_code_scanner',
                             label: 'Scanner',
                             onTap: _scanBarcode,
                             width:100,  // Feste Breite
                           ),
                           _buildActionChip(
                             icon: Icons.keyboard,
+                            iconName: 'keyboard',
                             label: 'Eingabe',
                             onTap: _showBarcodeInputDialog,
                             width:100,  // Feste Breite
@@ -2837,13 +2836,16 @@ print("sB:$searchBarcode");
                         actions: [
                           _buildActionChip(
                             icon: Icons.edit,
+                            iconName: 'edit',
                             label: 'Bearbeiten',
                             onTap: _showEditBarcodeInputDialog,
                             width:100,  // Feste Breite
                           ),
                           _buildActionChip(
                             icon: Icons.add,
+                            iconName: 'add',
                             label: 'Neu',
+
                             onTap: () {
                               Navigator.push(
                                 context,
@@ -2885,6 +2887,7 @@ print("sB:$searchBarcode");
                         actions: [
                           _buildActionChip(
                             icon: Icons.add,
+                            iconName: 'add',
                             label: 'Neu',
                             onTap: () {
                               Navigator.push(
@@ -2898,6 +2901,7 @@ print("sB:$searchBarcode");
                           ),
                           _buildActionChip(
                             icon: Icons.edit,
+                            iconName: 'edit',
                             label: 'Bearbeiten',
                             onTap: _showRoundwoodListDialog,
                             width:100,  // Feste Breite
@@ -3006,6 +3010,7 @@ print("sB:$searchBarcode");
 // Hilfsmethode für Action Chips innerhalb der Cards
   Widget _buildActionChip({
     required IconData icon,
+    required String iconName,
     required String label,
     required VoidCallback onTap,
     double? width,
@@ -3031,7 +3036,7 @@ print("sB:$searchBarcode");
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
+              getAdaptiveIcon(iconName: iconName, defaultIcon:
                 icon,
                 color: color,
                 size: 24,

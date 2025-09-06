@@ -250,7 +250,9 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                     color: Theme.of(context).colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(
+                  child:   getAdaptiveIcon(
+                    iconName: 'description',
+                    defaultIcon:
                     Icons.description,
                     color: Theme.of(context).colorScheme.primary,
                   ),
@@ -276,7 +278,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                 ),
                 IconButton(
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
+                  icon:  getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
                 ),
               ],
             ),
@@ -320,7 +322,9 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             padding: const EdgeInsets.only(left: 8),
                             child: IconButton(
                               onPressed: () => _showDocumentSettings(docType),  // Kein isDisabled check mehr
-                              icon: const Icon(Icons.settings),
+                              icon:    getAdaptiveIcon(
+                                  iconName: 'settings',
+                                  defaultIcon:Icons.settings),
                               tooltip: '$docType Einstellungen',
                             ),
                           )
@@ -533,12 +537,15 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
         targetPackage['items'].add({
           'product_id': item['product_id'],
           'product_name': item['product_name'],
-          'quantity': totalQuantity,
-          'weight_per_unit': item['weight'] ?? 0.0,
-          'volume_per_unit': item['volume'] ?? 0.0,
-          'custom_length': item['custom_length'] ?? 0.0,
-          'custom_width': item['custom_width'] ?? 0.0,
-          'custom_thickness': item['custom_thickness'] ?? 0.0,
+          'product_name_en': item['product_name_en'],
+          'quantity': totalQuantity.toDouble(), // totalQuantity ist bereits double
+          // Konvertiere ALLE numerischen Werte zu double
+          'weight_per_unit': (item['weight'] as num?)?.toDouble() ?? 0.0,
+          'volume_per_unit': (item['volume_per_unit'] as num?)?.toDouble() ?? 0.0,
+          'density': (item['density'] as num?)?.toDouble() ?? 0.0,
+          'custom_length': (item['custom_length'] as num?)?.toDouble() ?? 0.0,
+          'custom_width': (item['custom_width'] as num?)?.toDouble() ?? 0.0,
+          'custom_thickness': (item['custom_thickness'] as num?)?.toDouble() ?? 0.0,
           'wood_code': item['wood_code'] ?? '',
           'wood_name': item['wood_name'] ?? '',
           'unit': item['unit'] ?? 'Stk',
@@ -547,7 +554,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
           'part_code': item['part_code'] ?? '',
           'part_name': item['part_name'] ?? '',
           'quality_code': item['quality_code'] ?? '',
-          'quality_name': item['quality_name'] ?? '',
+          'quality_name': item['quality_name'] ?? ''
         });
       }
     });
@@ -614,7 +621,9 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                   padding: const EdgeInsets.all(24),
                   child: Row(
                     children: [
-                      Icon(Icons.receipt,
+                      getAdaptiveIcon(
+                          iconName: 'receipt',
+                          defaultIcon:Icons.receipt,
                           color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 12),
                       const Text('Rechnung - Anzahlung',
@@ -622,7 +631,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                       const Spacer(),
                       IconButton(
                         onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close),
+                        icon:  getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
                       ),
                     ],
                   ),
@@ -678,7 +687,9 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           decoration: InputDecoration(
                             labelText: 'Anzahlung (CHF)',
-                            prefixIcon: const Icon(Icons.payments),
+                            prefixIcon:   getAdaptiveIcon(
+                                iconName: 'payments',
+                                defaultIcon:Icons.payments),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -698,7 +709,9 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           controller: referenceController,
                           decoration: InputDecoration(
                             labelText: 'Belegnummer / Notiz',
-                            prefixIcon: const Icon(Icons.description),
+                            prefixIcon:    getAdaptiveIcon(
+                                iconName: 'description',
+                                defaultIcon:Icons.description),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -737,7 +750,9 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.calendar_today),
+                                getAdaptiveIcon(
+                                    iconName: 'calendar_today',
+                                    defaultIcon:Icons.calendar_today),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
@@ -761,7 +776,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                 ),
                                 if (downPaymentDate != null)
                                   IconButton(
-                                    icon: const Icon(Icons.clear),
+                                    icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:Icons.clear),
                                     onPressed: () {
                                       setModalState(() {
                                         downPaymentDate = null;
@@ -860,7 +875,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                     };
                                   });
                                 },
-                                icon: const Icon(Icons.save),
+                                icon: getAdaptiveIcon( iconName: 'save', defaultIcon:Icons.save),
                                 label: const Text('Speichern'),
                               ),
                             ),
@@ -912,7 +927,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                   padding: const EdgeInsets.all(24),
                   child: Row(
                     children: [
-                      Icon(Icons.local_shipping,
+                       getAdaptiveIcon(iconName: 'local_shipping',defaultIcon:Icons.local_shipping,
                           color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 12),
                       const Text('Lieferschein Einstellungen',
@@ -920,7 +935,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                       const Spacer(),
                       IconButton(
                         onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close),
+                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
                       ),
                     ],
                   ),
@@ -959,7 +974,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.calendar_today),
+                                getAdaptiveIcon(iconName: 'calendar_today',defaultIcon:Icons.calendar_today),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
@@ -977,7 +992,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                 ),
                                 if (deliveryDate != null)
                                   IconButton(
-                                    icon: const Icon(Icons.clear),
+                                    icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:Icons.clear),
                                     onPressed: () {
                                       setModalState(() {  // Use modal setState
                                         deliveryDate = null;
@@ -1016,7 +1031,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.payment),
+                                getAdaptiveIcon(iconName: 'payment',defaultIcon:Icons.payment),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
@@ -1034,7 +1049,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                 ),
                                 if (paymentDate != null)
                                   IconButton(
-                                    icon: const Icon(Icons.clear),
+                                    icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:Icons.clear),
                                     onPressed: () {
                                       setModalState(() {  // Use modal setState
                                         paymentDate = null;
@@ -1089,7 +1104,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                       };
                                     });
                                   },
-                                  icon: const Icon(Icons.save),
+                                  icon: getAdaptiveIcon( iconName: 'save', defaultIcon:Icons.save),
                                   label: const Text('Speichern'),
                                 ),
                               ),
@@ -1145,16 +1160,39 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
           : settings['commercial_invoice_date'] as DateTime?;
     }
 
-    // Controller für Textfelder (ohne packagingWeightController!)
+    // Controller für Textfelder
     final numberOfPackagesController = TextEditingController(
       text: numberOfPackages > 0 ? numberOfPackages.toString() : (settings['number_of_packages'] ?? 1).toString(),
     );
     final exportReasonController = TextEditingController(
-      text: settings['export_reason_text'],
+      text: settings['export_reason_text'] ?? 'Ware',
     );
     final carrierController = TextEditingController(
-      text: settings['carrier_text'],
+      text: settings['carrier_text'] ?? 'Swiss Post',
     );
+
+    // NEU: Incoterms Variablen
+    List<String> selectedIncoterms = List<String>.from(settings['selected_incoterms'] ?? []);
+    Map<String, String> incotermsFreeTexts = Map<String, String>.from(settings['incoterms_freetexts'] ?? {});
+    final Map<String, TextEditingController> incotermControllers = {};
+
+    // Controller für bestehende Incoterms erstellen
+    for (String incotermId in selectedIncoterms) {
+      incotermControllers[incotermId] = TextEditingController(text: incotermsFreeTexts[incotermId] ?? '');
+    }
+
+    // NEU: Lieferdatum Variablen
+    DateTime? selectedDeliveryDate;
+    if (settings['delivery_date_value'] != null) {
+      final timestamp = settings['delivery_date_value'];
+      if (timestamp is Timestamp) {
+        selectedDeliveryDate = timestamp.toDate();
+      }
+    }
+    bool deliveryDateMonthOnly = settings['delivery_date_month_only'] ?? false;
+
+    // NEU: Signatur Variable
+    String? selectedSignature = settings['selected_signature'];
 
     await showModalBottomSheet<void>(
       context: context,
@@ -1186,7 +1224,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                   padding: const EdgeInsets.all(24),
                   child: Row(
                     children: [
-                      Icon(Icons.inventory,
+                       getAdaptiveIcon(iconName: 'inventory',defaultIcon:Icons.inventory,
                           color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 12),
                       const Text('Handelsrechnung Einstellungen',
@@ -1194,7 +1232,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                       const Spacer(),
                       IconButton(
                         onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close),
+                        icon:  getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
                       ),
                     ],
                   ),
@@ -1233,7 +1271,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             ),
                             child: Row(
                               children: [
-                                Icon(
+                                getAdaptiveIcon(iconName: 'info', defaultIcon:
                                   Icons.info,
                                   size: 16,
                                   color: Theme.of(context).colorScheme.primary,
@@ -1261,7 +1299,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           readOnly: numberOfPackages > 0,
                           decoration: InputDecoration(
                             labelText: 'Anzahl Packungen',
-                            prefixIcon: const Icon(Icons.inventory),
+                            prefixIcon: getAdaptiveIcon(iconName: 'inventory',defaultIcon:Icons.inventory),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -1292,7 +1330,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.scale),
+                              getAdaptiveIcon(iconName: 'scale',defaultIcon:Icons.scale),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
@@ -1353,7 +1391,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.calendar_today),
+                                getAdaptiveIcon(iconName: 'calendar_today',defaultIcon:Icons.calendar_today),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
@@ -1377,7 +1415,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                 ),
                                 if (commercialInvoiceDate != null)
                                   IconButton(
-                                    icon: const Icon(Icons.clear),
+                                    icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:Icons.clear),
                                     onPressed: () {
                                       setModalState(() {
                                         commercialInvoiceDate = null;
@@ -1403,16 +1441,14 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                         ),
                         const SizedBox(height: 16),
 
-                        // In der _showCommercialInvoiceSettings Methode, ersetze die Checkboxen für Ursprungserklärung und CITES:
-
-// Ursprungserklärung - mit Info-Icon
+                        // Ursprungserklärung - mit Info-Icon
                         Row(
                           children: [
                             Expanded(
                               child: CheckboxListTile(
                                 title: const Text('Ursprungserklärung'),
                                 subtitle: const Text('Erklärung über Schweizer Ursprungswaren'),
-                                value: settings['origin_declaration'],
+                                value: settings['origin_declaration'] ?? false,
                                 onChanged: (value) {
                                   setModalState(() {
                                     settings['origin_declaration'] = value ?? false;
@@ -1421,8 +1457,8 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                               ),
                             ),
                             IconButton(
-                              icon: Icon(
-                                Icons.info_outline,
+                              icon: getAdaptiveIcon(iconName: 'info', defaultIcon:
+                                Icons.info,
                                 color: Theme.of(context).colorScheme.primary,
                               ),
                               onPressed: () async {
@@ -1439,7 +1475,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                   builder: (context) => AlertDialog(
                                     title: Row(
                                       children: [
-                                        Icon(
+                                        getAdaptiveIcon(iconName: 'info', defaultIcon:
                                           Icons.info,
                                           color: Theme.of(context).colorScheme.primary,
                                         ),
@@ -1466,7 +1502,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                           const SizedBox(height: 16),
                                           Row(
                                             children: [
-                                              Icon(
+                                              getAdaptiveIcon(iconName: 'edit', defaultIcon:
                                                 Icons.edit,
                                                 size: 16,
                                                 color: Theme.of(context).colorScheme.secondary,
@@ -1500,14 +1536,14 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           ],
                         ),
 
-// CITES - mit Info-Icon
+                        // CITES - mit Info-Icon
                         Row(
                           children: [
                             Expanded(
                               child: CheckboxListTile(
                                 title: const Text('CITES'),
                                 subtitle: const Text('Waren stehen NICHT auf der CITES-Liste'),
-                                value: settings['cites'],
+                                value: settings['cites'] ?? false,
                                 onChanged: (value) {
                                   setModalState(() {
                                     settings['cites'] = value ?? false;
@@ -1516,8 +1552,8 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                               ),
                             ),
                             IconButton(
-                              icon: Icon(
-                                Icons.info_outline,
+                              icon:  getAdaptiveIcon(iconName: 'info', defaultIcon:
+                                Icons.info,
                                 color: Theme.of(context).colorScheme.primary,
                               ),
                               onPressed: () async {
@@ -1534,7 +1570,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                   builder: (context) => AlertDialog(
                                     title: Row(
                                       children: [
-                                        Icon(
+                                        getAdaptiveIcon(iconName: 'info', defaultIcon:
                                           Icons.info,
                                           color: Theme.of(context).colorScheme.primary,
                                         ),
@@ -1561,7 +1597,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                           const SizedBox(height: 16),
                                           Row(
                                             children: [
-                                              Icon(
+                                              getAdaptiveIcon(iconName: 'edit', defaultIcon:
                                                 Icons.edit,
                                                 size: 16,
                                                 color: Theme.of(context).colorScheme.secondary,
@@ -1598,14 +1634,14 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                         // Export Reason mit Textfeld
                         CheckboxListTile(
                           title: const Text('Grund des Exports'),
-                          value: settings['export_reason'],
+                          value: settings['export_reason'] ?? false,
                           onChanged: (value) {
                             setModalState(() {
                               settings['export_reason'] = value ?? false;
                             });
                           },
                         ),
-                        if (settings['export_reason'])
+                        if (settings['export_reason'] ?? false)
                           Padding(
                             padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
                             child: TextField(
@@ -1623,42 +1659,232 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             ),
                           ),
 
-                        // Incoterms
+                        // Incoterms - NEU: Vollständige Implementierung
                         CheckboxListTile(
                           title: const Text('Incoterms'),
-                          value: settings['incoterms'],
+                          value: settings['incoterms'] ?? false,
                           onChanged: (value) {
                             setModalState(() {
                               settings['incoterms'] = value ?? false;
+                              if (!(settings['incoterms'] ?? false)) {
+                                selectedIncoterms.clear();
+                                incotermsFreeTexts.clear();
+                              }
                             });
                           },
                         ),
+                        if (settings['incoterms'] ?? false) ...[
+                          Padding(
+                            padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
+                            child: StreamBuilder<QuerySnapshot>(
+                              stream: FirebaseFirestore.instance.collection('incoterms').snapshots(),
+                              builder: (context, snapshot) {
+                                if (!snapshot.hasData) return const CircularProgressIndicator();
 
-                        // Lieferdatum
+                                final incotermDocs = snapshot.data!.docs;
+
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Incoterms auswählen:',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 4,
+                                      children: incotermDocs.map((doc) {
+                                        final data = doc.data() as Map<String, dynamic>;
+                                        final name = data['name'] as String;
+                                        final isSelected = selectedIncoterms.contains(doc.id);
+
+                                        return FilterChip(
+                                          label: Text(name),
+                                          selected: isSelected,
+                                          onSelected: (selected) {
+                                            setModalState(() {
+                                              if (selected) {
+                                                selectedIncoterms.add(doc.id);
+                                                incotermsFreeTexts[doc.id] = incotermsFreeTexts[doc.id] ?? '';
+                                                incotermControllers[doc.id] = TextEditingController(text: incotermsFreeTexts[doc.id] ?? '');
+                                              } else {
+                                                selectedIncoterms.remove(doc.id);
+                                                incotermsFreeTexts.remove(doc.id);
+                                                incotermControllers[doc.id]?.dispose();
+                                                incotermControllers.remove(doc.id);
+                                              }
+                                              settings['selected_incoterms'] = selectedIncoterms;
+                                              settings['incoterms_freetexts'] = incotermsFreeTexts;
+                                            });
+                                          },
+                                        );
+                                      }).toList(),
+                                    ),
+                                    // Beschreibung der ausgewählten Incoterms
+                                    if (selectedIncoterms.isNotEmpty) ...[
+                                      const SizedBox(height: 8),
+                                      ...selectedIncoterms.map((incotermId) {
+                                        final incotermDoc = incotermDocs.firstWhere((doc) => doc.id == incotermId);
+                                        final data = incotermDoc.data() as Map<String, dynamic>;
+                                        final name = data['name'] as String;
+                                        final description = data['de'] as String? ?? data['en'] as String? ?? '';
+
+                                        return Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: Theme.of(context).colorScheme.primaryContainer,
+                                                    borderRadius: BorderRadius.circular(12),
+                                                  ),
+                                                  child: Text(
+                                                    name,
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            if (description.isNotEmpty)
+                                              Padding(
+                                                padding: const EdgeInsets.only(top: 2, bottom: 4),
+                                                child: Text(
+                                                  description,
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                                  ),
+                                                ),
+                                              ),
+                                            TextField(
+                                              decoration: InputDecoration(
+                                                labelText: 'Zusätzlicher Text für $name',
+                                                hintText: 'z.B. Domicile consignee, Sweden',
+                                                border: OutlineInputBorder(
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                isDense: true,
+                                              ),
+                                              controller: incotermControllers[incotermId],
+                                              onChanged: (value) {
+                                                incotermsFreeTexts[incotermId] = value;
+                                                settings['incoterms_freetexts'] = incotermsFreeTexts;
+                                              },
+                                            ),
+                                            const SizedBox(height: 12),
+                                          ],
+                                        );
+                                      }).toList(),
+                                    ],
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+
+                        // Lieferdatum - NEU: Mit Datumspicker
                         CheckboxListTile(
                           title: const Text('Lieferdatum'),
-                          subtitle: settings['delivery_date_value'] != null
-                              ? Text(DateFormat('dd.MM.yyyy').format(settings['delivery_date_value']))
+                          subtitle: selectedDeliveryDate != null
+                              ? Text(deliveryDateMonthOnly
+                              ? '${['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][selectedDeliveryDate!.month - 1]} ${selectedDeliveryDate!.year}'
+                              : DateFormat('dd.MM.yyyy').format(selectedDeliveryDate!))
                               : null,
-                          value: settings['delivery_date'],
+                          value: settings['delivery_date'] ?? false,
                           onChanged: (value) {
                             setModalState(() {
                               settings['delivery_date'] = value ?? false;
+                              if (!(settings['delivery_date'] ?? false)) {
+                                selectedDeliveryDate = null;
+                                settings['delivery_date_value'] = null;
+                              }
                             });
                           },
                         ),
+                        if (settings['delivery_date'] ?? false) ...[
+                          Padding(
+                            padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final date = await showDatePicker(
+                                        context: context,
+                                        initialDate: selectedDeliveryDate ?? DateTime.now(),
+                                        firstDate: DateTime(2020),
+                                        lastDate: DateTime(2030),
+                                      );
+                                      if (date != null) {
+                                        setModalState(() {
+                                          selectedDeliveryDate = date;
+                                          settings['delivery_date_value'] = date;
+                                        });
+                                      }
+                                    },
+                                    icon: getAdaptiveIcon(iconName: 'calendar_today',defaultIcon:Icons.calendar_today),
+                                    label: Text(selectedDeliveryDate != null
+                                        ? DateFormat('dd.MM.yyyy').format(selectedDeliveryDate!)
+                                        : 'Datum auswählen'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
+                            child: Row(
+                              children: [
+                                Text(
+                                  'Format:',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ToggleButtons(
+                                  isSelected: [!deliveryDateMonthOnly, deliveryDateMonthOnly],
+                                  onPressed: (index) {
+                                    setModalState(() {
+                                      deliveryDateMonthOnly = index == 1;
+                                      settings['delivery_date_month_only'] = deliveryDateMonthOnly;
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  constraints: const BoxConstraints(minHeight: 32, minWidth: 80),
+                                  children: const [
+                                    Text('TT.MM.JJJJ', style: TextStyle(fontSize: 11)),
+                                    Text('Monat JJJJ', style: TextStyle(fontSize: 11)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
 
                         // Carrier mit Textfeld
                         CheckboxListTile(
                           title: const Text('Transporteur'),
-                          value: settings['carrier'],
+                          value: settings['carrier'] ?? false,
                           onChanged: (value) {
                             setModalState(() {
                               settings['carrier'] = value ?? false;
                             });
                           },
                         ),
-                        if (settings['carrier'])
+                        if (settings['carrier'] ?? false)
                           Padding(
                             padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
                             child: TextField(
@@ -1676,16 +1902,61 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             ),
                           ),
 
-                        // Signatur
+                        // Signatur - NEU: Mit Dropdown
                         CheckboxListTile(
                           title: const Text('Signatur'),
-                          value: settings['signature'],
+                          value: settings['signature'] ?? false,
                           onChanged: (value) {
                             setModalState(() {
                               settings['signature'] = value ?? false;
+                              if (!(settings['signature'] ?? false)) {
+                                selectedSignature = null;
+                                settings['selected_signature'] = null;
+                              }
                             });
                           },
                         ),
+                        if (settings['signature'] ?? false)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
+                            child: StreamBuilder<QuerySnapshot>(
+                              stream: FirebaseFirestore.instance
+                                  .collection('general_data')
+                                  .doc('signatures')
+                                  .collection('users')
+                                  .snapshots(),
+                              builder: (context, snapshot) {
+                                if (!snapshot.hasData) return const CircularProgressIndicator();
+
+                                final userDocs = snapshot.data!.docs;
+
+                                return DropdownButtonFormField<String>(
+                                  decoration: InputDecoration(
+                                    labelText: 'Signatur auswählen',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    isDense: true,
+                                  ),
+                                  value: selectedSignature,
+                                  items: userDocs.map((doc) {
+                                    final data = doc.data() as Map<String, dynamic>;
+                                    final name = data['name'] as String;
+                                    return DropdownMenuItem(
+                                      value: doc.id,
+                                      child: Text(name),
+                                    );
+                                  }).toList(),
+                                  onChanged: (value) {
+                                    setModalState(() {
+                                      selectedSignature = value;
+                                      settings['selected_signature'] = value;
+                                    });
+                                  },
+                                );
+                              },
+                            ),
+                          ),
 
                         const SizedBox(height: 24),
 
@@ -1702,7 +1973,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             Expanded(
                               child: ElevatedButton.icon(
                                 onPressed: () async {
-                                  // Speichere in Firebase (OHNE packaging_weight!)
+                                  // Speichere in Firebase
                                   await FirebaseFirestore.instance
                                       .collection('orders')
                                       .doc(widget.order.id)
@@ -1710,24 +1981,25 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                       .doc('tara_settings')
                                       .set({
                                     'number_of_packages': numberOfPackages > 0 ? numberOfPackages : settings['number_of_packages'],
-                                    // packaging_weight wird NICHT mehr gespeichert!
-                                    'commercial_invoice_date': settings['commercial_invoice_date'] != null
-                                        ? Timestamp.fromDate(settings['commercial_invoice_date'])
+                                    'commercial_invoice_date': commercialInvoiceDate != null
+                                        ? Timestamp.fromDate(commercialInvoiceDate!)
                                         : null,
-                                    'origin_declaration': settings['origin_declaration'],
-                                    'cites': settings['cites'],
-                                    'export_reason': settings['export_reason'],
-                                    'export_reason_text': settings['export_reason_text'],
-                                    'incoterms': settings['incoterms'],
-                                    'selected_incoterms': settings['selected_incoterms'],
-                                    'incoterms_freetexts': settings['incoterms_freetexts'],
-                                    'delivery_date': settings['delivery_date'],
-                                    'delivery_date_value': settings['delivery_date_value'],
-                                    'delivery_date_month_only': settings['delivery_date_month_only'],
-                                    'carrier': settings['carrier'],
-                                    'carrier_text': settings['carrier_text'],
-                                    'signature': settings['signature'],
-                                    'selected_signature': settings['selected_signature'],
+                                    'commercial_invoice_origin_declaration': settings['origin_declaration'],
+                                    'commercial_invoice_cites': settings['cites'],
+                                    'commercial_invoice_export_reason': settings['export_reason'],
+                                    'commercial_invoice_export_reason_text': settings['export_reason_text'],
+                                    'commercial_invoice_incoterms': settings['incoterms'],
+                                    'commercial_invoice_selected_incoterms': settings['selected_incoterms'] ?? [],
+                                    'commercial_invoice_incoterms_freetexts': settings['incoterms_freetexts'] ?? {},
+                                    'commercial_invoice_delivery_date': settings['delivery_date'],
+                                    'commercial_invoice_delivery_date_value': selectedDeliveryDate != null
+                                        ? Timestamp.fromDate(selectedDeliveryDate!)
+                                        : null,
+                                    'commercial_invoice_delivery_date_month_only': settings['delivery_date_month_only'] ?? false,
+                                    'commercial_invoice_carrier': settings['carrier'],
+                                    'commercial_invoice_carrier_text': settings['carrier_text'],
+                                    'commercial_invoice_signature': settings['signature'],
+                                    'commercial_invoice_selected_signature': settings['selected_signature'],
                                     'timestamp': FieldValue.serverTimestamp(),
                                   });
                                   setState(() {
@@ -1735,7 +2007,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                   });
                                   Navigator.pop(context);
                                 },
-                                icon: const Icon(Icons.save),
+                                icon: getAdaptiveIcon( iconName: 'save', defaultIcon:Icons.save),
                                 label: const Text('Speichern'),
                               ),
                             ),
@@ -1847,7 +2119,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                     padding: const EdgeInsets.all(24),
                     child: Row(
                       children: [
-                        Icon(Icons.view_list,
+                         getAdaptiveIcon(iconName: 'view_list',defaultIcon:Icons.view_list,
                             color: Theme.of(context).colorScheme.primary),
                         const SizedBox(width: 12),
                         const Text('Packliste Einstellungen',
@@ -1855,7 +2127,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                         const Spacer(),
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close),
+                          icon: getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
                         ),
                       ],
                     ),
@@ -1910,7 +2182,8 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                             ),
                                           );
                                         },
-                                        icon: const Icon(
+                                        icon:
+                                        getAdaptiveIcon(iconName: 'inbox', defaultIcon:
                                           Icons.inbox,
                                           size: 16,
                                         ),
@@ -2006,7 +2279,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                     });
                                   });
                                 },
-                                icon: const Icon(Icons.add, size: 16),
+                                icon:  getAdaptiveIcon(iconName: 'add', defaultIcon:Icons.add, size: 16),
                                 label: const Text('Paket hinzufügen'),
                                 style: ElevatedButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -2081,7 +2354,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                       _settings['packing_list']['packages'] = packages;
                                     });
                                   },
-                                  icon: const Icon(Icons.save),
+                                  icon: getAdaptiveIcon( iconName: 'save', defaultIcon:Icons.save),
                                   label: const Text('Speichern'),
                                 ),
                               ),
@@ -2131,9 +2404,9 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
           final shouldContinue = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              title: const Row(
+              title:  Row(
                 children: [
-                  Icon(Icons.warning, color: Colors.orange),
+                   getAdaptiveIcon(iconName: 'warning',defaultIcon:Icons.warning, color: Colors.orange),
                   SizedBox(width: 8),
                   Text('Achtung'),
                 ],
@@ -2580,41 +2853,100 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
     final grossWeightController = controllers['gross_weight']!;
 
     // NEU: Berechne Nettogewicht (Summe aller Produkte im Paket)
+    // NEU: Berechne Nettogewicht (Summe aller Produkte im Paket)
     double calculateNetWeight() {
+      print('=== START calculateNetWeight für Package ===');
       double netWeight = 0.0;
       final packageItems = package['items'] as List<dynamic>? ?? [];
+      print('Anzahl Items im Package: ${packageItems.length}');
 
-      for (final item in packageItems) {
+      for (int i = 0; i < packageItems.length; i++) {
+        final item = packageItems[i];
+        print('\n--- Item ${i + 1} ---');
+        print('VOLLSTÄNDIGES ITEM-OBJEKT:');
+        print('Type: ${item.runtimeType}');
+
+        // Alle Keys und Values ausgeben
+        if (item is Map) {
+          item.forEach((key, value) {
+            print('  $key: $value (Type: ${value.runtimeType})');
+          });
+        } else {
+          print('  Item ist kein Map! Type: ${item.runtimeType}');
+          print('  Inhalt: $item');
+        }
+
+        // Extrahiere Werte mit Debug-Ausgaben
         final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
         final unit = item['unit'] ?? 'Stk';
 
+        print('\nEXTRAHIERTE WERTE:');
+        print('Artikel: ${item['product_name'] ?? 'Kein Name'}');
+        print('Menge: $quantity $unit');
+
         if (unit.toLowerCase() == 'kg') {
           // Bei kg-Einheit ist quantity bereits das Gewicht
+          print('Einheit ist kg - quantity ist direkt das Gewicht');
+          print('Gewicht für dieses Item: $quantity kg');
           netWeight += quantity;
         } else {
-          // Volumen berechnen (gleiche Logik wie in packing_list_generator)
+          print('Einheit ist nicht kg - berechne Gewicht aus Volumen');
+
+          // Volumen berechnen
           double volumePerPiece = 0.0;
 
           // Priorisierung für Volumenberechnung
-          if (item['volume_per_unit'] != null && (item['volume_per_unit'] as num) > 0) {
-            volumePerPiece = (item['volume_per_unit'] as num).toDouble();
+          final volumeField = (item['volume_per_unit'] as num?)?.toDouble() ?? 0.0;
+          print('volume_per_unit: $volumeField (Type: ${volumeField?.runtimeType})');
+
+          if (volumeField != null && (volumeField as num) > 0) {
+            volumePerPiece = (volumeField as num).toDouble();
+            print('Verwende volume_per_unit: $volumePerPiece m³');
           } else {
+            print('volume_per_unit nicht vorhanden oder 0, prüfe custom dimensions');
             final length = (item['custom_length'] as num?)?.toDouble() ?? 0.0;
             final width = (item['custom_width'] as num?)?.toDouble() ?? 0.0;
             final thickness = (item['custom_thickness'] as num?)?.toDouble() ?? 0.0;
 
+            print('Custom dimensions - L: $length mm, B: $width mm, D: $thickness mm');
+
             if (length > 0 && width > 0 && thickness > 0) {
               volumePerPiece = (length / 1000) * (width / 1000) * (thickness / 1000);
+              print('Berechnetes Volumen pro Stück: $volumePerPiece m³');
+            } else {
+              print('WARNUNG: Keine gültigen Dimensionen gefunden!');
             }
           }
 
           // Gewicht aus Volumen und Dichte
           final woodCode = item['wood_code'] as String? ?? '';
-          final density = 450.0; // Default-Dichte, sollte aus woodTypeCache kommen
+          print('Holzcode: $woodCode');
+
+          // WICHTIG: Dichte-Berechnung mit Debug
+          final densityRaw = item['density'];
+          print('density raw value: $densityRaw (Type: ${densityRaw?.runtimeType})');
+
+          final density = (item['density'] as num?)?.toDouble() ?? 0.0;
+          print('density nach Konvertierung: $density kg/m³');
+
+          if (density == 0.0 && densityRaw == null) {
+            print('WARNUNG: Verwende Standard-Dichte 0.0 kg/m³, da kein density-Wert vorhanden!');
+          }
+
           final weightPerPiece = volumePerPiece * density;
-          netWeight += weightPerPiece * quantity;
+          print('Gewicht pro Stück: $weightPerPiece kg (Volumen: $volumePerPiece m³ × Dichte: $density kg/m³)');
+
+          final totalItemWeight = weightPerPiece * quantity;
+          print('Gesamtgewicht für dieses Item: $totalItemWeight kg ($quantity Stück × $weightPerPiece kg/Stück)');
+
+          netWeight += totalItemWeight;
+          print('Zwischensumme Nettogewicht: $netWeight kg');
         }
       }
+
+      print('\n=== ENDE calculateNetWeight ===');
+      print('FINALES NETTOGEWICHT: $netWeight kg');
+      print('================================\n');
 
       return netWeight;
     }
@@ -2649,7 +2981,7 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                         packages.removeAt(index);
                       });
                     },
-                    icon: Icon(Icons.delete_outline, color: Colors.red[400]),
+                    icon:  getAdaptiveIcon(iconName: 'delete',defaultIcon:Icons.delete, color: Colors.red[400]),
                     iconSize: 20,
                   ),
               ],
@@ -2677,7 +3009,7 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                       decoration: InputDecoration(
                         labelText: 'Verpackungsvorlage',
                         hintText: 'Bitte auswählen',
-                        prefixIcon: Icon(Icons.inventory),
+                        prefixIcon:  getAdaptiveIcon(iconName: 'inventory',defaultIcon:Icons.inventory),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -2746,7 +3078,7 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                           ),
                           child: Row(
                             children: [
-                              Icon(
+                              getAdaptiveIcon(iconName: 'info', defaultIcon:
                                 Icons.info,
                                 size: 16,
                                 color: Theme.of(context).colorScheme.primary,
@@ -2779,7 +3111,7 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                 decoration: InputDecoration(
                   labelText: 'Verpackungsbezeichnung',
                   hintText: 'z.B. Spezialverpackung',
-                  prefixIcon: Icon(Icons.edit),
+                  prefixIcon: getAdaptiveIcon(iconName: 'edit',defaultIcon:Icons.edit),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -2878,10 +3210,10 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
               decoration: InputDecoration(
                 labelText: 'Bruttogewicht (gemessen) (kg)',
                 helperText: 'Leer lassen für automatische Berechnung',
-                prefixIcon: Icon(Icons.scale),
+                prefixIcon:  getAdaptiveIcon(iconName: 'scale',defaultIcon:Icons.scale),
                 suffixIcon: grossWeightController.text.isNotEmpty
                     ? IconButton(
-                  icon: Icon(Icons.clear),
+                  icon:  getAdaptiveIcon(iconName: 'clear',defaultIcon:Icons.clear),
                   onPressed: () {
                     setModalState(() {
                       grossWeightController.clear();
@@ -3037,7 +3369,7 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                             }
                           });
                         },
-                        icon: Icon(Icons.remove_circle_outline, color: Colors.red[400]),
+                        icon:  getAdaptiveIcon(iconName: 'remove',defaultIcon:Icons.remove, color: Colors.red[400]),
                         iconSize: 16,
                       ),
                     ],
@@ -3056,7 +3388,7 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                 packages,
                 setModalState,
               ),
-              icon: const Icon(Icons.add, size: 16),
+              icon:  getAdaptiveIcon(iconName: 'add', defaultIcon:Icons.add, size: 16),
               label: const Text('Produkt hinzufügen'),
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -3146,7 +3478,14 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                         selectedQuantity--;
                       });
                     } : null,
-                    icon: const Icon(Icons.remove),
+                    icon:
+
+                    getAdaptiveIcon(
+                      iconName: 'remove',
+                      defaultIcon: Icons.remove,
+                    ),
+
+
                   ),
                   Expanded(
                     child: Text(
@@ -3161,7 +3500,10 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                         selectedQuantity++;
                       });
                     } : null,
-                    icon: const Icon(Icons.add),
+                    icon: getAdaptiveIcon(
+                      iconName: 'add',
+                      defaultIcon: Icons.add,
+                    ),
                   ),
                 ],
               ),
@@ -3174,16 +3516,20 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
             ),
             ElevatedButton(
               onPressed: () {
+                print("dens:${item['density']}");
                 setModalState(() {
                   package['items'].add({
                     'product_id': item['product_id'],
                     'product_name': item['product_name'],
-                    'quantity': selectedQuantity,
-                    'weight_per_unit': item['weight'] ?? 0.0,
-                    'volume_per_unit': item['volume'] ?? 0.0,
-                    'custom_length': item['custom_length'] ?? 0.0,
-                    'custom_width': item['custom_width'] ?? 0.0,
-                    'custom_thickness': item['custom_thickness'] ?? 0.0,
+                    'product_name_en': item['product_name_en'],
+                    'quantity': selectedQuantity.toDouble(), // Konvertiere zu double
+                    // Konvertiere ALLE numerischen Werte zu double beim Hinzufügen
+                    'weight_per_unit': (item['weight'] as num?)?.toDouble() ?? 0.0,
+                    'volume_per_unit': (item['volume_per_unit'] as num?)?.toDouble() ?? 0.0,
+                    'density': (item['density'] as num?)?.toDouble() ?? 0.0,
+                    'custom_length': (item['custom_length'] as num?)?.toDouble() ?? 0.0,
+                    'custom_width': (item['custom_width'] as num?)?.toDouble() ?? 0.0,
+                    'custom_thickness': (item['custom_thickness'] as num?)?.toDouble() ?? 0.0,
                     'wood_code': item['wood_code'] ?? '',
                     'wood_name': item['wood_name'] ?? '',
                     'unit': item['unit'] ?? 'Stk',

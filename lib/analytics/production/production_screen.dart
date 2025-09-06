@@ -298,7 +298,7 @@ class ProductionScreenState extends State<ProductionScreen> with SingleTickerPro
                       icon: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.dashboard, size: 20),
+                           getAdaptiveIcon(iconName: 'dashboard',defaultIcon:Icons.dashboard, size: 20),
                           const SizedBox(width: 8),
                           Text(ProductionStrings.overviewTab),
                         ],
@@ -308,42 +308,13 @@ class ProductionScreenState extends State<ProductionScreen> with SingleTickerPro
                       icon: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.list_alt, size: 20),
+                           getAdaptiveIcon(iconName: 'list',defaultIcon:Icons.list_alt, size: 20),
                           const SizedBox(width: 8),
                           Text('Chargen'),
                         ],
                       ),
                     ),
-                    // Tab(
-                    //   icon: Row(
-                    //     mainAxisSize: MainAxisSize.min,
-                    //     children: [
-                    //       Icon(Icons.forest, size: 20),
-                    //       const SizedBox(width: 8),
-                    //       Text(ProductionStrings.specialWoodTab),
-                    //     ],
-                    //   ),
-                    // ),
-                    // Tab(
-                    //   icon: Row(
-                    //     mainAxisSize: MainAxisSize.min,
-                    //     children: [
-                    //       Icon(Icons.trending_up, size: 20),
-                    //       const SizedBox(width: 8),
-                    //       Text(ProductionStrings.efficiencyTab),
-                    //     ],
-                    //   ),
-                    // ),
-                    // Tab(
-                    //   icon: Row(
-                    //     mainAxisSize: MainAxisSize.min,
-                    //     children: [
-                    //       Icon(Icons.eco, size: 20),
-                    //       const SizedBox(width: 8),
-                    //       Text(ProductionStrings.fscTab),
-                    //     ],
-                    //   ),
-                    // ),
+
                   ],
                 ),
               ),
@@ -385,7 +356,7 @@ class ProductionScreenState extends State<ProductionScreen> with SingleTickerPro
                         ignoring: _tabController.index != 1,
                         child: IconButton(
                           onPressed: () => _showExportDialog(),
-                          icon: const Icon(Icons.download),
+                          icon: getAdaptiveIcon(iconName: 'download',defaultIcon:Icons.download),
                           tooltip: 'Exportieren',
                         ),
                       ),

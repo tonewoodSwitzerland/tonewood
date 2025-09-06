@@ -950,6 +950,7 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
                     context,
                     'Grunddaten',
                     Icons.info,
+                    'info'
                   ),
                   const SizedBox(height: 16),
 
@@ -1075,7 +1076,7 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
                           ),
                           child: Row(
                             children: [
-                              Icon(
+                              getAdaptiveIcon(iconName: 'tag', defaultIcon:
                                 Icons.tag,
                                 color: Theme.of(context).colorScheme.primary,
                               ),
@@ -1120,7 +1121,7 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
                                   child: CircularProgressIndicator(strokeWidth: 2),
                                 )
                               else if (_articleNumberError == null && _articleNumberController.text.length == 4)
-                                Icon(Icons.check_circle, color: Colors.green),
+                                 getAdaptiveIcon(iconName: 'check_circle',defaultIcon:Icons.check_circle, color: Colors.green),
                             ],
                           ),
                         ),
@@ -1136,7 +1137,8 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
                   _buildSectionHeader(
                     context,
                     'Eigenschaften',
-                    Icons.category_outlined,
+                    Icons.category,
+                    'category'
                   ),
                   const SizedBox(height: 16),
 
@@ -1199,7 +1201,8 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
                   _buildSectionHeader(
                     context,
                     'Abmessungen (in mm)',
-                    Icons.straighten_outlined,
+                    Icons.straighten,
+                    'straighten'
                   ),
                   const SizedBox(height: 16),
 
@@ -1220,7 +1223,8 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
                           'Länge',
                           _lengthStandardController,
                           _lengthAdditionController,
-                          Icons.arrow_right_alt,
+                          Icons.arrow_right,
+                          'arrow_right'
                         ),
                         const SizedBox(height: 16),
 
@@ -1231,6 +1235,7 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
                           _widthStandardController,
                           _widthAdditionController,
                           Icons.swap_horiz,
+                          'swap_horiz'
                         ),
                         const SizedBox(height: 16),
 
@@ -1246,7 +1251,7 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
                             children: [
                               Row(
                                 children: [
-                                  Icon(
+                                  getAdaptiveIcon(iconName: 'layers', defaultIcon:
                                     Icons.layers,
                                     size: 16,
                                     color: Theme.of(context).colorScheme.primary,
@@ -1367,7 +1372,7 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
 
 // Hilfsmethoden für das Layout:
 
-  Widget _buildSectionHeader(BuildContext context, String title, IconData icon) {
+  Widget _buildSectionHeader(BuildContext context, String title, IconData icon, String iconName) {
     return Row(
       children: [
         Container(
@@ -1376,7 +1381,8 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
             color: Theme.of(context).colorScheme.primaryContainer,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(
+          child:
+          getAdaptiveIcon(iconName: iconName, defaultIcon:
             icon,
             size: 20,
             color: Theme.of(context).colorScheme.primary,
@@ -1400,6 +1406,7 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
       TextEditingController standardController,
       TextEditingController additionController,
       IconData icon,
+      String iconName
       ) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1412,7 +1419,7 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
         children: [
           Row(
             children: [
-              Icon(
+              getAdaptiveIcon(iconName: iconName, defaultIcon:
                 icon,
                 size: 16,
                 color: Theme.of(context).colorScheme.primary,
@@ -1455,7 +1462,7 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
                     color: Theme.of(context).colorScheme.secondaryContainer,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
+                  child:  getAdaptiveIcon(iconName: 'add', defaultIcon:
                     Icons.add,
                     size: 16,
                     color: Theme.of(context).colorScheme.onSecondaryContainer,

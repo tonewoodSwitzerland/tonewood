@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../components/order_model.dart';
+import '../services/icon_helper.dart';
 
 class OrderFilterService {
   static const String _filterDocId = 'order_filter_settings';
@@ -284,7 +285,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.close),
+                    icon: getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -444,7 +445,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                                 label: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.warning, size: 16, color: Colors.orange),
+                                     getAdaptiveIcon(iconName: 'warning',defaultIcon:Icons.warning, size: 16, color: Colors.orange),
                                     const SizedBox(width: 4),
                                     const Text('Verfügung fehlt'),
                                   ],
@@ -460,7 +461,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                                 label: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.check_circle, size: 16, color: Colors.green),
+                                     getAdaptiveIcon(iconName: 'check_circle',defaultIcon:Icons.check_circle, size: 16, color: Colors.green),
                                     const SizedBox(width: 4),
                                     const Text('Verfügung vorhanden'),
                                   ],
@@ -498,7 +499,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   TextButton.icon(
-                    icon: const Icon(Icons.clear),
+                    icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:Icons.clear),
                     label: const Text('Zurücksetzen'),
                     onPressed: () {
                       setState(() {

@@ -3,6 +3,8 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
 
+import 'icon_helper.dart';
+
 class ConnectionTestButton extends StatelessWidget {
   const ConnectionTestButton({super.key});
 
@@ -97,7 +99,7 @@ class ConnectionTestButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return ElevatedButton.icon(
       onPressed: () => _testConnection(context),
-      icon: const Icon(Icons.network_check),
+      icon:  getAdaptiveIcon(iconName: 'network_check',defaultIcon:Icons.network_check),
       label: const Text('Verbindungstest'),
       style: ElevatedButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),

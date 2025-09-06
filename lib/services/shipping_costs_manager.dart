@@ -177,7 +177,234 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
     super.initState();
     _loadShippingCosts();
   }
+// Hilfsmethode zum Berechnen des Gesamtgewichts
+  Future<Map<String, dynamic>> _calculateTotalWeight() async {
+    double totalWeight = 0.0;
+    int itemsWithoutWeight = 0;
+    List<Map<String, dynamic>> itemWeights = [];
 
+    try {
+      final basketSnapshot = await FirebaseFirestore.instance
+          .collection('temporary_basket')
+          .get();
+
+      for (var doc in basketSnapshot.docs) {
+        final data = doc.data();
+        final quantity = (data['quantity'] as num).toDouble();
+
+        // Versuche das Volumen zu bekommen (volume_per_unit oder custom_volume)
+        final volumePerUnit = (data['volume_per_unit'] as num?)?.toDouble() ??
+            (data['custom_volume'] as num?)?.toDouble();
+
+        double itemWeight = 0.0;
+
+        // Ersetze die Gewichtsberechnung in _calculateTotalWeight mit:
+        if (volumePerUnit != null && volumePerUnit > 0) {
+          // Verwende die gespeicherte Dichte oder Standardwert
+          final density = (data['density'] as num?)?.toDouble() ?? 0; // Fallback auf 0 kg/m³
+          final weightPerUnit = volumePerUnit * density; // kg pro Einheit
+          itemWeight = weightPerUnit * quantity;
+          totalWeight += itemWeight;
+        } else {
+          itemsWithoutWeight++;
+        }
+
+        itemWeights.add({
+          'name': data['product_name'] ?? 'Unbekanntes Produkt',
+          'quantity': quantity,
+          'unit': data['unit'] ?? 'Stück',
+          'weight': itemWeight,
+          'hasWeight': itemWeight > 0,
+        });
+      }
+    } catch (e) {
+      print('Fehler beim Berechnen des Gewichts: $e');
+    }
+
+    return {
+      'totalWeight': totalWeight,
+      'itemsWithoutWeight': itemsWithoutWeight,
+      'itemWeights': itemWeights,
+    };
+  }
+
+// Methode zum Anzeigen des Gewichts-Details Dialogs
+  void _showWeightDetailsDialog(Map<String, dynamic> weightData) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: 500,
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                ),
+                child: Row(
+                  children: [
+                    getAdaptiveIcon(iconName: 'scale', defaultIcon:
+                      Icons.scale,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Gewichtsübersicht',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                      iconSize: 20,
+                    ),
+                  ],
+                ),
+              ),
+
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      // Zusammenfassung
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Gesamtgewicht:',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              '${(weightData['totalWeight'] as double).toStringAsFixed(2)} kg',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Liste der Artikel
+                      ...(weightData['itemWeights'] as List).map((item) {
+                        final hasWeight = item['hasWeight'] as bool;
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: hasWeight
+                                  ? Theme.of(context).colorScheme.outline.withOpacity(0.3)
+                                  : Theme.of(context).colorScheme.error.withOpacity(0.3),
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                            color: hasWeight
+                                ? null
+                                : Theme.of(context).colorScheme.error.withOpacity(0.05),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item['name'],
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${item['quantity']} ${item['unit']}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (hasWeight)
+                                Text(
+                                  '${(item['weight'] as double).toStringAsFixed(2)} kg',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                )
+                              else
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.error.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    'Kein Gewicht',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Theme.of(context).colorScheme.error,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Footer
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                    ),
+                  ),
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Schließen'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
   Future<void> _loadShippingCosts() async {
     final config = await ShippingCostsManager.loadShippingCosts();
 
@@ -396,19 +623,128 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        // NEU: Gewichtsanzeige
+                        const SizedBox(height: 12),
+                        FutureBuilder<Map<String, dynamic>>(
+                          future: _calculateTotalWeight(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text('Gewicht wird berechnet...'),
+                                  ],
+                                ),
+                              );
+                            }
 
+                            final weightData = snapshot.data!;
+                            final totalWeight = weightData['totalWeight'] as double;
+                            final itemsWithoutWeight = weightData['itemsWithoutWeight'] as int;
+
+                            return Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.secondary.withOpacity(0.3),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      getAdaptiveIcon(iconName: 'scale', defaultIcon:
+                                        Icons.scale,
+                                        size: 20,
+                                        color: Theme.of(context).colorScheme.secondary,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Netto Gesamtgewicht:',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          color: Theme.of(context).colorScheme.onSecondaryContainer,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '${totalWeight.toStringAsFixed(2)} kg',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                          color: Theme.of(context).colorScheme.secondary,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      InkWell(
+                                        onTap: () => _showWeightDetailsDialog(weightData),
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context).colorScheme.secondary.withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child:
+                                          getAdaptiveIcon(iconName: 'info', defaultIcon:
+                                            Icons.info,
+                                            size: 16,
+                                            color: Theme.of(context).colorScheme.secondary,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (itemsWithoutWeight > 0) ...[
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      children: [
+                                        getAdaptiveIcon(iconName: 'warning', defaultIcon:
+                                          Icons.warning,
+                                          size: 14,
+                                          color: Theme.of(context).colorScheme.error,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Für $itemsWithoutWeight Artikel ist kein Gewicht gepflegt',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Theme.of(context).colorScheme.error,
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+
+                        const SizedBox(height: 16),
                         // Toggle für kombiniert/getrennt
                         SegmentedButton<bool>(
-                          segments: const [
+                          segments: [
                             ButtonSegment<bool>(
                               value: true,
                               label: Text('Kombiniert'),
-                              icon: Icon(Icons.merge_type),
+                              icon:  getAdaptiveIcon(iconName: 'merge_type',defaultIcon:Icons.merge_type),
                             ),
                             ButtonSegment<bool>(
                               value: false,
                               label: Text('Getrennt'),
-                              icon: Icon(Icons.call_split),
+                              icon:  getAdaptiveIcon(iconName: 'call_split',defaultIcon:Icons.call_split),
                             ),
                           ],
                           selected: {shippingConfig['shipping_combined'] ?? true},
@@ -483,30 +819,40 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
     // Checkbox für persönliche Abholung
-    CheckboxListTile(
-    title: Text(
-    'Persönlich abgeholt',
-    style: TextStyle(
-    fontWeight: isPersonalPickup ? FontWeight.bold : FontWeight.normal,
-    ),
-    ),
-    subtitle: Text(
-    'Ware wird vom Kunden selbst abgeholt',
-    style: TextStyle(fontSize: 12),
-    ),
-    value: isPersonalPickup,
-    onChanged: (value) {
-    setState(() {
-    isPersonalPickup = value ?? false;
-    if (isPersonalPickup) {
-    carrierController.clear();
-    }
-    });
-    },
-    activeColor: Theme.of(context).colorScheme.primary,
-    controlAffinity: ListTileControlAffinity.leading,
-    contentPadding: EdgeInsets.zero,
-    ),
+      // Checkbox für persönliche Abholung
+      CheckboxListTile(
+        title: Text(
+          'Persönlich abgeholt',
+          style: TextStyle(
+            fontWeight: isPersonalPickup ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        subtitle: Text(
+          'Ware wird vom Kunden selbst abgeholt',
+          style: TextStyle(fontSize: 12),
+        ),
+        value: isPersonalPickup,
+        onChanged: (value) {
+          setState(() {
+            isPersonalPickup = value ?? false;
+            if (isPersonalPickup) {
+              carrierController.clear();
+              // NEU: Setze alle Versandkosten auf 0
+              packagingController.text = '0.0';
+              freightController.text = '0.0';
+              combinedCostController.text = '0.0';
+            } else {
+              // NEU: Setze Standardwerte zurück wenn nicht persönlich abgeholt
+              packagingController.text = '50.0';
+              freightController.text = '50.0';
+              combinedCostController.text = '100.0';
+            }
+          });
+        },
+        activeColor: Theme.of(context).colorScheme.primary,
+        controlAffinity: ListTileControlAffinity.leading,
+        contentPadding: EdgeInsets.zero,
+      ),
 
     const SizedBox(height: 12),
 
@@ -555,8 +901,8 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                       children: [
                         Row(
                           children: [
-                            Icon(
-                              Icons.remove_circle_outline,
+                            getAdaptiveIcon(iconName: 'remove', defaultIcon:
+                              Icons.remove,
                               color: Theme.of(context).colorScheme.error,
                             ),
                             const SizedBox(width: 8),
@@ -678,7 +1024,7 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                       children: [
                         Row(
                           children: [
-                            Icon(
+                            getAdaptiveIcon(iconName: 'add_circle', defaultIcon:
                               Icons.add_circle,
                               color: Theme.of(context).colorScheme.primary,
                             ),

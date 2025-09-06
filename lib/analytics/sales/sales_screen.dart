@@ -123,7 +123,7 @@ class SalesScreenState extends State<SalesScreen> with SingleTickerProviderState
                       icon: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.dashboard, size: 20),
+                           getAdaptiveIcon(iconName: 'dashboard',defaultIcon:Icons.dashboard, size: 20),
                           const SizedBox(width: 8),
                           Text(SalesStrings.overviewTab),
                         ],
@@ -133,7 +133,7 @@ class SalesScreenState extends State<SalesScreen> with SingleTickerProviderState
                       icon: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.point_of_sale, size: 20),
+                           getAdaptiveIcon(iconName: 'point_of_sale',defaultIcon:Icons.point_of_sale, size: 20),
                           const SizedBox(width: 8),
                           Text(SalesStrings.salesTab),
                         ],
@@ -181,7 +181,7 @@ class SalesScreenState extends State<SalesScreen> with SingleTickerProviderState
                         ignoring: _tabController.index != 1,
                         child: IconButton(
                           onPressed: () => _showExportDialog(),
-                          icon: const Icon(Icons.download),
+                          icon: getAdaptiveIcon(iconName: 'download',defaultIcon:Icons.download),
                           tooltip: 'Exportieren',
                         ),
                       ),

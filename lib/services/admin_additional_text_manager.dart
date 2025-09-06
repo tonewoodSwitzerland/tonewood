@@ -123,8 +123,8 @@ class _AdminTextsEditorState extends State<AdminTextsEditor> {
                     padding: const EdgeInsets.all(16.0),
                     child: Row(
                       children: [
-                        Icon(
-                          _isInfoExpanded ? Icons.info_outline : Icons.info,
+                        getAdaptiveIcon(iconName: 'info', defaultIcon:
+                           Icons.info,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                         const SizedBox(width: 12),
@@ -152,7 +152,7 @@ class _AdminTextsEditorState extends State<AdminTextsEditor> {
                             duration: const Duration(milliseconds: 300),
                           ),
                         ),
-                        Icon(
+                        getAdaptiveIcon(iconName:   _isInfoExpanded ? 'expand_less' : 'xpand_more', defaultIcon:
                           _isInfoExpanded ? Icons.expand_less : Icons.expand_more,
                           color: Theme.of(context).colorScheme.primary,
                         ),
@@ -230,7 +230,8 @@ class _AdminTextsEditorState extends State<AdminTextsEditor> {
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.account_balance,
+                          getAdaptiveIcon(iconName: 'account_balance', defaultIcon:
+                            Icons.account_balance,
                             color: Theme.of(context).colorScheme.primary,
                             size: 20,
                           ),

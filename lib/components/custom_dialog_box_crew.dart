@@ -5,6 +5,7 @@ import '../components/circular_avatar_shadowed.dart';
 import '../constants.dart';
 
 import '../services/auto_size_text.dart';
+import '../services/icon_helper.dart';
 
 
 class CustomDialogBoxCrew extends StatefulWidget {
@@ -66,8 +67,8 @@ Center(child: Text( widget.title.length > 15 ? " ${ widget.title.substring(0, 13
               ),
     GestureDetector(
     onTap: (){Navigator.pop(context);},
-    child:  // Icon(Icons.arrow_drop_down, color:  blackColor, size: h * 0.03),)
-    FaIcon(Icons.arrow_drop_down, size: h*0.07,color:   blackColor,)
+    child:  //  getAdaptiveIcon(iconName: 'arrow_drop_down',defaultIcon:Icons.arrow_drop_down, color:  blackColor, size: h * 0.03),)
+    getAdaptiveIcon(iconName: 'arrow_drop_down',defaultIcon:Icons.arrow_drop_down, size: h*0.07,color:   blackColor,)
 
     )],
       );

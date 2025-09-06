@@ -180,7 +180,7 @@
 //                           const SizedBox(width: 8),
 //                           ElevatedButton.icon(
 //                             onPressed: scanBarcode,
-//                             icon: const Icon(Icons.qr_code_scanner),
+//                             icon:  getAdaptiveIcon(iconName: 'qr_code_scanner', defaultIcon:Icons.qr_code_scanner),
 //                             label: const Text('Scannen'),
 //                           ),
 //                         ],
@@ -290,6 +290,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 
+import '../services/icon_helper.dart';
 import 'barcode_scanner.dart';
 
 class StockEntryScreen extends StatefulWidget {
@@ -550,7 +551,7 @@ class StockEntryScreenState extends State<StockEntryScreen> {
                           const SizedBox(width: 8),
                           ElevatedButton.icon(
                             onPressed: scanBarcode,
-                            icon: const Icon(Icons.qr_code_scanner),
+                            icon:  getAdaptiveIcon(iconName: 'qr_code_scanner', defaultIcon:Icons.qr_code_scanner),
                             label: const Text('Scannen'),
                           ),
                         ],

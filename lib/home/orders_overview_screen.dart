@@ -205,7 +205,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                         if (OrderFilterService.hasActiveFilters(_activeFilters)) ...[
                           const SizedBox(height: 8),
                           TextButton.icon(
-                            icon: const Icon(Icons.clear),
+                            icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:Icons.clear),
                             label: const Text('Filter zurücksetzen'),
                             onPressed: () async {
                               await OrderFilterService.resetFilters();
@@ -231,7 +231,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                 scrollDirection: Axis.horizontal,
                                 child: Row(
                                   children: [
-                                    Icon(
+                                    getAdaptiveIcon(iconName: 'filter_list', defaultIcon:
                                       Icons.filter_list,
                                       size: 16,
                                       color: Theme.of(context).colorScheme.primary,
@@ -1079,7 +1079,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
                                                   Text(
-                                                    item['product_name']?.toString() ?? 'Unbekanntes Produkt',
+                                                    item['is_service'] == true
+                                                        ? (item['name']?.toString() ?? 'Unbenannte Dienstleistung')
+                                                        : (item['product_name']?.toString() ?? 'Unbekanntes Produkt'),
                                                     style: const TextStyle(
                                                       fontWeight: FontWeight.w600,
                                                       fontSize: 15,
@@ -1410,7 +1412,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close),
+                        icon:  getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
                         onPressed: () => Navigator.pop(context),
                       ),
                     ],
@@ -1479,7 +1481,8 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                   textAlign: TextAlign.center,
                                   decoration: InputDecoration(
                                     hintText: '0',
-                                    prefixIcon: Icon(
+                                    prefixIcon:
+                                    getAdaptiveIcon(iconName: 'arrow_right_alt', defaultIcon:
                                       Icons.arrow_right_alt,
                                       color: Theme.of(context).colorScheme.primary,
                                     ),
@@ -1516,7 +1519,8 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                   textAlign: TextAlign.center,
                                   decoration: InputDecoration(
                                     hintText: '0',
-                                    prefixIcon: Icon(
+                                    prefixIcon:
+                                    getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon:
                                       Icons.swap_horiz,
                                       color: Theme.of(context).colorScheme.primary,
                                     ),
@@ -1553,7 +1557,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                   textAlign: TextAlign.center,
                                   decoration: InputDecoration(
                                     hintText: '0',
-                                    prefixIcon: Icon(
+                                    prefixIcon:getAdaptiveIcon(iconName: 'height', defaultIcon:
                                       Icons.height,
                                       color: Theme.of(context).colorScheme.primary,
                                     ),
@@ -2255,8 +2259,8 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.assignment_turned_in,
+                      getAdaptiveIcon(iconName: 'assignment', defaultIcon:
+                        Icons.assignment,
                         color: _hasVeranlagungsnummer(order)
                             ? Colors.green
                             : Theme.of(context).colorScheme.primary,
@@ -2284,7 +2288,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close),
+                        icon:  getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
                         onPressed: () => Navigator.pop(context),
                       ),
                     ],
@@ -2312,7 +2316,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.info, color: Colors.blue[700], size: 20),
+                                 getAdaptiveIcon(iconName: 'info', defaultIcon:Icons.info, color: Colors.blue[700], size: 20),
                                 const SizedBox(width: 8),
                                 const Text(
                                   'Information',
@@ -2358,10 +2362,10 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(
-                              _hasVeranlagungsnummer(order)
-                                  ? Icons.check_circle
-                                  : Icons.warning,
+                          getAdaptiveIcon(iconName: _hasVeranlagungsnummer(order)?'check_circle':'warning', defaultIcon: _hasVeranlagungsnummer(order)
+                            ? Icons.check_circle
+                            : Icons.warning,
+
                               color: _hasVeranlagungsnummer(order)
                                   ? Colors.green[700]
                                   : Colors.orange[700],
@@ -2405,9 +2409,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                             decoration: InputDecoration(
                               hintText: 'z.B. 25CH04EXA83JFTR0N8',
                               hintStyle: TextStyle(fontSize: 14),
-                              prefixIcon: Icon(Icons.pin),
+                              prefixIcon:  getAdaptiveIcon(iconName: 'pin',defaultIcon:Icons.pin),
                               suffixIcon: _hasVeranlagungsnummer(order)
-                                  ? Icon(Icons.check, color: Colors.green)
+                                  ?  getAdaptiveIcon(iconName: 'check',defaultIcon:Icons.check, color: Colors.green)
                                   : null,
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
@@ -2468,7 +2472,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                 Row(
                                   children: [
                                     IconButton(
-                                      icon: Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                                      icon:  getAdaptiveIcon(iconName: 'delete',defaultIcon:Icons.delete, size: 20, color: Colors.red),
                                       onPressed: () async {
                                         final confirmed = await showDialog<bool>(
                                           context: context,
@@ -2499,7 +2503,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                       tooltip: 'PDF löschen',
                                     ),
                                     IconButton(
-                                      icon: Icon(Icons.visibility, size: 20),
+                                      icon:  getAdaptiveIcon(iconName: 'visibility',defaultIcon:Icons.visibility, size: 20),
                                       onPressed: () => _openDocument(order.documents['veranlagungsverfuegung_pdf']!),
                                       tooltip: 'Dokument anzeigen',
                                     ),
@@ -2593,7 +2597,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                   }
                                 }
                               },
-                              icon: Icon(Icons.save),
+                              icon:  getAdaptiveIcon(iconName: 'save',defaultIcon:Icons.save),
                               label: const Text('Speichern'),
                               style: ElevatedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(vertical: 12),
@@ -2613,7 +2617,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             onPressed: () => _uploadVeranlagungsPDF(order),
-                            icon: Icon(Icons.upload_file),
+                            icon:  getAdaptiveIcon(iconName: 'upload_file',defaultIcon:Icons.upload_file),
                             label: const Text('PDF hochladen'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Theme.of(context).colorScheme.secondary,
@@ -3085,10 +3089,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                         child: ListTile(
                           leading: CircleAvatar(
                             backgroundColor: _getDocumentTypeColor(docType).withOpacity(0.1),
-                            child: Icon(
-                              _getDocumentTypeIcon(docType),
-                              color: _getDocumentTypeColor(docType),
-                            ),
+                            child: _buildAdaptiveDocumentIcon(docType),
                           ),
                           title: Text(_getDocumentTypeName(docType),style: TextStyle(fontSize:12),),
                           trailing: Row(
@@ -3117,13 +3118,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                   tooltip: 'Löschen',
                                 ),
                               if (!isDeletable)
-                                IconButton(
-                                  icon:   getAdaptiveIcon(
-                                      iconName: 'delete',
-                                      defaultIcon:Icons.delete, size: 20, color: Colors.transparent),
-                                  onPressed:(){},
-                                  tooltip: 'Löschen',
-                                ),
+                               SizedBox(width: 20,)
                             ],
                           ),
                         ),
@@ -3356,10 +3351,27 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
     return Colors.grey;
   }
 
-  IconData _getDocumentTypeIcon(String docType) {
-    if (docType.contains('pdf')) return Icons.picture_as_pdf;
-    if (docType.contains('csv')) return Icons.table_chart;
-    return Icons.description;
+// Kombinierte Funktion
+  Widget _buildAdaptiveDocumentIcon(String docType) {
+    String iconName;
+    IconData defaultIcon;
+
+    if (docType.contains('pdf')) {
+      iconName = 'picture_as_pdf';
+      defaultIcon = Icons.picture_as_pdf;
+    } else if (docType.contains('csv')) {
+      iconName = 'table_chart';
+      defaultIcon = Icons.table_chart;
+    } else {
+      iconName = 'description';
+      defaultIcon = Icons.description;
+    }
+
+    return getAdaptiveIcon(
+      iconName: iconName,
+      defaultIcon: defaultIcon,
+      color: _getDocumentTypeColor(docType),
+    );
   }
 
 

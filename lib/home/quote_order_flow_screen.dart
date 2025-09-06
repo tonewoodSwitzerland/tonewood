@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'dart:typed_data';
-
 import '../components/order_service.dart';
 import '../components/quote_service.dart';
 import '../services/document_selection_manager.dart';
@@ -110,8 +107,9 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
             children: [
               Row(
                 children: [
-                  Icon(
-                    Icons.shopping_cart,
+                  getAdaptiveIcon(
+                    iconName: 'shopping_cart',
+                    defaultIcon: Icons.shopping_cart,
                     color: Theme.of(context).colorScheme.primary,
                   ),
                   const SizedBox(width: 8),
@@ -168,8 +166,9 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.language,
+              getAdaptiveIcon(
+                iconName: 'language',
+                defaultIcon: Icons.language,
                 color: Theme.of(context).colorScheme.primary,
               ),
               const SizedBox(width: 8),
@@ -234,8 +233,9 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.description,
+              getAdaptiveIcon(
+                iconName: 'description',
+                defaultIcon: Icons.description,
                 color: Theme.of(context).colorScheme.primary,
               ),
               const SizedBox(width: 8),
@@ -252,8 +252,9 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
               children: [
-                Icon(
-                  Icons.check_circle,
+                getAdaptiveIcon(
+                  iconName: 'check_circle',
+                  defaultIcon: Icons.check_circle,
                   size: 20,
                   color: Theme.of(context).colorScheme.primary,
                 ),
@@ -271,20 +272,20 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
   }
 
 
-// 2. NEUE WIDGET-METHODE (nach _buildDocumentOverview() einfügen):
   Widget _buildDistributionChannelSelection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(
-              Icons.storefront,
+            getAdaptiveIcon(
+              iconName: 'storefront',
+              defaultIcon: Icons.storefront,
               color: Theme.of(context).colorScheme.primary,
             ),
             const SizedBox(width: 8),
             Text(
-              'Vertriebsweg wählen',
+              'Bestellart',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: Theme.of(context).colorScheme.primary,
               ),
@@ -332,77 +333,122 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
 
             final channels = snapshot.data!.docs;
 
-            return GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 3, // 3 Spalten
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 1.2, // Breite zu Höhe Verhältnis
-              children: channels.map((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                final channelId = doc.id;
-                final isSelected = _selectedDistributionChannelId == channelId;
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final isWideScreen = constraints.maxWidth > 800;
 
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedDistributionChannelId = channelId;
-                      _selectedDistributionChannel = data;
-                    });
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? Theme.of(context).colorScheme.primaryContainer
-                          : Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isSelected
-                            ? Theme.of(context).colorScheme.primary
-                            : Colors.grey.withOpacity(0.3),
-                        width: isSelected ? 2 : 1,
-                      ),
-                      boxShadow: isSelected ? [
-                        BoxShadow(
-                          color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
-                          blurRadius: 8,
-                          spreadRadius: 0,
-                          offset: const Offset(0, 2),
-                        ),
-                      ] : null,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          _getChannelIcon(data['name']?.toString() ?? ''),
-                          size: 28, // Etwas kleiner
-                          color: isSelected
-                              ? Theme.of(context).colorScheme.primary
-                              : Colors.grey[600],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          data['name']?.toString() ?? 'Unbekannt',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            color: isSelected
-                                ? Theme.of(context).colorScheme.onPrimaryContainer
-                                : Colors.grey[700],
+                // Responsive Werte
+                final crossAxisCount = isWideScreen ? 6 : 3;
+                final childAspectRatio = isWideScreen ? 2.0 : 1.2;
+                final iconSize = isWideScreen ? 32.0 : 28.0;
+                final fontSize = isWideScreen ? 14.0 : 11.0;
+                final containerPadding = isWideScreen
+                    ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12)
+                    : const EdgeInsets.all(12);
+                final maxWidth = isWideScreen ? 2000.0 : double.infinity;
+
+                return Center(
+                  child: Container(
+                    constraints: BoxConstraints(maxWidth: maxWidth),
+                    child: GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: crossAxisCount,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: childAspectRatio,
+                      children: channels.map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        final channelId = doc.id;
+                        final isSelected = _selectedDistributionChannelId == channelId;
+
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _selectedDistributionChannelId = channelId;
+                              _selectedDistributionChannel = data;
+                            });
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: containerPadding,
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? Theme.of(context).colorScheme.primaryContainer
+                                  : Theme.of(context).colorScheme.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSelected
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Colors.grey.withOpacity(0.3),
+                                width: isSelected ? 2 : 1,
+                              ),
+                              boxShadow: isSelected ? [
+                                BoxShadow(
+                                  color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                                  blurRadius: 8,
+                                  spreadRadius: 0,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ] : null,
+                            ),
+                            child: isWideScreen
+                                ? Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildChannelIcon(
+                                  data['name']?.toString() ?? '',
+                                  isSelected: isSelected,
+                                  size: iconSize,
+                                ),
+                                const SizedBox(width: 12),
+                                Flexible(
+                                  child: Text(
+                                    data['name']?.toString() ?? 'Unbekannt',
+                                    style: TextStyle(
+                                      fontSize: fontSize,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      color: isSelected
+                                          ? Theme.of(context).colorScheme.onPrimaryContainer
+                                          : Colors.grey[700],
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            )
+                                : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildChannelIcon(
+                                  data['name']?.toString() ?? '',
+                                  isSelected: isSelected,
+                                  size: iconSize,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  data['name']?.toString() ?? 'Unbekannt',
+                                  style: TextStyle(
+                                    fontSize: fontSize,
+                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                    color: isSelected
+                                        ? Theme.of(context).colorScheme.onPrimaryContainer
+                                        : Colors.grey[700],
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
                           ),
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                        );
+                      }).toList(),
                     ),
                   ),
                 );
-              }).toList(),
+              },
             );
           },
         ),
@@ -410,28 +456,48 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
     );
   }
 
-// 3. HILFSMETHODE FÜR ICONS (neue Methode):
-  IconData _getChannelIcon(String channelName) {
+// Aktualisierte _buildChannelIcon Methode mit size Parameter
+  Widget _buildChannelIcon(String channelName, {required bool isSelected, double size = 28}) {
     final name = channelName.toLowerCase();
+    String iconName;
+    IconData defaultIcon;
 
     if (name.contains('website') || name.contains('online')) {
-      return Icons.language;
+      iconName = 'language';
+      defaultIcon = Icons.language;
     } else if (name.contains('telefon') || name.contains('phone')) {
-      return Icons.phone;
+      iconName = 'phone';
+      defaultIcon = Icons.phone;
     } else if (name.contains('email') || name.contains('mail')) {
-      return Icons.email;
+      iconName = 'email';
+      defaultIcon = Icons.email;
     } else if (name.contains('messe') || name.contains('fair')) {
-      return Icons.event;
+      iconName = 'event';
+      defaultIcon = Icons.event;
     } else if (name.contains('besuch') || name.contains('visit')) {
-      return Icons.business;
+      iconName = 'business';
+      defaultIcon = Icons.business;
     } else if (name.contains('whatsapp')) {
-      return Icons.chat;
+      iconName = 'chat';
+      defaultIcon = Icons.chat;
     } else if (name.contains('social')) {
-      return Icons.share;
+      iconName = 'share';
+      defaultIcon = Icons.share;
     } else {
-      return Icons.storefront;
+      iconName = 'storefront';
+      defaultIcon = Icons.storefront;
     }
+
+    return getAdaptiveIcon(
+      iconName: iconName,
+      defaultIcon: defaultIcon,
+      size: size,
+      color: isSelected
+          ? Theme.of(context).colorScheme.primary
+          : Colors.grey[600],
+    );
   }
+
   Widget _buildQuoteInfo() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -442,7 +508,7 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
       ),
       child: Row(
         children: [
-          Icon(Icons.info, color: Colors.blue[700]),
+          getAdaptiveIcon(iconName: 'info', defaultIcon:Icons.info, color: Colors.blue[700]),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -872,8 +938,9 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
                   color: Colors.green.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.check_circle,
+                child: getAdaptiveIcon(
+                  iconName: 'check_circle',
+                  defaultIcon: Icons.check_circle,
                   color: Colors.green,
                   size: 50,
                 ),
@@ -951,8 +1018,9 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
                   color: Colors.red.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.error,
+                child: getAdaptiveIcon(
+                  iconName: 'error',
+                  defaultIcon: Icons.error,
                   color: Colors.red,
                   size: 50,
                 ),

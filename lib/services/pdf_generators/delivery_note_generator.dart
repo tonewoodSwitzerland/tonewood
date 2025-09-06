@@ -63,7 +63,8 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
     final deliveryNum = deliveryNoteNumber ?? await getNextDeliveryNoteNumber();
 
     // Gruppiere Items nach Holzart
-    final groupedItems = await _groupItemsByWoodType(items, language);
+    final productItems = items.where((item) => item['is_service'] != true).toList();
+    final groupedItems = await _groupItemsByWoodType(productItems, language);
     final additionalTextsWidget = await _addInlineAdditionalTexts(language);
 
     // Übersetzungsfunktion
@@ -124,7 +125,7 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
               pw.SizedBox(height: 20),
 
               // Kundenadresse
-             BasePdfGenerator.buildCustomerAddress(customerData, language: language),
+             BasePdfGenerator.buildCustomerAddress(customerData,"delivery_note", language: language),
 
               pw.SizedBox(height: 15),
 
@@ -278,8 +279,8 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
               language == 'EN' ? 'Product' : 'Produkt', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Instr.' : 'Instr.', 8),
-          BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Type' : 'Typ', 8),
+          // BasePdfGenerator.buildHeaderCell(
+          //     language == 'EN' ? 'Type' : 'Typ', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Qual.' : 'Qual.', 8),
           BasePdfGenerator.buildHeaderCell('FSC®', 8),
@@ -346,9 +347,9 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
               BasePdfGenerator.buildContentCell(
                 pw.Text(  language == 'EN' ?item['instrument_name_en']:item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
-              BasePdfGenerator.buildContentCell(
-                pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
-              ),
+              // BasePdfGenerator.buildContentCell(
+              //   pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+              // ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
@@ -386,15 +387,15 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
       border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
       columnWidths: {
         0: const pw.FlexColumnWidth(3),      // Produkt
-        1: const pw.FlexColumnWidth(2.0),    // Instr.
-        2: const pw.FlexColumnWidth(2.0),    // Typ
-        3: const pw.FlexColumnWidth(1.5),    // Qual.
-        4: const pw.FlexColumnWidth(1.5),    // FSC
-        5: const pw.FlexColumnWidth(1.5),    // Urs
-        6: const pw.FlexColumnWidth(1.0),    // °C
+        1: const pw.FlexColumnWidth(3.0),    // Instr.
+       // 2: const pw.FlexColumnWidth(2.0),    // Typ
+        2: const pw.FlexColumnWidth(1.5),    // Qual.
+        3: const pw.FlexColumnWidth(1.0),    // FSC
+        4: const pw.FlexColumnWidth(1.0),    // Urs
+        5: const pw.FlexColumnWidth(1.0),    // °C
        // 7: const pw.FlexColumnWidth(2.5),    // Masse
-        7: const pw.FlexColumnWidth(1.5),    // Anz.
-        8: const pw.FlexColumnWidth(1.5),    // Einh
+        6: const pw.FlexColumnWidth(1.5),    // Anz.
+        7: const pw.FlexColumnWidth(1.0),    // Einh
       },
       children: rows,
     );

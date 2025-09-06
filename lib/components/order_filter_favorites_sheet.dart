@@ -104,8 +104,8 @@ class _OrderFilterFavoritesBottomSheet extends StatelessWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.star_border,
+                        getAdaptiveIcon(iconName: 'star', defaultIcon:
+                          Icons.star,
                           size: 48,
                           color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
                         ),
@@ -123,7 +123,7 @@ class _OrderFilterFavoritesBottomSheet extends StatelessWidget {
                             Navigator.pop(context);
                             onCreateNew();
                           },
-                          icon: const Icon(Icons.add),
+                          icon:  getAdaptiveIcon(iconName: 'add', defaultIcon:Icons.add),
                           label: const Text('Ersten Favoriten erstellen'),
                         ),
                       ],
@@ -142,7 +142,7 @@ class _OrderFilterFavoritesBottomSheet extends StatelessWidget {
                           Navigator.pop(context);
                           onCreateNew();
                         },
-                        icon: const Icon(Icons.add),
+                        icon:  getAdaptiveIcon(iconName: 'add', defaultIcon:Icons.add),
                         label: const Text('Aktuellen Filter als Favorit speichern'),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.all(16),

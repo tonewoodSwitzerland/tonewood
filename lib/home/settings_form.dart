@@ -23,6 +23,8 @@ import '../components/standard_text_field.dart';
 
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../services/icon_helper.dart';
+
 
 Widget getUserGroupIcon(int userGroup) {
   switch (userGroup) {
@@ -76,7 +78,7 @@ class SettingsFormState extends State<SettingsForm> {
         return AlertDialog(
           title: Row(
             children: [
-              Icon(Icons.manage_accounts, color: const Color(0xFF0F4A29)),
+               getAdaptiveIcon(iconName: 'manage_accounts',defaultIcon:Icons.manage_accounts, color: const Color(0xFF0F4A29)),
               SizedBox(width: 8),
               Text('Benutzerverwaltung'),
             ],
@@ -276,7 +278,7 @@ class SettingsFormState extends State<SettingsForm> {
                     margin: EdgeInsets.only(bottom: 16),
                     child: ElevatedButton.icon(
                       onPressed: () => showUserManagementDialog(context),
-                      icon: Icon(Icons.admin_panel_settings),
+                      icon:  getAdaptiveIcon(iconName: 'admin_panel_settings',defaultIcon:Icons.admin_panel_settings),
                       label: Text('Benutzerverwaltung'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF3E9C37),
@@ -292,7 +294,7 @@ class SettingsFormState extends State<SettingsForm> {
                 // Logout Button
                 ElevatedButton.icon(
                   onPressed: () => logout(widget.contextApp, widget.dialogContextBox),
-                  icon: Icon(Icons.logout,color: Colors.white,),
+                  icon:  getAdaptiveIcon(iconName: 'logout',defaultIcon:Icons.logout,color: Colors.white,),
                   label: Text('Abmelden'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryAppColor,

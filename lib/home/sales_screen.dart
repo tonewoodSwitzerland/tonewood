@@ -5,14 +5,17 @@ import 'dart:io';
 import 'dart:math';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:tonewood/home/quote_order_flow_screen.dart';
+import 'package:tonewood/home/service_selection_sheet.dart';
 
 import 'package:tonewood/home/warehouse_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../services/swiss_rounding.dart'; // Pfad anpassen je nach Projektstruktur
 
 import 'package:path_provider/path_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../components/check_address.dart';
 import '../components/manual_product_dialog.dart';
 import '../services/additional_text_manager.dart';
 import '../services/document_selection_manager.dart';
@@ -269,11 +272,7 @@ return Scaffold(
           tooltip: 'Warenkorb leeren',
           onPressed: _showClearCartDialog,
         ),
-        IconButton(
-          icon: getAdaptiveIcon(iconName: 'sell', defaultIcon: Icons.sell,),
-          tooltip: 'Rabatt',
-          onPressed: _showTotalDiscountDialog,
-        ),
+
 
 
 
@@ -421,8 +420,16 @@ return Scaffold(
       if (data['discount'] != null) {
         final discountData = data['discount'] as Map<String, dynamic>;
         loadedDiscounts[doc.id] = Discount(
-          percentage: discountData['percentage'] ?? 0.0,
-          absolute: discountData['absolute'] ?? 0.0,
+          percentage: (discountData['percentage'] != null)
+              ? (discountData['percentage'] is int
+              ? (discountData['percentage'] as int).toDouble()
+              : discountData['percentage'] as double)
+              : 0.0,
+          absolute: (discountData['absolute'] != null)
+              ? (discountData['absolute'] is int
+              ? (discountData['absolute'] as int).toDouble()
+              : discountData['absolute'] as double)
+              : 0.0,
         );
       }
     }
@@ -522,7 +529,7 @@ return Scaffold(
                         // Header - Fixed at top
                         Row(
                           children: [
-                         getAdaptiveIcon(iconName: 'mail', defaultIcon: Icons.mail,),
+                         getAdaptiveIcon(iconName: 'mail', defaultIcon: Icons.mail),
                             const SizedBox(width: 8),
                             Text(
                               'Email',
@@ -531,7 +538,7 @@ return Scaffold(
                             const Spacer(),
                             IconButton(
                               onPressed: () => Navigator.pop(context),
-                              icon:    getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
+                              icon:    getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
                             ),
                           ],
                         ),
@@ -1114,7 +1121,14 @@ return Scaffold(
         return 'Der Gesamtbetrag wird als "inkl. MwSt" angezeigt, ohne separate Steuerausweisung.';
     }
   }
-// Diese Methode lädt die Währungseinstellungen aus Firebase
+
+
+  Map<String, bool> _roundingSettings = {
+    'CHF': true,  // Standard
+    'EUR': false,
+    'USD': false,
+  };
+  // Diese Methode lädt die Währungseinstellungen aus Firebase
   Future<void> _loadCurrencySettings() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -1141,7 +1155,19 @@ return Scaffold(
           _currencyNotifier.value = data['selected_currency'] as String? ?? 'CHF';
         }
 
-        print('Währungseinstellungen geladen: $_selectedCurrency, $_exchangeRates');
+        // NEU: Lade die Rundungseinstellungen
+        if (data.containsKey('rounding_settings')) {
+          final settings = data['rounding_settings'] as Map<String, dynamic>;
+          setState(() {
+            _roundingSettings = {
+              'CHF': settings['CHF'] ?? true,
+              'EUR': settings['EUR'] ?? false,
+              'USD': settings['USD'] ?? false,
+            };
+          });
+        }
+
+        print('Währungseinstellungen geladen: $_selectedCurrency, $_exchangeRates, Rundung: $_roundingSettings');
       }
     } catch (e) {
       print('Fehler beim Laden der Währungseinstellungen: $e');
@@ -2499,7 +2525,22 @@ return Scaffold(
                                 ),
                               ),
                             ),
-                            Icon(
+                            if (customer != null)
+                              IconButton(
+                                icon: getAdaptiveIcon(
+                                  iconName: 'location_on',
+                                  defaultIcon: Icons.location_on,
+                                  color: Theme.of(context).colorScheme.onSecondaryContainer,
+                                ),
+                                onPressed: () {
+                                  CheckAddressSheet.show(context);
+                                },
+                                tooltip: 'Adressen überprüfen',
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(4),
+                                iconSize: 20,
+                              ),
+                            getAdaptiveIcon(iconName: 'arrow_drop_down', defaultIcon:
                               Icons.arrow_drop_down,
                               color: customer != null
                                   ? Theme.of(context).colorScheme.onSecondaryContainer
@@ -2533,85 +2574,187 @@ return Scaffold(
                   ],
                 ),
               ),
-
-              // Kompakteres Eingabefeld
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: barcodeController,
-                        decoration: const InputDecoration(
-                          labelText: 'Barcode',
-                          isDense: true, // Kompaktere Darstellung
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      ),
-                    ),
-
-
-                  ],
-                ),
-              ),
-              SizedBox(
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: () {
-                    if (barcodeController.text.isNotEmpty) {
-                      _fetchProductAndShowQuantityDialog(barcodeController.text);
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.all(8),
-                  ),
-                  child: getAdaptiveIcon(
-                    iconName: 'barcode',
-                    defaultIcon: Icons.qr_code,
-
-                  ),
-                ),
-              ),
-              // Search button in horizontal layout
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 32, 16, 8),
-                child: ElevatedButton.icon(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: OutlinedButton.icon(
                   onPressed: () {
                     _showWarehouseDialog();
                   },
                   icon: getAdaptiveIcon(
                     iconName: 'search',
                     defaultIcon: Icons.search,
-                  ),
-                  label: const Text('Produkt suchen'),
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 40), // Kleinere Höhe
-                  ),
-                ),
-              ),
-// NEUER BUTTON FÜR MANUELLE PRODUKTE
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                child: OutlinedButton.icon(
-                  onPressed: _showManualProductDialog,
-                  icon: getAdaptiveIcon(
-                    iconName: 'add_circle',
-                    defaultIcon: Icons.add_circle,
                     color: Theme.of(context).colorScheme.primary,
                   ),
-                  label: const Text('Manuelles Produkt'),
+                  label: Text(
+                    'Produkt suchen',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
                   style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 40),
+                    minimumSize: const Size(double.infinity, 48),
                     side: BorderSide(
                       color: Theme.of(context).colorScheme.primary,
+                      width: 2,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                 ),
               ),
-              // Separator
+              // Search button in horizontal layout
+
+              // Kompakteres Eingabefeld
+
+              // Barcode-Eingabe mit dicken grünen Rändern
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: barcodeController,
+                        decoration: InputDecoration(
+                          labelText: 'Barcode',
+                          labelStyle: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Theme.of(context).colorScheme.primary,
+                              width: 2,
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Theme.of(context).colorScheme.primary,
+                              width: 2,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Theme.of(context).colorScheme.primary,
+                              width: 3,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      height: 56,
+                      width: 56,
+                      child: Material(
+                        color: Theme.of(context).colorScheme.primary,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          onTap: () {
+                            if (barcodeController.text.isNotEmpty) {
+                              _fetchProductAndShowQuantityDialog(barcodeController.text);
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Center(
+                            child: getAdaptiveIcon(
+                              iconName: 'qr_code',
+                              defaultIcon: Icons.qr_code,
+                              size: 28,
+                              color: Theme.of(context).colorScheme.onPrimary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+// Button für manuelle Produkte mit dickerer Schrift
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _showManualProductDialog,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.primary,
+                          width: 2,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          getAdaptiveIcon(
+                            iconName: 'add_circle',
+                            defaultIcon: Icons.add_circle,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Manuelles Produkt',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: OutlinedButton.icon(
+                  onPressed: _showServiceSelectionDialog,
+                  icon: getAdaptiveIcon(
+                    iconName: 'engineering',
+                    defaultIcon: Icons.engineering,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  label: Text(
+                    'Dienstleistung',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 48),
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+
+
               Divider(height: 16, thickness: 1, color: Colors.grey.shade200),
 
               // Ausgewähltes Produkt oder Hilfetext
@@ -3049,7 +3192,21 @@ return Scaffold(
                         color: Theme.of(context).colorScheme.onErrorContainer,
                       ),
                     ),
-
+                    if (customer != null)
+                      IconButton(
+                        icon: getAdaptiveIcon(
+                          iconName: 'location_on',
+                          defaultIcon: Icons.location_on,
+                          color: Theme.of(context).colorScheme.onSecondaryContainer,
+                        ),
+                        onPressed: () {
+                          CheckAddressSheet.show(context);
+                        },
+                        tooltip: 'Adressen überprüfen',
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.all(4),
+                        iconSize: 20,
+                      ),
                   ],
                 ),
               ),
@@ -3134,56 +3291,186 @@ return Scaffold(
       print('Fehler beim Speichern des temporären Kunden: $e');
     }
   }
+  void _showServiceSelectionDialog() {
+    ServiceSelectionSheet.show(
+      context,
+      currencyNotifier: _currencyNotifier,          // NEU
+      exchangeRatesNotifier: _exchangeRatesNotifier, // NEU
+      onServiceSelected: (serviceData) async {
+        try {
+          // Füge die Dienstleistung zum temporären Warenkorb hinzu
+          await FirebaseFirestore.instance
+              .collection('temporary_basket')
+              .add(serviceData);
 
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Dienstleistung wurde hinzugefügt'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Fehler beim Hinzufügen: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      },
+    );
+  }
 
-// Mobile Aktionsbuttons
   Widget _buildMobileActions() {
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: Column(
+    return Container(
+      height: 44,
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Row(
         children: [
-          // Erste Reihe mit bestehenden Buttons
-          Row(
-            children: [
-              // Neuer Suchen-Button
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _showManualProductDialog,
-                  child: getAdaptiveIcon(iconName: 'add_circle', defaultIcon: Icons.add_circle),
-                ),
-              ),
-              const SizedBox(width: 6),
-              // Neuer Suchen-Button
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _showWarehouseDialog,
-                  child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
-                ),
-              ),
-              const SizedBox(width: 6),
-              // Bestehender Scan-Button
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _scanProduct,
-                  child: getAdaptiveIcon(iconName: 'qr_code', defaultIcon: Icons.qr_code),
-                ),
-              ),
-              const SizedBox(width: 6),
-              // Bestehender Eingabe-Button
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _showBarcodeInputDialog,
-                  child: getAdaptiveIcon(iconName: 'keyboard', defaultIcon: Icons.keyboard),
-                ),
-              ),
-            ],
-          ),
+          // Dienstleistung
+          Expanded(
+            child: Material(
+              color: Theme.of(context).colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                onTap: _showServiceSelectionDialog,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      getAdaptiveIcon(
+                        iconName: 'engineering',
+                        defaultIcon: Icons.engineering,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.onSecondaryContainer,
+                      ),
 
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+
+          // Manuell
+          Expanded(
+            child: Material(
+              color: Theme.of(context).colorScheme.tertiaryContainer,
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                onTap: _showManualProductDialog,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      getAdaptiveIcon(
+                        iconName: 'add_circle',
+                        defaultIcon: Icons.add_circle,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.onTertiaryContainer,
+                      ),
+
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+
+          // Suchen
+          Expanded(
+            child: Material(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                onTap: _showWarehouseDialog,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      getAdaptiveIcon(
+                        iconName: 'search',
+                        defaultIcon: Icons.search,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+
+          // Scan
+          Expanded(
+            child: Material(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                onTap: _scanProduct,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      getAdaptiveIcon(
+                        iconName: 'qr_code',
+                        defaultIcon: Icons.qr_code,
+                        size: 20,
+                      ),
+
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+
+          // Eingabe
+          Expanded(
+            child: Material(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                onTap: _showBarcodeInputDialog,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      getAdaptiveIcon(
+                        iconName: 'keyboard',
+                        defaultIcon: Icons.keyboard,
+                        size: 20,
+                      ),
+
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
-
 
   void _showManualProductDialog() {
     ManualProductSheet.show(
@@ -3249,8 +3536,8 @@ return Scaffold(
             if (item['discount'] != null) {
               final discountData = item['discount'] as Map<String, dynamic>;
               itemDiscount = Discount(
-                percentage: discountData['percentage'] ?? 0.0,
-                absolute: discountData['absolute'] ?? 0.0,
+                percentage: (discountData['percentage'] as num?)?.toDouble() ?? 0.0,
+                absolute: (discountData['absolute'] as num?)?.toDouble() ?? 0.0,
               );
               // Synchronisiere mit lokalem State
               if (!_itemDiscounts.containsKey(itemId)) {
@@ -3299,6 +3586,27 @@ return Scaffold(
                                         // Erste Zeile: Badge + Instrument + Holz
                                         Row(
                                           children: [
+                                            if (item['is_service'] == true) ...[
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.blue.withOpacity(0.1),
+                                                  borderRadius: BorderRadius.circular(3),
+                                                  border: Border.all(
+                                                    color: Colors.blue.withOpacity(0.3),
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  'DL',
+                                                  style: TextStyle(
+                                                    fontSize: 8,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.blue[700],
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                            ],
                                             if (item['is_manual_product'] == true) ...[
                                               Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
@@ -3345,7 +3653,9 @@ return Scaffold(
 
                                             Expanded(
                                               child: Text(
-                                                '${item['instrument_name'] ?? 'N/A'} - ${item['wood_name'] ?? 'N/A'}',
+                                                item['is_service'] == true
+                                                    ? item['name'] ?? 'Unbenannte Dienstleistung'
+                                                    : '${item['instrument_name'] ?? 'N/A'} - ${item['wood_name'] ?? 'N/A'}',
                                                 style: const TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 12,
@@ -3356,23 +3666,55 @@ return Scaffold(
                                             ),
 
 
-
                                           ],
                                         ),
                                         const SizedBox(height: 2),
 
                                         // Zweite Zeile: Part + Quality
+                                        // Zweite Zeile: Part + Quality ODER Beschreibung bei Dienstleistungen
                                         Text(
-                                          '${item['part_name'] ?? 'N/A'} - ${item['quality_name'] ?? 'N/A'}',
+                                          item['is_service'] == true
+                                              ? (item['description'] != null && item['description'].toString().isNotEmpty
+                                              ? item['description'].toString()
+                                              : 'Keine Beschreibung')
+                                              : '${item['part_name'] ?? 'N/A'} - ${item['quality_name'] ?? 'N/A'}',
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: Colors.grey[700],
                                           ),
                                           overflow: TextOverflow.ellipsis,
-                                          maxLines: 1,
+                                          maxLines: item['is_service'] == true ? 2 : 1, // Bei Dienstleistungen 2 Zeilen erlauben
                                         ),
-                                        const SizedBox(height: 4),
 
+// Nach der Qualitätszeile hinzufügen:
+                                        // Nach der Qualitätszeile hinzufügen:
+                                        if (item['notes'] != null && item['notes'].toString().isNotEmpty) ...[
+                                          const SizedBox(height: 2),
+                                          Row(
+                                            children: [
+                                              getAdaptiveIcon(
+                                                iconName: 'note',
+                                                defaultIcon: Icons.note,
+                                                size: 10,
+                                                color: Colors.amber[700],
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Expanded(
+                                                child: Text(
+                                                  item['notes'].toString(),
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontStyle: FontStyle.italic,
+                                                    color: Colors.amber[700],
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                        const SizedBox(height: 2),
                                         // Dritte Zeile: Menge × Preis
                                         // Im _buildCartList, bei der Mengenanzeige:
                                         ValueListenableBuilder<String>(
@@ -3521,15 +3863,15 @@ return Scaffold(
                               builder: (context, currency, child) {
                                 return Row(
                                   children: [
-                                    Icon(
-                                      Icons.discount_outlined,
+                                    getAdaptiveIcon(iconName: 'discount', defaultIcon:
+                                      Icons.discount,
                                       size: 14,
                                       color: Theme.of(context).colorScheme.primary,
                                     ),
                                     const SizedBox(width: 4),
                                     Expanded(
                                       child: Text(
-                                        'Rabatt: ${itemDiscount.percentage > 0 ? '${itemDiscount.percentage}% ' : ''}'
+                                        'Rabatt: ${itemDiscount.percentage > 0 ? '${itemDiscount.percentage.toStringAsFixed(2)}% ' : ''}'
                                             '${itemDiscount.absolute > 0 ? _formatPrice(itemDiscount.absolute) : ''}',
                                         style: TextStyle(
                                           fontSize: 11,
@@ -3571,7 +3913,7 @@ return Scaffold(
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
+                              getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon:
                                 Icons.shopping_cart,
                                 color: Colors.white,
                                 size: 12,
@@ -3694,6 +4036,28 @@ return Scaffold(
                               vatAmount = netWithShipping * (_vatRate / 100);
                               total = netWithShipping + vatAmount;
                             }
+// NEU: 5er rundung anwenden
+                            double displayTotal = total;
+                            if (_selectedCurrency != 'CHF') {
+                              displayTotal = total * _exchangeRates[_selectedCurrency]!;
+                            }
+
+                            final roundedDisplayTotal = SwissRounding.round(
+                              displayTotal,
+                              currency: _selectedCurrency,
+                              roundingSettings: _roundingSettings,
+                            );
+
+// Zurück in CHF umrechnen für interne Berechnungen
+                            final roundedTotal = _selectedCurrency == 'CHF'
+                                ? roundedDisplayTotal
+                                : roundedDisplayTotal / _exchangeRates[_selectedCurrency]!;
+
+                            final roundingDifference = SwissRounding.getRoundingDifference(
+                              displayTotal,  // Verwende den Betrag in der Anzeigewährung
+                              currency: _selectedCurrency,
+                              roundingSettings: _roundingSettings,
+                            );
 
                             return Container(
                               padding: const EdgeInsets.all(16),
@@ -3735,13 +4099,11 @@ return Scaffold(
                                                   },
                                                   child: Container(
                                                     padding: const EdgeInsets.all(4),
-                                                    child: Icon(
+                                                    child:
                                                       _isDetailExpanded
-                                                          ? Icons.expand_less
-                                                          : Icons.expand_more,
-                                                      size: 20,
-                                                      color: Theme.of(context).colorScheme.primary,
-                                                    ),
+                                                          ? getAdaptiveIcon(iconName: 'expand_less', defaultIcon:Icons.expand_less, size: 20, color: Theme.of(context).colorScheme.primary,)
+                                                          : getAdaptiveIcon(iconName: 'expand_more', defaultIcon:Icons.expand_more, size: 20, color: Theme.of(context).colorScheme.primary),
+
                                                   ),
                                                 ),
                                                 const SizedBox(width: 16),
@@ -3756,18 +4118,48 @@ return Scaffold(
                                                             ? 'Gesamtbetrag:'
                                                             : taxOption == TaxOption.noTax
                                                             ? 'Nettobetrag:'
-                                                            : 'Gesamtbetrag inkl. MwSt:',
+                                                            : 'Gesamt inkl. MwSt:',
                                                         style: const TextStyle(
                                                           fontSize: 18,
                                                           fontWeight: FontWeight.bold,
                                                         ),
                                                       ),
-                                                      Text(
-                                                        _formatPrice(taxOption == TaxOption.standard ? total : netWithShipping),
-                                                        style: const TextStyle(
-                                                          fontSize: 18,
-                                                          fontWeight: FontWeight.bold,
-                                                        ),
+                                                      Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                                        children: [
+                                                          // NEU: Wenn gerundet wurde, zeige Original durchgestrichen
+                                                          if (_roundingSettings[_selectedCurrency] == true && roundingDifference != 0) ...[
+                                                            Text(
+                                                              _formatPrice(total),
+                                                              style: const TextStyle(
+                                                                fontSize: 14,
+                                                                decoration: TextDecoration.lineThrough,
+                                                                color: Colors.grey,
+                                                              ),
+                                                            ),
+                                                            const SizedBox(height: 2),
+                                                          ],
+                                                          // Gerundeter oder normaler Betrag
+                                                          Text(
+                                                            _formatPrice( roundedTotal),
+                                                            style: const TextStyle(
+                                                              fontSize: 18,
+                                                              fontWeight: FontWeight.bold,
+                                                            ),
+                                                          ),
+                                                          // NEU: Rundungsdifferenz anzeigen (optional)
+                                                          if (_roundingSettings[_selectedCurrency] == true && roundingDifference != 0) ...[
+                                                            const SizedBox(height: 2),
+                                                            Text(
+                                                              'Rundung: ${roundingDifference > 0 ? '+' : ''}${_formatPrice(roundingDifference)}',
+                                                              style: TextStyle(
+                                                                fontSize: 11,
+                                                                color: roundingDifference > 0 ? Colors.green : Colors.orange,
+                                                                fontStyle: FontStyle.italic,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ],
                                                       ),
                                                     ],
                                                   ),
@@ -4008,8 +4400,40 @@ return Scaffold(
                                                     ),
                                                   ],
                                                 ),
+
+                                              ],
+                                              // NEU: Rappenrundung in der Detail-Ansicht zeigen
+                                              if (_roundingSettings[_selectedCurrency] == true && roundingDifference != 0) ...[
+                                                const SizedBox(height: 4),
+                                                Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Row(
+                                                      children: [
+                                                        Text('5er Rundung'),
+                                                        const SizedBox(width: 4),
+                                                        Tooltip(
+                                                          message: SwissRounding.getRoundingDetails(total, currency: _selectedCurrency)['rule'],
+                                                          child: getAdaptiveIcon(
+                                                            iconName: 'info',
+                                                            defaultIcon: Icons.info,
+                                                            size: 14,
+                                                            color: Colors.grey,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    Text(
+                                                      '${roundingDifference > 0 ? '+' : ''}${_formatPrice(roundingDifference)}',
+                                                      style: TextStyle(
+                                                        color: roundingDifference > 0 ? Colors.green : Colors.orange,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
                                               ],
                                             ],
+
                                           ],
                                         ),
                                       ),
@@ -4021,81 +4445,39 @@ return Scaffold(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
 
+
+                                    //Rabattfeld
                                     ValueListenableBuilder<bool>(
-                                      valueListenable: _documentSelectionCompleteNotifier,
-                                      builder: (context, isComplete, child) {
-                                        return ValueListenableBuilder<String>(
-                                          valueListenable: _documentLanguageNotifier,
-                                          builder: (context, language, child) {
-                                            return Container(
-                                              decoration: BoxDecoration(
-                                                border: Border.all(
-                                                  color: isComplete ? Colors.green : Colors.red.shade300,
-                                                ),
-                                                borderRadius: BorderRadius.circular(4),
-                                              ),
-                                              child: Material(
-                                                color: Colors.transparent,
-                                                child: InkWell(
-                                                  onTap: _showDocumentTypeSelection,
-                                                  borderRadius: BorderRadius.circular(4),
-                                                  child: Padding(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                                    child: Row(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: [
-                                                        // Sprach-Toggle
-                                                        GestureDetector(
-                                                          onTap: () {
-                                                            _documentLanguageNotifier.value =
-                                                            _documentLanguageNotifier.value == 'DE' ? 'EN' : 'DE';
-                                                             _saveDocumentLanguage();
+                                      valueListenable: _additionalTextsSelectedNotifier,
+                                      builder: (context, hasTexts, child) {
+                                        return Container(
+                                          decoration: BoxDecoration(
+                                            border: Border.all(
+                                              color: Colors.green
+                                            ),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Material(
+                                            color: Colors.transparent,
+                                            child: InkWell(
+                                              onTap: _showTotalDiscountDialog,
+                                              borderRadius: BorderRadius.circular(4),
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
 
-                                                          },
-                                                          child: Container(
-                                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                            decoration: BoxDecoration(
-                                                              color: Theme.of(context).colorScheme.primary,
-                                                              borderRadius: BorderRadius.circular(4),
-                                                            ),
-                                                            child: Text(
-                                                              language,
-                                                              style: TextStyle(
-                                                                color: Theme.of(context).colorScheme.onPrimary,
-                                                                fontSize: 10,
-                                                                fontWeight: FontWeight.bold,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        const SizedBox(width: 8),
-                                                        isComplete
-                                                            ?
-                                                        getAdaptiveIcon(iconName: 'check_circle', defaultIcon: Icons.check_circle,color: Colors.green):
-                                                        getAdaptiveIcon(iconName: 'error', defaultIcon: Icons.error,color:  Colors.red),
+                                                    getAdaptiveIcon(iconName: 'sell', defaultIcon: Icons.sell,color: Colors.green)
 
-                                                        const SizedBox(width: 8),
-                                                        const Text(
-                                                          'Dok.',
-                                                          style: TextStyle(fontSize: 12),
-                                                        ),
-                                                        const SizedBox(width: 4),
-                                                        Icon(
-                                                          Icons.arrow_drop_down,
-                                                          size: 18,
-                                                          color: Colors.grey.shade700,
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
+                                                  ],
                                                 ),
                                               ),
-                                            );
-                                          },
+                                            ),
+                                          ),
                                         );
                                       },
                                     ),
-
                                     // Zusatztexte Button
                                     ValueListenableBuilder<bool>(
                                       valueListenable: _additionalTextsSelectedNotifier,
@@ -4169,6 +4551,70 @@ return Scaffold(
                                       },
                                     ),
 
+                                    ValueListenableBuilder<bool>(
+                                      valueListenable: _documentSelectionCompleteNotifier,
+                                      builder: (context, isComplete, child) {
+                                        return ValueListenableBuilder<String>(
+                                          valueListenable: _documentLanguageNotifier,
+                                          builder: (context, language, child) {
+                                            return Container(
+                                              decoration: BoxDecoration(
+                                                border: Border.all(
+                                                  color: isComplete ? Colors.green : Colors.red.shade300,
+                                                ),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Material(
+                                                color: Colors.transparent,
+                                                child: InkWell(
+                                                  onTap: _showDocumentTypeSelection,
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 5), // VERGRÖSSERT
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        // Sprach-Toggle
+                                                        GestureDetector(
+                                                          onTap: () {
+                                                            _documentLanguageNotifier.value =
+                                                            _documentLanguageNotifier.value == 'DE' ? 'EN' : 'DE';
+                                                            _saveDocumentLanguage();
+                                                          },
+                                                          child: Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // AUCH VERGRÖSSERT
+                                                            decoration: BoxDecoration(
+                                                              color: Theme.of(context).colorScheme.primary,
+                                                              borderRadius: BorderRadius.circular(4),
+                                                            ),
+                                                            child: Text(
+                                                              language,
+                                                              style: TextStyle(
+                                                                color: Theme.of(context).colorScheme.onPrimary,
+                                                                fontSize: 12, // GRÖSSERE SCHRIFT
+                                                                fontWeight: FontWeight.bold,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 12), // MEHR ABSTAND
+                                                        getAdaptiveIcon(
+                                                          iconName: 'description',
+                                                          defaultIcon: Icons.description,
+                                                          color: isComplete ? Colors.green : Colors.red,
+                                                          size: 20, // GRÖSSERES ICON
+                                                        ),
+
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        );
+                                      },
+                                    ),
 
 
                                     ValueListenableBuilder<bool>(
@@ -4319,7 +4765,10 @@ return Scaffold(
   void _showPriceEditDialog(String basketItemId, Map<String, dynamic> itemData) {
     // Sicheres Konvertieren von int oder double nach double
     final double originalPrice = (itemData['price_per_unit'] as num).toDouble();
-
+    final bool isService = itemData['is_service'] == true;
+    final descriptionController = TextEditingController(
+        text: itemData['description'] ?? ''
+    );
     // Falls bereits ein angepasster Preis existiert, diesen verwenden, sonst Originalpreis
     final customPriceValue = itemData['custom_price_per_unit'];
     final double currentPriceInCHF = customPriceValue != null
@@ -4388,10 +4837,13 @@ return Scaffold(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 child: Row(
                   children: [
-                    getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit),
+                    getAdaptiveIcon(
+                        iconName: isService ? 'engineering' : 'edit',
+                        defaultIcon: isService ? Icons.engineering : Icons.edit
+                    ),
                     const SizedBox(width: 10),
                     Text(
-                      'Artikel anpassen',
+                      isService ? 'Dienstleistung anpassen' : 'Artikel anpassen',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -4405,112 +4857,158 @@ return Scaffold(
                 ),
               ),
 
+
               Divider(height: 1),
 
               // Scrollbarer Inhalt
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Produktinfo
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Artikel: ${itemData['product_name']}',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
-                            const SizedBox(height: 8),
-                            Text('Originalpreis: ${NumberFormat.currency(locale: 'de_CH', symbol: 'CHF').format(originalPrice)}'),
-                            if (currentPriceInCHF != originalPrice)
-                              Text(
-                                'Aktueller Preis: ${NumberFormat.currency(locale: 'de_CH', symbol: 'CHF').format(currentPriceInCHF)}',
-                                style: TextStyle(color: Colors.green[700]),
-                              ),
-                            const SizedBox(height: 8),
-                            Text('Menge: ${itemData['quantity']} ${itemData['unit'] ?? 'Stück'}'),
-                          ],
-                        ),
-                      ),
+        Expanded(
+        child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+        // Produktinfo - angepasst für Dienstleistungen
+        Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+        Text(
+        isService
+        ? 'Dienstleistung: ${itemData['name'] ?? 'Unbenannt'}'
+            : 'Artikel: ${itemData['product_name']}',
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        if (isService && itemData['description'] != null && itemData['description'].isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Text(
+        itemData['description'],
+        style: TextStyle(color: Colors.grey[600], fontSize: 14),
+        ),
+        ],
+        const SizedBox(height: 8),
+        Text('Originalpreis: ${NumberFormat.currency(locale: 'de_CH', symbol: 'CHF').format(originalPrice)}'),
+        if (currentPriceInCHF != originalPrice)
+        Text(
+        'Aktueller Preis: ${NumberFormat.currency(locale: 'de_CH', symbol: 'CHF').format(currentPriceInCHF)}',
+        style: TextStyle(color: Colors.green[700]),
+        ),
+        const SizedBox(height: 8),
+        Text('Menge: ${itemData['quantity']} ${itemData['unit'] ?? 'Stück'}'),
+        ],
+        ),
+        ),
 
-                      const SizedBox(height: 24),
+        const SizedBox(height: 24),
 
-                      // Preis anpassen
-                      Text(
-                        'Preis anpassen',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
+        // Preis anpassen
+        Text(
+        'Preis anpassen',
+        style: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        color: Theme.of(context).colorScheme.primary,
+        ),
+        ),
 
-                      ValueListenableBuilder<String>(
-                        valueListenable: _currencyNotifier,
-                        builder: (context, currency, child) {
-                          return TextFormField(
-                            controller: priceController,
-                            decoration: InputDecoration(
-                              labelText: 'Neuer Preis in $_selectedCurrency',
-                              suffixText: _selectedCurrency,
-                              border: const OutlineInputBorder(),
-                              filled: true,
-                              fillColor: Theme.of(context).colorScheme.surface,
-                              prefixIcon: getAdaptiveIcon(iconName: 'euro', defaultIcon: Icons.euro),
-                            ),
-                            keyboardType: TextInputType.numberWithOptions(decimal: true),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
-                            ],
-                          );
-                        },
-                      ),
+          // Nach dem Preis-Eingabefeld und vor den Artikel-spezifischen Optionen:
 
-                      const SizedBox(height: 24),
+// Bei Dienstleistungen: Beschreibung bearbeiten
+          if (isService) ...[
+            const SizedBox(height: 24),
 
-                      // FSC-Auswahl
-                      Text(
-                        'FSC-Zertifizierung',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
+            // Beschreibung bearbeiten
+            Text(
+              'Beschreibung anpassen',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 8),
 
-                      // FSC Status Dropdown
-                      DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
-                          labelText: 'FSC-Status',
-                          border: const OutlineInputBorder(),
-                          filled: true,
-                          fillColor: Theme.of(context).colorScheme.surface,
-                          prefixIcon: getAdaptiveIcon(iconName: 'eco', defaultIcon: Icons.eco),
-                        ),
-                        value: itemData['fsc_status'] as String? ?? '100%',
-                        items: const [
-                          DropdownMenuItem(value: '100%', child: Text('100% FSC')),
-                          DropdownMenuItem(value: 'Mix', child: Text('FSC Mix')),
-                          DropdownMenuItem(value: 'Recycled', child: Text('FSC Recycled')),
-                          DropdownMenuItem(value: 'Controlled', child: Text('FSC Controlled Wood')),
-                          DropdownMenuItem(value: '-', child: Text('Kein FSC')),
-                        ],
-                        onChanged: (value) {
-                          // Temporär speichern für später
-                        },
-                      ),
+            TextFormField(
+              controller: descriptionController, // NEU: Controller definieren
+              decoration: InputDecoration(
+                labelText: 'Beschreibung',
+                border: const OutlineInputBorder(),
+                filled: true,
+                fillColor: Theme.of(context).colorScheme.surface,
+                prefixIcon: getAdaptiveIcon(iconName: 'description', defaultIcon: Icons.description),
+                helperText: 'Optionale Beschreibung der Dienstleistung',
+              ),
+              maxLines: 3,
+              minLines: 2,
+            ),
+          ],
 
-                      const SizedBox(height: 24),
+        const SizedBox(height: 8),
+
+        ValueListenableBuilder<String>(
+        valueListenable: _currencyNotifier,
+        builder: (context, currency, child) {
+        return TextFormField(
+        controller: priceController,
+        decoration: InputDecoration(
+        labelText: 'Neuer Preis in $_selectedCurrency',
+        suffixText: _selectedCurrency,
+        border: const OutlineInputBorder(),
+        filled: true,
+        fillColor: Theme.of(context).colorScheme.surface,
+        prefixIcon: getAdaptiveIcon(iconName: 'euro', defaultIcon: Icons.euro),
+        ),
+        keyboardType: TextInputType.numberWithOptions(decimal: true),
+        inputFormatters: [
+        FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+        ],
+        );
+        },
+        ),
+
+        // NUR bei Artikeln (nicht bei Dienstleistungen) die weiteren Optionen anzeigen
+        if (!isService) ...[
+        const SizedBox(height: 24),
+
+        // FSC-Auswahl
+        Text(
+        'FSC-Zertifizierung',
+        style: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        color: Theme.of(context).colorScheme.primary,
+        ),
+        ),
+        const SizedBox(height: 8),
+
+        // FSC Status Dropdown
+        DropdownButtonFormField<String>(
+        decoration: InputDecoration(
+        labelText: 'FSC-Status',
+        border: const OutlineInputBorder(),
+        filled: true,
+        fillColor: Theme.of(context).colorScheme.surface,
+        prefixIcon: getAdaptiveIcon(iconName: 'eco', defaultIcon: Icons.eco),
+        ),
+        value: itemData['fsc_status'] as String? ?? '100%',
+        items: const [
+        DropdownMenuItem(value: '100%', child: Text('100% FSC')),
+        DropdownMenuItem(value: 'Mix', child: Text('FSC Mix')),
+        DropdownMenuItem(value: 'Recycled', child: Text('FSC Recycled')),
+        DropdownMenuItem(value: 'Controlled', child: Text('FSC Controlled Wood')),
+        DropdownMenuItem(value: '-', child: Text('Kein FSC')),
+        ],
+        onChanged: (value) {
+        // Temporär speichern für später
+        },
+        ),
+
+
+        const SizedBox(height: 24),
 
                       // Maße anpassen - JETZT MIT FutureBuilder für Standard-Volumen
                       FutureBuilder<Map<String, dynamic>?>(
@@ -4578,7 +5076,7 @@ return Scaffold(
                                         border: const OutlineInputBorder(),
                                         filled: true,
                                         fillColor: Theme.of(context).colorScheme.surface,
-                                        prefixIcon: Icon(Icons.straighten, size: 20),
+                                        prefixIcon:   getAdaptiveIcon(iconName: 'straighten', defaultIcon:Icons.straighten, size: 20),
                                       ),
                                       keyboardType: TextInputType.numberWithOptions(decimal: true),
                                       inputFormatters: [
@@ -4595,7 +5093,7 @@ return Scaffold(
                                         border: const OutlineInputBorder(),
                                         filled: true,
                                         fillColor: Theme.of(context).colorScheme.surface,
-                                        prefixIcon: Icon(Icons.swap_horiz, size: 20),
+                                        prefixIcon:   getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon:Icons.swap_horiz, size: 20),
                                       ),
                                       keyboardType: TextInputType.numberWithOptions(decimal: true),
                                       inputFormatters: [
@@ -4613,7 +5111,7 @@ return Scaffold(
                                   border: const OutlineInputBorder(),
                                   filled: true,
                                   fillColor: Theme.of(context).colorScheme.surface,
-                                  prefixIcon: Icon(Icons.layers, size: 20),
+                                  prefixIcon:   getAdaptiveIcon(iconName: 'layers', defaultIcon:Icons.layers, size: 20),
                                 ),
                                 keyboardType: TextInputType.numberWithOptions(decimal: true),
                                 inputFormatters: [
@@ -4630,7 +5128,7 @@ return Scaffold(
                                   border: const OutlineInputBorder(),
                                   filled: true,
                                   fillColor: Theme.of(context).colorScheme.surface,
-                                  prefixIcon: Icon(Icons.view_in_ar, size: 20),
+                                  prefixIcon: getAdaptiveIcon(iconName: 'view_in_ar', defaultIcon:Icons.view_in_ar, size: 20),
                                   helperText: snapshot.hasData && snapshot.data != null
                                       ? 'Standardvolumen geladen - kann angepasst werden'
                                       : 'Optional: Manuelles Volumen überschreibt berechneten Wert',
@@ -4655,6 +5153,7 @@ return Scaffold(
                         },
                       ),
                     ],
+        ],
                   ),
                 ),
               ),
@@ -4677,30 +5176,54 @@ return Scaffold(
                   child: Row(
                     children: [
                       // Zurücksetzen Button (falls bereits angepasst)
+                      // Zurücksetzen Button - angepasste Bedingung
                       if (currentPriceInCHF != originalPrice ||
-                          itemData['custom_length'] != null ||
-                          itemData['custom_width'] != null ||
-                          itemData['custom_thickness'] != null ||
-                          itemData['custom_volume'] != null)
+                          (!isService && (itemData['custom_length'] != null ||
+                              itemData['custom_width'] != null ||
+                              itemData['custom_thickness'] != null ||
+                              itemData['custom_volume'] != null)) ||
+                          (isService && descriptionController.text != (itemData['description'] ?? '')))
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: () async {
                               try {
+                                Map<String, dynamic> updateData = {
+                                  'custom_price_per_unit': FieldValue.delete(),
+                                  'is_price_customized': false,
+                                };
+
+                                // Nur bei Artikeln die Maße löschen
+                                if (!isService) {
+                                  updateData['custom_length'] = FieldValue.delete();
+                                  updateData['custom_width'] = FieldValue.delete();
+                                  updateData['custom_thickness'] = FieldValue.delete();
+                                  updateData['custom_volume'] = FieldValue.delete();
+                                }
+
+                                // Bei Dienstleistungen: Beschreibung aus Originaldaten wiederherstellen
+                                if (isService) {
+                                  // Hole die Original-Dienstleistungsdaten aus Firebase
+                                  final serviceDoc = await FirebaseFirestore.instance
+                                      .collection('services')
+                                      .doc(itemData['service_id'])
+                                      .get();
+
+                                  if (serviceDoc.exists) {
+                                    updateData['description'] = serviceDoc.data()!['description'] ?? '';
+                                  }
+                                }
+
                                 await FirebaseFirestore.instance
                                     .collection('temporary_basket')
                                     .doc(basketItemId)
-                                    .update({
-                                  'custom_price_per_unit': FieldValue.delete(),
-                                  'is_price_customized': false,
-                                  'custom_length': FieldValue.delete(),
-                                  'custom_width': FieldValue.delete(),
-                                  'custom_thickness': FieldValue.delete(),
-                                  'custom_volume': FieldValue.delete(),
-                                });
+                                    .update(updateData);
+
                                 Navigator.pop(context);
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Artikel wurde auf Original zurückgesetzt'),
+                                  SnackBar(
+                                    content: Text(isService
+                                        ? 'Dienstleistung wurde auf Original zurückgesetzt'
+                                        : 'Artikel wurde auf Original zurückgesetzt'),
                                     backgroundColor: Colors.green,
                                   ),
                                 );
@@ -4721,7 +5244,6 @@ return Scaffold(
                             ),
                           ),
                         ),
-
                       if (currentPriceInCHF != originalPrice ||
                           itemData['custom_length'] != null ||
                           itemData['custom_width'] != null ||
@@ -4752,6 +5274,8 @@ return Scaffold(
                                 'is_price_customized': true,
                               };
 
+
+        if (!isService) {
                               // Maße hinzufügen, wenn sie eingegeben wurden
                               if (lengthController.text.isNotEmpty) {
                                 final length = double.tryParse(lengthController.text.replaceAll(',', '.'));
@@ -4789,7 +5313,12 @@ return Scaffold(
                               } else {
                                 updateData['custom_volume'] = FieldValue.delete();
                               }
+        }
 
+                              // Bei Dienstleistungen die Beschreibung mit updaten
+                              if (isService && descriptionController.text != itemData['description']) {
+                                updateData['description'] = descriptionController.text.trim();
+                              }
                               // Speichere die Änderungen
                               await FirebaseFirestore.instance
                                   .collection('temporary_basket')
@@ -4799,8 +5328,10 @@ return Scaffold(
                               Navigator.pop(context);
 
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Artikel wurde aktualisiert'),
+                                SnackBar(
+                                  content: Text(isService
+                                      ? 'Dienstleistung wurde aktualisiert'
+                                      : 'Artikel wurde aktualisiert'),
                                   backgroundColor: Colors.green,
                                 ),
                               );
@@ -4893,6 +5424,10 @@ return Scaffold(
     await FirebaseFirestore.instance
         .collection('temporary_basket')
         .add({
+
+      if (productData.containsKey('notes') && productData['notes'] != null && productData['notes'].toString().isNotEmpty)
+        'notes': productData['notes'],
+
       'product_id': shortBarcode,
       'product_name': productData['product_name'],
       'quantity': quantity,
@@ -4931,6 +5466,12 @@ return Scaffold(
         'custom_width': productData['custom_width'],
       if (productData.containsKey('custom_thickness') && productData['custom_thickness'] != null)
         'custom_thickness': productData['custom_thickness'],
+      // NEU: Volumen hinzufügen
+      if (productData.containsKey('volume_per_unit') && productData['volume_per_unit'] != null)
+        'volume_per_unit': productData['volume_per_unit'],
+      if (productData.containsKey('density') && productData['density'] != null)
+        'density': productData['density'],
+
 
       // FSC-Status hinzufügen
       if (productData.containsKey('fsc_status') && productData['fsc_status'] != null)
@@ -4938,26 +5479,315 @@ return Scaffold(
     });
   }
 
+// Ersetze die bestehende _removeFromBasket Methode in sales_screen.dart:
+
   Future<void> _removeFromBasket(String basketItemId) async {
-await FirebaseFirestore.instance
-    .collection('temporary_basket')
-    .doc(basketItemId)
-    .delete();
-}
+    // Hole die Artikeldaten für die Anzeige
+    final itemDoc = await FirebaseFirestore.instance
+        .collection('temporary_basket')
+        .doc(basketItemId)
+        .get();
 
+    if (!itemDoc.exists) return;
+
+    final itemData = itemDoc.data()!;
+    final isService = itemData['is_service'] == true;
+    final isManual = itemData['is_manual_product'] == true;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: getAdaptiveIcon(
+                iconName: 'delete',
+                defaultIcon: Icons.delete,
+                color: Colors.red.shade700,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text('Artikel entfernen?'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Artikel-Info
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      if (isService)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                          ),
+                          child: Text(
+                            'DIENSTLEISTUNG',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue[700],
+                            ),
+                          ),
+                        )
+                      else if (isManual)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.purple.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.purple.withOpacity(0.3)),
+                          ),
+                          child: Text(
+                            'MANUELL',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.purple[700],
+                            ),
+                          ),
+                        ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          isService
+                              ? (itemData['name'] ?? 'Unbenannte Dienstleistung')
+                              : (itemData['product_name'] ?? 'Unbekanntes Produkt'),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  if (!isService) ...[
+                    Text(
+                      '${itemData['instrument_name'] ?? ''} - ${itemData['wood_name'] ?? ''}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    Text(
+                      '${itemData['part_name'] ?? ''} - ${itemData['quality_name'] ?? ''}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Divider(height: 1),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Menge: ${itemData['quantity']} ${itemData['unit'] ?? 'Stück'}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      ValueListenableBuilder<String>(
+                        valueListenable: _currencyNotifier,
+                        builder: (context, currency, child) {
+                          final price = itemData['custom_price_per_unit'] ?? itemData['price_per_unit'] ?? 0;
+                          final total = (itemData['quantity'] as num) * (price as num);
+                          return Text(
+                            _formatPrice(total.toDouble()),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Möchten Sie diesen Artikel wirklich aus dem Warenkorb entfernen?',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Behalten'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+
+              try {
+                // NEU: Batch für atomare Operation
+                final batch = FirebaseFirestore.instance.batch();
+
+                // 1. Lösche aus temporary_basket
+                batch.delete(
+                    FirebaseFirestore.instance
+                        .collection('temporary_basket')
+                        .doc(basketItemId)
+                );
+
+                // 2. NEU: Lösche alle Packlisten-Zuordnungen für diesen Artikel
+                final packingListAssignments = await FirebaseFirestore.instance
+                    .collection('temporary_packing_lists')
+                    .where('basket_item_id', isEqualTo: basketItemId)
+                    .get();
+
+                for (final doc in packingListAssignments.docs) {
+                  batch.delete(doc.reference);
+                }
+
+                // 3. Führe alle Löschungen aus
+                await batch.commit();
+
+                // Entferne aus lokalem State
+                setState(() {
+                  _itemDiscounts.remove(basketItemId);
+                });
+
+                // Zeige Bestätigung
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        packingListAssignments.docs.isNotEmpty
+                            ? 'Artikel wurde entfernt (inkl. ${packingListAssignments.docs.length} Packlisten-Zuordnung${packingListAssignments.docs.length > 1 ? "en" : ""})'
+                            : 'Artikel wurde entfernt'
+                    ),
+                    backgroundColor: Colors.orange,
+                    action: SnackBarAction(
+                      label: 'Rückgängig',
+                      textColor: Colors.white,
+                      onPressed: () async {
+                        try {
+                          final restorationBatch = FirebaseFirestore.instance.batch();
+
+                          // 1. Artikel wiederherstellen
+                          restorationBatch.set(
+                              FirebaseFirestore.instance
+                                  .collection('temporary_basket')
+                                  .doc(basketItemId),
+                              itemData
+                          );
+
+                          // 2. Packlisten-Zuordnungen wiederherstellen
+                          for (final packingDoc in packingListAssignments.docs) {
+                            restorationBatch.set(
+                                packingDoc.reference,
+                                packingDoc.data()
+                            );
+                          }
+
+                          await restorationBatch.commit();
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Artikel wurde wiederhergestellt'),
+                              backgroundColor: Colors.green,
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Fehler beim Wiederherstellen: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Fehler beim Entfernen: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete),
+            label: const Text('Entfernen'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
   // Ergänzung für _showQuantityDialog in sales_screen.dart
+// Hilfsmethode zum Abrufen der Dichte aus der Holzart
+  Future<double?> _getDensityForProduct(Map<String, dynamic> productData) async {
+    try {
+      final woodCode = productData['wood_code'] as String?;
+      if (woodCode == null) return null;
 
+      final woodDoc = await FirebaseFirestore.instance
+          .collection('wood_types')
+          .where('code', isEqualTo: woodCode)
+          .limit(1)
+          .get();
+
+      if (woodDoc.docs.isNotEmpty) {
+        final woodData = woodDoc.docs.first.data();
+        return (woodData['density'] as num?)?.toDouble();
+      }
+    } catch (e) {
+      print('Fehler beim Abrufen der Dichte: $e');
+    }
+    return null;
+  }
   void _showQuantityDialog(String barcode, Map<String, dynamic> productData) {
     quantityController.clear();
 
+    print(productData);
     // Controller für die Maße
     final lengthController = TextEditingController();
     final widthController = TextEditingController();
     final thicknessController = TextEditingController();
-
+    final notesController = TextEditingController();
+    final volumeController = TextEditingController();
+    final densityController = TextEditingController();
     // FSC-Status Variable
-    String selectedFscStatus = '100%'; // Standard
-
+    String selectedFscStatus = '-'; // Standard
+    if (productData['wood_name']?.toString().toLowerCase() == 'fichte') {
+      selectedFscStatus = '100%';
+    }
     // NEU: Gratisartikel Variablen hier definieren
     bool isGratisartikel = false;
     final proformaController = TextEditingController(
@@ -5098,7 +5928,7 @@ await FirebaseFirestore.instance
 
                             // Menge
                             Text(
-                              'MengeXX',
+                              'Menge',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -5164,139 +5994,386 @@ await FirebaseFirestore.instance
                                 });
                               },
                             ),
+// Nach dem Gratisartikel-Abschnitt hinzufügen:
+                            const SizedBox(height: 24),
 
+// Hinweise-Abschnitt
+                            Text(
+                              'Hinweise',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+
+                            TextFormField(
+                              controller: notesController,
+                              decoration: InputDecoration(
+                                labelText: 'Spezielle Hinweise (optional)',
+                                hintText: 'z.B. besondere Qualitätsmerkmale, Lagerort, etc.',
+                                border: const OutlineInputBorder(),
+                                filled: true,
+                                fillColor: Theme.of(context).colorScheme.surface,
+                                prefixIcon: getAdaptiveIcon(
+                                  iconName: 'note',
+                                  defaultIcon: Icons.note_alt,
+                                ),
+                              ),
+                              maxLines: 3,
+                              minLines: 2,
+                            ),
                             const SizedBox(height: 24),
 
                             // Maße - mit FutureBuilder für Standardmaße
                             FutureBuilder<Map<String, dynamic>?>(
                               future: _getStandardMeasurements(productData),
                               builder: (context, snapshot) {
-                                // Einmalig die Standardwerte setzen, aber nur wenn Controller leer sind
-                                if (snapshot.connectionState == ConnectionState.done &&
-                                    snapshot.hasData &&
-                                    snapshot.data != null) {
+                                // Ergänze den zweiten FutureBuilder für Volumen
+                                return FutureBuilder<Map<String, dynamic>?>(
+                                  future: _getStandardVolumeForItem(productData),
+                                  builder: (context, volumeSnapshot) {
+                                    // Einmalig die Standardwerte setzen, aber nur wenn Controller leer sind
+                                    if (snapshot.connectionState == ConnectionState.done &&
+                                        snapshot.hasData &&
+                                        snapshot.data != null) {
 
-                                  final standardMeasures = snapshot.data!;
+                                      final standardMeasures = snapshot.data!;
 
-                                  // Verwende WidgetsBinding um sicherzustellen, dass es nur einmal gesetzt wird
-                                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                                    if (lengthController.text.isEmpty && standardMeasures['length'] != null) {
-                                      lengthController.text = standardMeasures['length']?.toString() ?? '';
+                                      // Verwende WidgetsBinding um sicherzustellen, dass es nur einmal gesetzt wird
+                                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                                        if (lengthController.text.isEmpty && standardMeasures['length'] != null) {
+                                          lengthController.text = standardMeasures['length']?.toString() ?? '';
+                                        }
+                                        if (widthController.text.isEmpty && standardMeasures['width'] != null) {
+                                          widthController.text = standardMeasures['width']?.toString() ?? '';
+                                        }
+                                        if (thicknessController.text.isEmpty && standardMeasures['thickness'] != null) {
+                                          thicknessController.text = standardMeasures['thickness']?.toString() ?? '';
+                                        }
+                                      });
                                     }
-                                    if (widthController.text.isEmpty && standardMeasures['width'] != null) {
-                                      widthController.text = standardMeasures['width']?.toString() ?? '';
-                                    }
-                                    if (thicknessController.text.isEmpty && standardMeasures['thickness'] != null) {
-                                      thicknessController.text = standardMeasures['thickness']?.toString() ?? '';
-                                    }
-                                  });
-                                }
 
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
+                                    // Setze Volumen einmalig
+                                    if (volumeSnapshot.connectionState == ConnectionState.done &&
+                                        volumeSnapshot.hasData &&
+                                        volumeSnapshot.data != null &&
+                                        volumeController.text.isEmpty) {
+                                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                                        final standardVolume = volumeSnapshot.data!['volume'] ?? 0.0;
+                                        if (standardVolume > 0) {
+                                          volumeController.text = standardVolume.toStringAsFixed(5);
+                                        }
+                                      });
+                                    }
+
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          'Maße',
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: Theme.of(context).colorScheme.primary,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        if (snapshot.hasData && snapshot.data != null)
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: Theme.of(context).colorScheme.primaryContainer,
-                                              borderRadius: BorderRadius.circular(12),
+                                        Row(
+                                          children: [
+                                            Text(
+                                              'Maße',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: Theme.of(context).colorScheme.primary,
+                                              ),
                                             ),
+                                            const SizedBox(width: 8),
+                                            if ((snapshot.hasData && snapshot.data != null) ||
+                                                (volumeSnapshot.hasData && volumeSnapshot.data != null))
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: Theme.of(context).colorScheme.primaryContainer,
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                                child: Text(
+                                                  'Standardmaße',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+
+                                        // Maß-Eingabefelder - User-Eingaben haben Vorrang
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: TextFormField(
+                                                controller: lengthController,
+                                                decoration: InputDecoration(
+                                                  labelText: 'Länge (mm)',
+                                                  border: const OutlineInputBorder(),
+                                                  filled: true,
+                                                  fillColor: Theme.of(context).colorScheme.surface,
+                                                  prefixIcon:
+                                                  getAdaptiveIcon(iconName: 'straighten', defaultIcon:Icons.straighten, size: 20),
+
+                                                ),
+                                                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                                onChanged: (value) {
+                                                  setState(() {});
+                                                },
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: TextFormField(
+                                                controller: widthController,
+                                                decoration: InputDecoration(
+                                                  labelText: 'Breite (mm)',
+                                                  border: const OutlineInputBorder(),
+                                                  filled: true,
+                                                  fillColor: Theme.of(context).colorScheme.surface,
+                                                  prefixIcon:
+                                                  getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon:Icons.swap_horiz, size: 20),
+
+                                                ),
+                                                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                                onChanged: (value) {
+                                                  setState(() {});
+                                                },
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        TextFormField(
+                                          controller: thicknessController,
+                                          decoration: InputDecoration(
+                                            labelText: 'Dicke (mm)',
+                                            border: const OutlineInputBorder(),
+                                            filled: true,
+                                            fillColor: Theme.of(context).colorScheme.surface,
+                                            prefixIcon: getAdaptiveIcon(iconName: 'layers', defaultIcon:Icons.layers, size: 20),
+
+                                          ),
+                                          keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                          onChanged: (value) {
+                                            setState(() {});
+                                          },
+                                        ),
+
+                                        // NEU: Volumen-Feld
+                                        const SizedBox(height: 12),
+                                        TextFormField(
+                                          controller: volumeController,
+                                          decoration: InputDecoration(
+                                            labelText: 'Volumen (m³)',
+                                            border: const OutlineInputBorder(),
+                                            filled: true,
+                                            fillColor: Theme.of(context).colorScheme.surface,
+                                            prefixIcon: getAdaptiveIcon(
+                                                iconName: 'view_in_ar',
+                                                defaultIcon: Icons.view_in_ar,
+                                                size: 20
+                                            ),
+                                            helperText: volumeSnapshot.hasData && volumeSnapshot.data != null
+                                                ? 'Standardvolumen aus Produktdefinition'
+                                                : 'Optional: Volumen manuell eingeben',
+                                          ),
+                                          keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                          inputFormatters: [
+                                            FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,5}')),
+                                          ],
+                                          onChanged: (value) {
+                                            setState(() {});
+                                          },
+                                        ),
+
+                                        if ((snapshot.hasData && snapshot.data != null) ||
+                                            (volumeSnapshot.hasData && volumeSnapshot.data != null))
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 8),
                                             child: Text(
-                                              'Standardmaße',
+                                              'Die Standardmaße können individuell angepasst werden',
                                               style: TextStyle(
                                                 fontSize: 12,
-                                                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                                fontStyle: FontStyle.italic,
+                                                color: Colors.grey,
                                               ),
                                             ),
                                           ),
+
+                                        const SizedBox(height: 12),
+                                        FutureBuilder<double?>(
+                                          future: _getDensityForProduct(productData),
+                                          builder: (context, densitySnapshot) {
+                                            // Setze Dichte-Wert wenn verfügbar
+                                            if (densitySnapshot.hasData && densitySnapshot.data != null && densityController.text.isEmpty) {
+                                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                                densityController.text = densitySnapshot.data!.toStringAsFixed(0);
+                                              });
+                                            }
+
+                                            return Column(
+                                              children: [
+                                                TextFormField(
+                                                  controller: densityController,
+                                                  decoration: InputDecoration(
+                                                    labelText: 'Spezifisches Gewicht (kg/m³)',
+                                                    border: const OutlineInputBorder(),
+                                                    filled: true,
+                                                    fillColor: Theme.of(context).colorScheme.surface,
+                                                    prefixIcon: getAdaptiveIcon(
+                                                        iconName: 'grain',
+                                                        defaultIcon: Icons.grain,
+                                                        size: 20
+                                                    ),
+                                                    helperText: densitySnapshot.hasData
+                                                        ? 'Dichte aus Holzart: ${densitySnapshot.data} kg/m³'
+                                                        : 'Manuell eingeben falls nicht automatisch geladen',
+                                                  ),
+                                                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                                  inputFormatters: [
+                                                    FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,0}')),
+                                                  ],
+                                                  onChanged: (value) {
+                                                    setState(() {}); // Trigger rebuild für Gewichtsberechnung
+                                                  },
+                                                ),
+
+                                                // NEU: Gewichtsberechnung
+                                                const SizedBox(height: 16),
+
+                                                // Berechne und zeige das Gewicht
+                                                Builder(
+                                                  builder: (context) {
+                                                    // Parse Werte
+                                                    final quantityText = quantityController.text.replaceAll(',', '.');
+                                                    final volumeText = volumeController.text.replaceAll(',', '.');
+                                                    final densityText = densityController.text.replaceAll(',', '.');
+
+                                                    final quantity = double.tryParse(quantityText) ?? 0.0;
+                                                    final volumePerUnit = double.tryParse(volumeText) ?? 0.0;
+                                                    final density = double.tryParse(densityText) ?? 0.0;
+
+                                                    // Berechne Gewicht
+                                                    final weightPerUnit = volumePerUnit * density; // kg pro Einheit
+                                                    final totalWeight = weightPerUnit * quantity; // Gesamtgewicht
+
+                                                    if (volumePerUnit > 0 && density > 0) {
+                                                      return Container(
+                                                        padding: const EdgeInsets.all(12),
+                                                        decoration: BoxDecoration(
+                                                          color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
+                                                          borderRadius: BorderRadius.circular(8),
+                                                          border: Border.all(
+                                                            color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                                                          ),
+                                                        ),
+                                                        child: Column(
+                                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                                          children: [
+                                                            Row(
+                                                              children: [
+                                                                getAdaptiveIcon(iconName: 'scale', defaultIcon:
+                                                                  Icons.scale,
+                                                                  size: 20,
+                                                                  color: Theme.of(context).colorScheme.primary,
+                                                                ),
+                                                                const SizedBox(width: 8),
+                                                                Text(
+                                                                  'Gewichtsberechnung',
+                                                                  style: TextStyle(
+                                                                    fontWeight: FontWeight.bold,
+                                                                    color: Theme.of(context).colorScheme.primary,
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                            const SizedBox(height: 8),
+                                                            Text(
+                                                              'Volumen: ${volumePerUnit.toStringAsFixed(5)} m³ × Dichte: ${density.toStringAsFixed(0)} kg/m³',
+                                                              style: TextStyle(fontSize: 12),
+                                                            ),
+                                                            const SizedBox(height: 4),
+                                                            Row(
+                                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                              children: [
+                                                                Text('Gewicht pro ${productData['unit'] ?? 'Stück'}:'),
+                                                                Text(
+                                                                  '${weightPerUnit.toStringAsFixed(2)} kg',
+                                                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                            if (quantity > 0) ...[
+                                                              const SizedBox(height: 4),
+                                                              Divider(),
+                                                              const SizedBox(height: 4),
+                                                              Row(
+                                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                                children: [
+                                                                  Text(
+                                                                    'Gesamtgewicht:',
+                                                                    style: TextStyle(
+                                                                      fontWeight: FontWeight.bold,
+                                                                      fontSize: 14,
+                                                                    ),
+                                                                  ),
+                                                                  Text(
+                                                                    '${totalWeight.toStringAsFixed(2)} kg',
+                                                                    style: TextStyle(
+                                                                      fontWeight: FontWeight.bold,
+                                                                      fontSize: 16,
+                                                                      color: Theme.of(context).colorScheme.primary,
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ],
+                                                          ],
+                                                        ),
+                                                      );
+                                                    } else {
+                                                      return Container(
+                                                        padding: const EdgeInsets.all(12),
+                                                        decoration: BoxDecoration(
+                                                          color: Colors.orange.withOpacity(0.1),
+                                                          borderRadius: BorderRadius.circular(8),
+                                                          border: Border.all(
+                                                            color: Colors.orange.withOpacity(0.3),
+                                                          ),
+                                                        ),
+                                                        child: Row(
+                                                          children: [
+                                                            getAdaptiveIcon(iconName: 'info', defaultIcon:
+                                                              Icons.info,
+                                                              size: 16,
+                                                              color: Colors.orange,
+                                                            ),
+                                                            const SizedBox(width: 8),
+                                                            Expanded(
+                                                              child: Text(
+                                                                'Gewichtsberechnung erfordert Volumen und Dichte',
+                                                                style: TextStyle(
+                                                                  fontSize: 12,
+                                                                  color: Colors.orange[800],
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      );
+                                                    }
+                                                  },
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        ),
+
                                       ],
-                                    ),
-                                    const SizedBox(height: 8),
-
-                                    // Maß-Eingabefelder - User-Eingaben haben Vorrang
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: TextFormField(
-                                            controller: lengthController,
-                                            decoration: InputDecoration(
-                                              labelText: 'Länge (mm)',
-                                              border: const OutlineInputBorder(),
-                                              filled: true,
-                                              fillColor: Theme.of(context).colorScheme.surface,
-                                              prefixIcon:
-                                              getAdaptiveIcon(iconName: 'straighten', defaultIcon:Icons.straighten, size: 20),
-
-                                            ),
-                                            keyboardType: TextInputType.numberWithOptions(decimal: true),
-                                            onChanged: (value) {
-                                              setState(() {});
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: TextFormField(
-                                            controller: widthController,
-                                            decoration: InputDecoration(
-                                              labelText: 'Breite (mm)',
-                                              border: const OutlineInputBorder(),
-                                              filled: true,
-                                              fillColor: Theme.of(context).colorScheme.surface,
-                                              prefixIcon:
-                                              getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon:Icons.swap_horiz, size: 20),
-
-                                            ),
-                                            keyboardType: TextInputType.numberWithOptions(decimal: true),
-                                            onChanged: (value) {
-                                              setState(() {});
-                                            },
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    TextFormField(
-                                      controller: thicknessController,
-                                      decoration: InputDecoration(
-                                        labelText: 'Dicke (mm)',
-                                        border: const OutlineInputBorder(),
-                                        filled: true,
-                                        fillColor: Theme.of(context).colorScheme.surface,
-                                        prefixIcon:     getAdaptiveIcon(iconName: 'layers', defaultIcon:Icons.layers, size: 20),
-
-                                      ),
-                                      keyboardType: TextInputType.numberWithOptions(decimal: true),
-                                      onChanged: (value) {
-                                        setState(() {});
-                                      },
-                                    ),
-
-                                    if (snapshot.hasData && snapshot.data != null)
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 8),
-                                        child: Text(
-                                          'Die Standardmaße können individuell angepasst werden',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontStyle: FontStyle.italic,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
+                                    );
+                                  },
                                 );
                               },
                             ),
@@ -5436,6 +6513,16 @@ await FirebaseFirestore.instance
                                         updatedProductData['custom_thickness'] = double.tryParse(thicknessController.text.replaceAll(',', '.')) ?? 0.0;
                                       }
 
+                                      print("volumenC:$volumeController");
+                                      if (volumeController.text.isNotEmpty) {
+                                        updatedProductData['volume_per_unit'] =
+                                            double.tryParse(volumeController.text.replaceAll(',', '.')) ?? 0.0;
+                                      }
+                                      if (densityController.text.isNotEmpty) {
+                                        updatedProductData['density'] = double.tryParse(densityController.text.replaceAll(',', '.')) ?? 0.0;
+                                      }
+
+
                                       // Füge FSC-Status hinzu
                                       updatedProductData['fsc_status'] = selectedFscStatus;
 
@@ -5455,7 +6542,9 @@ await FirebaseFirestore.instance
 
                                         updatedProductData['proforma_value'] = proformaValue;
                                       }
-
+                                      if (notesController.text.trim().isNotEmpty) {
+                                        updatedProductData['notes'] = notesController.text.trim();
+                                      }
 
                                       await _addToTemporaryBasket(barcode, updatedProductData, quantity, null);
                                       Navigator.pop(context);
@@ -6068,606 +7157,7 @@ backgroundColor: Colors.red,
 
 
 
-  Future<Uint8List> _generateEnhancedPdf(String receiptId) async {
-    final pdf = pw.Document();
-    final receiptDoc = await FirebaseFirestore.instance
-        .collection('sales_receipts')
-        .doc(receiptId)
-        .get();
 
-    final receiptData = receiptDoc.data()!;
-    final customerData = receiptData['customer'] as Map<String, dynamic>;
-    final metaData = receiptData['metadata'] as Map<String, dynamic>;
-    final items = (receiptData['items'] as List).cast<Map<String, dynamic>>();
-    final calculations = receiptData['calculations'] as Map<String, dynamic>;
-    final receiptNumber = receiptData['receiptNumber'] as String;
-    final taxOption = TaxOption.values[metaData['tax_option'] ?? 0]; // Standard als Fallback
-
-
-print("taxOption:$taxOption");
-print("test:${receiptData['tax_option']}");
-print(TaxOption.values);
-    print(TaxOption.values[2]);
-    // Lade das Firmenlogo
-    final logoImage = await rootBundle.load('images/logo.png');
-    final logo = pw.MemoryImage(logoImage.buffer.asUint8List());
-
-    // Hilfsfunktion für PDF-Währungsformatierung
-    String formatPdfCurrency(double amount) {
-      // Konvertiere von CHF in die ausgewählte Währung
-      double convertedAmount = amount;
-
-      if (_selectedCurrency != 'CHF') {
-        convertedAmount = amount * _exchangeRates[_selectedCurrency]!;
-      }
-
-      return '${convertedAmount.toStringAsFixed(2)} $_selectedCurrency';
-    }
-
-    pdf.addPage(
-      pw.Page(
-        margin: const pw.EdgeInsets.all(40),
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              // Header bleibt gleich
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(
-                        'Lieferschein',
-                        style: pw.TextStyle(
-                          fontSize: 28,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.blueGrey800,
-                        ),
-                      ),
-                      pw.SizedBox(height: 8),
-                      pw.Text(
-                        'Nr.: LS-$receiptNumber',
-                        style: const pw.TextStyle(fontSize: 12, color: PdfColors.blueGrey600),
-                      ),
-                      pw.Text(
-                        'Datum: ${DateFormat('dd.MM.yyyy').format(DateTime.now())}',
-                        style: const pw.TextStyle(fontSize: 12, color: PdfColors.blueGrey600),
-                      ),
-                    ],
-                  ),
-                  pw.Image(logo, width: 180),
-                ],
-              ),
-              pw.SizedBox(height: 20),
-
-              pw.Container(
-                padding: const pw.EdgeInsets.all(15),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColors.blueGrey200, width: 0.5),
-                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-                  color: PdfColors.grey50,
-                ),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      customerData['company'] ?? '',
-                      style: pw.TextStyle(
-                        fontSize: 14,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.blueGrey800,
-                      ),
-                    ),
-                    pw.SizedBox(height: 4),
-                    pw.Text(
-                      customerData['fullName'] ?? '',
-                      style: const pw.TextStyle(color: PdfColors.blueGrey700),
-                    ),
-                    pw.SizedBox(height: 4),
-                    // Straße und Hausnummer in einer Zeile
-                    pw.Text(
-                      '${customerData['street'] ?? ''} ${customerData['houseNumber'] ?? ''}',
-                      style: const pw.TextStyle(color: PdfColors.blueGrey700),
-                    ),
-                    // PLZ und Stadt in einer Zeile
-                    pw.Text(
-                      '${customerData['zipCode'] ?? ''} ${customerData['city'] ?? ''}',
-                      style: const pw.TextStyle(color: PdfColors.blueGrey700),
-                    ),
-                    // Land in einer eigenen Zeile
-                    pw.Text(
-                      customerData['country'] ?? '',
-                      style: const pw.TextStyle(color: PdfColors.blueGrey700),
-                    ),
-                    pw.SizedBox(height: 10),
-                    pw.Text(
-                      'per mail an:',
-                      style: pw.TextStyle(
-                        fontSize: 8,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.blueGrey800,
-                      ),
-                    ),
-                    pw.SizedBox(height: 4),
-                    pw.Text(
-                      customerData['email'] ?? '',
-                      style: const pw.TextStyle(color: PdfColors.blueGrey700,  fontSize: 8,),
-                    ),
-                  ],
-                ),
-              ),
-
-
-
-
-              pw.SizedBox(height: 15),
-
-              // Währungshinweis hinzufügen
-              if (_selectedCurrency != 'CHF')
-                pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.amber50,
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                    border: pw.Border.all(color: PdfColors.amber200, width: 0.5),
-                  ),
-                  child: pw.Text(
-                    'Alle Preise in $_selectedCurrency (Umrechnungskurs: 1 CHF = ${_exchangeRates[_selectedCurrency]!.toStringAsFixed(4)} $_selectedCurrency)',
-                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.amber900),
-                  ),
-                ),
-              pw.SizedBox(height: 15),
-
-              // Artikel-Tabelle
-              pw.Table(
-                border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
-                columnWidths: {
-                  0: const pw.FlexColumnWidth(5), // Produkt
-                  1: const pw.FlexColumnWidth(2), // Menge
-                  2: const pw.FlexColumnWidth(2), // Einheit
-                  3: const pw.FlexColumnWidth(3), // Preis/Einheit
-                  4: const pw.FlexColumnWidth(2), // Rabatt
-                  5: const pw.FlexColumnWidth(3), // Summe
-                },
-                children: [
-                  // Header anpassen
-                  pw.TableRow(
-                    decoration: pw.BoxDecoration(
-                      color: PdfColors.blueGrey50,
-                    ),
-                    children: [
-                      _buildHeaderCell('Produkt', 12),
-                      _buildHeaderCell('Menge', 9),
-                      _buildHeaderCell('Einheit', 9),
-                      _buildHeaderCell('Preis/Einheit', 9, align: pw.TextAlign.right),
-                      _buildHeaderCell('Rabatt', 9, align: pw.TextAlign.right),
-                      _buildHeaderCell('Summe', 12, align: pw.TextAlign.right),
-                    ],
-                  ),
-                  // Artikel mit angepassten Währungsbezeichnungen
-                  ...items.map((item) {
-                    final quantity = item['quantity'] as num? ?? 0;
-                    final pricePerUnit = item['price_per_unit'] as num? ?? 0;
-
-                    final discount = item['discount'] as Map<String, dynamic>?;
-                    final discountAmount = item['discount_amount'] as num? ?? 0;
-                    final total = item['total'] as num? ?? 0;
-
-                    return pw.TableRow(
-                      children: [
-                        _buildContentCell(
-                          pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.start,
-                            children: [
-                              pw.Text(
-                                item['product_name'] ?? '',
-                                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                              ),
-                              pw.SizedBox(height: 2),
-                              pw.Text(
-                                '${'Artikelnummer:'} - ${item['product_id'] ?? ''}',
-                                style: const pw.TextStyle(
-                                  fontSize: 9,
-                                  color: PdfColors.blueGrey600,
-                                ),
-                              ),
-                              pw.SizedBox(height: 2),
-                              pw.Text(
-                                '${'Qualität:'} - ${item['quality_name'] ?? ''}',
-                                style: const pw.TextStyle(
-                                  fontSize: 9,
-                                  color: PdfColors.blueGrey600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        _buildContentCell(pw.Text(quantity.toString(), style: const pw.TextStyle(fontSize: 9,),)),
-                        _buildContentCell(pw.Text(item['unit'] ?? '', style: const pw.TextStyle(fontSize: 9,),)),
-                        _buildContentCell(
-                          pw.Text(
-                            // Preisformatierung angepasst
-                            formatPdfCurrency(pricePerUnit.toDouble()),
-                            style: const pw.TextStyle(fontSize: 9,),
-                            textAlign: pw.TextAlign.right,
-                          ),
-                        ),
-                        _buildContentCell(
-                          pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.end,
-                            children: [
-                              if (discount != null && discount['percentage'] > 0)
-                                pw.Text(
-                                  '${discount['percentage']}%',
-                                  style: const pw.TextStyle(color: PdfColors.red, fontSize: 9,),
-                                  textAlign: pw.TextAlign.right,
-                                ),
-                              if (discount != null && discount['absolute'] > 0)
-                                pw.Text(
-                                  // Rabattformatierung angepasst
-                                  formatPdfCurrency(discount['absolute'].toDouble()),
-                                  style: const pw.TextStyle(color: PdfColors.red, fontSize: 9,),
-                                  textAlign: pw.TextAlign.right,
-                                ),
-                              if (discountAmount > 0)
-                                pw.Text(
-                                  // Rabattbetrag formatieren
-                                  '-${formatPdfCurrency(discountAmount.toDouble())}',
-                                  style: const pw.TextStyle(color: PdfColors.red, fontSize: 9,),
-                                  textAlign: pw.TextAlign.right,
-                                ),
-                            ],
-                          ),
-                        ),
-                        _buildContentCell(
-                          pw.Text(
-                            style: const pw.TextStyle(fontSize: 9,),
-                            // Gesamtbetrag formatieren
-                            formatPdfCurrency(total.toDouble()),
-                            textAlign: pw.TextAlign.right,
-                          ),
-                        ),
-                      ],
-                    );
-                  }),
-                ],
-              ),
-              pw.SizedBox(height: 20),
-
-              pw.Container(
-                alignment: pw.Alignment.centerRight,
-                child: pw.Container(
-                  padding: const pw.EdgeInsets.all(10),
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.blueGrey50,
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-                  ),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      // Zwischensumme
-                      _buildTotalRowWithCurrency(
-                        'Zwischensumme:',
-                        calculations['subtotal'] as num? ?? 0,
-                        _selectedCurrency,
-                        _exchangeRates[_selectedCurrency] ?? 1.0,
-                      ),
-
-                      // Positionsrabatte
-                      if ((calculations['item_discounts'] as num? ?? 0) > 0)
-                        _buildTotalRowWithCurrency(
-                          'Positionsrabatte:',
-                          calculations['item_discounts'] as num? ?? 0,
-                          _selectedCurrency,
-                          _exchangeRates[_selectedCurrency] ?? 1.0,
-                          isDiscount: true,
-                        ),
-
-                      // Gesamtrabatt
-                      if ((calculations['total_discount_amount'] as num? ?? 0) > 0) ...[
-                        if ((calculations['total_discount'] as Map<String, dynamic>)['percentage'] > 0)
-                          _buildTotalRowWithCurrency(
-                            'Gesamtrabatt (${(calculations['total_discount'] as Map<String, dynamic>)['percentage']}%):',
-                            calculations['total_discount_amount'] as num? ?? 0,
-                            _selectedCurrency,
-                            _exchangeRates[_selectedCurrency] ?? 1.0,
-                            isDiscount: true,
-                          ),
-                        if ((calculations['total_discount'] as Map<String, dynamic>)['absolute'] > 0)
-                          _buildTotalRowWithCurrency(
-                            'Gesamtrabatt (absolut):',
-                            (calculations['total_discount'] as Map<String, dynamic>)['absolute'] as num? ?? 0,
-                            _selectedCurrency,
-                            _exchangeRates[_selectedCurrency] ?? 1.0,
-                            isDiscount: true,
-                          ),
-                      ],
-
-                      // Je nach Steueroption unterschiedliche Darstellung
-                      if (taxOption == TaxOption.standard) ...[
-                        // Nettobetrag
-                        _buildTotalRowWithCurrency(
-                          'Nettobetrag:',
-                          calculations['net_amount'] as num? ?? 0,
-                          _selectedCurrency,
-                          _exchangeRates[_selectedCurrency] ?? 1.0,
-                        ),
-
-                        // MwSt
-                        _buildTotalRowWithCurrency(
-                          'MwSt (${(calculations['vat_rate'] as num? ?? 0).toStringAsFixed(1)}%):',
-                          calculations['vat_amount'] as num? ?? 0,
-                          _selectedCurrency,
-                          _exchangeRates[_selectedCurrency] ?? 1.0,
-                        ),
-
-                        pw.Divider(color: PdfColors.blueGrey300),
-
-                        // Gesamtbetrag
-                        _buildTotalRowWithCurrency(
-                          'Gesamtbetrag:',
-                          calculations['total'] as num? ?? 0,
-                          _selectedCurrency,
-                          _exchangeRates[_selectedCurrency] ?? 1.0,
-                          isBold: true,
-                          fontSize: 12,
-                        ),
-                      ] else if (taxOption == TaxOption.noTax) ...[
-                        pw.Divider(color: PdfColors.blueGrey300),
-
-                        // Nettobetrag (als Gesamt)
-                        _buildTotalRowWithCurrency(
-                          'Nettobetrag:',
-                          calculations['net_amount'] as num? ?? 0,
-                          _selectedCurrency,
-                          _exchangeRates[_selectedCurrency] ?? 1.0,
-                          isBold: true,
-                          fontSize: 12,
-                        ),
-
-                        // Steuerhinweis
-                        pw.SizedBox(height: 4),
-                        pw.Text(
-                          'Es wird keine Mehrwertsteuer berechnet.',
-                          style: pw.TextStyle(
-                            fontSize: 9,
-                            fontStyle: pw.FontStyle.italic,
-                            color: PdfColors.grey700,
-                          ),
-                        ),
-                      ] else ...[
-                        // TaxOption.totalOnly
-                        pw.Divider(color: PdfColors.blueGrey300),
-
-                        // Bruttobetrag (einfach der Nettobetrag ohne Steuer)
-                        _buildTotalRowWithCurrency(
-                          'Gesamtbetrag inkl. MwSt:',
-                          calculations['net_amount'] as num? ?? 0,
-                          _selectedCurrency,
-                          _exchangeRates[_selectedCurrency] ?? 1.0,
-                          isBold: true,
-                          fontSize: 12,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              // Footer bleibt gleich...
-              pw.Expanded(child: pw.SizedBox()),
-              pw.Container(
-                padding: const pw.EdgeInsets.only(top: 20),
-                decoration: const pw.BoxDecoration(
-                  border: pw.Border(
-                    top: pw.BorderSide(color: PdfColors.blueGrey200, width: 0.5),
-                  ),
-                ),
-                child: pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text('Florinett AG',
-                            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey800)),
-                        pw.Text('Tonewood Switzerland',
-                            style: const pw.TextStyle(color: PdfColors.blueGrey600)),
-                        pw.Text('Veja Zinols 6',
-                            style: const pw.TextStyle(color: PdfColors.blueGrey600)),
-                        pw.Text('7482 Bergün',
-                            style: const pw.TextStyle(color: PdfColors.blueGrey600)),
-                        pw.Text('Switzerland',
-                            style: const pw.TextStyle(color: PdfColors.blueGrey600)),
-                      ],
-                    ),
-                    pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.end,
-                      children: [
-                        pw.Text('phone: +41 81 407 21 34',
-                            style: const pw.TextStyle(color: PdfColors.blueGrey600)),
-                        pw.Text('e-mail: info@tonewood.ch',
-                            style: const pw.TextStyle(color: PdfColors.blueGrey600)),
-                        pw.Text('VAT: CHE-102.853.600 MWST',
-                            style: const pw.TextStyle(color: PdfColors.blueGrey600)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-
-
-
-
-    // Zusatztexte im Footer
-    final additionalTexts = await _getReceiptAdditionalTexts(receiptId);
-
-    if (additionalTexts.isNotEmpty) {
-      pdf.addPage(
-        pw.Page(
-          margin: const pw.EdgeInsets.all(40),
-          build: (pw.Context context) {
-            return pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                // Titel
-                pw.Text(
-                  'Zusätzliche Informationen',
-                  style: pw.TextStyle(
-                    fontSize: 18,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.blueGrey800,
-                  ),
-                ),
-                pw.SizedBox(height: 20),
-
-                // Legende
-                if (additionalTexts.containsKey('legend') && additionalTexts['legend']!.isNotEmpty) ...[
-                  pw.Container(
-                    padding: const pw.EdgeInsets.all(12),
-                    decoration: pw.BoxDecoration(
-                      color: PdfColors.grey100,
-                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-                      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
-                    ),
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text(
-                          'Legende',
-                          style: pw.TextStyle(
-                            fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.blueGrey800,
-                          ),
-                        ),
-                        pw.SizedBox(height: 6),
-                        pw.Text(
-                          additionalTexts['legend']!,
-                          style: const pw.TextStyle(fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ),
-                  pw.SizedBox(height: 12),
-                ],
-
-                // FSC
-                if (additionalTexts.containsKey('fsc') && additionalTexts['fsc']!.isNotEmpty) ...[
-                  pw.Container(
-                    padding: const pw.EdgeInsets.all(12),
-                    decoration: pw.BoxDecoration(
-                      color: PdfColors.grey100,
-                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-                      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
-                    ),
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text(
-                          'FSC-Zertifizierung',
-                          style: pw.TextStyle(
-                            fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.blueGrey800,
-                          ),
-                        ),
-                        pw.SizedBox(height: 6),
-                        pw.Text(
-                          additionalTexts['fsc']!,
-                          style: const pw.TextStyle(fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ),
-                  pw.SizedBox(height: 12),
-                ],
-
-                // Naturprodukt
-                if (additionalTexts.containsKey('natural_product') && additionalTexts['natural_product']!.isNotEmpty) ...[
-                  pw.Container(
-                    padding: const pw.EdgeInsets.all(12),
-                    decoration: pw.BoxDecoration(
-                      color: PdfColors.grey100,
-                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-                      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
-                    ),
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text(
-                          'Naturprodukt',
-                          style: pw.TextStyle(
-                            fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.blueGrey800,
-                          ),
-                        ),
-                        pw.SizedBox(height: 6),
-                        pw.Text(
-                          additionalTexts['natural_product']!,
-                          style: const pw.TextStyle(fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ),
-                  pw.SizedBox(height: 12),
-                ],
-
-                // Bankverbindung
-                if (additionalTexts.containsKey('bank_info') && additionalTexts['bank_info']!.isNotEmpty) ...[
-                  pw.Container(
-                    padding: const pw.EdgeInsets.all(12),
-                    decoration: pw.BoxDecoration(
-                      color: PdfColors.grey100,
-                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
-                      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
-                    ),
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text(
-                          'Bankverbindung',
-                          style: pw.TextStyle(
-                            fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.blueGrey800,
-                          ),
-                        ),
-                        pw.SizedBox(height: 6),
-                        pw.Text(
-                          additionalTexts['bank_info']!,
-                          style: const pw.TextStyle(fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-
-                pw.Expanded(child: pw.SizedBox()),
-
-                // Fußzeile
-                pw.Container(
-                  alignment: pw.Alignment.center,
-                  child: pw.Text(
-                    'Seite 2/2',
-                    style: pw.TextStyle(
-                      fontSize: 10,
-                      color: PdfColors.grey,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      );
-    }
-
-    return pdf.save();
-  }
   pw.Widget _buildTotalRowWithCurrency(
       String label,
       num amount,
@@ -7091,8 +7581,16 @@ Widget _buildSelectedProductInfo() {
         final data = doc.data()!;
         setState(() {
           _totalDiscount = Discount(
-            percentage: data['percentage'] ?? 0.0,
-            absolute: data['absolute'] ?? 0.0,
+            percentage: (data['percentage'] != null)
+                ? (data['percentage'] is int
+                ? (data['percentage'] as int).toDouble()
+                : data['percentage'] as double)
+                : 0.0,
+            absolute: (data['absolute'] != null)
+                ? (data['absolute'] is int
+                ? (data['absolute'] as int).toDouble()
+                : data['absolute'] as double)
+                : 0.0,
           );
         });
       }
@@ -7239,6 +7737,7 @@ Widget _buildSelectedProductInfo() {
 // Methode für den Gesamtrabatt
   // Methode für den Gesamtrabatt
   void _showTotalDiscountDialog() {
+    bool distributeToItems = false; // Neue Variable am Anfang der Methode
     // Konvertiere den absoluten Wert von CHF in die aktuelle Währung für die Anzeige
     double displayAbsolute = _totalDiscount.absolute;
     if (_selectedCurrency != 'CHF') {
@@ -7581,6 +8080,68 @@ Widget _buildSelectedProductInfo() {
                                   ],
                                   onChanged: (_) => calculateTargetTotal(),
                                 ),
+
+                                // Nach dem Zielpreis-Feld hinzufügen:
+                                const SizedBox(height: 24),
+
+// Checkbox für Rabattverteilung
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: Theme.of(context).colorScheme.secondary.withOpacity(0.3),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      CheckboxListTile(
+                                        title: const Text('Errechneten Betrag prozentual auf die Einzelpositionen aufteilen'),
+                                        subtitle: const Text(
+                                          'Der Gesamtrabatt wird anteilig auf alle Positionen verteilt',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                        value: distributeToItems,
+                                        onChanged: (value) {
+                                          setState(() {
+                                            distributeToItems = value ?? false;
+                                          });
+                                        },
+                                        controlAffinity: ListTileControlAffinity.leading,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            getAdaptiveIcon(iconName: 'info', defaultIcon:
+                                              Icons.info,
+                                              size: 16,
+                                              color: Theme.of(context).colorScheme.primary,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                'Ist dieser Haken gesetzt, wird kein Gesamtrabatt ausgewiesen, sondern die einzelnen Positionen werden rabattiert.',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: Theme.of(context).colorScheme.primary,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
                                 const SizedBox(height: 24),
 
                                 // Vorschau der Effekte
@@ -7654,6 +8215,23 @@ Widget _buildSelectedProductInfo() {
                                           ),
                                         ],
                                       ),
+                                      if (distributeToItems && totalDiscountAmount > 0) ...[
+                                        const SizedBox(height: 8),
+                                        Divider(),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Verteilung auf Positionen:',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Theme.of(context).colorScheme.primary,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Jede Position erhält zusätzlich ${((totalDiscountAmount / afterItemDiscounts) * 100).toStringAsFixed(2)}% Rabatt',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -7667,6 +8245,7 @@ Widget _buildSelectedProductInfo() {
                 ),
 
                 // Buttons unten
+                // Buttons unten
                 SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -7679,37 +8258,122 @@ Widget _buildSelectedProductInfo() {
                           label: const Text('Abbrechen'),
                         ),
                         const SizedBox(width: 16),
-                        ElevatedButton.icon(
-                          onPressed: () async {
-                            // Sichere die temporären Werte in der Hauptklasse
-                            double absoluteValue = tempAbsolute;
-                            double percentageValue = tempPercentage;
 
-                            // Aktualisiere die Gesamtrabatt-Instanz im SalesScreenState
-                            this.setState(() {
-                              _totalDiscount = Discount(
-                                percentage: percentageValue,
-                                absolute: absoluteValue,
-                              );
-                            });
-                            await _saveTemporaryTotalDiscount();
-                            Navigator.pop(context);
+                        // StreamBuilder um den Button für Zugriff auf Warenkorb-Daten
+                        StreamBuilder<QuerySnapshot>(
+                          stream: _basketStream,
+                          builder: (context, basketSnapshot) {
+                            return ElevatedButton.icon(
+                              onPressed: () async {
+                                // NEU: Prüfe ob Rabatt auf Positionen verteilt werden soll
+                                if (distributeToItems && basketSnapshot.hasData) {
+                                  // Hole aktuelle Werte aus den Controllern
+                                  final percentage = double.tryParse(percentageController.text.replaceAll(',', '.')) ?? 0;
+                                  double absolute = double.tryParse(absoluteController.text.replaceAll(',', '.')) ?? 0;
 
-                            // Zeige Bestätigung
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Rabatt angewendet'),
-                                backgroundColor: Colors.green,
-                                duration: Duration(seconds: 2),
+                                  // Konvertiere absolute Werte in CHF
+                                  if (_selectedCurrency != 'CHF') {
+                                    absolute = absolute / _exchangeRates[_selectedCurrency]!;
+                                  }
+
+                                  // Berechne Zwischensumme für effektiven Rabatt
+                                  double subtotal = 0.0;
+                                  for (var doc in basketSnapshot.data!.docs) {
+                                    final data = doc.data() as Map<String, dynamic>;
+                                    final customPriceValue = data['custom_price_per_unit'];
+                                    final pricePerUnit = customPriceValue != null
+                                        ? (customPriceValue as num).toDouble()
+                                        : (data['price_per_unit'] as num).toDouble();
+                                    final quantity = (data['quantity'] as num).toDouble();
+                                    subtotal += quantity * pricePerUnit;
+                                  }
+
+                                  // Berechne effektiven Rabatt-Prozentsatz
+                                  final totalDiscountAmount = (subtotal * (percentage / 100)) + absolute;
+                                  final effectiveDiscountPercentage = (totalDiscountAmount / subtotal) * 100;
+
+                                  // Verteile auf alle Artikel
+                                  final batch = FirebaseFirestore.instance.batch();
+
+                                  for (var doc in basketSnapshot.data!.docs) {
+                                    // Bestehende Item-Rabatte abrufen
+                                    final existingDiscount = _itemDiscounts[doc.id] ?? const Discount();
+
+                                    // Addiere den neuen Rabatt zum bestehenden Prozentsatz
+                                    final newPercentage = existingDiscount.percentage + effectiveDiscountPercentage;
+
+                                    batch.update(
+                                        FirebaseFirestore.instance.collection('temporary_basket').doc(doc.id),
+                                        {
+                                          'discount': {
+                                            'percentage': newPercentage,
+                                            'absolute': existingDiscount.absolute, // Absolute Rabatte bleiben erhalten
+                                          },
+                                          'discount_timestamp': FieldValue.serverTimestamp(),
+                                        }
+                                    );
+
+                                    // Update lokalen State
+                                    this.setState(() {
+                                      _itemDiscounts[doc.id] = Discount(
+                                        percentage: newPercentage,
+                                        absolute: existingDiscount.absolute,
+                                      );
+                                    });
+                                  }
+
+                                  await batch.commit();
+
+                                  // Setze Gesamtrabatt auf 0
+                                  this.setState(() {
+                                    _totalDiscount = const Discount();
+                                  });
+                                  await _saveTemporaryTotalDiscount();
+
+                                  Navigator.pop(context);
+
+                                  // Zeige Bestätigung
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Rabatt wurde auf ${basketSnapshot.data!.docs.length} Positionen verteilt'),
+                                      backgroundColor: Colors.green,
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+
+                                } else {
+                                  // BISHERIGES VERHALTEN (wenn Checkbox nicht gesetzt ist)
+                                  double absoluteValue = tempAbsolute;
+                                  double percentageValue = tempPercentage;
+
+                                  // Aktualisiere die Gesamtrabatt-Instanz im SalesScreenState
+                                  this.setState(() {
+                                    _totalDiscount = Discount(
+                                      percentage: percentageValue,
+                                      absolute: absoluteValue,
+                                    );
+                                  });
+                                  await _saveTemporaryTotalDiscount();
+                                  Navigator.pop(context);
+
+                                  // Zeige Bestätigung
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Gesamtrabatt angewendet'),
+                                      backgroundColor: Colors.green,
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              },
+                              icon: getAdaptiveIcon(iconName: 'check', defaultIcon: Icons.check),
+                              label: const Text('Übernehmen'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Theme.of(context).colorScheme.primary,
+                                foregroundColor: Theme.of(context).colorScheme.onPrimary,
                               ),
                             );
                           },
-                          icon: getAdaptiveIcon(iconName: 'check', defaultIcon: Icons.check),
-                          label: const Text('Übernehmen'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(context).colorScheme.primary,
-                            foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                          ),
                         ),
                       ],
                     ),

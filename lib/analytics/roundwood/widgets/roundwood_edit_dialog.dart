@@ -137,7 +137,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.lock, color: Colors.blue[700], size: 20),
+                         getAdaptiveIcon(iconName: 'lock',defaultIcon:Icons.lock, color: Colors.blue[700], size: 20),
                         const SizedBox(width: 8),
                         Text(
                           'Nur-Lesen-Modus',
@@ -211,7 +211,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                         ),
                         Center(
                           child: TextButton.icon(
-                            icon: const Icon(Icons.delete, color: Colors.red),
+                            icon: getAdaptiveIcon(iconName: 'delete',defaultIcon:Icons.delete, color: Colors.red),
                             label: const Text('Löschen'),
                             onPressed: _confirmDelete,
                             style: TextButton.styleFrom(
@@ -359,7 +359,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
           ),
           child: Row(
             children: [
-              Icon(Icons.calendar_month, color: Colors.blue[700], size: 20),
+               getAdaptiveIcon(iconName: 'calendar_month',defaultIcon:Icons.calendar_month, color: Colors.blue[700], size: 20),
               const SizedBox(width: 8),
               Text(
                 'Jahrgang: ${editedData['year'] ?? DateTime.now().year}',
@@ -537,7 +537,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                const Icon(Icons.assignment, color: Color(0xFF0F4A29)),
+                getAdaptiveIcon(iconName: 'assignment',defaultIcon:Icons.assignment, color: Color(0xFF0F4A29)),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -547,7 +547,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                     style: TextStyle(color: Colors.grey[700]),
                   ),
                 ),
-                Icon(Icons.arrow_drop_down, color: Colors.grey[600]),
+                 getAdaptiveIcon(iconName: 'arrow_drop_down',defaultIcon:Icons.arrow_drop_down, color: Colors.grey[600]),
               ],
             ),
           ),
@@ -570,7 +570,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
               }
               return Chip(
                 label: Text(name),
-                deleteIcon: const Icon(Icons.close, size: 16),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
                 onDeleted: () {
                   setState(() {
                     selectedPurposes.remove(code);
@@ -636,7 +636,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
           editedData['is_fsc'] = value;
         });
       },
-      secondary: const Icon(Icons.eco, color: Color(0xFF0F4A29)),
+      secondary:  getAdaptiveIcon(iconName: 'eco',defaultIcon:Icons.eco, color: Color(0xFF0F4A29)),
       activeColor: const Color(0xFF0F4A29),
       contentPadding: EdgeInsets.zero,
     );
@@ -750,7 +750,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.calendar_today, size: 20, color: Color(0xFF0F4A29)),
+                getAdaptiveIcon(iconName: 'calendar_today',defaultIcon:Icons.calendar_today, size: 20, color: Color(0xFF0F4A29)),
                 const SizedBox(width: 8),
                 Text(
                   editedData['cutting_date'] == null
@@ -761,7 +761,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                   ),
                 ),
                 const Spacer(),
-                Icon(Icons.arrow_drop_down, color: Colors.grey[600]),
+                 getAdaptiveIcon(iconName: 'arrow_drop_down',defaultIcon:Icons.arrow_drop_down, color: Colors.grey[600]),
               ],
             ),
           ),
@@ -821,7 +821,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: isSelected
-                          ? const Icon(Icons.check, color: Colors.white, size: 16)
+                          ?  getAdaptiveIcon(iconName: 'check',defaultIcon:Icons.check, color: Colors.white, size: 16)
                           : null,
                     ),
                   ),

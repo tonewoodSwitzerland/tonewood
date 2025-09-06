@@ -34,7 +34,7 @@ class ProductionBatches extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.inbox_outlined, size: 48, color: Colors.grey[400]),
+                 getAdaptiveIcon(iconName: 'inbox',defaultIcon:Icons.inbox, size: 48, color: Colors.grey[400]),
                 const SizedBox(height: 16),
                 Text(
                   'Keine Chargen gefunden',
@@ -258,11 +258,11 @@ class ProductionBatches extends StatelessWidget {
               // Holzart und Qualität
               Row(
                 children: [
-                  Icon(Icons.forest, size: 16, color: Colors.grey[600]),
+                  getAdaptiveIcon(iconName: 'forest',defaultIcon:Icons.forest, size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 4),
                   Text(batch['wood_name'] as String),
                   const SizedBox(width: 16),
-                  Icon(Icons.stars, size: 16, color: Colors.grey[600]),
+                   getAdaptiveIcon(iconName: 'stars',defaultIcon:Icons.stars, size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 4),
                   Text(batch['quality_name'] as String),
                 ],
@@ -285,7 +285,7 @@ class ProductionBatches extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.inventory, size: 16, color: Colors.grey[600]),
+                       getAdaptiveIcon(iconName: 'inventory',defaultIcon:Icons.inventory, size: 16, color: Colors.grey[600]),
                       const SizedBox(width: 4),
                       Text(
                         '${NumberFormat('#,##0').format(batch['quantity'])} ${batch['unit']}',

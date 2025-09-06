@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../services/icon_helper.dart';
+
 class ProductCard extends StatelessWidget {
   final String barcode;
   final Map<String, dynamic>? productData;
@@ -40,7 +42,7 @@ class ProductCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.qr_code),
+                getAdaptiveIcon(iconName: 'qr_code',defaultIcon:Icons.qr_code),
                 const SizedBox(width: 8),
                 Text(
                   'Barcode: $barcode',

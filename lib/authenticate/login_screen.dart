@@ -11,6 +11,7 @@ import 'package:modal_progress_hud_nsn/modal_progress_hud_nsn.dart';
 import '../services/auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../components/reusable_cart.dart';
+import '../services/icon_helper.dart';
 
 class LoginScreen extends StatefulWidget {
   static String id = 'login_screen';
@@ -128,8 +129,8 @@ class LoginScreenState extends State<LoginScreen> {
         _buildTextField(
           focusNode: _focusMail,
           hintText: 'mail'.tr,
-          icon:
-          Icons.mail,
+          icon: Icons.mail,
+          iconName: 'mail',
           isPassword: false,
           onChanged: (value) => email = value,
           validator: (value) => value!.isEmpty ? 'emptyMail'.tr : null,
@@ -139,7 +140,8 @@ class LoginScreenState extends State<LoginScreen> {
         _buildTextField(
           focusNode: _focusPW,
           hintText: 'password'.tr,
-          icon: Icons.remove_red_eye_outlined,
+          icon: Icons.visibility,
+          iconName: 'visibility',
           isPassword: true,
           onChanged: (value) => password = value,
           validator: (value) => value!.length < 6 ? 'passwordError'.tr : null,
@@ -153,6 +155,7 @@ class LoginScreenState extends State<LoginScreen> {
     required FocusNode focusNode,
     required String hintText,
     required IconData icon,
+    required String iconName,
     required bool isPassword,
     required Function(String) onChanged,
     required String? Function(String?) validator,
@@ -174,9 +177,9 @@ class LoginScreenState extends State<LoginScreen> {
           icon: isPassword
               ? GestureDetector(
             onTap: () => setState(() => _obscureText = !_obscureText),
-            child: Icon(icon, size: AppSizes.h * 0.03, color: primaryAppColor),
+            child:  getAdaptiveIcon(iconName: iconName, defaultIcon:icon, size: AppSizes.h * 0.03, color: primaryAppColor),
           )
-              : Icon(icon, size: AppSizes.h * 0.03, color: primaryAppColor),
+              : getAdaptiveIcon(iconName: iconName, defaultIcon:icon, size: AppSizes.h * 0.03, color: primaryAppColor),
         ),
       ),
     );
@@ -205,7 +208,7 @@ class LoginScreenState extends State<LoginScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.login, color: whiteColour, size: AppSizes.h * 0.03),
+             getAdaptiveIcon(iconName: 'login',defaultIcon:Icons.login, color: whiteColour, size: AppSizes.h * 0.03),
             Padding(
               padding: EdgeInsets.all(AppSizes.h * 0.01),
               child: Text(

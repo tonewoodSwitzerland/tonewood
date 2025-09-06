@@ -116,8 +116,8 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.filter_list,
+                    getAdaptiveIcon(iconName: 'filter', defaultIcon:
+                      Icons.filter,
                       color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(width: 12),
@@ -130,7 +130,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                     ),
                     const Spacer(),
                     IconButton(
-                      icon: const Icon(Icons.close),
+                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
                       onPressed: () => Navigator.pop(context),
                     ),
                   ],
@@ -149,6 +149,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                       _buildFilterSection(
                         title: 'Umsatz (CHF)',
                         icon: Icons.attach_money,
+                        iconName: 'attach_money',
                         child: Column(
                           children: [
                             Row(
@@ -208,7 +209,8 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                                 children: [
                                   Row(
                                     children: [
-                                      Icon(Icons.date_range, size: 16),
+
+                                      getAdaptiveIcon(iconName: 'date_range', defaultIcon:Icons.date_range, size: 16),
                                       const SizedBox(width: 8),
                                       const Text(
                                         'Zeitraum für Umsatzberechnung',
@@ -230,7 +232,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                                             ),
                                             child: Row(
                                               children: [
-                                                Icon(Icons.calendar_today, size: 16),
+                                                 getAdaptiveIcon(iconName: 'calendar_today',defaultIcon:Icons.calendar_today, size: 16),
                                                 const SizedBox(width: 8),
                                                 Text(
                                                   _revenueStartDate != null
@@ -262,7 +264,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                                             ),
                                             child: Row(
                                               children: [
-                                                Icon(Icons.calendar_today, size: 16),
+                                                getAdaptiveIcon(iconName: 'calendar_today', defaultIcon:Icons.calendar_today, size: 16),
                                                 const SizedBox(width: 8),
                                                 Text(
                                                   _revenueEndDate != null
@@ -285,7 +287,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                                   if (_revenueStartDate != null || _revenueEndDate != null) ...[
                                     const SizedBox(height: 8),
                                     TextButton.icon(
-                                      icon: Icon(Icons.clear, size: 16),
+                                      icon:  getAdaptiveIcon(iconName: 'clear',defaultIcon:Icons.clear, size: 16),
                                       label: const Text('Zeitraum zurücksetzen'),
                                       style: TextButton.styleFrom(
                                         textStyle: const TextStyle(fontSize: 12),
@@ -314,6 +316,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                       _buildFilterSection(
                         title: 'Anzahl Aufträge',
                         icon: Icons.shopping_bag,
+                        iconName: 'shopping_bag',
                         child: Column(
                           children: [
                             Row(
@@ -376,6 +379,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                       _buildFilterSection(
                         title: 'Weihnachtskarte',
                         icon: Icons.card_giftcard,
+                        iconName: 'card_giftcard',
                         child: Wrap(
                           spacing: 8,
                           runSpacing: 8,
@@ -417,6 +421,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                       _buildFilterSection(
                         title: 'Weitere Filter',
                         icon: Icons.more_horiz,
+                        iconName: 'more_horiz',
                         child: Column(
                           children: [
                             // MwSt-Nummer
@@ -509,6 +514,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                       _buildFilterSection(
                         title: 'Länder',
                         icon: Icons.public,
+                        iconName: 'public',
                         child: _buildCountrySelection(),
                       ),
 
@@ -518,6 +524,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                       _buildFilterSection(
                         title: 'Sprachen',
                         icon: Icons.language,
+                        iconName: 'language',
                         child: Wrap(
                           spacing: 8,
                           runSpacing: 8,
@@ -571,7 +578,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                   child: Row(
                     children: [
                       TextButton.icon(
-                        icon: const Icon(Icons.clear),
+                        icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:Icons.clear),
                         label: const Text('Zurücksetzen'),
                         onPressed: () {
                           setState(() {
@@ -598,7 +605,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                             ),
                           ),
                         )
-                            : const Icon(Icons.check),
+                            :  getAdaptiveIcon(iconName: 'check',defaultIcon:Icons.check),
                         label: const Text('Anwenden'),
                         onPressed: _isLoadingStats
                             ? null
@@ -623,6 +630,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
   Widget _buildFilterSection({
     required String title,
     required IconData icon,
+    required String iconName,
     required Widget child,
   }) {
     return Container(
@@ -636,7 +644,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
         children: [
           Row(
             children: [
-              Icon(icon, size: 20),
+              getAdaptiveIcon(iconName: iconName, defaultIcon:icon, size: 20),
               const SizedBox(width: 8),
               Text(
                 title,

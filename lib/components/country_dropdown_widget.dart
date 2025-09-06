@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/countries.dart';
+import '../services/icon_helper.dart';
 
 class CountryDropdown extends StatefulWidget {
   final TextEditingController countryController;
@@ -91,7 +92,7 @@ class _CountryDropdownState extends State<CountryDropdown> {
       },
       validator: widget.validator ?? _defaultValidator,
       isExpanded: true,
-      icon: const Icon(Icons.arrow_drop_down),
+      icon:  getAdaptiveIcon(iconName: 'arrow_drop_down',defaultIcon:Icons.arrow_drop_down),
       iconSize: 24,
       elevation: 16,
       style: const TextStyle(color: Colors.black),

@@ -3,6 +3,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/icon_helper.dart';
+
 // Einfache, elegante Scanner-Implementierung
 class SimpleBarcodeScannerPage extends StatefulWidget {
   @override
@@ -85,7 +87,7 @@ class _SimpleBarcodeScannerPageState extends State<SimpleBarcodeScannerPage> {
                 padding: const EdgeInsets.all(16),
                 child: IconButton(
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                  icon:  getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, color: Colors.white, size: 30),
                 ),
               ),
             ),

@@ -62,7 +62,8 @@ class OrderService {
       final availability = await QuoteService.checkAvailability(quote.items,  excludeQuoteId: quoteId );
 
       for (final item in quote.items) {
-        if (item['is_manual_product'] == true) continue;
+        // Überspringe manuelle Produkte und Dienstleistungen
+        if (item['is_manual_product'] == true || item['is_service'] == true) continue;
 
         final productId = item['product_id'] as String;
 
@@ -170,7 +171,8 @@ class OrderService {
             .toSet();
 
         for (final item in quote.items) {
-          if (item['is_manual_product'] == true) continue;
+          // Überspringe manuelle Produkte und Dienstleistungen
+          if (item['is_manual_product'] == true || item['is_service'] == true) continue;
 
           final productId = item['product_id'] as String;
 

@@ -68,7 +68,16 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     final invoiceNum = invoiceNumber ?? await getNextCommercialInvoiceNumber();
 
     // Gruppiere Items nach Zolltarifnummer
-    final groupedItems = await _groupItemsByTariffNumber(items, language);
+    // Ersetzen durch:
+// Items nach Typ trennen
+    final productItems = items.where((item) => item['is_service'] != true).toList();
+    final serviceItems = items.where((item) => item['is_service'] == true).toList();
+
+// Nur Produkte gruppieren (Dienstleistungen haben keine Zolltarifnummer)
+    final groupedProductItems = await _groupItemsByTariffNumber(productItems, language);
+
+
+
     final additionalTextsWidget = await _addInlineAdditionalTexts(language);
     final standardTextsWidget = await _addCommercialInvoiceStandardTexts( language,
         taraSettings: taraSettings,
@@ -118,7 +127,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               pw.SizedBox(height: 20),
 
               // Kundenadresse
-             BasePdfGenerator.buildCustomerAddress(customerData, language: language),
+             BasePdfGenerator.buildCustomerAddress(customerData,'commercial_invoice', language: language),
 
               pw.SizedBox(height: 15),
 
@@ -143,16 +152,18 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               pw.Expanded(
                 child: pw.Column(
                   children: [
-                    _buildProductTable(groupedItems, currency, exchangeRates, language,taraSettings),
-                    pw.SizedBox(height: 10),
+                    // Produkttabelle nur wenn Produkte vorhanden
+                    if (productItems.isNotEmpty)
+                      _buildProductTable(groupedProductItems, currency, exchangeRates, language, taraSettings),
 
-
-                    additionalTextsWidget,
-                    standardTextsWidget
+                    // Dienstleistungstabelle nur wenn Dienstleistungen vorhanden
+                    if (serviceItems.isNotEmpty)
+                      _buildServiceTable(serviceItems, currency, exchangeRates, language),
                   ],
                 ),
               ),
-
+              additionalTextsWidget,
+              standardTextsWidget,
               // Footer
               BasePdfGenerator.buildFooter(),
             ],
@@ -220,28 +231,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
       final List<pw.Widget> textWidgets = [];
 
-      // Ursprungserklärung
-      if (settings['commercial_invoice_origin_declaration'] == true ||
-          settings['origin_declaration'] == true) {  // Unterstütze beide Varianten
-        final originText = AdditionalTextsManager.getTextContent(
-            {'selected': true, 'type': 'standard'},
-            'origin_declaration',
-            language: language
-        );
 
-        if (originText.isNotEmpty) {
-          textWidgets.add(
-            pw.Container(
-              alignment: pw.Alignment.centerLeft,
-              margin: const pw.EdgeInsets.only(bottom: 3),
-              child: pw.Text(
-                originText,
-                style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
-              ),
-            ),
-          );
-        }
-      }
 
       // CITES
       if (settings['commercial_invoice_cites'] == true ||
@@ -267,15 +257,19 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       }
 
       // Grund des Exports - mit Freitext
+      // Grund des Exports - mit Freitext
       if (settings['commercial_invoice_export_reason'] == true) {
         final exportReasonText = settings['commercial_invoice_export_reason_text'] as String? ?? 'Ware';
+
+        // Übersetze "Ware" zu "goods" für Englisch
+        final displayText = (exportReasonText == 'Ware' && language == 'EN') ? 'goods' : exportReasonText;
 
         textWidgets.add(
           pw.Container(
             alignment: pw.Alignment.centerLeft,
             margin: const pw.EdgeInsets.only(bottom: 3),
             child: pw.Text(
-              language == 'EN' ? 'Export Reason: $exportReasonText' : 'Grund des Exports: $exportReasonText',
+              language == 'EN' ? 'Export Reason: $displayText' : 'Grund des Exports: $exportReasonText',
               style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
             ),
           ),
@@ -394,6 +388,38 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         );
       }
 
+      // Ursprungserklärung
+      if (settings['commercial_invoice_origin_declaration'] == true ||
+          settings['origin_declaration'] == true) {  // Unterstütze beide Varianten
+        final originText = AdditionalTextsManager.getTextContent(
+            {'selected': true, 'type': 'standard'},
+            'origin_declaration',
+            language: language
+        );
+
+        if (originText.isNotEmpty) {
+          textWidgets.add(
+            pw.Container(
+              alignment: pw.Alignment.centerLeft,
+              margin: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 2), // Mehr Margin
+              padding: const pw.EdgeInsets.all(8), // Zusätzliches Padding
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.blueGrey200, width: 0.5),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+              ),
+              child: pw.Text(
+                originText,
+                style: pw.TextStyle(
+                  fontSize: 8, // Etwas größer
+                  color: PdfColors.blueGrey800, // Dunkler
+                  fontWeight: pw.FontWeight.bold, // Fett
+                ),
+              ),
+            ),
+          );
+        }
+      }
+
       // Signatur - aus Datenbank laden
       if (settings['commercial_invoice_signature'] == true &&
           settings['commercial_invoice_selected_signature'] != null) {
@@ -413,7 +439,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           textWidgets.add(
             pw.Container(
               alignment: pw.Alignment.centerLeft,
-              margin: const pw.EdgeInsets.only(top: 20, bottom: 3),
+              margin: const pw.EdgeInsets.only(top: 10, bottom: 3),
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
@@ -487,10 +513,14 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       final woodInfo = woodTypeCache[woodCode]!;
 
       // NEU: Hole Dichte aus Datenbank
-      final density = (woodInfo['density'] as num?)?.toDouble() ?? 450.0; // Default 450 kg/m³
+      final density = (woodInfo['density'] as num?)?.toDouble() ?? 0; // Default 0 kg/m³
 
       // Bestimme Zolltarifnummer basierend auf der Dicke
-      final thickness = (item['custom_thickness'] ?? 0.0) as double;
+      final thickness = (item['custom_thickness'] != null)
+          ? (item['custom_thickness'] is int
+          ? (item['custom_thickness'] as int).toDouble()
+          : item['custom_thickness'] as double)
+          : 0.0;
       String tariffNumber = '';
 
       if (thickness <= 6.0) {
@@ -500,9 +530,18 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       }
 
       // Berechne m³
-      final length = (item['custom_length'] ?? 0.0) as double;
-      final width = (item['custom_width'] ?? 0.0) as double;
-      final thicknessValue = (item['custom_thickness'] ?? 0.0) as double;
+      final length = item['custom_length'] != null
+          ? (item['custom_length'] is int ? (item['custom_length'] as int).toDouble() : item['custom_length'] as double)
+          : 0.0;
+
+      final width = item['custom_width'] != null
+          ? (item['custom_width'] is int ? (item['custom_width'] as int).toDouble() : item['custom_width'] as double)
+          : 0.0;
+
+      final thicknessValue = item['custom_thickness'] != null
+          ? (item['custom_thickness'] is int ? (item['custom_thickness'] as int).toDouble() : item['custom_thickness'] as double)
+          : 0.0;
+
       final quantity = (item['quantity'] as num? ?? 0).toDouble();
 
       // m³ pro Stück (in Meter umrechnen: mm -> m)
@@ -602,6 +641,154 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     return sortedGrouped;
   }
 
+
+  // Nach der _buildProductTable Methode hinzufügen:
+  static pw.Widget _buildServiceTable(
+      List<Map<String, dynamic>> serviceItems,
+      String currency,
+      Map<String, double> exchangeRates,
+      String language) {
+
+    if (serviceItems.isEmpty) return pw.SizedBox.shrink();
+
+    final List<pw.TableRow> rows = [];
+
+    // Header für Dienstleistungen
+    rows.add(
+      pw.TableRow(
+        decoration: pw.BoxDecoration(color: PdfColors.blueGrey50),
+        children: [
+          BasePdfGenerator.buildHeaderCell(
+              language == 'EN' ? 'Service' : 'Dienstleistung', 10),
+          BasePdfGenerator.buildHeaderCell(
+              language == 'EN' ? 'Description' : 'Beschreibung', 8),
+          BasePdfGenerator.buildHeaderCell(
+              language == 'EN' ? 'Qty' : 'Anz.', 8, align: pw.TextAlign.right),
+          BasePdfGenerator.buildHeaderCell(
+              language == 'EN' ? 'Unit' : 'Einh', 8),
+          BasePdfGenerator.buildHeaderCell(
+              language == 'EN' ? 'Price/U' : 'Preis/E', 8, align: pw.TextAlign.right),
+          BasePdfGenerator.buildHeaderCell(
+              language == 'EN' ? 'Curr' : 'Wä', 8),
+          BasePdfGenerator.buildHeaderCell(
+              language == 'EN' ? 'Total' : 'Betrag', 8, align: pw.TextAlign.right),
+        ],
+      ),
+    );
+
+    double totalAmount = 0.0;
+
+    // Dienstleistungen hinzufügen
+    for (final service in serviceItems) {
+      final quantity = (service['quantity'] as num? ?? 0).toDouble();
+      final pricePerUnit = (service['price_per_unit'] as num? ?? 0).toDouble();
+      final total = quantity * pricePerUnit;
+      totalAmount += total;
+
+      rows.add(
+        pw.TableRow(
+          children: [
+            BasePdfGenerator.buildContentCell(
+              pw.Text(
+                service['name'] ?? 'Unbenannte Dienstleistung',
+                style:  pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+              ),
+            ),
+            BasePdfGenerator.buildContentCell(
+              pw.Text(
+                service['description'] ?? '',
+                style: const pw.TextStyle(fontSize: 7),
+              ),
+            ),
+            BasePdfGenerator.buildContentCell(
+              pw.Text(
+                quantity.toStringAsFixed(0),
+                style: const pw.TextStyle(fontSize: 8),
+                textAlign: pw.TextAlign.right,
+              ),
+            ),
+            BasePdfGenerator.buildContentCell(
+              pw.Text('Stk', style: const pw.TextStyle(fontSize: 8)),
+            ),
+            BasePdfGenerator.buildContentCell(
+              pw.Text(
+                BasePdfGenerator.formatCurrency(pricePerUnit, currency, exchangeRates),
+                style: const pw.TextStyle(fontSize: 8),
+                textAlign: pw.TextAlign.right,
+              ),
+            ),
+            BasePdfGenerator.buildContentCell(
+              pw.Text(currency, style: const pw.TextStyle(fontSize: 8)),
+            ),
+            BasePdfGenerator.buildContentCell(
+              pw.Text(
+                BasePdfGenerator.formatCurrency(total, currency, exchangeRates),
+                style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+                textAlign: pw.TextAlign.right,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Gesamtsumme für Dienstleistungen
+    rows.add(
+      pw.TableRow(
+        decoration: pw.BoxDecoration(
+          color: PdfColors.blueGrey100,
+          border: pw.Border(top: pw.BorderSide(width: 2, color: PdfColors.blueGrey700)),
+        ),
+        children: [
+          pw.Padding(
+            padding: const pw.EdgeInsets.all(4),
+            child: pw.Text(
+              language == 'EN' ? 'Services Total' : 'Dienstleistungen Gesamt',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
+            ),
+          ),
+          ...List.generate(5, (index) => pw.SizedBox()),
+          pw.Padding(
+            padding: const pw.EdgeInsets.all(4),
+            child: pw.Text(
+              BasePdfGenerator.formatCurrency(totalAmount, currency, exchangeRates),
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
+              textAlign: pw.TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.SizedBox(height: 20),
+        pw.Text(
+          language == 'EN' ? 'Services' : 'Dienstleistungen',
+          style: pw.TextStyle(
+            fontSize: 12,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.blueGrey800,
+          ),
+        ),
+        pw.SizedBox(height: 8),
+        pw.Table(
+          border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
+          columnWidths: {
+            0: const pw.FlexColumnWidth(3),    // Dienstleistung
+            1: const pw.FlexColumnWidth(4),    // Beschreibung
+            2: const pw.FlexColumnWidth(1),    // Anzahl
+            3: const pw.FlexColumnWidth(1),    // Einheit
+            4: const pw.FlexColumnWidth(2),    // Preis/E
+            5: const pw.FlexColumnWidth(1),    // Währung
+            6: const pw.FlexColumnWidth(2),    // Betrag
+          },
+          children: rows,
+        ),
+      ],
+    );
+  }
 // 2. ERSETZE die bestehende _buildProductTable Methode mit dieser:
   static pw.Widget _buildProductTable(
       Map<String, List<Map<String, dynamic>>> groupedItems,
@@ -625,8 +812,8 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               language == 'EN' ? 'Product' : 'Produkt', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Instr.' : 'Instr.', 8),
-          BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Type' : 'Typ', 8),
+          // BasePdfGenerator.buildHeaderCell(
+          //     language == 'EN' ? 'Type' : 'Typ', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Qual.' : 'Qual.', 8),
           BasePdfGenerator.buildHeaderCell('FSC®', 8),
@@ -754,9 +941,9 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               BasePdfGenerator.buildContentCell(
                 pw.Text(  language == 'EN' ?item['instrument_name_en']:item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
-              BasePdfGenerator.buildContentCell(
-                pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
-              ),
+              // BasePdfGenerator.buildContentCell(
+              //   pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+              // ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
               ),
@@ -846,7 +1033,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
             ),
           ),
-          ...List.generate(6, (index) => pw.SizedBox()),
+          ...List.generate(5, (index) => pw.SizedBox()),
           // Total m³
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
@@ -959,18 +1146,18 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
       columnWidths: {
         0: const pw.FlexColumnWidth(2.5),    // Zolltarif
-        1: const pw.FlexColumnWidth(2.5),      // Produkt
+        1: const pw.FlexColumnWidth(3.0),      // Produkt
         2: const pw.FlexColumnWidth(2.0),    // Instr.
-        3: const pw.FlexColumnWidth(1.5),    // Typ
-        4: const pw.FlexColumnWidth(1.5),    // Qual.
-        5: const pw.FlexColumnWidth(1.5),    // FSC
-        6: const pw.FlexColumnWidth(1.0),    // Urs
-        7: const pw.FlexColumnWidth(1.5),    // m³
-        8: const pw.FlexColumnWidth(1.5),    // Menge
-        9: const pw.FlexColumnWidth(1.0),    // Einh
-        10: const pw.FlexColumnWidth(2.0),   // Preis/E
-        11: const pw.FlexColumnWidth(1.0),   // Wä
-        12: const pw.FlexColumnWidth(2.0),   // Betrag
+       // 3: const pw.FlexColumnWidth(1.5),    // Typ
+        3: const pw.FlexColumnWidth(1.5),    // Qual.
+        4: const pw.FlexColumnWidth(1.5),    // FSC
+        5: const pw.FlexColumnWidth(1.0),    // Urs
+        6: const pw.FlexColumnWidth(1.5),    // m³
+        7: const pw.FlexColumnWidth(1.5),    // Menge
+        8: const pw.FlexColumnWidth(1.5),    // Einh
+        9: const pw.FlexColumnWidth(2.0),   // Preis/E
+        10: const pw.FlexColumnWidth(1.0),   // Wä
+        11: const pw.FlexColumnWidth(2.0),   // Betrag
       },
       children: rows,
     );
@@ -1040,23 +1227,25 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         );
       }
 
-      if (additionalTexts['bank_info']?['selected'] == true) {
-        textWidgets.add(
-          pw.Container(
-            alignment: pw.Alignment.centerLeft,
-            margin: const pw.EdgeInsets.only(bottom: 3),
-            child: pw.Text(
-              AdditionalTextsManager.getTextContent(
-                  additionalTexts['bank_info'],
-                  'bank_info',
-                  language: language
-              ),
-              style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
-              textAlign: pw.TextAlign.left,
-            ),
-          ),
-        );
-      }
+
+      //Bankverbindung wird in Handelsrechnung nicht angezeigt
+      // if (additionalTexts['bank_info']?['selected'] == true) {
+      //   textWidgets.add(
+      //     pw.Container(
+      //       alignment: pw.Alignment.centerLeft,
+      //       margin: const pw.EdgeInsets.only(bottom: 3),
+      //       child: pw.Text(
+      //         AdditionalTextsManager.getTextContent(
+      //             additionalTexts['bank_info'],
+      //             'bank_info',
+      //             language: language
+      //         ),
+      //         style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+      //         textAlign: pw.TextAlign.left,
+      //       ),
+      //     ),
+      //   );
+      // }
 
       if (additionalTexts['free_text']?['selected'] == true) {
         textWidgets.add(

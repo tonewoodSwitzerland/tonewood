@@ -96,8 +96,8 @@ class PrinterScreenState extends State<PrinterScreen> {
   String _activeConnectionType = PrinterConnectionType.none;
   bool _includeBatchNumber = false;
   String? _printerDetails;
-  PrinterModel selectedPrinterModel = PrinterModel.QL820NWB; ///TODO RÜCKGÄNGIG
-//  PrinterModel selectedPrinterModel = PrinterModel.QL1110NWB;
+ // PrinterModel selectedPrinterModel = PrinterModel.QL820NWB; ///TODO RÜCKGÄNGIG
+ PrinterModel selectedPrinterModel = PrinterModel.QL1110NWB;
   int printQuantity = 1;
   late List<LabelType> labelTypes;
   final TextEditingController barcodeController = TextEditingController();
@@ -438,347 +438,463 @@ class PrinterScreenState extends State<PrinterScreen> {
     }
   }
   void showPrinterSettingsDialog(BuildContext context) {
-    // Controller für das Textfeld zur maximalen Länge
-
-    // Debug-Ausgabe 1: Direkt beim Start
-    FirebaseFirestore.instance
-        .collection('general_data')
-        .doc('office')
-        .get()
-        .then((doc) {
-      print("====== DIRECT FIRESTORE CHECK ======");
-      print("Document exists: ${doc.exists}");
-      print("Document data: ${doc.data()}");
-      if (doc.exists) {
-        print("maxLabelLength in doc: ${doc.data()?['maxLabelLength']}");
-        print("Type: ${doc.data()?['maxLabelLength']?.runtimeType}");
-      }
-    });
-
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return Dialog(
-          // Volle Größe mit Margins
-          insetPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.8, // Max 80% der Bildschirmhöhe
-            ),
-            child: StatefulBuilder(
-              builder: (context, setState) {
-                return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                  stream: FirebaseFirestore.instance
-                      .collection('general_data')
-                      .doc('office')
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    bool bluetoothFirst = snapshot.hasData
-                        ? (snapshot.data?.data()?['bluetoothFirst'] ?? true)
-                        : true;
-                    double defaultWidth = snapshot.hasData
-                        ? (snapshot.data?.data()?['defaultLabelWidth']?.toDouble() ?? 62.0)
-                        : 62.0;
-                    double maxLabelLength = snapshot.hasData
-                        ? (snapshot.data?.data()?['maxLabelLength']?.toDouble() ?? 206.0)
-                        : 206.0;
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.85,
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 10,
+                    spreadRadius: 0,
+                    offset: Offset(0, -1),
+                  ),
+                ],
+              ),
+              child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
+                    .collection('general_data')
+                    .doc('office')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  bool bluetoothFirst = snapshot.hasData
+                      ? (snapshot.data?.data()?['bluetoothFirst'] ?? true)
+                      : true;
+                  double defaultWidth = snapshot.hasData
+                      ? (snapshot.data?.data()?['defaultLabelWidth']?.toDouble() ?? 62.0)
+                      : 62.0;
+                  double maxLabelLength = snapshot.hasData
+                      ? (snapshot.data?.data()?['maxLabelLength']?.toDouble() ?? 206.0)
+                      : 206.0;
 
-                    // Controller nur einmal setzen oder bei Änderungen in Firebase
-                    if (maxLengthController.text.isEmpty ||
-                        maxLengthController.text != maxLabelLength.toString()) {
-                      maxLengthController.text = maxLabelLength.toString();
-                    }
+                  if (maxLengthController.text.isEmpty ||
+                      maxLengthController.text != maxLabelLength.toString()) {
+                    maxLengthController.text = maxLabelLength.toString();
+                  }
 
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Dialog-Header
-                        Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF0F4A29).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child:
-                                getAdaptiveIcon(iconName: 'print', defaultIcon: Icons.print,),
+                  return Column(
+                    children: [
+                      // Drag Handle
+                      Container(
+                        margin: EdgeInsets.only(top: 12, bottom: 8),
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
 
-                              ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Drucker Einstellungen',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Spacer(),
-                              IconButton(
-                                icon:
-                                getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
-
-                                onPressed: () => Navigator.of(context).pop(),
-                              )
-                            ],
+                      // Header
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: Colors.grey.shade200,
+                              width: 1,
+                            ),
                           ),
                         ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0F4A29).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: getAdaptiveIcon(
+                                iconName: 'print',
+                                defaultIcon: Icons.print,
+                                color: Color(0xFF0F4A29),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              'Drucker Einstellungen',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Spacer(),
+                            IconButton(
+                              icon: getAdaptiveIcon(
+                                iconName: 'close',
+                                defaultIcon: Icons.close,
+                              ),
+                              onPressed: () => Navigator.of(context).pop(),
+                            )
+                          ],
+                        ),
+                      ),
 
-                        Divider(height: 1),
-
-                        // Scrollbarer Inhalt
-                        Expanded(
-                          child: SingleChildScrollView(
-                            padding: EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Verbindungsart
-                                const Text(
-                                  'Bevorzugte Verbindung',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
+                      // Scrollbarer Inhalt
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Verbindungsart
+                              const Text(
+                                'Bevorzugte Verbindung',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
                                 ),
-                                const SizedBox(height: 16),
-                                Row(
+                              ),
+                              const SizedBox(height: 16),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildConnectionOption(
+                                      icon: Icons.bluetooth,
+                                      iconName: 'bluetooth',
+                                      label: 'Bluetooth',
+                                      isSelected: bluetoothFirst,
+                                      onTap: () {
+                                        FirebaseFirestore.instance
+                                            .collection('general_data')
+                                            .doc('office')
+                                            .set({'bluetoothFirst': true}, SetOptions(merge: true));
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _buildConnectionOption(
+                                      icon: Icons.wifi,
+                                      iconName: 'wifi',
+                                      label: 'WLAN',
+                                      isSelected: !bluetoothFirst,
+                                      onTap: () {
+                                        FirebaseFirestore.instance
+                                            .collection('general_data')
+                                            .doc('office')
+                                            .set({'bluetoothFirst': false}, SetOptions(merge: true));
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 24),
+
+                              // Papierformat
+                              const Text(
+                                'Standard-Papierformat',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
+                                    _buildLabelOption(
+                                      width: 62,
+                                      isSelected: defaultWidth == 62,
+                                      onTap: () => _updateDefaultLabel(62),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    _buildLabelOption(
+                                      width: 54,
+                                      isSelected: defaultWidth == 54,
+                                      onTap: () => _updateDefaultLabel(54),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    _buildLabelOption(
+                                      width: 50,
+                                      isSelected: defaultWidth == 50,
+                                      onTap: () => _updateDefaultLabel(50),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    _buildLabelOption(
+                                      width: 38,
+                                      isSelected: defaultWidth == 38,
+                                      onTap: () => _updateDefaultLabel(38),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    _buildLabelOption(
+                                      width: 29,
+                                      isSelected: defaultWidth == 29,
+                                      onTap: () => _updateDefaultLabel(29),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(height: 24),
+
+                              // Maximale Etikettenlänge
+                              Text(
+                                'Maximale Etikettenlänge',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              SizedBox(height: 8),
+                              Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.grey[300]!),
+                                  color: Colors.white,
+                                ),
+                                child: Row(
                                   children: [
                                     Expanded(
-                                      child: _buildConnectionOption(
-                                        icon:Icons.bluetooth,
-                                        iconName:'bluetooth',
-                                        label: 'Bluetooth',
-                                        isSelected: bluetoothFirst,
-                                        onTap: () {
-                                          FirebaseFirestore.instance
-                                              .collection('general_data')
-                                              .doc('office')
-                                              .set({'bluetoothFirst': true}, SetOptions(merge: true));
-                                        },
+                                      child: TextField(
+                                        controller: maxLengthController,
+                                        keyboardType: TextInputType.number,
+                                        decoration: InputDecoration(
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                          border: InputBorder.none,
+                                          hintText: 'Länge eingeben',
+                                          suffixText: 'mm',
+                                        ),
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w500,
+                                        ),
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: _buildConnectionOption(
-                                        icon: Icons.wifi,
-                                        iconName:'wifi',
-                                        label: 'WLAN',
-                                        isSelected: !bluetoothFirst,
-                                        onTap: () {
-                                          FirebaseFirestore.instance
-                                              .collection('general_data')
-                                              .doc('office')
-                                              .set({'bluetoothFirst': false}, SetOptions(merge: true));
+                                    Container(
+                                      height: 48,
+                                      width: 48,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF0F4A29),
+                                        borderRadius: BorderRadius.horizontal(right: Radius.circular(7)),
+                                      ),
+                                      child: IconButton(
+                                        onPressed: () {
+                                          final double? value = double.tryParse(maxLengthController.text);
+                                          if (value != null && value > 0) {
+                                            final double finalValue = max(value, 80.0);
+
+                                            if (finalValue != value) {
+                                              maxLengthController.text = finalValue.toString();
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text('Wert auf Mindestlänge von 80 (ca. 75mm) angepasst'),
+                                                    backgroundColor: Colors.orange,
+                                                  )
+                                              );
+                                            }
+
+                                            FirebaseFirestore.instance
+                                                .collection('general_data')
+                                                .doc('office')
+                                                .set({'maxLabelLength': finalValue}, SetOptions(merge: true));
+
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Row(
+                                                    children: [
+                                                      getAdaptiveIcon(
+                                                          iconName: 'check',
+                                                          defaultIcon: Icons.check,
+                                                          color: Colors.white
+                                                      ),
+                                                      SizedBox(width: 8),
+                                                      Text('Maximale Länge gespeichert'),
+                                                    ],
+                                                  ),
+                                                  backgroundColor: const Color(0xFF0F4A29),
+                                                )
+                                            );
+                                          }
                                         },
+                                        icon: getAdaptiveIcon(
+                                            iconName: 'save',
+                                            defaultIcon: Icons.save,
+                                            color: Colors.white
+                                        ),
+                                        tooltip: 'Speichern',
                                       ),
                                     ),
                                   ],
                                 ),
-
-                                const SizedBox(height: 24),
-
-                                // Papierformat
-                                const Text(
-                                  'Standard-Papierformat',
+                              ),
+                              SizedBox(height: 4),
+                              Padding(
+                                padding: EdgeInsets.only(left: 8),
+                                child: Text(
+                                  'Reale Länge ca. ${(maxLabelLength * 0.937).toStringAsFixed(1)}mm (Mindestens 75mm)',
                                   style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                    fontStyle: FontStyle.italic,
                                   ),
                                 ),
-                                const SizedBox(height: 16),
-                                SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: Row(
-                                    children: [
-                                      _buildLabelOption(
-                                        width: 62,
-                                        isSelected: defaultWidth == 62,
-                                        onTap: () => _updateDefaultLabel(62),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      _buildLabelOption(
-                                        width: 54,
-                                        isSelected: defaultWidth == 54,
-                                        onTap: () => _updateDefaultLabel(54),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      _buildLabelOption(
-                                        width: 50,
-                                        isSelected: defaultWidth == 50,
-                                        onTap: () => _updateDefaultLabel(50),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      _buildLabelOption(
-                                        width: 38,
-                                        isSelected: defaultWidth == 38,
-                                        onTap: () => _updateDefaultLabel(38),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      _buildLabelOption(
-                                        width: 29,
-                                        isSelected: defaultWidth == 29,
-                                        onTap: () => _updateDefaultLabel(29),
-                                      ),
-                                    ],
-                                  ),
+                              ),
+
+                              SizedBox(height: 16),
+                              Container(
+                                padding: EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.amber),
                                 ),
-
-                                const SizedBox(height: 24),
-
-                                // Maximale Etikettenlänge
-// Maximale Etikettenlänge
-                                Text(
-                                  'Maximale Etikettenlänge',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                SizedBox(height: 8),
-                                Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.grey[300]!),
-                                    color: Colors.white,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextField(
-                                          controller: maxLengthController,
-                                          keyboardType: TextInputType.number,
-                                          decoration: InputDecoration(
-                                            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                            border: InputBorder.none,
-                                            hintText: 'Länge eingeben',
-                                            suffixText: 'mm',
-                                          ),
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        height: 48,
-                                        width: 48,
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF0F4A29),
-                                          borderRadius: BorderRadius.horizontal(right: Radius.circular(7)),
-                                        ),
-                                        child: IconButton(
-                                          onPressed: () {
-                                            final double? value = double.tryParse(maxLengthController.text);
-                                            if (value != null && value > 0) {
-                                              // Mindestlänge von 80 Punkten (ca. 75mm) erzwingen
-                                              final double finalValue = max(value, 80.0);
-
-                                              if (finalValue != value) {
-                                                // Wenn Wert angepasst wurde, Controller aktualisieren
-                                                maxLengthController.text = finalValue.toString();
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                    SnackBar(
-                                                      content: Text('Wert auf Mindestlänge von 80 (ca. 75mm) angepasst'),
-                                                      backgroundColor: Colors.orange,
-                                                    )
-                                                );
-                                              }
-
-                                              FirebaseFirestore.instance
-                                                  .collection('general_data')
-                                                  .doc('office')
-                                                  .set({'maxLabelLength': finalValue}, SetOptions(merge: true));
-
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                  SnackBar(
-                                                    content: Row(
-                                                      children: [
-
-                                                        getAdaptiveIcon(iconName: 'check', defaultIcon: Icons.check,color: Colors.white),
-                                                        SizedBox(width: 8),
-                                                        Text('Maximale Länge gespeichert'),
-                                                      ],
-                                                    ),
-                                                    backgroundColor: const Color(0xFF0F4A29),
-                                                  )
-                                              );
-                                            }
-                                          },
-                                          icon: getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save, color: Colors.white),
-                                          tooltip: 'Speichern',
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                Padding(
-                                  padding: EdgeInsets.only(left: 8),
-                                  child: Text(
-                                    // Korrekter Umrechnungsfaktor: 0.937 (206 entspricht 193mm real)
-                                    'Reale Länge ca. ${(maxLabelLength * 0.937).toStringAsFixed(1)}mm (Mindestens 75mm)',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[600],
-                                      fontStyle: FontStyle.italic,
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    getAdaptiveIcon(
+                                        iconName: 'info',
+                                        defaultIcon: Icons.info,
+                                        color: Colors.amber[800]
                                     ),
-                                  ),
-                                ),
-
-                                SizedBox(height: 16),
-                                Container(
-                                  padding: EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.amber.withOpacity(0.2),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.amber),
-                                  ),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-
-                                      getAdaptiveIcon(iconName: 'info', defaultIcon: Icons.info,color: Colors.amber[800]),
-                                      SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          'Hinweis: Die eingestellte Länge kann von der tatsächlichen Drucklänge abweichen. Bei Problemen die Länge anpassen.',
-                                          style: TextStyle(fontSize: 12),
-                                        ),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Hinweis: Die eingestellte Länge kann von der tatsächlichen Drucklänge abweichen. Bei Problemen die Länge anpassen.',
+                                        style: TextStyle(fontSize: 12),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                          ),
-                        ),
+                              ),
 
-                        // Footer mit Aktionsbuttons
-                        Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: Text('Schließen'),
+                              SizedBox(height: 16),
+                              Container(
+                                padding: EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: primaryAppColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: primaryAppColor.withOpacity(0.3)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        getAdaptiveIcon(
+                                          iconName: 'check_circle',
+                                          defaultIcon: Icons.check_circle,
+                                          color: primaryAppColor,
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'Unterstützte Drucker',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                            color: primaryAppColor,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: 12),
+                                    _buildSupportedPrinterItem(
+                                      'Brother QL-820NWB',
+                                      'WLAN & Bluetooth • bis 62mm Breite',
+                                    ),
+                                    SizedBox(height: 8),
+                                    _buildSupportedPrinterItem(
+                                      'Brother QL-1110NWB',
+                                      'WLAN & Bluetooth • bis 103mm Breite',
+                                    ),
+                                    SizedBox(height: 12),
+                                    Container(
+                                      padding: EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          getAdaptiveIcon(
+                                            iconName: 'lightbulb',
+                                            defaultIcon: Icons.lightbulb_outline,
+                                            color: Colors.orange[700],
+                                            size: 16,
+                                          ),
+                                          SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              'Die App erkennt automatisch, welcher Drucker verbunden ist.',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Colors.grey[700],
+                                                fontStyle: FontStyle.italic,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      ],
-                    );
-                  },
-                );
-              },
-            ),
-          ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            );
+          },
         );
       },
+    );
+  }
+
+  Widget _buildSupportedPrinterItem(String model, String features) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          getAdaptiveIcon(
+            iconName: 'print',
+            defaultIcon: Icons.print,
+            color: Colors.grey[600],
+            size: 20,
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  model,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  features,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1027,6 +1143,7 @@ class PrinterScreenState extends State<PrinterScreen> {
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (BuildContext context) {
+          final _warehouseKey = GlobalKey();
           return Container(
             height: MediaQuery.of(context).size.height * 0.9,
             decoration: BoxDecoration(
@@ -1098,7 +1215,7 @@ class PrinterScreenState extends State<PrinterScreen> {
                       Navigator.pop(context);
                       await _fetchProductData(barcode);
                     },
-                    key: UniqueKey(),
+
                   ),
                 ),
               ],
@@ -1293,8 +1410,9 @@ class PrinterScreenState extends State<PrinterScreen> {
           if (printerDoc.data()?['printerModel'] != null) {
             selectedPrinterModel = PrinterModel.values.firstWhere(
                   (model) => model.toString() == printerDoc.data()!['printerModel'],
-             orElse: () => PrinterModel.QL820NWB,
-             // orElse: () => PrinterModel.QL1110NWB,
+            // orElse: () => PrinterModel.QL820NWB,
+
+              orElse: () => PrinterModel.QL1110NWB,
               ///TODO RÜCKGÄNGIG
 
             );
@@ -1919,18 +2037,22 @@ class PrinterScreenState extends State<PrinterScreen> {
       );
     }
   }
-  Future<bool> _tryConnection(Printer printer, PrinterInfo printInfo, Port port) async {
+  Future<bool> _tryConnectionAutoDetect(Printer printer, PrinterInfo printInfo, Port port) async {
     if (!mounted) return false;
 
+    // Liste der zu suchenden Drucker-Modelle
+    final modelsToCheck = [Model.QL_820NWB, Model.QL_1110NWB];
+
     try {
-      // Für Bluetooth die Berechtigungen prüfen
+      printInfo.port = port;
+
       if (port == Port.BLUETOOTH) {
+        // Bluetooth-Berechtigungen prüfen
         if (Platform.isAndroid) {
           Map<Permission, PermissionStatus> statuses = await [
-
             Permission.bluetoothConnect,
             Permission.bluetoothScan,
-            Permission.location,  // Location hinzufügen
+            Permission.location,
           ].request();
 
           bool allGranted = statuses.values.every((status) => status.isGranted);
@@ -1943,49 +2065,57 @@ class PrinterScreenState extends State<PrinterScreen> {
                 ),
               );
             }
-            print('Bluetooth-Berechtigungen nicht erteilt');
             return false;
           }
         }
-      }
 
-      printInfo.port = port;
-      await printer.setPrinterInfo(printInfo);
+        // Suche nach ALLEN unterstützten Druckern
+        for (var model in modelsToCheck) {
+          List<BluetoothPrinter> printers = await printer.getBluetoothPrinters([model.getName()]);
 
-      if (port == Port.BLUETOOTH) {
-        List<BluetoothPrinter> printers =
-        await printer.getBluetoothPrinters([printInfo.printerModel.getName()]);
+          if (printers.isNotEmpty && mounted) {
+            // Gefunden! Setze das erkannte Modell
+            printInfo.printerModel = model;
+            await printer.setPrinterInfo(printInfo);
 
-print("printers:ssss:$printers");
+            setState(() {
+              selectedPrinterModel = model == Model.QL_1110NWB
+                  ? PrinterModel.QL1110NWB
+                  : PrinterModel.QL820NWB;
+              _updateLabelTypes();
+              _isPrinterOnline = true;
+              _indicatorColor = primaryAppColor;
+              _activeConnectionType = PrinterConnectionType.bluetooth;
+              _printerDetails = '${printers.first.modelName}';
+            });
 
-        if (printers.isNotEmpty && mounted) {
-          setState(() {
-            _isPrinterOnline = true;
-            _indicatorColor = primaryAppColor;
-            _activeConnectionType = PrinterConnectionType.bluetooth;
-           // _printerDetails = '${printers.first.modelName} (${printers.first.macAddress})';
-            _printerDetails = '${printers.first.modelName}';
-          });
-          return true;
+            _savePrinterSettings();
+            return true;
+          }
         }
       } else {
-        List<NetPrinter> printers =
-        await printer.getNetPrinters([printInfo.printerModel.getName()]);
+        // WLAN
+        for (var model in modelsToCheck) {
+          List<NetPrinter> printers = await printer.getNetPrinters([model.getName()]);
 
-        print("printers:$printers");
+          if (printers.isNotEmpty && mounted) {
+            printInfo.printerModel = model;
+            await printer.setPrinterInfo(printInfo);
 
+            setState(() {
+              selectedPrinterModel = model == Model.QL_1110NWB
+                  ? PrinterModel.QL1110NWB
+                  : PrinterModel.QL820NWB;
+              _updateLabelTypes();
+              _isPrinterOnline = true;
+              _indicatorColor = primaryAppColor;
+              _activeConnectionType = PrinterConnectionType.wifi;
+              _printerDetails = '${printers.first.modelName}';
+            });
 
-        if (printers.isNotEmpty && mounted) {
-
-          print("yuup");
-          setState(() {
-            _isPrinterOnline = true;
-            _indicatorColor = primaryAppColor;
-            _activeConnectionType = PrinterConnectionType.wifi;
-           // _printerDetails = '${printers.first.modelName} (${printers.first.nodeName})';
-            _printerDetails = '${printers.first.modelName}';
-          });
-          return true;
+            _savePrinterSettings();
+            return true;
+          }
         }
       }
 
@@ -2012,18 +2142,9 @@ print("printers:ssss:$printers");
 
       var printer = Printer();
       var printInfo = PrinterInfo();
-      print(printInfo.printerModel);
-     printInfo.printerModel = Model.QL_820NWB;
-    // printInfo.printerModel = Model.QL_1110NWB;
-      ///TODO RÜCKGÄNGIG
 
-      // printInfo.printerModel = selectedPrinterModel == PrinterModel.QL1110NWB
-      //     ? Model.QL_1110NWB
-      //     : Model.QL_820NWB;
-
-      print("sPM:$selectedPrinterModel");
       // Erste Verbindungsmethode versuchen
-      bool connected = await _tryConnection(
+      bool connected = await _tryConnectionAutoDetect(
           printer,
           printInfo,
           useBluetoothFirst ? Port.BLUETOOTH : Port.NET
@@ -2031,7 +2152,7 @@ print("printers:ssss:$printers");
 
       // Wenn erste Methode fehlschlägt, zweite versuchen
       if (!connected) {
-        connected = await _tryConnection(
+        connected = await _tryConnectionAutoDetect(
             printer,
             printInfo,
             useBluetoothFirst ? Port.NET : Port.BLUETOOTH
@@ -2040,10 +2161,8 @@ print("printers:ssss:$printers");
 
       if (!mounted) return;
 
-      // Finaler Status-Update
       setState(() {
         _printerSearching = false;
-        // Wenn keine Verbindung hergestellt wurde, setze Status auf "nicht verbunden"
         if (!connected) {
           _isPrinterOnline = false;
           _indicatorColor = Colors.red;
@@ -2065,20 +2184,9 @@ print("printers:ssss:$printers");
     }
   }
 
-  void _updatePrinterStatus(bool isOnline, String modelName, String identifier, String connectionType) {
-    if (!mounted) return;
-    setState(() {
-      _isPrinterOnline = isOnline;
-      _indicatorColor = isOnline ? primaryAppColor : Colors.red;
-      _printerSearching = false;
-      _printerDetails = isOnline ? '$modelName ($identifier)' : null;
-      _activeConnectionType = connectionType;
-      if (isOnline) {
-        _savePrinterName(identifier);
-      }
-    });
-  }
-// Neues Widget für die Feature-Buttons
+
+
+
   Widget _buildFeatureButtons() {
     if (selectedBarcodeType != BarcodeType.salesShop || productData == null) {
       return SizedBox.shrink();
@@ -2293,7 +2401,7 @@ print("printers:ssss:$printers");
       margin: const EdgeInsets.all(8.0),
       child: Stack(
         children: [
-          Icon(
+          getAdaptiveIcon(iconName: 'info', defaultIcon:
             iconData,
             color: _indicatorColor,
             size: 24,
@@ -2344,186 +2452,105 @@ print("printers:ssss:$printers");
 
     bool druckErfolgreich = false;
 
-
     await PrintStatus.show(context, () async {
       try {
         PrintStatus.updateStatus("Initialisiere Drucker...");
-        print("Aktiver Verbindungstyp: $_activeConnectionType");
 
-        // Benutzereinstellung für bevorzugte Verbindung laden
         bool useBluetoothFirst = await FirebaseFirestore.instance
             .collection('general_data')
             .doc('office')
             .get()
             .then((doc) => doc.get('bluetoothFirst') ?? true);
 
-        print("Bluetooth First: $useBluetoothFirst");
-
         var printer = Printer();
         var printInfo = PrinterInfo();
 
-        print("Ausgewähltes Druckermodell: $selectedPrinterModel");
-        // printInfo.printerModel = selectedPrinterModel == PrinterModel.QL1110NWB
-        //     ? Model.QL_1110NWB
-        //     : Model.QL_820NWB;
+        // Verwende das automatisch erkannte Druckermodell
+        printInfo.printerModel = selectedPrinterModel == PrinterModel.QL1110NWB
+            ? Model.QL_1110NWB
+            : Model.QL_820NWB;
 
-      printInfo.printerModel = Model.QL_820NWB;
-      //  printInfo.printerModel = Model.QL_1110NWB;
-        ///TODO RÜCKGÄNGIG
+        PrintStatus.updateStatus("Suche Drucker...");
 
+        // Automatische Erkennung beim Drucken
+        final modelsToCheck = [Model.QL_820NWB, Model.QL_1110NWB];
+        bool printerFound = false;
 
-        print("Konfiguriertes Druckermodell: ${printInfo.printerModel}");
-
-        print("uBL:$useBluetoothFirst");
-
-        // Erst die bevorzugte Verbindungsart versuchen
-        if (useBluetoothFirst) {
+        if (_activeConnectionType == PrinterConnectionType.bluetooth) {
           printInfo.port = Port.BLUETOOTH;
-          // Versuche Bluetooth
-          print("Versuche Bluetooth-Verbindung...");
-         // List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([printInfo.printerModel.getName()]);
-          List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_820NWB.getName()]);
-         //List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_1110NWB.getName()]);
-          ///TODO RÜCKGÄNGIG
 
-
-          print("Gefundene Bluetooth-Drucker: ${bluetoothPrinters.length}");
-          for (var p in bluetoothPrinters) {
-            print("- ${p.modelName} (${p.macAddress})");
-          }
-
-          if (bluetoothPrinters.isNotEmpty) {
-            _activeConnectionType = PrinterConnectionType.bluetooth;
-            // Bluetooth-spezifische Konfiguration
-          } else {
-            // Wenn Bluetooth fehlschlägt, versuche WLAN
-            print("Bluetooth fehlgeschlagen, versuche WLAN");
-            printInfo.port = Port.NET;
-           // List<NetPrinter> netPrinters = await printer.getNetPrinters([printInfo.printerModel.getName()]);
-            List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
-          // List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_1110NWB.getName()]);
-
-            ///TODO RÜCKGÄNGIG
-
-            print("Gefundene Netzwerk-Drucker: ${netPrinters.length}");
-            for (var p in netPrinters) {
-              print("- ${p.modelName} (${p.ipAddress})");
-            }
-
-            if (netPrinters.isNotEmpty) {
-              _activeConnectionType = PrinterConnectionType.wifi;
-              // WLAN-spezifische Konfiguration
-            }
-          }
-        } else {
-          print("WLAN wird zuerst versucht");
-          // WLAN zuerst versuchen
-          printInfo.port = Port.NET;
-          //List<NetPrinter> netPrinters = await printer.getNetPrinters([printInfo.printerModel.getName()]);
-         List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_820NWB.getName()]);
-         ///TODO Rückgängi
-        // List<NetPrinter> netPrinters = await printer.getNetPrinters([Model.QL_1110NWB.getName()]);
-
-
-          print("Gefundene Netzwerk-Drucker: ${netPrinters.length}");
-          for (var p in netPrinters) {
-            print("- ${p.modelName} (${p.ipAddress})");
-          }
-
-          if (netPrinters.isNotEmpty) {
-            _activeConnectionType = PrinterConnectionType.wifi;
-            // WLAN-spezifische Konfiguration
-          } else {
-            // Wenn WLAN fehlschlägt, versuche Bluetooth
-            print("WLAN fehlgeschlagen, versuche Bluetooth");
-            printInfo.port = Port.BLUETOOTH;
-          //  List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([printInfo.printerModel.getName()]);
-            List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([Model.QL_820NWB.getName()]);
-
-            print("Gefundene Bluetooth-Drucker: ${bluetoothPrinters.length}");
-            for (var p in bluetoothPrinters) {
-              print("- ${p.modelName} (${p.macAddress})");
-            }
+          for (var model in modelsToCheck) {
+            List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([model.getName()]);
 
             if (bluetoothPrinters.isNotEmpty) {
-              _activeConnectionType = PrinterConnectionType.bluetooth;
-              // Bluetooth-spezifische Konfiguration
+              printInfo.printerModel = model;
+              printInfo.macAddress = bluetoothPrinters[0].macAddress;
+              await printer.setPrinterInfo(printInfo);
+              printerFound = true;
+              break;
             }
+          }
+
+          if (!printerFound) {
+            throw Exception('Bluetooth-Drucker nicht gefunden');
+          }
+        } else {
+          printInfo.port = Port.NET;
+
+          for (var model in modelsToCheck) {
+            List<NetPrinter> netPrinters = await printer.getNetPrinters([model.getName()]);
+
+            if (netPrinters.isNotEmpty) {
+              printInfo.printerModel = model;
+              printInfo.ipAddress = netPrinters[0].ipAddress;
+              await printer.setPrinterInfo(printInfo);
+              printerFound = true;
+              break;
+            }
+          }
+
+          if (!printerFound) {
+            throw Exception('Netzwerk-Drucker nicht gefunden');
           }
         }
 
+        // Rest der Druckeinstellungen
         printInfo.isAutoCut = true;
         printInfo.isCutAtEnd = true;
         printInfo.numberOfCopies = printQuantity;
         printInfo.printMode = PrintMode.FIT_TO_PAGE;
         printInfo.orientation = brother.Orientation.LANDSCAPE;
 
+        // Label-Einstellungen...
+        // Komplett überarbeitete Version mit korrekten Enumerationen
         if (selectedLabel != null) {
-          var labelId = QL700.W62.getId();  // Zum Debuggen
-          var labelIndex = QL700.ordinalFromID(labelId);  // Zum Debuggen
-          print('Selected Label Width: ${selectedLabel!.width}');
-          print('Label ID: $labelId');
-          print('Label Index: $labelIndex');
-
           switch(selectedLabel!.width.toInt()) {
+            case 103:
+            // 103mm ist nur für QL-1110NWB verfügbar
+              if (printInfo.printerModel == Model.QL_1110NWB) {
+                printInfo.labelNameIndex = QL1100.ordinalFromID(QL1100.W103.getId());
+              } else {
+                throw Exception('103mm Label ist nur mit QL-1110NWB kompatibel');
+              }
+              break;
             case 62:
               printInfo.labelNameIndex = QL700.ordinalFromID(QL700.W62.getId());
-              print('Setting label 62mm: ${printInfo.labelNameIndex}');
               break;
             case 54:
               printInfo.labelNameIndex = QL700.ordinalFromID(QL700.W54.getId());
-              print('Setting label 54mm: ${printInfo.labelNameIndex}');
               break;
             case 50:
               printInfo.labelNameIndex = QL700.ordinalFromID(QL700.W50.getId());
-              print('Setting label 50mm: ${printInfo.labelNameIndex}');
               break;
             case 38:
               printInfo.labelNameIndex = QL700.ordinalFromID(QL700.W38.getId());
-              print('Setting label 38mm: ${printInfo.labelNameIndex}');
               break;
             case 29:
               printInfo.labelNameIndex = QL700.ordinalFromID(QL700.W29.getId());
-              print('Setting label 29mm: ${printInfo.labelNameIndex}');
               break;
             default:
               throw Exception('Ungültige Etikettengröße: ${selectedLabel!.width}mm');
           }
-        }
-
-        PrintStatus.updateStatus("Suche Drucker...");
-        if (_activeConnectionType == PrinterConnectionType.bluetooth) {
-          PrintStatus.updateStatus("Prüfe Bluetooth-Verbindung...");
-          // Kurze Verzögerung einfügen
-          await Future.delayed(const Duration(milliseconds: 1000));
-
-          List<BluetoothPrinter> bluetoothPrinters = await printer.getBluetoothPrinters([printInfo.printerModel.getName()]);
-          print("Finale Bluetooth-Drucker Suche: ${bluetoothPrinters.length} Drucker gefunden");
-
-          if (bluetoothPrinters.isEmpty) {
-            throw Exception('Bluetooth-Drucker nicht gefunden');
-          }
-
-          PrintStatus.updateStatus("Verbinde mit Bluetooth-Drucker...");
-          // Sicherstellen dass der Drucker erreichbar ist
-          printInfo.macAddress = bluetoothPrinters[0].macAddress;
-          print("Versuche Verbindung mit MAC: ${printInfo.macAddress}");
-          bool isConnected = await printer.setPrinterInfo(printInfo);
-          if (!isConnected) {
-            throw Exception('Bluetooth-Verbindung fehlgeschlagen');
-          }
-        } else {
-          print("Suche nach Netzwerk-Druckern...");
-          List<NetPrinter> netPrinters = await printer.getNetPrinters([printInfo.printerModel.getName()]);
-          print("Finale Netzwerk-Drucker Suche: ${netPrinters.length} Drucker gefunden");
-
-          if (netPrinters.isEmpty) {
-            throw Exception('Netzwerk-Drucker nicht gefunden');
-          }
-          PrintStatus.updateStatus("Konfiguriere Drucker...");
-          printInfo.ipAddress = netPrinters[0].ipAddress;
-          print("Versuche Verbindung mit IP: ${printInfo.ipAddress}");
-          await printer.setPrinterInfo(printInfo);
         }
 
         PrintStatus.updateStatus("Generiere PDF...");
@@ -2532,19 +2559,12 @@ print("printers:ssss:$printers");
         PrintStatus.updateStatus("Sende Daten an Drucker...");
         var status = await printer.printPdfFile(pdfFile.path, 1);
 
-        // Prüfe ob es ein echter Fehler ist oder ERROR_NONE
-        // Prüfe ob es ein echter Fehler ist oder ERROR_NONE
         if (status.errorCode.getName() != 'ERROR_NONE') {
-          print("Druckerstatus: ${status.errorCode.getName()}");
-
-          // Spezifischen Fehler für falsches Label abfangen
           if (status.errorCode.getName() == 'ERROR_WRONG_LABEL') {
-            throw Exception('WRONG_LABEL'); // Spezieller Fehler für Labelgröße
+            throw Exception('WRONG_LABEL');
           }
-
           throw status;
         }
-
 
         druckErfolgreich = true;
         PrintStatus.updateStatus("Druckvorgang erfolgreich abgeschlossen");
@@ -2557,12 +2577,11 @@ print("printers:ssss:$printers");
           'labelWidth': selectedLabel?.width,
           'labelType': selectedLabel?.id,
           'barcodeType': selectedBarcodeType.toString(),
+          'printerModel': printInfo.printerModel.getName(),
         });
 
       } catch (e) {
         print("Druckfehler aufgetreten: $e");
-
-        // Speziellen Fehler für Labelgröße abfangen
         if (e.toString().contains('WRONG_LABEL')) {
           PrintStatus.updateStatus("Fehler: Falsche Etikettengröße im Drucker");
           await Future.delayed(const Duration(seconds: 2));
@@ -2570,49 +2589,10 @@ print("printers:ssss:$printers");
           PrintStatus.updateStatus("Fehler: ${PrinterErrorHelper.getErrorMessage(e)}");
           await Future.delayed(const Duration(seconds: 1));
         }
-
         throw e;
       }
     }).catchError((error) async {
-      // Abfangen des Fehlers nach dem Dialog
-      if (error.toString().contains('WRONG_LABEL')) {
-        await showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text('Falsche Etikettengröße'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  getAdaptiveIcon(iconName: 'warning', defaultIcon: Icons.warning, color: Colors.orange, size: 48),
-                  SizedBox(height: 16),
-                  Text(
-                    'Die eingestellte Etikettengröße stimmt nicht mit der im Drucker eingelegten überein.',
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text('Schließen'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    showPrinterSettingsDialog(context); // Öffne direkt die Druckereinstellungen
-                  },
-                  child: Text('Einstellungen öffnen',style: TextStyle(color: Colors.white),),
-                  style: ElevatedButton.styleFrom(
-
-                    backgroundColor: primaryAppColor,
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      }
+      // Fehlerbehandlung...
       return false;
     });
 
@@ -4240,6 +4220,7 @@ print("printers:ssss:$printers");
 
     );
   }
+
 }
 
 // Neue Klasse für die Abkürzungsauswahl

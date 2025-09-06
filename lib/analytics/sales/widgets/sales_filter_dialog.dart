@@ -236,41 +236,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
       ),
     );
   }
-  // Widget _buildFilterCategory(
-  //     IconData icon,
-  //     String title,
-  //     Widget child,
-  //     bool hasActiveFilters,
-  //     ) {
-  //   return ExpansionTile(
-  //     leading: Container(
-  //       padding: const EdgeInsets.all(8),
-  //       decoration: BoxDecoration(
-  //         color: hasActiveFilters
-  //             ? const Color(0xFF0F4A29).withOpacity(0.1)
-  //             : Colors.grey.withOpacity(0.1),
-  //         borderRadius: BorderRadius.circular(8),
-  //       ),
-  //       child: Icon(
-  //         icon,
-  //         color: hasActiveFilters ? const Color(0xFF0F4A29) : Colors.grey,
-  //       ),
-  //     ),
-  //     title: Text(
-  //       title,
-  //       style: TextStyle(
-  //         fontWeight: hasActiveFilters ? FontWeight.bold : FontWeight.normal,
-  //         color: hasActiveFilters ? const Color(0xFF0F4A29) : Colors.black,
-  //       ),
-  //     ),
-  //     children: [
-  //       Padding(
-  //         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-  //         child: child,
-  //       ),
-  //     ],
-  //   );
-  // }
+
 
   Widget _buildDateFilter() {
     return Column(
