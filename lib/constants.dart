@@ -114,7 +114,7 @@ double isMobile=kIsWeb==false?0:w>800?200:100;
 double isHero=kIsWeb==false?0.3:w>800?0.8:0.3;
 int isMobileGrid = kIsWeb == false ? 3 : w > 1400 ? 9 : w > 1200 ? 8 : w > 1000 ? 7 : w > 800 ? 6 : w > 600 ? 4 : 3;
 int isMobileGridWoodList = kIsWeb == false ? 2 : w > 1400 ? 8 : w > 1200 ? 7 : w > 1000 ? 6 : w > 800 ? 5 : w > 600 ? 3 : 2;
-
+const goldenColour=Color(0xFFD6BA73);
 bool isMobilePackageDetail=kIsWeb==false?true:w>800?false:true;
 int isMobilePackageDetailInt=kIsWeb==false?1:w>800?5:1;
 GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();

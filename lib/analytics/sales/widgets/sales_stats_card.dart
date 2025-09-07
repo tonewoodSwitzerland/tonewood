@@ -2,10 +2,13 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../services/icon_helper.dart';
+
 class SalesStatsCard extends StatelessWidget {
   final String title;
   final String value;
   final IconData icon;
+  final String iconName;
   final String? subtitle;
   final Widget? trend;
   final Color? color;
@@ -15,6 +18,7 @@ class SalesStatsCard extends StatelessWidget {
     required this.title,
     required this.value,
     required this.icon,
+    required this.iconName,
     this.subtitle,
     this.trend,
     this.color,
@@ -39,7 +43,7 @@ class SalesStatsCard extends StatelessWidget {
                     color: cardColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(icon, color: cardColor),
+                  child:  getAdaptiveIcon(iconName: iconName, defaultIcon:icon, color: cardColor),
                 ),
                 const SizedBox(width: 12),
                 Text(

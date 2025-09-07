@@ -1,6 +1,7 @@
 import 'package:another_brother/printer_info.dart';
 import 'package:flutter/material.dart';
 import '../constants.dart';
+import 'icon_helper.dart';
 
 class PrinterErrorHelper {
   static String getErrorMessage(dynamic error) {
@@ -95,7 +96,9 @@ class PrintStatus {
                             color: primaryAppColor.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(
+                          child:
+
+                          getAdaptiveIcon(iconName: 'print', defaultIcon:
                             Icons.print,
                             size: 40,
                             color: primaryAppColor,

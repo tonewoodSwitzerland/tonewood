@@ -6,7 +6,7 @@ Widget buildFilterCategory({
   required dynamic icon,  // Can be IconData or a Widget from getAdaptiveIcon
   required String title,
   required Widget child,
-  String? iconName,      // Optional: For getAdaptiveIcon
+  required String iconName,
   bool hasActiveFilters = false, // New parameter from your code
 }) {
   final Color activeColor = const Color(0xFF0F4A29);
@@ -35,20 +35,12 @@ Widget buildFilterCategory({
                 : Colors.grey.withOpacity(0.1),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: iconName != null
-              ? getAdaptiveIcon(
+          child:  getAdaptiveIcon(
             iconName: iconName,
             defaultIcon: icon is IconData ? icon : Icons.category,
             color: hasActiveFilters ? activeColor : Colors.grey,
             size: 24,
           )
-              : icon is IconData
-              ? Icon(
-            icon,
-            color: hasActiveFilters ? activeColor : Colors.grey,
-            size: 24,
-          )
-              : icon, // Direct use if already a Widget
         ),
         title: Text(
           title,

@@ -278,8 +278,8 @@ class _CheckAddressContentState extends State<_CheckAddressContent>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.info_outline,
+              getAdaptiveIcon(iconName: 'info', defaultIcon:
+                Icons.info,
                 size: 48,
                 color: Theme.of(context).colorScheme.error,
               ),
@@ -362,8 +362,8 @@ class _CheckAddressContentState extends State<_CheckAddressContent>
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.warning_amber_rounded,
+                getAdaptiveIcon(iconName: 'warning', defaultIcon:
+                  Icons.warning,
                   color: Colors.orange,
                 ),
                 const SizedBox(width: 12),
@@ -544,8 +544,8 @@ class _CheckAddressContentState extends State<_CheckAddressContent>
               ),
               child: Column(
                 children: [
-                  Icon(
-                    Icons.info_outline,
+                  getAdaptiveIcon(iconName: 'info', defaultIcon:
+                    Icons.info,
                     size: 48,
                     color: Theme.of(context).colorScheme.primary,
                   ),

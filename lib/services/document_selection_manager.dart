@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 import 'package:tonewood/services/pdf_generators/commercial_invoice_generator.dart';
 import 'package:tonewood/services/pdf_generators/delivery_note_generator.dart';
 import 'package:tonewood/services/pdf_generators/packing_list_generator.dart';
+import 'package:tonewood/services/swiss_rounding.dart';
 import 'additional_text_manager.dart';
 import 'pdf_generators/invoice_generator.dart';
 import 'package:flutter/material.dart';
@@ -903,40 +904,6 @@ class DocumentSelectionManager {
 // Zeige Offerte-Preview
 
 
-
-  static Future<Map<String, bool>> _loadRoundingSettings() async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('general_data')
-          .doc('currency_settings')
-          .get();
-
-      if (doc.exists && doc.data()!.containsKey('rounding_settings')) {
-        final settings = doc.data()!['rounding_settings'] as Map<String, dynamic>;
-        return {
-          'CHF': settings['CHF'] ?? true,
-          'EUR': settings['EUR'] ?? false,
-          'USD': settings['USD'] ?? false,
-        };
-      }
-
-      // Fallback zu Standard-Einstellungen
-      print('Keine Rundungseinstellungen in Firebase gefunden, verwende Standard-Werte');
-      return {
-        'CHF': true,  // Standard: CHF wird gerundet
-        'EUR': false,
-        'USD': false,
-      };
-    } catch (e) {
-      print('Fehler beim Laden der Rundungseinstellungen: $e');
-      // Fallback zu Standard-Einstellungen
-      return {
-        'CHF': true,
-        'EUR': false,
-        'USD': false,
-      };
-    }
-  }
 // NEUE VERSION - Ersetze mit:
   static Future<Map<String, double>> _fetchCurrentExchangeRates() async {
     try {
@@ -1068,7 +1035,7 @@ class DocumentSelectionManager {
       print('Exchange rates: $exchangeRates');
 // NEU: Lade Rundungseinstellungen
       print('Loading rounding settings...');
-      final roundingSettings = await _loadRoundingSettings();
+      final roundingSettings = await SwissRounding.loadRoundingSettings();
       print('Rounding settings: $roundingSettings');
       // Cost Center Debug
       final costCenter = data['costCenter'];
@@ -1143,6 +1110,7 @@ class DocumentSelectionManager {
       final vatRate = data['vatRate'] ?? 8.1;
       final basketItems = data['basketItems'] as List<Map<String, dynamic>>;
       final invoiceSettings = await loadInvoiceSettings();
+      final roundingSettings = await SwissRounding.loadRoundingSettings();
 
       // Berechne Rabatte für Preview
       final calculations = await _calculateDiscountsForPreview(basketItems);
@@ -1191,6 +1159,7 @@ class DocumentSelectionManager {
         taxOption: taxOption,  // NEU (falls InvoiceGenerator das unterstützt)
         vatRate: vatRate,
         additionalTexts: additionalTexts,
+        roundingSettings: roundingSettings
       );
 
       if (context.mounted) {

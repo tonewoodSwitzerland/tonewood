@@ -160,7 +160,7 @@ class _OrderFilterFavoritesBottomSheet extends StatelessWidget {
                       return ListTile(
                         leading: CircleAvatar(
                           backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                          child: Icon(
+                          child:  getAdaptiveIcon(iconName: 'filter_alt', defaultIcon:
                             Icons.filter_alt,
                             color: Theme.of(context).colorScheme.primary,
                           ),
@@ -176,8 +176,8 @@ class _OrderFilterFavoritesBottomSheet extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                         trailing: IconButton(
-                          icon: Icon(
-                            Icons.delete_outline,
+                          icon:  getAdaptiveIcon(iconName: 'delete', defaultIcon:
+                            Icons.delete,
                             color: Theme.of(context).colorScheme.error,
                           ),
                           onPressed: () => _deleteFavorite(context, doc.id, data['name']),

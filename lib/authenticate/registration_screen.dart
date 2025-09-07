@@ -200,7 +200,7 @@ class RegistrationScreenState extends State<RegistrationScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
+            getAdaptiveIcon(iconName: 'app_registration', defaultIcon:
               Icons.app_registration,
               color: whiteColour,
               size: AppSizes.h * 0.03,

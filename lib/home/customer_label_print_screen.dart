@@ -563,10 +563,11 @@ class _CustomerLabelPrintScreenState extends State<CustomerLabelPrintScreen> {
             ),
             child: Row(
               children: [
-                Icon(
-                  _isPrinterOnline ? Icons.check_circle : Icons.error,
-                  color: _isPrinterOnline ? Colors.green : Colors.red,
-                ),
+
+                  _isPrinterOnline ?
+
+                getAdaptiveIcon(iconName: 'check_circle', defaultIcon: Icons.check_circle,color: Colors.green):
+                  getAdaptiveIcon(iconName: 'error', defaultIcon: Icons.error, color:Colors.red,),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -622,11 +623,13 @@ class _CustomerLabelPrintScreenState extends State<CustomerLabelPrintScreen> {
                   'Ausgewählte Kunden',
                   '${selectedCustomers.length}',
                   Icons.people,
+                  'people'
                 ),
                 _buildStatistic(
                   'Etiketten',
                   '${selectedCustomers.length}',
                   Icons.label,
+                  'label'
                 ),
 
               ],
@@ -856,10 +859,10 @@ class _CustomerLabelPrintScreenState extends State<CustomerLabelPrintScreen> {
     );
   }
 
-  Widget _buildStatistic(String label, String value, IconData icon) {
+  Widget _buildStatistic(String label, String value, IconData icon,String iconName) {
     return Column(
       children: [
-        Icon(icon, color: primaryAppColor),
+        getAdaptiveIcon(iconName: iconName, defaultIcon:icon, color: primaryAppColor),
         const SizedBox(height: 4),
         Text(
           value,

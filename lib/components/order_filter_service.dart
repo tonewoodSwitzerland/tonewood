@@ -271,7 +271,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
               ),
               child: Row(
                 children: [
-                  Icon(
+                  getAdaptiveIcon(iconName: 'filter_list', defaultIcon:
                     Icons.filter_list,
                     color: Theme.of(context).colorScheme.primary,
                   ),
@@ -303,6 +303,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                     _buildFilterSection(
                       title: 'Auftragsstatus',
                       icon: Icons.assignment,
+                      iconName: 'assignment',
                       child: Wrap(
                         spacing: 8,
                         runSpacing: 8,
@@ -339,6 +340,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                     _buildFilterSection(
                       title: 'Zahlungsstatus',
                       icon: Icons.payments,
+                      iconName: 'payments',
                       child: Wrap(
                         spacing: 8,
                         runSpacing: 8,
@@ -356,7 +358,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                                 }
                               });
                             },
-                            avatar: Icon(
+                            avatar:  getAdaptiveIcon(iconName: 'euro', defaultIcon:
                               Icons.euro,
                               size: 16,
                               color: _getPaymentStatusColor(status),
@@ -372,6 +374,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                     _buildFilterSection(
                       title: 'Auftragssumme (CHF)',
                       icon: Icons.attach_money,
+                      iconName: 'attach_money',
                       child: Row(
                         children: [
                           Expanded(
@@ -417,6 +420,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                     _buildFilterSection(
                       title: 'Veranlagungsverfügung Ausfuhr',
                       icon: Icons.assignment_turned_in,
+                      iconName: 'assignment_turned_in',
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -530,6 +534,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
   Widget _buildFilterSection({
     required String title,
     required IconData icon,
+    required String iconName,
     required Widget child,
   }) {
     return Container(
@@ -543,7 +548,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
         children: [
           Row(
             children: [
-              Icon(icon, size: 20),
+              getAdaptiveIcon(iconName: iconName, defaultIcon:icon, size: 20),
               const SizedBox(width: 8),
               Text(
                 title,

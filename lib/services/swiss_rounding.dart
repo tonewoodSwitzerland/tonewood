@@ -1,6 +1,8 @@
 // swiss_rounding.dart
 // Utility-Klasse für die Schweizer Rappenrundung
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class SwissRounding {
   /// Wendet die Schweizer Rappenrundung auf einen Betrag an
   ///
@@ -16,11 +18,54 @@ class SwissRounding {
   /// [forceRounding] Erzwingt Rundung auch bei anderen Währungen (default: false)
   ///
   /// Gibt den gerundeten Betrag zurück
+  ///
+  ///
+  static Future<Map<String, bool>> loadRoundingSettings() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('currency_settings')
+          .get();
+
+      if (doc.exists && doc.data()!.containsKey('rounding_settings')) {
+        final settings = doc.data()!['rounding_settings'] as Map<String, dynamic>;
+        return {
+          'CHF': settings['CHF'] ?? true,
+          'EUR': settings['EUR'] ?? false,
+          'USD': settings['USD'] ?? false,
+        };
+      }
+
+      // Fallback zu Standard-Einstellungen
+      print('Keine Rundungseinstellungen in Firebase gefunden, verwende Standard-Werte');
+      return {
+        'CHF': true,  // Standard: CHF wird gerundet
+        'EUR': false,
+        'USD': false,
+      };
+    } catch (e) {
+      print('Fehler beim Laden der Rundungseinstellungen: $e');
+      // Fallback zu Standard-Einstellungen
+      return {
+        'CHF': true,
+        'EUR': false,
+        'USD': false,
+      };
+    }
+  }
+  ///
+  ///
   static double round(double amount, {
     String currency = 'CHF',
     Map<String, bool>? roundingSettings,
     bool forceRounding = false
   }) {
+    // Debug-Ausgabe
+    print('=== Swiss Rounding Debug ===');
+    print('Original amount: $amount');
+    print('Amount * 100: ${amount * 100}');
+    print('Amount * 100 rounded: ${(amount * 100).round()}');
+
     // Prüfe ob Rundung für diese Währung aktiviert ist
     if (roundingSettings != null) {
       final isEnabled = roundingSettings[currency] ?? false;
@@ -38,6 +83,9 @@ class SwissRounding {
     int totalRappen = (amount * 100).round();
     int lastDigit = totalRappen % 10;
 
+    print('Total Rappen: $totalRappen');
+    print('Last digit: $lastDigit');
+
     // Berechne die Anpassung basierend auf der letzten Ziffer
     int adjustedRappen;
     switch (lastDigit) {
@@ -45,30 +93,38 @@ class SwissRounding {
       case 2:
       // Abrunden auf .00
         adjustedRappen = totalRappen - lastDigit;
+        print('Case 1,2: Abrunden auf .00');
         break;
       case 3:
       case 4:
       // Aufrunden auf .05
         adjustedRappen = totalRappen - lastDigit + 5;
+        print('Case 3,4: Aufrunden auf .05');
         break;
       case 6:
       case 7:
       // Abrunden auf .05
         adjustedRappen = totalRappen - lastDigit + 5;
+        print('Case 6,7: Abrunden auf .05');
         break;
       case 8:
       case 9:
       // Aufrunden auf .10
         adjustedRappen = totalRappen - lastDigit + 10;
+        print('Case 8,9: Aufrunden auf .10');
         break;
       default:
       // 0 und 5 bleiben unverändert
         adjustedRappen = totalRappen;
+        print('Case 0,5: Keine Änderung');
     }
 
-    return adjustedRappen / 100.0;
-  }
+    double result = adjustedRappen / 100.0;
+    print('Result: $result');
+    print('=== End Debug ===');
 
+    return result;
+  }
   /// Berechnet die Differenz zwischen Original- und gerundetem Betrag
   ///
   /// [amount] Der Originalbetrag

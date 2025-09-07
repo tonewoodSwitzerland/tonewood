@@ -700,15 +700,23 @@ class QuoteGenerator extends BasePdfGenerator {
     final netAmount = afterDiscounts + plantCertificate + packagingCost + freightCost + totalSurcharges - totalDeductions;
 
     // MwSt-Berechnung basierend auf taxOption
+    // MwSt-Berechnung basierend auf taxOption
     double vatAmount = 0.0;
     double totalWithTax = netAmount;
 
-
     if (taxOption == 0) { // TaxOption.standard
-      vatAmount = netAmount * (vatRate / 100);
-      totalWithTax = netAmount + vatAmount;
-    }
+      // NEU: Erst Nettobetrag auf 2 Nachkommastellen runden
+      final netAmountRounded = double.parse(netAmount.toStringAsFixed(2));
 
+      // NEU: MwSt berechnen und auf 2 Nachkommastellen runden
+      vatAmount = double.parse((netAmountRounded * (vatRate / 100)).toStringAsFixed(2));
+
+      // NEU: Total ist Summe der gerundeten Beträge
+      totalWithTax = netAmountRounded + vatAmount;
+    } else {
+      // Bei anderen Steueroptionen auch auf 2 Nachkommastellen runden
+      totalWithTax = double.parse(netAmount.toStringAsFixed(2));
+    }
 // Nach der Zeile: double totalWithTax = netAmount + vatAmount;
 
 // NEU: Rundung anwenden

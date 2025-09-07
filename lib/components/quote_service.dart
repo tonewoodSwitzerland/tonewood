@@ -41,6 +41,141 @@ class QuoteService {
     }
   }
 
+
+  static Future<Quote> updateQuote(
+      String quoteId,
+      String quoteNumber, {
+        required Map<String, dynamic> customerData,
+        required Map<String, dynamic>? costCenter,
+        required Map<String, dynamic>? fair,
+        required List<Map<String, dynamic>> items,
+        required Map<String, dynamic> calculations,
+        required Map<String, dynamic> metadata,
+      }) async {
+    try {
+      // Berechne finalen Total mit allen Aufschlägen (gleiche Logik wie createQuote)
+      final finalCalculations = Map<String, dynamic>.from(calculations);
+
+      // Hole Aufschläge aus metadata
+      final shippingCosts = metadata['shippingCosts'] ?? {};
+      final freightCost = (shippingCosts['amount'] as num?)?.toDouble() ?? 0.0;
+      final phytosanitaryCost = (shippingCosts['phytosanitaryCertificate'] as num?)?.toDouble() ?? 0.0;
+
+      final totalDeductions = ((shippingCosts['totalDeductions'] as num?) ?? 0).toDouble();
+      final totalSurcharges = ((shippingCosts['totalSurcharges'] as num?) ?? 0).toDouble();
+
+      // Hole Steuerdaten aus metadata
+      final taxOption = metadata['taxOption'] ?? 0;
+      final vatRate = (metadata['vatRate'] ?? 8.1).toDouble();
+
+      // Berechne neuen Total vor Steuern
+      final netAmountBeforeShipping = (calculations['net_amount'] as num?)?.toDouble() ?? 0.0;
+      final netAmountWithShipping = netAmountBeforeShipping + freightCost + phytosanitaryCost + totalSurcharges - totalDeductions;
+
+      // MwSt-Berechnung basierend auf taxOption
+      double vatAmount = 0.0;
+      double totalWithTax = netAmountWithShipping;
+
+      if (taxOption == 0) { // Standard mit MwSt
+        // NEU: Erst Nettobetrag auf 2 Nachkommastellen runden
+        final netAmountRounded = double.parse(netAmountWithShipping.toStringAsFixed(2));
+
+        // NEU: MwSt berechnen und auf 2 Nachkommastellen runden
+        vatAmount = double.parse((netAmountRounded * (vatRate / 100)).toStringAsFixed(2));
+
+        // NEU: Total ist Summe der gerundeten Beträge
+        totalWithTax = netAmountRounded + vatAmount;
+      } else {
+        // Bei anderen Steueroptionen auch auf 2 Nachkommastellen runden
+        totalWithTax = double.parse(netAmountWithShipping.toStringAsFixed(2));
+      }
+
+      // Aktualisiere calculations mit korrekten Werten
+      finalCalculations['subtotal'] = (calculations['subtotal'] as num?)?.toDouble() ?? 0.0;
+      finalCalculations['net_amount'] = netAmountWithShipping;
+      finalCalculations['freight'] = freightCost;
+      finalCalculations['phytosanitary'] = phytosanitaryCost;
+      finalCalculations['total_deductions'] = totalDeductions;
+      finalCalculations['total_surcharges'] = totalSurcharges;
+      finalCalculations['vat_amount'] = vatAmount;
+      finalCalculations['total'] = totalWithTax;
+
+      // Hole das Original-Dokument um createdAt zu behalten
+      final originalDoc = await _firestore
+          .collection('quotes')
+          .doc(quoteId)
+          .get();
+
+
+      final originalData = originalDoc.data() ?? {};
+      final originalCreatedAt = originalData['createdAt'] != null
+          ? (originalData['createdAt'] as Timestamp).toDate()
+          : DateTime.now();
+
+      // FIX: Konvertiere documents Map zu Map<String, String>
+      final Map<String, String> existingDocuments = {};
+      if (originalData['documents'] != null) {
+        final docs = originalData['documents'] as Map<String, dynamic>;
+        docs.forEach((key, value) {
+          if (value != null) {
+            existingDocuments[key] = value.toString();
+          }
+        });
+      }
+
+      final quote = Quote(
+        id: quoteId,
+        quoteNumber: quoteNumber,
+        status: QuoteStatus.draft,  // Setze zurück auf Draft beim Bearbeiten
+        customer: customerData,
+        costCenter: costCenter,
+        fair: fair,
+        items: items,
+        calculations: finalCalculations,
+        createdAt: originalCreatedAt,  // Behalte das Original-Erstellungsdatum
+        validUntil: DateTime.now().add(const Duration(days: 14)),  // Erneuere Gültigkeit
+        documents: existingDocuments, // Behalte bestehende Dokumente
+        metadata: metadata,
+      );
+
+      // Erstelle History-Eintrag für die Bearbeitung
+      await _firestore
+          .collection('quotes')
+          .doc(quoteId)
+          .collection('history')
+          .add({
+        'timestamp': FieldValue.serverTimestamp(),
+        'user_id': 'system',  // Oder hole den aktuellen User
+        'user_email': 'system',
+        'user_name': 'System',
+        'action': 'edited',
+        'changes': {
+          'field': 'quote_updated',
+          'message': 'Angebot wurde bearbeitet und aktualisiert',
+        },
+      });
+
+      // Update das Angebot
+      await _firestore
+          .collection('quotes')
+          .doc(quoteId)
+          .update(quote.toMap());
+
+      // Lösche alte Reservierungen
+      await cancelReservations(quoteId);
+
+      // Erstelle neue Reservierungen für die aktualisierten Items
+      await _createReservations(quoteId, items);
+
+      // Generiere neues PDF mit gleicher Nummer
+      await _generateQuotePdf(quote);
+
+      return quote;
+    } catch (e) {
+      print('Fehler beim Aktualisieren des Angebots: $e');
+      rethrow;
+    }
+  }
   static Future<Quote> createQuote({
     required Map<String, dynamic> customerData,
     required Map<String, dynamic>? costCenter,
@@ -77,12 +212,22 @@ class QuoteService {
 
 
 // Berechne MwSt neu basierend auf dem Total inkl. Versandkosten
+      // Berechne MwSt neu basierend auf dem Total inkl. Versandkosten
       double newVatAmount = 0.0;
       double newTotal = netAmountWithShipping;
 
       if (taxOption == 0) { // Standard mit MwSt
-        newVatAmount = netAmountWithShipping * (vatRate / 100);
-        newTotal = netAmountWithShipping + newVatAmount;
+        // NEU: Erst Nettobetrag auf 2 Nachkommastellen runden
+        final netAmountRounded = double.parse(netAmountWithShipping.toStringAsFixed(2));
+
+        // NEU: MwSt berechnen und auf 2 Nachkommastellen runden
+        newVatAmount = double.parse((netAmountRounded * (vatRate / 100)).toStringAsFixed(2));
+
+        // NEU: Total ist Summe der gerundeten Beträge
+        newTotal = netAmountRounded + newVatAmount;
+      } else {
+        // Bei anderen Steueroptionen auch auf 2 Nachkommastellen runden
+        newTotal = double.parse(netAmountWithShipping.toStringAsFixed(2));
       }
 
 // Aktualisiere calculations mit korrekten Werten

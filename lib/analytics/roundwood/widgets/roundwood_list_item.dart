@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../services/icon_helper.dart';
 import '../models/roundwood_models.dart';
 import '../constants/roundwood_constants.dart';
 import 'package:intl/intl.dart';
@@ -123,7 +124,7 @@ class RoundwoodListItem extends StatelessWidget {
           const SizedBox(width: 8),
           Tooltip(
             message: 'Mondholz',
-            child: Icon(
+            child: getAdaptiveIcon(iconName: 'nightlight', defaultIcon:
               Icons.nightlight,
               size: 16,
               color: theme.colorScheme.primary,
@@ -148,7 +149,7 @@ class RoundwoodListItem extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
+              getAdaptiveIcon(iconName:'star', defaultIcon:
                 Icons.star,
                 size: 12,
                 color: RoundwoodColors.getQualityColor(item.qualityName, 0),
@@ -174,7 +175,7 @@ class RoundwoodListItem extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
+                getAdaptiveIcon(iconName: 'location_on', defaultIcon:
                   Icons.location_on,
                   size: 12,
                   color: theme.colorScheme.onSurfaceVariant,
@@ -200,7 +201,7 @@ class RoundwoodListItem extends StatelessWidget {
         if (item.purpose != null) ...[
           Row(
             children: [
-              Icon(
+              getAdaptiveIcon(iconName: 'info', defaultIcon:
                 Icons.info,
                 size: 12,
                 color: theme.colorScheme.onSurfaceVariant,
@@ -221,7 +222,7 @@ class RoundwoodListItem extends StatelessWidget {
           const SizedBox(height: 4),
           Row(
             children: [
-              Icon(
+              getAdaptiveIcon(iconName:'notes', defaultIcon:
                 Icons.notes,
                 size: 12,
                 color: theme.colorScheme.onSurfaceVariant,

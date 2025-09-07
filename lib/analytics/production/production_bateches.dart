@@ -58,6 +58,7 @@ class ProductionBatches extends StatelessWidget {
                       'Chargen',
                       batches.length.toString(),
                       Icons.layers,
+                      'layers',
                       Colors.blue,
                     ),
                   ),
@@ -110,6 +111,7 @@ class ProductionBatches extends StatelessWidget {
       String title,
       String value,
       IconData icon,
+      String iconName,
       Color color,
       ) {
     return Card(
@@ -125,7 +127,7 @@ class ProductionBatches extends StatelessWidget {
                     color: color.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(icon, size: 20, color: color),
+                  child:   getAdaptiveIcon(iconName: iconName, defaultIcon:icon, size: 20, color: color),
                 ),
                 //  const SizedBox(width: 8),
 
@@ -151,49 +153,7 @@ class ProductionBatches extends StatelessWidget {
       ),
     );
   }
-  Widget _buildStatCard(
-      BuildContext context,
-      String title,
-      String value,
-      IconData icon,
-      Color color,
-      ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, size: 20, color: color),
-                ),
-              //  const SizedBox(width: 8),
-                // Text(
-                //   title,
-                //   style: Theme.of(context).textTheme.bodySmall,
-                // ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+
 
   Widget _buildBatchCard(BuildContext context, Map<String, dynamic> batch) {
     final specialTags = <Widget>[];
@@ -365,7 +325,7 @@ class ProductionBatches extends StatelessWidget {
                         color: const Color(0xFF0F4A29).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(
+                      child: getAdaptiveIcon(iconName: 'layers', defaultIcon:
                         Icons.layers,
                         color: Color(0xFF0F4A29),
                       ),
@@ -412,6 +372,7 @@ class ProductionBatches extends StatelessWidget {
                       _buildDetailSection(
                         'Artikelnummer',
                         Icons.qr_code,
+                        'qr_code',
                         Container(
                           padding: const EdgeInsets.symmetric(vertical: 4),
                           child: Column(
@@ -420,11 +381,13 @@ class ProductionBatches extends StatelessWidget {
                                 'Barcode',
                                 batch['barcode'] ?? '-',
                                 Icons.tag,
+                                'tag'
                               ),
                               _buildDetailRow(
                                 'Kurzform',
                                 batch['short_barcode'] ?? '-',
                                 Icons.short_text,
+                                'short_text'
                               ),
                             ],
                           ),
@@ -435,12 +398,13 @@ class ProductionBatches extends StatelessWidget {
                       _buildDetailSection(
                         'Produktinformationen',
                         Icons.info,
+                        'info',
                         Column(
                           children: [
-                            _buildDetailRow('Instrument', batch['instrument_name'], Icons.piano),
-                            _buildDetailRow('Bauteil', batch['part_name'], Icons.construction),
-                            _buildDetailRow('Holzart', batch['wood_name'], Icons.forest),
-                            _buildDetailRow('Qualität', batch['quality_name'], Icons.stars),
+                            _buildDetailRow('Instrument', batch['instrument_name'], Icons.piano,'piano'),
+                            _buildDetailRow('Bauteil', batch['part_name'], Icons.construction,'construction'),
+                            _buildDetailRow('Holzart', batch['wood_name'], Icons.forest,'forest'),
+                            _buildDetailRow('Qualität', batch['quality_name'], Icons.stars,'stars'),
                           ],
                         ),
                       ),
@@ -448,12 +412,14 @@ class ProductionBatches extends StatelessWidget {
                       _buildDetailSection(
                         'Mengen & Werte',
                         Icons.analytics,
+                        'analytics',
                         Column(
                           children: [
                             _buildDetailRow(
                               'Menge',
                               '${NumberFormat('#,##0').format(batch['quantity'])} ${batch['unit']}',
                               Icons.inventory,
+                              'inventory'
                             ),
                             _buildDetailRow(
                               'Preis pro ${batch['unit']}',
@@ -463,6 +429,7 @@ class ProductionBatches extends StatelessWidget {
                                   decimalDigits: 2
                               ).format(batch['price_CHF']),
                               Icons.attach_money,
+                              'attach_money'
                             ),
                             _buildDetailRow(
                               'Gesamtwert',
@@ -472,6 +439,7 @@ class ProductionBatches extends StatelessWidget {
                                   decimalDigits: 2
                               ).format(batch['value']),
                               Icons.payments,
+                              'payments'
                             ),
                           ],
                         ),
@@ -483,14 +451,15 @@ class ProductionBatches extends StatelessWidget {
                         _buildDetailSection(
                           'Spezialholz',
                           Icons.star,
+                          'star',
                           Column(
                             children: [
                               if (batch['moonwood'] == true)
-                                _buildDetailRow('Mondholz', 'Ja', Icons.nightlight),
+                                _buildDetailRow('Mondholz', 'Ja', Icons.nightlight,'nightlight'),
                               if (batch['haselfichte'] == true)
-                                _buildDetailRow('Haselfichte', 'Ja', Icons.nature),
+                                _buildDetailRow('Haselfichte', 'Ja', Icons.nature,'nature'),
                               if (batch['thermally_treated'] == true)
-                                _buildDetailRow('Thermisch behandelt', 'Ja', Icons.whatshot),
+                                _buildDetailRow('Thermisch behandelt', 'Ja', Icons.whatshot,'whatshot'),
                             ],
                           ),
                         ),
@@ -506,13 +475,13 @@ class ProductionBatches extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailSection(String title, IconData icon, Widget content) {
+  Widget _buildDetailSection(String title, IconData icon,String iconName, Widget content) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(icon, size: 20, color: Colors.grey[600]),
+            getAdaptiveIcon(iconName: iconName, defaultIcon:icon, size: 20, color: Colors.grey[600]),
             const SizedBox(width: 8),
             Text(
               title,
@@ -536,12 +505,12 @@ class ProductionBatches extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailRow(String label, String value, IconData icon) {
+  Widget _buildDetailRow(String label, String value, IconData icon,String iconName) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: Colors.grey[600]),
+          getAdaptiveIcon(iconName: iconName, defaultIcon:icon, size: 16, color: Colors.grey[600]),
           const SizedBox(width: 8),
           Expanded(
             flex: 3, // Gibt dem Label mehr Platz

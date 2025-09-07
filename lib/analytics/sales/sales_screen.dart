@@ -21,10 +21,10 @@ import '/../components/icon_content.dart';
 import '/../constants.dart';
 import 'package:intl/intl.dart';
 
-class SalesScreen extends StatefulWidget {
+class SalesScreenAnalytics extends StatefulWidget {
   final bool isDesktopLayout;
 
-  const SalesScreen({
+  const SalesScreenAnalytics({
     Key? key,
     required this.isDesktopLayout,
   }) : super(key: key);
@@ -33,7 +33,7 @@ class SalesScreen extends StatefulWidget {
   SalesScreenState createState() => SalesScreenState();
 }
 
-class SalesScreenState extends State<SalesScreen> with SingleTickerProviderStateMixin {
+class SalesScreenState extends State<SalesScreenAnalytics> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   SalesFilter _activeFilter = SalesFilter();  // Filter-Zustand
   bool isQuickFilterActive = false;

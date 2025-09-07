@@ -38,6 +38,8 @@ class Quote {
   final String? orderId;
   final Map<String, String> documents;
   final Map<String, dynamic> metadata;
+  final bool isOrderCancelled;  // NEU: Zeigt an, ob der zugehörige Auftrag storniert wurde
+  final DateTime? orderCancelledAt;  // NEU: Zeitpunkt der Auftragsstornierung
 
   Quote({
     required this.id,
@@ -54,6 +56,8 @@ class Quote {
     this.orderId,
     required this.documents,
     required this.metadata,
+    this.isOrderCancelled = false,  // NEU
+    this.orderCancelledAt,  // NEU
   });
 
   factory Quote.fromFirestore(DocumentSnapshot doc) {
@@ -76,6 +80,10 @@ class Quote {
       orderId: data['orderId'],
       documents: Map<String, String>.from(data['documents'] ?? {}),
       metadata: data['metadata'] ?? {},
+      isOrderCancelled: data['isOrderCancelled'] ?? false,  // NEU
+      orderCancelledAt: data['orderCancelledAt'] != null
+          ? (data['orderCancelledAt'] as Timestamp).toDate()
+          : null,
     );
   }
 
@@ -94,6 +102,10 @@ class Quote {
       'orderId': orderId,
       'documents': documents,
       'metadata': metadata,
+      'isOrderCancelled': isOrderCancelled,  // NEU
+      'orderCancelledAt': orderCancelledAt != null
+          ? Timestamp.fromDate(orderCancelledAt!)
+          : null,  // NEU
     };
   }
 }

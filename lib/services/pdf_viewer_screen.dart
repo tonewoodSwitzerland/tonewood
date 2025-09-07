@@ -127,8 +127,8 @@ class PDFViewerScreenState extends State<PDFViewerScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.error,
+
+            getAdaptiveIcon(iconName: 'error', defaultIcon: Icons.error,
               color: Colors.red,
               size: 48,
             ),

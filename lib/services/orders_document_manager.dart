@@ -8,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:tonewood/services/swiss_rounding.dart';
 import 'dart:typed_data';
 import '../services/icon_helper.dart';
 import '../components/order_model.dart';
@@ -2579,6 +2580,9 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
       'vatRate': (metadata['vatRate'] as num?)?.toDouble() ?? 8.1,
     };
   }
+
+
+
   Future<bool> _createDocument(String docType, Map<String, dynamic> orderData) async {
 
     print("yoooooo!");
@@ -2590,7 +2594,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
       switch (docType) {
         case 'Rechnung':
           final invoiceSettings = _settings['invoice'] ?? {};
-
+          final roundingSettings = await SwissRounding.loadRoundingSettings();
           // Generiere Rechnung
           pdfBytes = await InvoiceGenerator.generateInvoicePdf(
             items: orderData['items'],
@@ -2607,6 +2611,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
             taxOption: orderData['taxOption'],
             vatRate: orderData['vatRate'],
               downPaymentSettings: invoiceSettings,
+            roundingSettings: roundingSettings,
           );
           break;
 

@@ -4,6 +4,7 @@ import 'package:modal_progress_hud_nsn/modal_progress_hud_nsn.dart';
 import '../components/reusable_cart.dart';
 import '../constants.dart';
 import '../services/auth.dart';
+import '../services/icon_helper.dart';
 import 'login_screen.dart';
 
 class ForgetScreen extends StatefulWidget {
@@ -120,7 +121,7 @@ class ForgetScreenState extends State<ForgetScreen> {
           ),
           hintText: 'mail'.tr,
           hintStyle: const TextStyle(color: Colors.black54),
-          icon: Icon(
+          icon:  getAdaptiveIcon(iconName: 'mail', defaultIcon:
             Icons.mail,
             size: AppSizes.h * 0.03,
             color: primaryAppColor,
@@ -140,8 +141,8 @@ class ForgetScreenState extends State<ForgetScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.local_attraction,
+            getAdaptiveIcon(iconName: 'lock_reset', defaultIcon:
+              Icons.lock_reset,
               color: whiteColour,
               size: AppSizes.h * 0.03,
             ),

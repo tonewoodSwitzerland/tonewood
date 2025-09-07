@@ -235,7 +235,9 @@ class SettingsFormState extends State<SettingsForm> {
                                 color: const Color(0xFF0F4A29).withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: Icon(
+                              child:
+
+                              getAdaptiveIcon(iconName: 'person', defaultIcon:
                                 Icons.person,
                                 color: const Color(0xFF3E9C37),
                                 size: 24,

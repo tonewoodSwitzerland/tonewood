@@ -4725,7 +4725,9 @@ SizedBox(height: 8,),
                     child: ListTile(
                       leading: CircleAvatar(
                         backgroundColor: Colors.red.withOpacity(0.1),
-                        child: const Icon(
+                        child:
+
+                        getAdaptiveIcon(iconName: 'picture_as_pdf', defaultIcon:
                           Icons.picture_as_pdf,
                           color: Colors.red,
                         ),
@@ -4864,7 +4866,7 @@ SizedBox(height: 8,),
                     child: ListTile(
                       leading: CircleAvatar(
                         backgroundColor: Colors.red.withOpacity(0.1),
-                        child: const Icon(
+                        child:  getAdaptiveIcon(iconName: 'picture_as_pdf', defaultIcon:
                           Icons.picture_as_pdf,
                           color: Colors.red,
                         ),

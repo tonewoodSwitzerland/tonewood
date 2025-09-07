@@ -1817,22 +1817,20 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value, {IconData? icon, String? iconName}) {
+  Widget _buildDetailRow(String label, String value, {IconData? icon, required String iconName}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          if (icon != null || iconName != null) ...[
-            iconName != null
-                ? getAdaptiveIcon(
+          getAdaptiveIcon(
               iconName: iconName,
               defaultIcon: icon ?? Icons.info,
               size: 18,
               color: Colors.grey[600],
-            )
-                : Icon(icon, size: 18, color: Colors.grey[600]),
+            ),
+
             const SizedBox(width: 8),
-          ],
+
           Expanded(
             flex: 2,
             child: Text(

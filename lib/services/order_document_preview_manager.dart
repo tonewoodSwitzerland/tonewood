@@ -2,6 +2,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:tonewood/services/swiss_rounding.dart';
 import '../components/order_model.dart';
 import 'pdf_generators/quote_generator.dart';
 import 'pdf_generators/invoice_generator.dart';
@@ -130,39 +131,7 @@ class OrderDocumentPreviewManager {
       return null;
     }
   }
-  static Future<Map<String, bool>> _loadRoundingSettings() async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('general_data')
-          .doc('currency_settings')
-          .get();
 
-      if (doc.exists && doc.data()!.containsKey('rounding_settings')) {
-        final settings = doc.data()!['rounding_settings'] as Map<String, dynamic>;
-        return {
-          'CHF': settings['CHF'] ?? true,
-          'EUR': settings['EUR'] ?? false,
-          'USD': settings['USD'] ?? false,
-        };
-      }
-
-      // Fallback zu Standard-Einstellungen
-      print('Keine Rundungseinstellungen in Firebase gefunden, verwende Standard-Werte');
-      return {
-        'CHF': true,  // Standard: CHF wird gerundet
-        'EUR': false,
-        'USD': false,
-      };
-    } catch (e) {
-      print('Fehler beim Laden der Rundungseinstellungen: $e');
-      // Fallback zu Standard-Einstellungen
-      return {
-        'CHF': true,
-        'EUR': false,
-        'USD': false,
-      };
-    }
-  }
   // Preview für Angebot
   static Future<void> _showQuotePreview(
       BuildContext context,
@@ -176,7 +145,7 @@ class OrderDocumentPreviewManager {
 
       // Lade Versandkosten aus Order-Metadaten
       final shippingCosts = metadata['shippingCosts'] ?? {};
-      final roundingSettings = await _loadRoundingSettings();
+      final roundingSettings = await SwissRounding.loadRoundingSettings();
       final currency = metadata['currency'] ?? 'CHF';
       final exchangeRates = Map<String, double>.from(metadata['exchangeRates'] ?? {'CHF': 1.0});
       final costCenterCode = orderData['costCenter']?['code'] ?? '00000';
@@ -265,6 +234,7 @@ class OrderDocumentPreviewManager {
 
       // HIER RUFST DU DIE METHODE AUF:
       final invoiceSettings = await _loadOrderInvoiceSettings(order.id);
+      final roundingSettings = await SwissRounding.loadRoundingSettings();
       print('InvoiceSettings loaded: $invoiceSettings');
 
       print('Calling InvoiceGenerator.generateInvoicePdf...');
@@ -286,6 +256,7 @@ class OrderDocumentPreviewManager {
         taxOption: metadata['taxOption'] ?? 0,
         vatRate: (metadata['vatRate'] ?? 8.1).toDouble(),
         downPaymentSettings: invoiceSettings,
+        roundingSettings: roundingSettings,
       );
 
       print('PDF generated successfully');

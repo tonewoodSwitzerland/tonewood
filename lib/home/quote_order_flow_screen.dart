@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../components/order_service.dart';
+import '../components/quote_model.dart';
 import '../components/quote_service.dart';
 import '../services/document_selection_manager.dart';
 import '../services/additional_text_manager.dart';
@@ -8,7 +9,14 @@ import '../services/shipping_costs_manager.dart';
 import '../services/icon_helper.dart';
 
 class QuoteOrderFlowScreen extends StatefulWidget {
-  const QuoteOrderFlowScreen({Key? key}) : super(key: key);
+  final String? editingQuoteId;  // NEU
+  final String? editingQuoteNumber;  // NEU
+
+  const QuoteOrderFlowScreen({
+    Key? key,
+    this.editingQuoteId,
+    this.editingQuoteNumber,
+  }) : super(key: key);
 
   @override
   State<QuoteOrderFlowScreen> createState() => _QuoteOrderFlowScreenState();
@@ -571,32 +579,50 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
       }
 
       if (_isQuoteOnly) {
-        // Nur Angebot erstellen mit Reservierungen
-        final quote = await QuoteService.createQuote(
-          customerData: data['customer'],
-          costCenter: data['costCenter'],
-          fair: data['fair'],
-          items: data['items'],
-          calculations: data['calculations'],
-          metadata: data['metadata'],
-          createReservations: true, // Produkte reservieren
-        );
+        Quote quote;
+
+        // NEU: Prüfe ob wir im Edit-Modus sind
+        if (widget.editingQuoteId != null && widget.editingQuoteNumber != null) {
+          // Update existierendes Angebot
+          quote = await QuoteService.updateQuote(
+            widget.editingQuoteId!,
+            widget.editingQuoteNumber!,
+            customerData: data['customer'],
+            costCenter: data['costCenter'],
+            fair: data['fair'],
+            items: data['items'],
+            calculations: data['calculations'],
+            metadata: data['metadata'],
+          );
+        } else {
+          // Erstelle neues Angebot
+          quote = await QuoteService.createQuote(
+            customerData: data['customer'],
+            costCenter: data['costCenter'],
+            fair: data['fair'],
+            items: data['items'],
+            calculations: data['calculations'],
+            metadata: data['metadata'],
+            createReservations: true, // Produkte reservieren
+          );
+        }
 
         await _clearTemporaryData();
 
         if (mounted) {
           Navigator.pop(context);
           _showSuccessDialog(
-            'Angebot erstellt',
-            'Angebotsnummer: ${quote.quoteNumber}\n\n'
-                'Die Produkte wurden reserviert.',
+            widget.editingQuoteId != null ? 'Angebot aktualisiert' : 'Angebot erstellt',
+            widget.editingQuoteId != null
+                ? 'Angebotsnummer: ${quote.quoteNumber}\n\nDas Angebot wurde erfolgreich aktualisiert und das PDF neu generiert.'
+                : 'Angebotsnummer: ${quote.quoteNumber}\n\nDie Produkte wurden reserviert.',
             quote.id,
           );
         }
       } else {
         // Angebot + Auftrag + gewählte Dokumente erstellen
 
-        // 1. Erstelle Angebot (ohne Reservierungen)
+        // 1. Erstelle Angebot (ohne Reservierungen, da direkt verkauft)
         final quote = await QuoteService.createQuote(
           customerData: data['customer'],
           costCenter: data['costCenter'],
@@ -638,8 +664,8 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
           _showSuccessDialog(
             'Auftrag erfolgreich erstellt',
             'Auftragsnummer: ${order.orderNumber}\n'
-                'Angebotsnummer: ${quote.quoteNumber}\n\n',
-                // '${createdDocuments.length} Dokumente wurden erstellt.',
+                'Angebotsnummer: ${quote.quoteNumber}\n\n'
+                '${createdDocuments.length} Dokumente wurden erstellt.',
             order.id,
           );
         }
@@ -649,10 +675,11 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
         _showErrorDialog(e.toString());
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
-
   Future<Map<String, dynamic>?> _loadTransactionData() async {
     try {
       // Kunde
@@ -845,8 +872,17 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
     double total = netAmount;
 
     if (taxOption == 0) { // Standard
-      vatAmount = netAmount * (vatRate / 100);
-      total = netAmount + vatAmount;
+      // NEU: Erst Nettobetrag auf 2 Nachkommastellen runden
+      final netAmountRounded = double.parse(netAmount.toStringAsFixed(2));
+
+      // NEU: MwSt berechnen und auf 2 Nachkommastellen runden
+      vatAmount = double.parse((netAmountRounded * (vatRate / 100)).toStringAsFixed(2));
+
+      // NEU: Total ist Summe der gerundeten Beträge
+      total = netAmountRounded + vatAmount;
+    } else {
+      // Bei anderen Steueroptionen auch auf 2 Nachkommastellen runden
+      total = double.parse(netAmount.toStringAsFixed(2));
     }
 
     return {

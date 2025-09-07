@@ -195,7 +195,7 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Paket löschen'),
-        content: Text('Möchten Sie das Paket "$packageName" wirklich löschen?'),
+        content: Text('Möchtest du das Paket "$packageName" wirklich löschen?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),

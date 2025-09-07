@@ -249,28 +249,7 @@ class StartScreenState extends State<StartScreen> {
     );
   }
 
-  Widget _buildFeedbackButton() {
-    return Expanded(
-      flex: 3,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 0,0,0),
-        child: Container(
-          alignment: Alignment.centerLeft, // Richtet den Inhalt links aus
-          child: GestureDetector(
-            child: getAdaptiveIcon(
-              iconName: 'comment',
-              defaultIcon: Icons.comment,
-            ),
-            onLongPress: () => _adminPanel(user.uid),
-            onDoubleTap: () => _feedbackPanel(user.uid),
-            onTap: () => _showFeedbackDialog(),
-          ),
-        ),
-      ),
-    );
-  }
 
-  // Aktualisiere die _buildLogo Methode, um sie anklickbar zu machen:
 
   Widget _buildLogo() {
     print(kIsWeb);
@@ -373,25 +352,6 @@ class StartScreenState extends State<StartScreen> {
     }
   }
 
-  void _feedbackPanel(String userId) {
-    if (userId == "0Twdd2EtJGcymHCA31GY6moAmU33") {
-      showDialog(
-        useRootNavigator: false,
-        context: context,
-        builder: (BuildContext context) => CustomDialogBoxCrew(
-          key: UniqueKey(),
-          title: "feedback".tr,
-          descriptions: SizedBox(
-            height: 0.7 * AppSizes.h,
-            child: GestureDetector(
-              onTap: () {},
-              child: FeedbackList(key: UniqueKey()),
-            ),
-          ),
-        ),
-      );
-    }
-  }
 
   void _showSettingsPanel2() {
     showDialog(

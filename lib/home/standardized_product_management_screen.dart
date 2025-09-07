@@ -700,7 +700,7 @@ class StandardizedProductManagementScreenState extends State<StandardizedProduct
       builder: (context) => AlertDialog(
         title: const Text('Standardprodukt löschen'),
         content: Text(
-          'Möchten Sie das Produkt "${product.articleNumber} - ${product.productName}" wirklich löschen?',
+          'Möchtest du das Produkt "${product.articleNumber} - ${product.productName}" wirklich löschen?',
         ),
         actions: [
           TextButton(

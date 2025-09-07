@@ -16,7 +16,7 @@ class RoundwoodStatsCard extends StatelessWidget {
     required this.icon,
     this.cardColor,
     this.trend,
-    this.iconName,
+    required this.iconName,
     this.hasActiveIndicator = true,
   }) : super(key: key);
 
@@ -44,20 +44,13 @@ class RoundwoodStatsCard extends StatelessWidget {
                 color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: iconName != null
-                  ? getAdaptiveIcon(
+              child: getAdaptiveIcon(
                 iconName: iconName!,
                 defaultIcon: icon is IconData ? icon : Icons.analytics,
                 color: color,
                 size: 24,
               )
-                  : icon is IconData
-                  ? Icon(
-                icon,
-                color: color,
-                size: 24,
-              )
-                  : icon, // Direct use if already a Widget
+
             ),
             const SizedBox(height: 16),
             Text(

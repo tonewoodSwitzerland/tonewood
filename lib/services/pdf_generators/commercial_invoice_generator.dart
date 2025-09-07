@@ -159,6 +159,10 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                     // Dienstleistungstabelle nur wenn Dienstleistungen vorhanden
                     if (serviceItems.isNotEmpty)
                       _buildServiceTable(serviceItems, currency, exchangeRates, language),
+
+                    _buildTotalsSection(items, currency, exchangeRates, language, calculations),
+
+
                   ],
                 ),
               ),
@@ -659,7 +663,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         decoration: pw.BoxDecoration(color: PdfColors.blueGrey50),
         children: [
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Service' : 'Dienstleistung', 10),
+              language == 'EN' ? 'Service' : 'Dienstleistung', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Description' : 'Beschreibung', 8),
           BasePdfGenerator.buildHeaderCell(
@@ -668,10 +672,13 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               language == 'EN' ? 'Unit' : 'Einh', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Price/U' : 'Preis/E', 8, align: pw.TextAlign.right),
-          BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Curr' : 'Wä', 8),
+          // BasePdfGenerator.buildHeaderCell(language == 'EN' ? 'Curr' : 'Wä', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Total' : 'Betrag', 8, align: pw.TextAlign.right),
+          BasePdfGenerator.buildHeaderCell(
+              language == 'EN' ? 'Disc.' : 'Rab.', 8, align: pw.TextAlign.right),
+          BasePdfGenerator.buildHeaderCell(
+              language == 'EN' ? 'Net Total' : 'Netto Gesamt', 8, align: pw.TextAlign.right),
         ],
       ),
     );
@@ -682,7 +689,24 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     for (final service in serviceItems) {
       final quantity = (service['quantity'] as num? ?? 0).toDouble();
       final pricePerUnit = (service['price_per_unit'] as num? ?? 0).toDouble();
-      final total = quantity * pricePerUnit;
+
+// Rabatt-Berechnung
+      final discount = service['discount'] as Map<String, dynamic>?;
+      final totalBeforeDiscount = quantity * pricePerUnit;
+
+      double discountAmount = 0.0;
+      if (discount != null) {
+        final percentage = (discount['percentage'] as num? ?? 0).toDouble();
+        final absolute = (discount['absolute'] as num? ?? 0).toDouble();
+
+        if (percentage > 0) {
+          discountAmount = totalBeforeDiscount * (percentage / 100);
+        } else if (absolute > 0) {
+          discountAmount = absolute;
+        }
+      }
+
+      final total = totalBeforeDiscount - discountAmount;
       totalAmount += total;
 
       rows.add(
@@ -691,39 +715,71 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 service['name'] ?? 'Unbenannte Dienstleistung',
-                style:  pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+                style:  pw.TextStyle(fontSize: 6, fontWeight: pw.FontWeight.bold),
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 service['description'] ?? '',
-                style: const pw.TextStyle(fontSize: 7),
+                style: const pw.TextStyle(fontSize: 6),
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 quantity.toStringAsFixed(0),
-                style: const pw.TextStyle(fontSize: 8),
+                style: const pw.TextStyle(fontSize: 6),
                 textAlign: pw.TextAlign.right,
               ),
             ),
             BasePdfGenerator.buildContentCell(
-              pw.Text('Stk', style: const pw.TextStyle(fontSize: 8)),
+              pw.Text('Stk', style: const pw.TextStyle(fontSize: 6)),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 BasePdfGenerator.formatCurrency(pricePerUnit, currency, exchangeRates),
-                style: const pw.TextStyle(fontSize: 8),
+                style: const pw.TextStyle(fontSize: 6),
                 textAlign: pw.TextAlign.right,
               ),
             ),
+            // BasePdfGenerator.buildContentCell(
+            //   pw.Text(currency, style: const pw.TextStyle(fontSize: 6)),
+            // ),
+            // Gesamtpreis vor Rabatt
             BasePdfGenerator.buildContentCell(
-              pw.Text(currency, style: const pw.TextStyle(fontSize: 8)),
+              pw.Text(
+                BasePdfGenerator.formatCurrency(totalBeforeDiscount, currency, exchangeRates),
+                style: const pw.TextStyle(fontSize: 6),
+                textAlign: pw.TextAlign.right,
+              ),
+            ),
+// Rabatt-Spalte
+            BasePdfGenerator.buildContentCell(
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  if (discount != null && (discount['percentage'] as num? ?? 0) > 0)
+                    pw.Text(
+                      '${discount['percentage'].toStringAsFixed(2)}%',
+                      style: const pw.TextStyle(fontSize: 6),
+                      textAlign: pw.TextAlign.right,
+                    ),
+                  if (discount != null && (discount['absolute'] as num? ?? 0) > 0)
+                    pw.Text(
+                      BasePdfGenerator.formatCurrency(
+                          (discount['absolute'] as num).toDouble(),
+                          currency,
+                          exchangeRates
+                      ),
+                      style: const pw.TextStyle(fontSize: 6),
+                      textAlign: pw.TextAlign.right,
+                    ),
+                ],
+              ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 BasePdfGenerator.formatCurrency(total, currency, exchangeRates),
-                style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+                style: const pw.TextStyle(fontSize: 6),
                 textAlign: pw.TextAlign.right,
               ),
             ),
@@ -744,15 +800,15 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
               language == 'EN' ? 'Services Total' : 'Dienstleistungen Gesamt',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 6),
             ),
           ),
-          ...List.generate(5, (index) => pw.SizedBox()),
+          ...List.generate(6, (index) => pw.SizedBox()),
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
               BasePdfGenerator.formatCurrency(totalAmount, currency, exchangeRates),
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 6),
               textAlign: pw.TextAlign.right,
             ),
           ),
@@ -767,7 +823,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         pw.Text(
           language == 'EN' ? 'Services' : 'Dienstleistungen',
           style: pw.TextStyle(
-            fontSize: 12,
+            fontSize: 10,
             fontWeight: pw.FontWeight.bold,
             color: PdfColors.blueGrey800,
           ),
@@ -781,8 +837,10 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             2: const pw.FlexColumnWidth(1),    // Anzahl
             3: const pw.FlexColumnWidth(1),    // Einheit
             4: const pw.FlexColumnWidth(2),    // Preis/E
-            5: const pw.FlexColumnWidth(1),    // Währung
-            6: const pw.FlexColumnWidth(2),    // Betrag
+           // 5: const pw.FlexColumnWidth(1),    // Währung
+            5: const pw.FlexColumnWidth(2),    // Betrag
+            6: const pw.FlexColumnWidth(1.5),  // Rabatt (NEU)
+            7: const pw.FlexColumnWidth(2),    // Netto Gesamt (NEU)
           },
           children: rows,
         ),
@@ -826,10 +884,13 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               language == 'EN' ? 'Unit' : 'Einh', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Price/U' : 'Preis/E', 8, align: pw.TextAlign.right),
-          BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Curr' : 'Wä', 8),
+          // BasePdfGenerator.buildHeaderCell(language == 'EN' ? 'Curr' : 'Wä', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Total' : 'Betrag', 8, align: pw.TextAlign.right),
+          BasePdfGenerator.buildHeaderCell(
+              language == 'EN' ? 'Disc.' : 'Rab.', 8, align: pw.TextAlign.right),
+          BasePdfGenerator.buildHeaderCell(
+              language == 'EN' ? 'Net Total' : 'Netto Gesamt', 8, align: pw.TextAlign.right),
         ],
       ),
     );
@@ -883,7 +944,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               ),
             ),
             // Leere Zellen
-            ...List.generate(5, (index) => pw.SizedBox(height: 16)),
+            ...List.generate(4, (index) => pw.SizedBox(height: 16)),
             // Zwischensumme m³
             // Im Zolltarifnummer-Header:
             pw.Padding(
@@ -921,7 +982,23 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             ? proformaValue.toDouble()
             : (item['price_per_unit'] as num? ?? 0).toDouble();
 
-        final itemTotal = quantity * pricePerUnit;
+        // Rabatt-Berechnung
+        final discount = item['discount'] as Map<String, dynamic>?;
+        final totalBeforeDiscount = quantity * pricePerUnit;
+
+        double discountAmount = 0.0;
+        if (discount != null && !isGratisartikel) { // Kein Rabatt auf Gratisartikel
+          final percentage = (discount['percentage'] as num? ?? 0).toDouble();
+          final absolute = (discount['absolute'] as num? ?? 0).toDouble();
+
+          if (percentage > 0) {
+            discountAmount = totalBeforeDiscount * (percentage / 100);
+          } else if (absolute > 0) {
+            discountAmount = absolute;
+          }
+        }
+
+        final itemTotal = totalBeforeDiscount - discountAmount;
         final volumeM3 = (item['volume_m3'] as double? ?? 0.0);
 
         String unit = item['unit'] ?? '';
@@ -977,13 +1054,46 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                   textAlign: pw.TextAlign.right,
                 ),
               ),
+              // BasePdfGenerator.buildContentCell(pw.Text(currency, style: const pw.TextStyle(fontSize: 6)),),
               BasePdfGenerator.buildContentCell(
-                pw.Text(currency, style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(
+                  BasePdfGenerator.formatCurrency(totalBeforeDiscount, currency, exchangeRates),
+                  style: const pw.TextStyle(fontSize: 6),
+                  textAlign: pw.TextAlign.right,
+                ),
               ),
+              // NEU: Rabatt-Spalte
+              BasePdfGenerator.buildContentCell(
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    if (discount != null && (discount['percentage'] as num? ?? 0) > 0)
+                      pw.Text(
+                        '${discount['percentage'].toStringAsFixed(2)}%',
+                        style: const pw.TextStyle(fontSize: 6),
+                        textAlign: pw.TextAlign.right,
+                      ),
+                    if (discount != null && (discount['absolute'] as num? ?? 0) > 0)
+                      pw.Text(
+                        BasePdfGenerator.formatCurrency(
+                            (discount['absolute'] as num).toDouble(),
+                            currency,
+                            exchangeRates
+                        ),
+                        style: const pw.TextStyle(fontSize: 6),
+                        textAlign: pw.TextAlign.right,
+                      ),
+                  ],
+                ),
+              ),
+              // NEU: Netto Gesamtpreis
               BasePdfGenerator.buildContentCell(
                 pw.Text(
                   BasePdfGenerator.formatCurrency(itemTotal, currency, exchangeRates),
-                  style: const pw.TextStyle(fontSize: 6),
+                  style: pw.TextStyle(
+                    fontSize: 6,
+                    fontWeight: discountAmount > 0 ? pw.FontWeight.bold : null,
+                  ),
                   textAlign: pw.TextAlign.right,
                 ),
               ),
@@ -1012,7 +1122,23 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             ? proformaValue.toDouble()
             : (item['price_per_unit'] as num? ?? 0).toDouble();
 
-        totalAmount += quantity * pricePerUnit;
+        // Rabatt-Berechnung
+        final discount = item['discount'] as Map<String, dynamic>?;
+        final totalBeforeDiscount = quantity * pricePerUnit;
+
+        double discountAmount = 0.0;
+        if (discount != null && !isGratisartikel) {
+          final percentage = (discount['percentage'] as num? ?? 0).toDouble();
+          final absolute = (discount['absolute'] as num? ?? 0).toDouble();
+
+          if (percentage > 0) {
+            discountAmount = totalBeforeDiscount * (percentage / 100);
+          } else if (absolute > 0) {
+            discountAmount = absolute;
+          }
+        }
+
+        totalAmount += totalBeforeDiscount - discountAmount;
       }
     });
 
@@ -1043,7 +1169,9 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               textAlign: pw.TextAlign.right,
             ),
           ),
+          ...List.generate(1, (index) => pw.SizedBox()),
           // Total Gewicht
+
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
@@ -1098,7 +1226,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               textAlign: pw.TextAlign.right,
             ),
           ),
-          ...List.generate(4, (index) => pw.SizedBox()),
+          ...List.generate(6, (index) => pw.SizedBox()),
         ],
       ),
     );
@@ -1120,7 +1248,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
             ),
           ),
-          ...List.generate(6, (index) => pw.SizedBox()),
+          ...List.generate(5, (index) => pw.SizedBox()),
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
@@ -1129,6 +1257,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               textAlign: pw.TextAlign.right,
             ),
           ),
+          ...List.generate(1, (index) => pw.SizedBox()),
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
@@ -1137,7 +1266,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               textAlign: pw.TextAlign.right,
             ),
           ),
-          ...List.generate(4, (index) => pw.SizedBox()),
+          ...List.generate(5, (index) => pw.SizedBox()),
         ],
       ),
     );
@@ -1156,15 +1285,134 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         7: const pw.FlexColumnWidth(1.5),    // Menge
         8: const pw.FlexColumnWidth(1.5),    // Einh
         9: const pw.FlexColumnWidth(2.0),   // Preis/E
-        10: const pw.FlexColumnWidth(1.0),   // Wä
-        11: const pw.FlexColumnWidth(2.0),   // Betrag
+      //  10: const pw.FlexColumnWidth(1.0),   // Wä
+        10: const pw.FlexColumnWidth(2.0),   // Betrag
+        11: const pw.FlexColumnWidth(1.5),   // Rabatt (NEU)
+        12: const pw.FlexColumnWidth(2.0),   // Netto Gesamt (NEU)
       },
       children: rows,
     );
   }
 
 
+  static pw.Widget _buildTotalsSection(
+      List<Map<String, dynamic>> items,
+      String currency,
+      Map<String, double> exchangeRates,
+      String language,
+      Map<String, dynamic>? calculations) {
 
+    double subtotal = 0.0;
+    double actualItemDiscounts = 0.0;
+
+    // Separate Produkte und Dienstleistungen
+    final productItems = items.where((item) => item['is_service'] != true).toList();
+    final serviceItems = items.where((item) => item['is_service'] == true).toList();
+
+    // Berechne Subtotal und Einzelrabatte
+    for (final item in items) {
+      final isGratisartikel = item['is_gratisartikel'] == true;
+      final quantity = (item['quantity'] as num? ?? 0).toDouble();
+      final pricePerUnit = isGratisartikel
+          ? 0.0
+          : (item['price_per_unit'] as num? ?? 0).toDouble();
+
+      subtotal += quantity * pricePerUnit;
+
+      if (!isGratisartikel) {
+        final itemDiscountAmount = (item['discount_amount'] as num? ?? 0).toDouble();
+        actualItemDiscounts += itemDiscountAmount;
+      }
+    }
+
+    final itemDiscounts = actualItemDiscounts > 0 ? actualItemDiscounts : (calculations?['item_discounts'] ?? 0.0);
+    final totalDiscountAmount = calculations?['total_discount_amount'] ?? 0.0;
+    final afterDiscounts = subtotal - itemDiscounts - totalDiscountAmount;
+
+    // Anzeigen wenn: Gesamtrabatt vorhanden ODER sowohl Produkte als auch Dienstleistungen
+    final hasProducts = productItems.isNotEmpty;
+    final hasServices = serviceItems.isNotEmpty;
+    final hasTotalDiscount = totalDiscountAmount > 0;
+
+    if (!hasTotalDiscount && !(hasProducts && hasServices)) {
+      return pw.SizedBox.shrink();
+    }
+
+    return pw.Container(
+      alignment: pw.Alignment.centerRight,
+      margin: const pw.EdgeInsets.only(top: 10),
+      child: pw.Container(
+        width: 400,
+        padding: const pw.EdgeInsets.all(10),
+        decoration: pw.BoxDecoration(
+          color: PdfColors.blueGrey50,
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+        ),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            // Subtotal
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                    language == 'EN' ? 'Subtotal' : 'Subtotal',
+                    style: const pw.TextStyle(fontSize: 9)
+                ),
+                pw.Text(
+                    BasePdfGenerator.formatCurrency(subtotal - itemDiscounts, currency, exchangeRates),
+                    style: const pw.TextStyle(fontSize: 9)
+                ),
+              ],
+            ),
+
+            // Gesamtrabatt (nur wenn vorhanden)
+            if (totalDiscountAmount > 0) ...[
+              pw.SizedBox(height: 4),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Row(
+                    children: [
+                      pw.Text(
+                          language == 'EN' ? 'Total discount' : 'Gesamtrabatt',
+                          style: const pw.TextStyle(fontSize: 9)
+                      ),
+                      pw.Text(
+                          ' (${(totalDiscountAmount/subtotal*100).toStringAsFixed(2)}%)',
+                          style: const pw.TextStyle(fontSize: 9)
+                      ),
+                    ],
+                  ),
+                  pw.Text(
+                      '- ${BasePdfGenerator.formatCurrency(totalDiscountAmount, currency, exchangeRates)}',
+                      style: const pw.TextStyle(fontSize: 9)
+                  ),
+                ],
+              ),
+            ],
+
+            pw.Divider(color: PdfColors.blueGrey300),
+
+            // Total
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                    language == 'EN' ? 'Total' : 'Gesamt',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)
+                ),
+                pw.Text(
+                    BasePdfGenerator.formatCurrency(afterDiscounts, currency, exchangeRates),
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   // Kopiere _addInlineAdditionalTexts aus QuoteGenerator
   static Future<pw.Widget> _addInlineAdditionalTexts(String language) async {

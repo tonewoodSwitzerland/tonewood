@@ -301,7 +301,7 @@ class SalesOverview extends StatelessWidget {
         String? subtitle,
         double? trend,
         required Color color,
-        String? iconName, // Neuer Parameter für adaptiveIcon
+        required iconName,
         String? trendUpIconName, // Für den Trend-Up-Icon
         String? trendDownIconName, // Für den Trend-Down-Icon
       }) {
@@ -324,13 +324,11 @@ class SalesOverview extends StatelessWidget {
                     ),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: iconName != null
-                      ? getAdaptiveIcon(
+                  child:getAdaptiveIcon(
                     iconName: iconName,
                     defaultIcon: icon,
                     color: color,
                   )
-                      : Icon(icon, color: color),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

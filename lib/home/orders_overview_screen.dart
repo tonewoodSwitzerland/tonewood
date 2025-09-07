@@ -1788,6 +1788,40 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
             ),
             const SizedBox(height: 16),
 
+            // Warnung wenn Auftrag storniert ist
+            if (order.status == OrderStatus.cancelled)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      getAdaptiveIcon(
+                        iconName: 'info',
+                        defaultIcon: Icons.info,
+                        size: 20,
+                        color: Colors.red[700],
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Stornierte Aufträge können nicht mehr geändert werden',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.red[700],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
             // Scrollbare Liste für viele Einträge
             Flexible(
               child: SingleChildScrollView(
@@ -1815,31 +1849,65 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    ...OrderStatus.values.map((status) => ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-                      dense: true,
-                      leading: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: _getStatusColor(status),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      title: Text(status.displayName, style: const TextStyle(fontSize: 14)),
-                      trailing: order.status == status
-                          ?
-                      getAdaptiveIcon(
-                          iconName: 'check_circle',
-                          defaultIcon:
+                    ...OrderStatus.values.map((status) {
+                      // Prüfe ob der Status änderbar ist
+                      final isOrderCancelled = order.status == OrderStatus.cancelled;
+                      final isCancelledStatus = status == OrderStatus.cancelled;
+                      final isSelectable = !isOrderCancelled && !isCancelledStatus;
 
-                          Icons.check_circle, color: _getStatusColor(status), size: 20)
-                          : null,
-                      onTap: () async {
-                        Navigator.pop(context);
-                        await _updateOrderStatusValue(order, status);
-                      },
-                    )),
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                        dense: true,
+                        leading: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: _getStatusColor(status),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        title: Text(
+                          status.displayName,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isSelectable
+                                ? null
+                                : Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                          ),
+                        ),
+                        subtitle: !isSelectable && !isOrderCancelled && isCancelledStatus
+                            ? Text(
+                          'Verwende den Stornieren-Button',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                          ),
+                        )
+                            : null,
+                        trailing: order.status == status
+                            ? getAdaptiveIcon(
+                            iconName: 'check_circle',
+                            defaultIcon: Icons.check_circle,
+                            color: _getStatusColor(status),
+                            size: 20
+                        )
+                            : !isSelectable
+                            ? getAdaptiveIcon(
+                          iconName: 'lock',
+                          defaultIcon: Icons.lock,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                          size: 16,
+                        )
+                            : null,
+                        enabled: isSelectable,
+                        onTap: isSelectable
+                            ? () async {
+                          Navigator.pop(context);
+                          await _updateOrderStatusValue(order, status);
+                        }
+                            : null,
+                      );
+                    }),
 
                     const Divider(height: 24, indent: 20, endIndent: 20),
 
@@ -1864,27 +1932,53 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    ...PaymentStatus.values.map((status) => ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-                      dense: true,
-                      leading:
+                    ...PaymentStatus.values.map((status) {
+                      final isOrderCancelled = order.status == OrderStatus.cancelled;
 
-                      getAdaptiveIcon(
-                          iconName: 'euro',
-                          defaultIcon:Icons.euro, size: 16, color: _getPaymentStatusColor(status)),
-                      title: Text(status.displayName, style: const TextStyle(fontSize: 14)),
-                      trailing: order.paymentStatus == status
-                          ?
-
-                      getAdaptiveIcon(
-                          iconName: 'check_circle',
-                          defaultIcon:Icons.check_circle, color: _getPaymentStatusColor(status), size: 20)
-                          : null,
-                      onTap: () async {
-                        Navigator.pop(context);
-                        await _updatePaymentStatusValue(order, status);
-                      },
-                    )),
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                        dense: true,
+                        leading: getAdaptiveIcon(
+                            iconName: 'euro',
+                            defaultIcon:Icons.euro,
+                            size: 16,
+                            color: isOrderCancelled
+                                ? Theme.of(context).colorScheme.onSurface.withOpacity(0.4)
+                                : _getPaymentStatusColor(status)),
+                        title: Text(
+                          status.displayName,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isOrderCancelled
+                                ? Theme.of(context).colorScheme.onSurface.withOpacity(0.4)
+                                : null,
+                          ),
+                        ),
+                        trailing: order.paymentStatus == status
+                            ? getAdaptiveIcon(
+                            iconName: 'check_circle',
+                            defaultIcon:Icons.check_circle,
+                            color: isOrderCancelled
+                                ? Theme.of(context).colorScheme.onSurface.withOpacity(0.4)
+                                : _getPaymentStatusColor(status),
+                            size: 20)
+                            : isOrderCancelled
+                            ? getAdaptiveIcon(
+                          iconName: 'lock',
+                          defaultIcon: Icons.lock,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                          size: 16,
+                        )
+                            : null,
+                        enabled: !isOrderCancelled,
+                        onTap: !isOrderCancelled
+                            ? () async {
+                          Navigator.pop(context);
+                          await _updatePaymentStatusValue(order, status);
+                        }
+                            : null,
+                      );
+                    }),
                   ],
                 ),
               ),
@@ -2435,7 +2529,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                           ),
                           child: Row(
                             children: [
-                              Icon(
+                              getAdaptiveIcon(iconName: 'picture_as_pdf', defaultIcon:
                                 Icons.picture_as_pdf,
                                 size: 20,
                                 color: order.documents.containsKey('veranlagungsverfuegung_pdf')
@@ -2700,8 +2794,8 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                             color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(
-                            Icons.cloud_upload_outlined,
+                          child:  getAdaptiveIcon(iconName: 'cloud_upload', defaultIcon:
+                            Icons.cloud_upload,
                             size: 32,
                             color: Theme.of(context).colorScheme.primary,
                           ),
@@ -3536,7 +3630,46 @@ Zahlungsstatus: ${order.paymentStatus.displayName}
           ),
         );
 
+
+
+
+
         final batch = FirebaseFirestore.instance.batch();
+
+        // NEU: Wenn der Auftrag aus einem Angebot erstellt wurde,
+        // markiere das Angebot als "nachträglich storniert"
+        if (order.quoteId != null && order.quoteId!.isNotEmpty) {
+          final quoteRef = FirebaseFirestore.instance
+              .collection('quotes')
+              .doc(order.quoteId);
+
+          batch.update(quoteRef, {
+            'isOrderCancelled': true,
+            'orderCancelledAt': FieldValue.serverTimestamp(),
+          });
+
+
+          print("quoteID:${order.quoteId}");
+          // Erstelle auch einen History-Eintrag im Angebot
+          final quoteHistoryRef = FirebaseFirestore.instance
+              .collection('quotes')
+              .doc(order.quoteId)
+              .collection('history')
+              .doc();
+          final user = FirebaseAuth.instance.currentUser;
+          batch.set(quoteHistoryRef, {
+            'timestamp': FieldValue.serverTimestamp(),
+            'user_id': user?.uid ?? 'unknown',
+            'user_email': user?.email ?? 'Unknown User',
+            'user_name': user?.email ?? 'Unknown',
+            'action': 'order_cancelled',
+            'order_number': order.orderNumber,
+            'reason': 'Zugehöriger Auftrag wurde storniert',
+          });
+        }
+
+
+
 
         for (final item in order.items) {
           if (item['is_manual_product'] == true) continue;
@@ -3578,6 +3711,11 @@ Zahlungsstatus: ${order.paymentStatus.displayName}
             },
           });
         }
+
+
+
+
+
 
         final orderRef = FirebaseFirestore.instance
             .collection('orders')

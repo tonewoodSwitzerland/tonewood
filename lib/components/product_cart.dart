@@ -17,8 +17,8 @@ class ProductCard extends StatelessWidget {
     if (productData == null) {
       return Center(
         child: Column(
-          children: const [
-            Icon(
+          children: [
+            getAdaptiveIcon(iconName: 'error', defaultIcon:
               Icons.error,
               size: 64,
               color: Colors.orange,
@@ -110,10 +110,10 @@ class ProductCard extends StatelessWidget {
               ),
             ),
           ),
-          Icon(
-            value ? Icons.check_circle : Icons.cancel,
-            color: value ? Colors.green : Colors.red,
-          ),
+
+          value? getAdaptiveIcon(iconName: 'check_circle', defaultIcon:Icons.check_circle,color: Colors.green):
+          getAdaptiveIcon(iconName: 'cancel', defaultIcon:Icons.cancel,color: Colors.red),
+
           const SizedBox(width: 8),
           Text(value ? 'Ja' : 'Nein'),
         ],

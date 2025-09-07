@@ -1327,15 +1327,9 @@ class GeneralDataScreenState extends State<GeneralDataScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
           child: Row(
             children: [
-              // Prüft, ob iconData ein IconData oder ein Widget ist
-              iconData is IconData
-                  ? Icon(
-                iconData,
-                color: isSelected ? primaryAppColor : Colors.grey.shade600,
-                size: 24,
-              )
-                  : iconData, // Wenn es bereits ein Widget ist (z.B. von getAdaptiveIcon)
-              const SizedBox(width: 16),
+
+              iconData,
+              SizedBox(width: 16),
               Text(
                 title,
                 style: TextStyle(

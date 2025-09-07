@@ -65,7 +65,7 @@ class _CountryDropdownState extends State<CountryDropdown> {
         fillColor: Colors.grey.shade50,
         prefixIcon: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Icon(
+          child: getAdaptiveIcon(iconName: 'flag', defaultIcon:
             Icons.flag,
             color: Colors.grey.shade600,
           ),

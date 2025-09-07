@@ -116,11 +116,12 @@ class RoundwoodListState extends State<RoundwoodList> {
                           tooltip: _roundwoodSortAscending
                               ? 'Stammnummer aufsteigend'
                               : 'Stammnummer absteigend',
-                          icon: Icon(
-                            _roundwoodSortAscending
-                                ? Icons.arrow_upward
-                                : Icons.arrow_downward,
-                          ),
+                          icon:
+                          _roundwoodSortAscending
+                              ?
+                          getAdaptiveIcon(iconName: 'arrow_upward', defaultIcon:Icons.arrow_upward):
+                          getAdaptiveIcon(iconName: 'arrow_downward', defaultIcon:Icons.arrow_downward),
+
                           onPressed: () {
                             setState(() {
                               _roundwoodSortAscending = !_roundwoodSortAscending;

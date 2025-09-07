@@ -789,6 +789,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
             _buildSpecialFilterCard(
               title: 'Mondholz',
               icon: Icons.nightlight,
+              iconName: 'nightlight',
               color: Colors.purple,
               isSelected: tempFilter.isMoonwood ?? false,
               onTap: () {
@@ -802,6 +803,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
             _buildSpecialFilterCard(
               title: 'Haselfichte',
               icon: Icons.nature,
+              iconName: 'nature',
               color: Colors.teal,
               isSelected: tempFilter.isHaselfichte ?? false,
               onTap: () {
@@ -815,6 +817,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
             _buildSpecialFilterCard(
               title: 'Thermisch behandelt',
               icon: Icons.whatshot,
+              iconName: 'whatshot',
               color: Colors.orange,
               isSelected: tempFilter.isThermallyTreated ?? false,
               onTap: () {
@@ -828,6 +831,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
             _buildSpecialFilterCard(
               title: 'FSC-100',
               icon: Icons.eco,
+              iconName: 'eco',
               color: Colors.green,
               isSelected: tempFilter.isFSC ?? false,
               onTap: () {
@@ -847,6 +851,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
   Widget _buildSpecialFilterCard({
     required String title,
     required IconData icon,
+    required String iconName,
     required Color color,
     required bool isSelected,
     required VoidCallback onTap,
@@ -868,7 +873,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              Icon(
+              getAdaptiveIcon(iconName: iconName, defaultIcon:
                 icon,
                 color: isSelected ? color : Colors.grey,
                 size: 20,
@@ -884,7 +889,7 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
                 ),
               ),
               if (isSelected)
-                Icon(
+                getAdaptiveIcon(iconName: 'check_circle', defaultIcon:
                   Icons.check_circle,
                   color: color,
                   size: 20,
@@ -903,8 +908,9 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
       child: Chip(
         avatar: CircleAvatar(
           backgroundColor: Colors.transparent,
-          child: Icon(
-            _getSpecialIcon(label),
+          child: getAdaptiveIcon(
+            iconName: _getSpecialIconName(label),
+            defaultIcon: _getSpecialIcon(label),
             color: color,
             size: 16,
           ),
@@ -914,12 +920,33 @@ class ProductionFilterDialogState extends State<ProductionFilterDialog> {
           label,
           style: TextStyle(color: color),
         ),
-        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
+        deleteIcon: getAdaptiveIcon(
+          iconName: 'close',
+          defaultIcon: Icons.close,
+          size: 18,
+        ),
         onDeleted: onRemove,
       ),
     );
   }
 
+// Neue Hilfsmethode für Icon-Namen
+  String _getSpecialIconName(String label) {
+    switch (label) {
+      case 'Mondholz':
+        return 'nightlight';
+      case 'Haselfichte':
+        return 'nature';
+      case 'Thermisch behandelt':
+        return 'whatshot';
+      case 'FSC-100':
+        return 'eco';
+      default:
+        return 'star';
+    }
+  }
+
+// Bestehende Methode bleibt als Fallback
   IconData _getSpecialIcon(String label) {
     switch (label) {
       case 'Mondholz':

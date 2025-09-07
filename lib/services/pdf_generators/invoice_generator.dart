@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import '../document_selection_manager.dart';
 import 'base_pdf_generator.dart';
 import '../additional_text_manager.dart';
-
+import '../swiss_rounding.dart';
 class InvoiceGenerator extends BasePdfGenerator {
   // Erstelle eine neue Rechnungs-Nummer
   static Future<String> getNextInvoiceNumber() async {
@@ -42,6 +42,7 @@ class InvoiceGenerator extends BasePdfGenerator {
   }
 
   static Future<Uint8List> generateInvoicePdf({
+    required Map<String, bool> roundingSettings,
     required List<Map<String, dynamic>> items,
     required Map<String, dynamic> customerData,
     required Map<String, dynamic>? fairData,
@@ -163,7 +164,7 @@ class InvoiceGenerator extends BasePdfGenerator {
                     ),  pw.SizedBox(height: 10),
                     // Summen-Bereich
                     _buildTotalsSection(items, currency, exchangeRates, language, shippingCosts, calculations, taxOption, vatRate, downPaymentSettings, // NEU
-                      paymentDue,),
+                      paymentDue,roundingSettings),
 
                     pw.SizedBox(height: 10),
                     // Zahlungshinweis
@@ -257,7 +258,7 @@ class InvoiceGenerator extends BasePdfGenerator {
         decoration: pw.BoxDecoration(color: PdfColors.blueGrey50),
         children: [
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Service' : 'Dienstleistung', 10),
+              language == 'EN' ? 'Service' : 'Dienstleistung', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Description' : 'Beschreibung', 8),
           BasePdfGenerator.buildHeaderCell(
@@ -266,6 +267,10 @@ class InvoiceGenerator extends BasePdfGenerator {
               language == 'EN' ? 'Price/U' : 'Preis/E', 8, align: pw.TextAlign.right),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Total' : 'Gesamt', 8, align: pw.TextAlign.right),
+          BasePdfGenerator.buildHeaderCell(
+              language == 'EN' ? 'Disc.' : 'Rab.', 8, align: pw.TextAlign.right),
+          BasePdfGenerator.buildHeaderCell(
+              language == 'EN' ? 'Net Total' : 'Netto Gesamt', 8, align: pw.TextAlign.right),
         ],
       ),
     );
@@ -274,7 +279,24 @@ class InvoiceGenerator extends BasePdfGenerator {
     for (final service in serviceItems) {
       final quantity = (service['quantity'] as num? ?? 0).toDouble();
       final pricePerUnit = (service['price_per_unit'] as num? ?? 0).toDouble();
-      final total = quantity * pricePerUnit;
+      // Nachher:
+// Rabatt-Berechnung
+      final discount = service['discount'] as Map<String, dynamic>?;
+      final totalBeforeDiscount = quantity * pricePerUnit;
+
+      double discountAmount = 0.0;
+      if (discount != null) {
+        final percentage = (discount['percentage'] as num? ?? 0).toDouble();
+        final absolute = (discount['absolute'] as num? ?? 0).toDouble();
+
+        if (percentage > 0) {
+          discountAmount = totalBeforeDiscount * (percentage / 100);
+        } else if (absolute > 0) {
+          discountAmount = absolute;
+        }
+      }
+
+      final total = totalBeforeDiscount - discountAmount;
 
       rows.add(
         pw.TableRow(
@@ -282,33 +304,68 @@ class InvoiceGenerator extends BasePdfGenerator {
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 service['name'] ?? 'Unbenannte Dienstleistung',
-                style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+                style: const pw.TextStyle(fontSize: 6),
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 service['description'] ?? '',
-                style: const pw.TextStyle(fontSize: 7),
+                style: const pw.TextStyle(fontSize: 6),
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 quantity.toStringAsFixed(0),
-                style: const pw.TextStyle(fontSize: 8),
+                style: const pw.TextStyle(fontSize: 6),
                 textAlign: pw.TextAlign.right,
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 BasePdfGenerator.formatCurrency(pricePerUnit, currency, exchangeRates),
-                style: const pw.TextStyle(fontSize: 8),
+                style: const pw.TextStyle(fontSize: 6),
                 textAlign: pw.TextAlign.right,
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
+                BasePdfGenerator.formatCurrency(totalBeforeDiscount, currency, exchangeRates),
+                style: const pw.TextStyle(fontSize: 6),
+                textAlign: pw.TextAlign.right,
+              ),
+            ),
+// NEU: Rabatt-Spalte
+            BasePdfGenerator.buildContentCell(
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  if (discount != null && (discount['percentage'] as num? ?? 0) > 0)
+                    pw.Text(
+                      '${discount['percentage'].toStringAsFixed(2)}%',
+                      style: const pw.TextStyle(fontSize: 6),
+                      textAlign: pw.TextAlign.right,
+                    ),
+                  if (discount != null && (discount['absolute'] as num? ?? 0) > 0)
+                    pw.Text(
+                      BasePdfGenerator.formatCurrency(
+                          (discount['absolute'] as num).toDouble(),
+                          currency,
+                          exchangeRates
+                      ),
+                      style: const pw.TextStyle(fontSize: 6),
+                      textAlign: pw.TextAlign.right,
+                    ),
+                ],
+              ),
+            ),
+// NEU: Netto Gesamtpreis
+            BasePdfGenerator.buildContentCell(
+              pw.Text(
                 BasePdfGenerator.formatCurrency(total, currency, exchangeRates),
-                style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+                style: pw.TextStyle(
+                  fontSize: 8,
+                  fontWeight: discountAmount > 0 ? pw.FontWeight.bold : null,
+                ),
                 textAlign: pw.TextAlign.right,
               ),
             ),
@@ -330,6 +387,8 @@ class InvoiceGenerator extends BasePdfGenerator {
             2: const pw.FlexColumnWidth(1),    // Anzahl
             3: const pw.FlexColumnWidth(2),    // Preis/E
             4: const pw.FlexColumnWidth(2),    // Gesamt
+            5: const pw.FlexColumnWidth(1.5),  // Rabatt (NEU)
+            6: const pw.FlexColumnWidth(2),    // Netto Gesamt (NEU)
           },
           children: rows,
         ),
@@ -677,7 +736,8 @@ class InvoiceGenerator extends BasePdfGenerator {
       int taxOption,
       double vatRate,
       Map<String, dynamic>? downPaymentSettings, // NEU: Parameter hinzufügen
-      DateTime? paymentDue, // NEU: Parameter für Zahlungsziel
+      DateTime? paymentDue,
+      Map<String, bool> roundingSettings,
       ) {
     double subtotal = 0.0;
     double actualItemDiscounts = 0.0;
@@ -744,13 +804,59 @@ class InvoiceGenerator extends BasePdfGenerator {
     print("$taxOption");
 
     // MwSt-Berechnung basierend auf taxOption
+    // MwSt-Berechnung basierend auf taxOption
     double vatAmount = 0.0;
     double totalWithTax = netAmount;
 
     if (taxOption == 0) { // TaxOption.standard
-      vatAmount = netAmount * (vatRate / 100);
-      totalWithTax = netAmount + vatAmount;
+      // NEU: Erst Nettobetrag auf 2 Nachkommastellen runden
+      final netAmountRounded = double.parse(netAmount.toStringAsFixed(2));
+
+      // NEU: MwSt berechnen und auf 2 Nachkommastellen runden
+      vatAmount = double.parse((netAmountRounded * (vatRate / 100)).toStringAsFixed(2));
+
+      // NEU: Total ist Summe der gerundeten Beträge
+      totalWithTax = netAmountRounded + vatAmount;
+    } else {
+      // Bei anderen Steueroptionen auch auf 2 Nachkommastellen runden
+      totalWithTax = double.parse(netAmount.toStringAsFixed(2));
     }
+    // NEU: Rundung anwenden
+    double displayTotal = totalWithTax;
+    double roundingDifference = 0.0;
+
+// Prüfe ob Rundung für diese Währung aktiviert ist
+    if (roundingSettings[currency] == true) {
+      // Konvertiere in Anzeigewährung
+      if (currency != 'CHF') {
+        displayTotal = totalWithTax * (exchangeRates[currency] ?? 1.0);
+      }
+
+      // Wende Rundung an
+      final roundedDisplayTotal = SwissRounding.round(
+        displayTotal,
+        currency: currency,
+        roundingSettings: roundingSettings,
+      );
+
+      roundingDifference = roundedDisplayTotal - displayTotal;
+
+      // Setze den gerundeten Wert
+      displayTotal = roundedDisplayTotal;
+
+      // Konvertiere zurück in CHF falls nötig
+      if (currency != 'CHF') {
+        totalWithTax = displayTotal / (exchangeRates[currency] ?? 1.0);
+      } else {
+        totalWithTax = displayTotal;
+      }
+    }
+
+
+
+
+
+
     double totalInTargetCurrency = totalWithTax;
     if (currency != 'CHF') {
       totalInTargetCurrency = totalWithTax * (exchangeRates[currency] ?? 1.0);
@@ -1009,6 +1115,31 @@ class InvoiceGenerator extends BasePdfGenerator {
                   pw.Text(BasePdfGenerator.formatCurrency(vatAmount, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
+
+              pw.SizedBox(height: 4),
+              // Rundungsdifferenz anzeigen (falls vorhanden)
+              if (roundingSettings[currency] == true && roundingDifference != 0) ...[
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      language == 'EN' ? 'Rounding' : 'Rundung',
+                      style: const pw.TextStyle(fontSize: 9),
+                    ),
+                    pw.Text(
+                      roundingDifference > 0
+                          ? '+${BasePdfGenerator.formatCurrency(roundingDifference.abs() / exchangeRates[currency]!, currency, exchangeRates)}'
+                          : '-${BasePdfGenerator.formatCurrency(roundingDifference.abs() / exchangeRates[currency]!, currency, exchangeRates)}',
+                      style: pw.TextStyle(
+                        fontSize: 9,
+                        color: roundingDifference > 0 ? PdfColors.green700 : PdfColors.orange800,
+                      ),
+                    ),
+                  ],
+                ),
+                pw.SizedBox(height: 4),
+              ],
+
 
               pw.Divider(color: PdfColors.blueGrey300),
 
@@ -1397,7 +1528,7 @@ class InvoiceGenerator extends BasePdfGenerator {
                   pw.Text(
                     'Zusätzliche Informationen',
                     style: pw.TextStyle(
-                      fontSize: 12,
+                      fontSize: 10,
                       fontWeight: pw.FontWeight.bold,
                       color: PdfColors.blueGrey800,
                     ),

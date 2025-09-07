@@ -59,7 +59,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
         controller: _tabController,
         children: [
           RoundwoodScreen(isDesktopLayout: isDesktopLayout),
-          SalesScreen(isDesktopLayout: isDesktopLayout),
+          SalesScreenAnalytics(isDesktopLayout: isDesktopLayout),
           ProductionScreen(isDesktopLayout: isDesktopLayout),
         ],
       ),

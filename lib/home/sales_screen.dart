@@ -60,7 +60,14 @@ enum TaxOption {
 }
 
 class SalesScreen extends StatefulWidget {
-const SalesScreen({Key? key}) : super(key: key);
+  final Map<String, dynamic>? quoteToCopy;
+  final Map<String, dynamic>? quoteToEdit;
+
+  const SalesScreen({
+    Key? key,
+    this.quoteToCopy,
+    this.quoteToEdit,
+  }) : super(key: key);
 
 @override
 SalesScreenState createState() => SalesScreenState();
@@ -79,6 +86,10 @@ class SalesScreenState extends State<SalesScreen> {
   final ValueNotifier<double> _vatRateNotifier = ValueNotifier<double>(8.1);
 // In der SalesScreenState Klasse, bei den anderen State-Variablen:
   bool _isDetailExpanded = false;
+
+
+  String? _editingQuoteId;
+  String? _editingQuoteNumber;
 
   final ValueNotifier<Fair?> _selectedFairNotifier = ValueNotifier<Fair?>(null);
 bool isLoading = false;
@@ -124,6 +135,16 @@ Stream<QuerySnapshot> get _basketStream => FirebaseFirestore.instance
     _loadTemporaryDiscounts();
     _loadTemporaryTax();
     _loadDocumentLanguage();
+
+    if (widget.quoteToCopy != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadQuoteData(widget.quoteToCopy!);
+      });
+    } else if (widget.quoteToEdit != null) {  // NEU
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadQuoteDataForEdit(widget.quoteToEdit!);
+      });
+    }
   }
 
 @override
@@ -299,8 +320,532 @@ return Scaffold(
       .snapshots()
       .map((snapshot) => snapshot.data() ?? {});
 
+// Neue Methode ohne setState
+  Future<void> _clearAllDataWithoutUIUpdate() async {
+    try {
+      final batch = FirebaseFirestore.instance.batch();
 
+      // 1. Warenkorb leeren
+      final basketDocs = await FirebaseFirestore.instance
+          .collection('temporary_basket')
+          .get();
+      for (var doc in basketDocs.docs) {
+        batch.delete(doc.reference);
+      }
 
+      // 2. Kunde löschen
+      final customerDocs = await FirebaseFirestore.instance
+          .collection('temporary_customer')
+          .get();
+      for (var doc in customerDocs.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // 3. Kostenstelle löschen
+      final costCenterDocs = await FirebaseFirestore.instance
+          .collection('temporary_cost_center')
+          .get();
+      for (var doc in costCenterDocs.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // 4. Messe löschen
+      final fairDocs = await FirebaseFirestore.instance
+          .collection('temporary_fair')
+          .get();
+      for (var doc in fairDocs.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // 5. Rabatte löschen
+      final discountDoc = await FirebaseFirestore.instance
+          .collection('temporary_discounts')
+          .doc('total_discount')
+          .get();
+      if (discountDoc.exists) {
+        batch.delete(discountDoc.reference);
+      }
+
+      await batch.commit();
+
+      // 6. Weitere Löschungen
+      await DocumentSelectionManager.clearSelection();
+      await AdditionalTextsManager.clearAdditionalTexts();
+      await ShippingCostsManager.clearShippingCosts();
+      await _clearTemporaryTax();
+
+      // Lokale States zurücksetzen (ohne setState)
+      selectedProduct = null;
+      _totalDiscount = const Discount();
+      _itemDiscounts = {};
+      _documentSelectionCompleteNotifier.value = false;
+      _additionalTextsSelectedNotifier.value = false;
+      _shippingCostsConfiguredNotifier.value = false;
+      _documentLanguageNotifier.value = 'DE';
+    } catch (e) {
+      print('Fehler beim Löschen der temporären Daten: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> _loadQuoteDataForEdit(Map<String, dynamic> quoteData) async {
+    try {
+      setState(() => isLoading = true);
+
+      // Store quote info for later update
+      _editingQuoteId = quoteData['quoteId'];
+      _editingQuoteNumber = quoteData['quoteNumber'];
+
+      // Erst alles löschen (ohne UI Update)
+      await _clearAllDataWithoutUIUpdate();
+
+      // Kurze Verzögerung
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // 1. Kunde laden
+      final customerData = quoteData['customer'] as Map<String, dynamic>;
+      final customerId = customerData['id'] ??
+          customerData['customerId'] ??
+          FirebaseFirestore.instance.collection('customers').doc().id;
+
+      final customer = Customer.fromMap(customerData, customerId);
+      await _saveTemporaryCustomer(customer);
+      _documentLanguageNotifier.value = customer.language ?? 'DE';
+
+      // 2. Kostenstelle laden
+      if (quoteData['costCenter'] != null) {
+        final costCenterData = quoteData['costCenter'] as Map<String, dynamic>;
+        final costCenterId = costCenterData['id'] ??
+            costCenterData['costCenterId'] ??
+            FirebaseFirestore.instance.collection('cost_centers').doc().id;
+
+        final costCenter = CostCenter.fromMap(costCenterData, costCenterId);
+        await _saveTemporaryCostCenter(costCenter);
+      }
+
+      // 3. Währung und Steuereinstellungen
+      _currencyNotifier.value = quoteData['currency'] ?? 'CHF';
+      _exchangeRatesNotifier.value = Map<String, double>.from(quoteData['exchangeRates'] ?? {
+        'CHF': 1.0,
+        'EUR': 0.96,
+        'USD': 1.08,
+      });
+      _vatRateNotifier.value = (quoteData['vatRate'] as num?)?.toDouble() ?? 8.1;
+      _taxOptionNotifier.value = TaxOption.values[quoteData['taxOption'] ?? 0];
+      await _saveCurrencySettings();
+      await _saveTemporaryTax();
+
+      // 4. Zusatztexte laden
+      if (quoteData['additionalTexts'] != null) {
+        await AdditionalTextsManager.saveAdditionalTexts(
+            Map<String, dynamic>.from(quoteData['additionalTexts'])
+        );
+        _additionalTextsSelectedNotifier.value = true;
+      }
+
+      // 5. Artikel laden - OHNE Verfügbarkeitsprüfung bei Edit
+      final items = List<Map<String, dynamic>>.from(quoteData['items'] ?? []);
+      int successfulItems = 0;
+
+      for (final item in items) {
+        try {
+          // Bei Edit-Modus: Keine Verfügbarkeitsprüfung, da bereits reserviert
+          await FirebaseFirestore.instance.collection('temporary_basket').add({
+            ...item,
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+          successfulItems++;
+        } catch (e) {
+          print('Fehler beim Hinzufügen des Artikels: $e');
+        }
+      }
+
+      // 6. Versandkosten laden
+      if (quoteData['shippingCosts'] != null) {
+        await ShippingCostsManager.saveShippingCostsFromData(
+            Map<String, dynamic>.from(quoteData['shippingCosts'])
+        );
+        _shippingCostsConfiguredNotifier.value = true;
+      }
+
+      setState(() => isLoading = false);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Angebot ${_editingQuoteNumber} zur Bearbeitung geladen'),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Laden: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadQuoteData(Map<String, dynamic> quoteData) async {
+    try {
+      setState(() => isLoading = true);
+      // Erst alles löschen (ohne UI Update)
+      await _clearAllDataWithoutUIUpdate();
+
+      // Kurze Verzögerung
+      await Future.delayed(const Duration(milliseconds: 100));
+      // 1. Kunde laden
+      final customerData = quoteData['customer'] as Map<String, dynamic>;
+      // Extrahiere die ID aus den customerData oder generiere eine neue
+      final customerId = customerData['id'] ??
+          customerData['customerId'] ??
+          FirebaseFirestore.instance.collection('customers').doc().id;
+
+      final customer = Customer.fromMap(customerData, customerId);
+      await _saveTemporaryCustomer(customer);
+      _documentLanguageNotifier.value = customer.language ?? 'DE';
+
+      // 2. Kostenstelle laden
+      if (quoteData['costCenter'] != null) {
+        final costCenterData = quoteData['costCenter'] as Map<String, dynamic>;
+        // Extrahiere die ID aus den costCenterData oder generiere eine neue
+        final costCenterId = costCenterData['id'] ??
+            costCenterData['costCenterId'] ??
+            FirebaseFirestore.instance.collection('cost_centers').doc().id;
+
+        final costCenter = CostCenter.fromMap(costCenterData, costCenterId);
+        await _saveTemporaryCostCenter(costCenter);
+      }
+
+      // 3. Währung und Steuereinstellungen
+      _currencyNotifier.value = quoteData['currency'] ?? 'CHF';
+      _exchangeRatesNotifier.value = Map<String, double>.from(quoteData['exchangeRates'] ?? {
+        'CHF': 1.0,
+        'EUR': 0.96,
+        'USD': 1.08,
+      });
+      _vatRateNotifier.value = (quoteData['vatRate'] as num?)?.toDouble() ?? 8.1;
+      _taxOptionNotifier.value = TaxOption.values[quoteData['taxOption'] ?? 0];
+      await _saveCurrencySettings();
+      await _saveTemporaryTax();
+
+      // 4. Zusatztexte laden
+      if (quoteData['additionalTexts'] != null) {
+        await AdditionalTextsManager.saveAdditionalTexts(
+            Map<String, dynamic>.from(quoteData['additionalTexts'])
+        );
+        _additionalTextsSelectedNotifier.value = true;
+      }
+
+      // 5. Artikel laden mit Verfügbarkeitsprüfung
+      final items = List<Map<String, dynamic>>.from(quoteData['items'] ?? []);
+      int successfulItems = 0;
+      List<String> failedItems = [];
+
+      for (final item in items) {
+        try {
+          // Dienstleistung
+          if (item['is_service'] == true) {
+            // Prüfe ob Dienstleistung noch existiert
+            final serviceId = item['service_id'];
+            if (serviceId != null) {
+              final serviceDoc = await FirebaseFirestore.instance
+                  .collection('services')
+                  .doc(serviceId)
+                  .get();
+
+              if (serviceDoc.exists) {
+                // Füge Dienstleistung hinzu
+                await FirebaseFirestore.instance.collection('temporary_basket').add({
+                  ...item,
+                  'timestamp': FieldValue.serverTimestamp(),
+                  // Aktualisiere Preis falls nötig
+                  'price_per_unit': serviceDoc.data()!['price'] ?? item['price_per_unit'],
+                });
+                successfulItems++;
+              } else {
+                failedItems.add('${item['name']} (Dienstleistung nicht mehr verfügbar)');
+              }
+            }
+          }
+          // Manuelles Produkt
+          else if (item['is_manual_product'] == true) {
+            // Manuelle Produkte können immer hinzugefügt werden
+            await FirebaseFirestore.instance.collection('temporary_basket').add({
+              ...item,
+              'timestamp': FieldValue.serverTimestamp(),
+            });
+            successfulItems++;
+          }
+          // Normales Lagerprodukt
+          else {
+            final productId = item['product_id'];
+            if (productId != null) {
+              // Prüfe Verfügbarkeit
+              final inventoryDoc = await FirebaseFirestore.instance
+                  .collection('inventory')
+                  .doc(productId)
+                  .get();
+
+              if (inventoryDoc.exists) {
+                final availableQuantity = await _getAvailableQuantity(productId);
+                final requestedQuantity = (item['quantity'] as num).toDouble();
+
+                if (availableQuantity >= requestedQuantity) {
+                  // Produkt mit aktualisierten Daten hinzufügen
+                  final productData = inventoryDoc.data()!;
+                  await FirebaseFirestore.instance.collection('temporary_basket').add({
+                    ...item,
+                    'timestamp': FieldValue.serverTimestamp(),
+                    // Aktualisiere Produktdaten falls sich etwas geändert hat
+                    'product_name': productData['product_name'] ?? item['product_name'],
+                    'price_per_unit': productData['price_CHF'] ?? item['price_per_unit'],
+                    'instrument_name': productData['instrument_name'] ?? item['instrument_name'],
+                    'part_name': productData['part_name'] ?? item['part_name'],
+                    'wood_name': productData['wood_name'] ?? item['wood_name'],
+                    'quality_name': productData['quality_name'] ?? item['quality_name'],
+                  });
+                  successfulItems++;
+                } else if (availableQuantity > 0) {
+                  // Teilweise verfügbar
+                  failedItems.add(
+                      '${item['product_name']} - Benötigt: ${requestedQuantity.toStringAsFixed(2)} ${item['unit']}, Verfügbar: ${availableQuantity.toStringAsFixed(2)} ${item['unit']}'
+                  );
+                } else {
+                  // Nicht verfügbar
+                  failedItems.add(
+                      '${item['product_name']} - Nicht mehr auf Lager (Benötigt: ${requestedQuantity.toStringAsFixed(2)} ${item['unit']})'
+                  );
+                }
+              } else {
+                failedItems.add('${item['product_name']} - Produkt nicht mehr im Sortiment');
+              }
+            }
+          }
+        } catch (e) {
+          failedItems.add('${item['product_name'] ?? item['name'] ?? 'Unbekannt'} (Fehler: $e)');
+        }
+      }
+// 6. Versandkosten laden (falls vorhanden)
+      if (quoteData['shippingCosts'] != null) {
+        await ShippingCostsManager.saveShippingCostsFromData(
+            Map<String, dynamic>.from(quoteData['shippingCosts'])
+        );
+        _shippingCostsConfiguredNotifier.value = true;
+      }
+      setState(() => isLoading = false);
+
+      // Zeige Ergebnis
+      if (mounted) {
+        if (failedItems.isNotEmpty) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Row(
+                children: [
+                  getAdaptiveIcon(
+                    iconName: failedItems.length == items.length ? 'error' : 'warning',
+                    defaultIcon: failedItems.length == items.length ? Icons.error : Icons.warning,
+                    color: failedItems.length == items.length ? Colors.red : Colors.orange,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      failedItems.length == items.length
+                          ? 'Keine Artikel übernommen'
+                          : 'Angebot teilweise kopiert',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                ],
+              ),
+              content: Container(
+                width: double.maxFinite,
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.5,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (successfulItems > 0) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.green.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            getAdaptiveIcon(
+                              iconName: 'check_circle',
+                              defaultIcon: Icons.check_circle,
+                              color: Colors.green,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '$successfulItems von ${items.length} Artikeln übernommen',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    if (failedItems.isNotEmpty) ...[
+                      const Text(
+                        'Folgende Artikel konnten nicht übernommen werden:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      Flexible(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.red.withOpacity(0.2),
+                            ),
+                          ),
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            padding: const EdgeInsets.all(12),
+                            itemCount: failedItems.length,
+                            separatorBuilder: (context, index) => const Divider(height: 16),
+                            itemBuilder: (context, index) {
+                              final item = failedItems[index];
+                              final parts = item.split(' - ');
+
+                              return Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: getAdaptiveIcon(
+                                      iconName: 'error_outline',
+                                      defaultIcon: Icons.error_outline,
+                                      color: Colors.red,
+                                      size: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          parts[0],
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                        if (parts.length > 1) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            parts.sublist(1).join(' - '),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey[700],
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+
+                    if (failedItems.length == items.length) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            getAdaptiveIcon(
+                              iconName: 'info',
+                              defaultIcon: Icons.info,
+                              color: Colors.blue,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Kunde und Einstellungen wurden trotzdem übernommen.',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Verstanden'),
+                ),
+              ],
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  getAdaptiveIcon(
+                    iconName: 'check_circle',
+                    defaultIcon: Icons.check_circle,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 8),
+                  Text('Alle $successfulItems Artikel erfolgreich übernommen'),
+                ],
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() => isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Laden der Angebotsdaten: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
   // In sales_screen.dart, nach _saveTemporaryTax():
   Future<void> _saveDocumentLanguage() async {
     try {
@@ -4033,8 +4578,17 @@ return Scaffold(
                             double total = netWithShipping;
 
                             if (taxOption == TaxOption.standard) {
-                              vatAmount = netWithShipping * (_vatRate / 100);
-                              total = netWithShipping + vatAmount;
+                              // NEU: Erst Nettobetrag auf 2 Nachkommastellen runden
+                              final netAmountRounded = double.parse(netWithShipping.toStringAsFixed(2));
+
+                              // NEU: MwSt berechnen und auf 2 Nachkommastellen runden
+                              vatAmount = double.parse((netAmountRounded * (_vatRate / 100)).toStringAsFixed(2));
+
+                              // NEU: Total ist Summe der gerundeten Beträge
+                              total = netAmountRounded + vatAmount;
+                            } else {
+                              // Bei anderen Steueroptionen auch auf 2 Nachkommastellen runden
+                              total = double.parse(netWithShipping.toStringAsFixed(2));
                             }
 // NEU: 5er rundung anwenden
                             double displayTotal = total;
@@ -4726,7 +5280,6 @@ return Scaffold(
           .doc(shortBarcode)
           .get();
 
-      // FIX: Sichere Konvertierung zu double
       final currentStock = (inventoryDoc.data()?['quantity'] as num?)?.toDouble() ?? 0.0;
 
       // Temporär gebuchte Menge abrufen
@@ -4741,27 +5294,46 @@ return Scaffold(
       );
 
       // Reservierte Menge aus stock_movements abrufen
-      final reservationsDoc = await FirebaseFirestore.instance
+      var reservationsQuery = FirebaseFirestore.instance
           .collection('stock_movements')
           .where('productId', isEqualTo: shortBarcode)
           .where('type', isEqualTo: 'reservation')
-          .where('status', isEqualTo: 'reserved')
-          .get();
+          .where('status', isEqualTo: 'reserved');
 
-      final reservedFromMovements = reservationsDoc.docs.fold<double>(
-        0,
-            (sum, doc) => sum + (((doc.data()['quantity'] as num?)?.toDouble() ?? 0.0).abs()),
-      );
+      // NEU: Bei Edit-Modus, schließe eigene Reservierungen aus
+      if (_editingQuoteId != null) {
+        // Hole alle Reservierungen und filtere manuell
+        final allReservations = await reservationsQuery.get();
 
-      return currentStock - reservedQuantity - reservedFromMovements;
+        final reservedFromMovements = allReservations.docs.fold<double>(
+          0,
+              (sum, doc) {
+            final data = doc.data();
+            // Überspringe Reservierungen des aktuell bearbeiteten Angebots
+            if (data['quoteId'] == _editingQuoteId) {
+              return sum;
+            }
+            return sum + (((data['quantity'] as num?)?.toDouble() ?? 0.0).abs());
+          },
+        );
+
+        return currentStock - reservedQuantity - reservedFromMovements;
+      } else {
+        // Normaler Modus: Alle Reservierungen berücksichtigen
+        final reservationsDoc = await reservationsQuery.get();
+
+        final reservedFromMovements = reservationsDoc.docs.fold<double>(
+          0,
+              (sum, doc) => sum + (((doc.data()['quantity'] as num?)?.toDouble() ?? 0.0).abs()),
+        );
+
+        return currentStock - reservedQuantity - reservedFromMovements;
+      }
     } catch (e) {
       print('Fehler beim Abrufen der verfügbaren Menge: $e');
       return 0;
     }
   }
-
-// Ersetze die _showPriceEditDialog Methode in sales_screen.dart
-
   void _showPriceEditDialog(String basketItemId, Map<String, dynamic> itemData) {
     // Sicheres Konvertieren von int oder double nach double
     final double originalPrice = (itemData['price_per_unit'] as num).toDouble();
@@ -6755,7 +7327,10 @@ backgroundColor: Colors.red,
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => const QuoteOrderFlowScreen(),
+        builder: (context) =>  QuoteOrderFlowScreen(
+          editingQuoteId: _editingQuoteId,  // NEU
+          editingQuoteNumber: _editingQuoteNumber,  // NEU
+        ),
       ),
     );
   }
@@ -7860,10 +8435,19 @@ Widget _buildSelectedProductInfo() {
                           double vatAmount = 0.0;
                           double totalAmount = netAmount;
 
-                          // Steuerberechnung entsprechend der gewählten Steueroption
+// Steuerberechnung entsprechend der gewählten Steueroption
                           if (_taxOptionNotifier.value == TaxOption.standard) {
-                            vatAmount = netAmount * (_vatRate / 100);
-                            totalAmount = netAmount + vatAmount;
+                            // NEU: Erst Nettobetrag auf 2 Nachkommastellen runden
+                            final netAmountRounded = double.parse(netAmount.toStringAsFixed(2));
+
+                            // NEU: MwSt berechnen und auf 2 Nachkommastellen runden
+                            vatAmount = double.parse((netAmountRounded * (_vatRate / 100)).toStringAsFixed(2));
+
+                            // NEU: Total ist Summe der gerundeten Beträge
+                            totalAmount = netAmountRounded + vatAmount;
+                          } else {
+                            // NEU: Bei anderen Steueroptionen auch auf 2 Nachkommastellen runden
+                            totalAmount = double.parse(netAmount.toStringAsFixed(2));
                           }
 
                           void calculateTargetTotal() {

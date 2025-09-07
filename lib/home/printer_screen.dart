@@ -960,7 +960,7 @@ class PrinterScreenState extends State<PrinterScreen> {
     required String label,
     required bool isSelected,
     required VoidCallback onTap,
-    String? iconName, // Neuer Parameter für adaptiveIcon
+    required String iconName
   }) {
     return InkWell(
       onTap: onTap,
@@ -984,18 +984,13 @@ class PrinterScreenState extends State<PrinterScreen> {
         ),
         child: Column(
           children: [
-            iconName != null
-                ? getAdaptiveIcon(
+          getAdaptiveIcon(
               iconName: iconName,
               defaultIcon: icon,
               color: isSelected ? const Color(0xFF0F4A29) : Colors.grey[600],
               size: 24,
-            )
-                : Icon(
-              icon,
-              color: isSelected ? const Color(0xFF0F4A29) : Colors.grey[600],
-              size: 24,
             ),
+
             const SizedBox(height: 8),
             Text(
               label,
@@ -2360,7 +2355,9 @@ class PrinterScreenState extends State<PrinterScreen> {
                 ),
               ),
               child: isActive
-                  ? Icon(
+                  ?
+
+              getAdaptiveIcon(iconName: 'check', defaultIcon:
                 Icons.check,
                 size: 16,
                 color: Colors.white,

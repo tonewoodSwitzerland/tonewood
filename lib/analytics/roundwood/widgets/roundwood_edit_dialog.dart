@@ -88,7 +88,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                           color: const Color(0xFF0F4A29).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(
+                        child: getAdaptiveIcon(iconName: 'forest', defaultIcon:
                           Icons.forest,
                           color: Color(0xFF0F4A29),
                         ),
@@ -161,6 +161,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                         _buildDetailSection(
                           title: 'Identifikation',
                           icon: Icons.badge,
+                          iconName: 'badge',
                           content: Column(
                             children: [
                               _buildNumberInfo(),
@@ -176,6 +177,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                         _buildDetailSection(
                           title: 'Eigenschaften',
                           icon: Icons.category,
+                          iconName: 'category',
                           content: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -197,6 +199,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                         _buildDetailSection(
                           title: 'Zusätzliche Informationen',
                           icon: Icons.info,
+                          iconName: 'info',
                           content: Column(
                             children: [
                               _buildQualitySelection(),
@@ -264,6 +267,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
   Widget _buildDetailSection({
     required String title,
     required IconData icon,
+    required String iconName,
     required Widget content,
   }) {
     return Column(
@@ -271,7 +275,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
       children: [
         Row(
           children: [
-            Icon(icon, size: 20, color: const Color(0xFF0F4A29)),
+            getAdaptiveIcon(iconName: iconName, defaultIcon:icon, size: 20, color: const Color(0xFF0F4A29)),
             const SizedBox(width: 8),
             Text(
               title,
@@ -432,7 +436,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                       color: const Color(0xFF0F4A29).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(
+                    child: getAdaptiveIcon(iconName: 'assignment', defaultIcon:
                       Icons.assignment,
                       color: Color(0xFF0F4A29),
                     ),
@@ -677,7 +681,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                   value: data['code'],
                   child: Row(
                     children: [
-                      Icon(
+                      getAdaptiveIcon(iconName: 'star', defaultIcon:
                         Icons.star,
                         size: 16,
                         color: const Color(0xFF0F4A29),
@@ -885,7 +889,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
             ),
             filled: true,
             fillColor: Colors.white,
-            prefixIcon: const Icon(
+            prefixIcon: getAdaptiveIcon(iconName: 'straighten', defaultIcon:
               Icons.straighten,
               color: Color(0xFF0F4A29),
             ),
@@ -935,7 +939,7 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
                 color: Colors.red.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(
+              child: getAdaptiveIcon(iconName: 'warning', defaultIcon:
                 Icons.warning,
                 color: Colors.red,
               ),

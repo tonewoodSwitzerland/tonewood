@@ -394,7 +394,7 @@ class ProductionScreenState extends State<ProductionScreen> {
     required String label,
     required bool isSelected,
     required VoidCallback onTap,
-    String? iconName, // Neuer Parameter für adaptiveIcon
+    required String iconName,
   }) {
     return Expanded(
       child: InkWell(
@@ -422,18 +422,13 @@ class ProductionScreenState extends State<ProductionScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              iconName != null
-                  ? getAdaptiveIcon(
+              getAdaptiveIcon(
                 iconName: iconName,
                 defaultIcon: icon,
                 color: isSelected ? Color(0xFF0F4A29) : Colors.grey[600],
                 size: 18,
-              )
-                  : Icon(
-                icon,
-                color: isSelected ? Color(0xFF0F4A29) : Colors.grey[600],
-                size: 18,
               ),
+
               SizedBox(height: 4),
               Text(
                 label,

@@ -892,41 +892,6 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  // Widget _buildFilterCategory({
-  //   required IconData icon,
-  //   required String title,
-  //   required Widget child,
-  // }) {
-  //   return Column(
-  //     crossAxisAlignment: CrossAxisAlignment.start,
-  //     children: [
-  //       Row(
-  //         children: [
-  //           Container(
-  //             padding: const EdgeInsets.all(8),
-  //             decoration: BoxDecoration(
-  //               color: const Color(0xFF0F4A29).withOpacity(0.1),
-  //               borderRadius: BorderRadius.circular(8),
-  //             ),
-  //             child: Icon(icon, color: const Color(0xFF0F4A29)),
-  //           ),
-  //           const SizedBox(width: 12),
-  //           Text(
-  //             title,
-  //             style: const TextStyle(
-  //               fontSize: 16,
-  //               fontWeight: FontWeight.bold,
-  //               color: Color(0xFF0F4A29),
-  //             ),
-  //           ),
-  //         ],
-  //       ),
-  //       const SizedBox(height: 12),
-  //       child,
-  //     ],
-  //   );
-  // }
-
   Widget _buildMultiSelectDropdown({
     required String label,
     required List<QueryDocumentSnapshot> options,
@@ -1076,7 +1041,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
 
         if (activeFilters['customStartDate'] != null && activeFilters['customEndDate'] != null)
           Chip(
-            avatar: Icon(
+            avatar:
+
+            getAdaptiveIcon(iconName: 'date_range', defaultIcon:
               Icons.date_range,
               size: 18,
               color: Theme.of(context).colorScheme.primary,
@@ -1804,7 +1771,10 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                 ),
                 const Spacer(),
                 IconButton(
-                  icon: Icon(_roundwoodSortAscending ? Icons.arrow_upward : Icons.arrow_downward),
+                  icon:_roundwoodSortAscending ?
+                  getAdaptiveIcon(iconName: 'arrow_upward', defaultIcon:Icons.arrow_upward ):
+                  getAdaptiveIcon(iconName: 'arrow_downward', defaultIcon:Icons.arrow_downward),
+
                   tooltip: _roundwoodSortAscending
                       ? 'Stammnummer aufsteigend'
                       : 'Stammnummer absteigend',
@@ -1968,10 +1938,10 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
   List<Widget> _buildNavigationItems() {
     if (selectedMainSection == 'production') {
       return [
-        _buildNavItem('overview', 'Übersicht', Icons.dashboard),
-        _buildNavItem('special_wood', 'Spezialholz', Icons.forest),
-        _buildNavItem('efficiency', 'Effizienz', Icons.trending_up),
-        _buildNavItem('fsc', 'FSC', Icons.eco),
+        _buildNavItem('overview', 'Übersicht', Icons.dashboard,'dashboard'),
+        _buildNavItem('special_wood', 'Spezialholz', Icons.forest,'forest'),
+        _buildNavItem('efficiency', 'Effizienz', Icons.trending_up,'trending_up'),
+        _buildNavItem('fsc', 'FSC', Icons.eco,'eco'),
       ];
     }
     if (selectedMainSection == 'roundwood') {
@@ -1981,11 +1951,13 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
           'list',
           'Liste',
           Icons.format_list_bulleted,
+          'format_list_bulleted'
         ),
         _buildNavItem(
           'analysis',
           'Analyse',
           Icons.analytics,
+          'analytics',
         ),
       ];
     } else {
@@ -1995,32 +1967,37 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
           'overview',
           'Übersicht',
           Icons.dashboard,
+          'dashboard'
         ),
         _buildNavItem(
           'sales',
           'Verkäufe',
           Icons.point_of_sale,
+          'point_of_sale'
         ),
         _buildNavItem(
           'inventory',
           'Lagerbestand',
           Icons.inventory,
+          'inventory'
         ),
         _buildNavItem(
           'customers',
           'Kunden',
           Icons.people,
+          'people'
         ),
         _buildNavItem(
           'trends',
           'Trends',
           Icons.trending_up,
+          'trending_up'
         ),
       ];
     }
   }
 
-  Widget _buildNavItem(String id, String label, IconData icon) {
+  Widget _buildNavItem(String id, String label, IconData icon,String iconName) {
     final isSelected = selectedTab == id;
 
     return Padding(
@@ -2037,8 +2014,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                icon,
+              getAdaptiveIcon(iconName: iconName, defaultIcon:icon,
                 size: 20,
                 color: isSelected
                     ? Theme.of(context).colorScheme.primary
@@ -2188,8 +2164,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                           ),
                         ),
                         Icons.inventory,
+                        'inventory',
                         Theme.of(context).colorScheme.primary,
-                      iconName:   'inventory',
+
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -2204,8 +2181,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                           ),
                         ),
                         Icons.layers,
+                        'layers',
                         Theme.of(context).colorScheme.secondary,
-                        iconName:   'layers',
+
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -2370,8 +2348,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                     'Haselfichte',
                     '${stats['haselfichte_total']} Produkte',
                     Icons.park,
+                    'park',
                     Theme.of(context).colorScheme.secondary,
-                    iconName:   'park',
+
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -2380,8 +2359,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                     'Mondholz',
                     '${stats['moonwood_total']} Produkte',
                     Icons.nightlight,
+                    'nighlight',
                     Theme.of(context).colorScheme.tertiary,
-                    iconName:   'nighlight',
+
                   ),
                 ),
               ],
@@ -2450,8 +2430,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                       ),
                     ),
                     Icons.timer,
+                    'timer',
                     Theme.of(context).colorScheme.primary,
-                    iconName:   'timer',
+
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -2466,7 +2447,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                       ),
                     ),
                     Icons.layers,
-                    iconName:   'layers',
+                     'layers',
                     Theme.of(context).colorScheme.secondary,
                   ),
                 ),
@@ -2743,114 +2724,10 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-// KPI Card Builder für Produktionsanalysen
-  Widget _buildProductionKpiCard(String title, String value, String subtitle, IconData icon) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
 
-// Hilfsmethode für die Trend-Anzeige
-  Widget _buildTrendIndicator(double change) {
-    final isPositive = change >= 0;
-    final color = isPositive ? Colors.green : Colors.red;
-    final icon = isPositive ? Icons.trending_up : Icons.trending_down;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: color, size: 16),
-        const SizedBox(width: 4),
-        Text(
-          '${change.abs().toStringAsFixed(1)}%',
-          style: TextStyle(
-            color: color,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ],
-    );
-  }
 
-// Legend Builder für Charts
-  Widget _buildChartLegend(Map<String, Color> items) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: items.entries.map((entry) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(
-            children: [
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: entry.value,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white,
-                    width: 1,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                entry.key,
-                style: const TextStyle(fontSize: 12),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
+
 
   Widget _buildFSCAnalysis() {
     return StreamBuilder<Map<String, dynamic>>(
@@ -2868,8 +2745,9 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
               'FSC 100% Produkte',
               stats['fsc_total'].toString(),
               Icons.eco,
+              'eco',
               Theme.of(context).colorScheme.primary,
-              iconName:   'eco',
+
             ),
             const SizedBox(height: 24),
 
@@ -2988,6 +2866,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                     'Volumen',
                     '${totalVolume.toStringAsFixed(2)} m³',
                     Icons.straighten,
+                    'straighten',
                     Theme.of(context).colorScheme.primary,
                   ),
                   const SizedBox(width: 8),
@@ -2995,6 +2874,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                     'Holzlisten',
                     totalLogs.toString(),
                     Icons.forest,
+                    'forest',
                     Theme.of(context).colorScheme.secondary,
                   ),
                   const SizedBox(width: 8),
@@ -3002,6 +2882,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                     'Mondholz',
                     '${(moonwoodCount / totalLogs * 100).toStringAsFixed(1)}%',
                     Icons.nightlight,
+                    'nightlight',
                     Theme.of(context).colorScheme.tertiary,
                   ),
                 ],
@@ -3406,6 +3287,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
       String title,
       String value,
       IconData icon,
+      String iconName,
       Color color,
       ) {
     return Card(
@@ -3420,7 +3302,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
           children: [
             Row(
               children: [
-                Icon(icon, color: color, size: 16),
+                getAdaptiveIcon(iconName:iconName, defaultIcon:icon, color: color, size: 16),
                 const SizedBox(width: 8),
                 Text(
                   title,
@@ -3619,7 +3501,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                   },
                 ),
                 Icons.attach_money,
-                iconName:   'attach_money',
+                'attach_money',
                 colorScheme.primary,
                 subtitle: 'Gesamter Zeitraum',
               ),
@@ -3642,7 +3524,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                   },
                 ),
                 Icons.shopping_cart,
-                iconName:   'shopping_cart',
+                'shopping_cart',
 
                 colorScheme.secondary,
                 subtitle: 'Abgeschlossene Bestellungen',
@@ -3681,7 +3563,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                   },
                 ),
                 Icons.analytics,
-                iconName:   'analytics',
+                'analytics',
                 colorScheme.tertiary,
                 subtitle: 'Pro Bestellung',
               ),
@@ -3850,9 +3732,10 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
       String title,
       dynamic value,
       IconData icon,
+      String iconName,
       Color color,
       {String? subtitle,
-        String? iconName} // Neuer Parameter für adaptiveIcon
+        }
       ) {
     return Card(
       elevation: 0,
@@ -3887,14 +3770,12 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                     ),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: iconName != null
-                      ? getAdaptiveIcon(
+                  child: getAdaptiveIcon(
                     iconName: iconName,
                     defaultIcon: icon,
                     color: color,
                     size: 20,
                   )
-                      : Icon(icon, color: color, size: 20),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -3982,6 +3863,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                                 'Gesamt',
                                 items.length.toString(),
                                 Icons.inventory,
+                                'inventory',
                                 Colors.blue,
                               ),
                             ),
@@ -3991,6 +3873,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> {
                                 'Kritischer',
                                 lowStock.toString(),
                                 Icons.warning,
+                                'warning',
                                 Colors.orange,
                               ),
                             ),
@@ -4188,6 +4071,7 @@ ${data['wood_name']} - ${data['quality_name']}''',
                                 'Aktive Kunden',
                                 'Kommt noch',
                                 Icons.people,
+                                'pepole',
                                 Colors.blue,
                               ),
                             ),
@@ -4201,7 +4085,7 @@ ${data['wood_name']} - ${data['quality_name']}''',
                                   symbol: 'CHF',
                                 ).format(totalSales / snapshot.data!.docs.length),
                                  Icons.shopping_cart,
-                                iconName:   'shopping_cart',
+                                 'shopping_cart',
                     Colors.green,
                               ),
                             ),
@@ -4574,114 +4458,7 @@ ${fairData['orders']} Bestellungen, ${customers.length} Kunden''',
                     ),
                   ),
                   const SizedBox(height: 16),
-//                   StreamBuilder<QuerySnapshot>(
-//                     stream: _getSalesStream(),
-//                     builder: (context, snapshot) {
-//                       if (!snapshot.hasData) {
-//                         return const Center(child: CircularProgressIndicator());
-//                       }
-//
-//                       // Analysiere Produktverkäufe über Zeit
-//                       final productTrends = <String, List<Map<String, dynamic>>>{};
-//
-//                       for (var doc in snapshot.data!.docs) {
-//                         final data = doc.data() as Map<String, dynamic>;
-//                         final timestamp = (data['metadata']['timestamp'] as Timestamp).toDate();
-//                         final items = data['items'] as List;
-//
-//                         for (var item in items) {
-//                           final productId = item['product_id'] as String;
-//                           if (!productTrends.containsKey(productId)) {
-//                             productTrends[productId] = [];
-//                           }
-//
-//                           productTrends[productId]!.add({
-//                             'date': timestamp,
-//                             'quantity': item['quantity'] as double,
-//                             'total': item['total'] as double,
-//                             'name': item['product_name'] as String,
-//                           });
-//                         }
-//                       }
-//
-//                       // Berechne Trends
-//                       final trends = productTrends.entries.map((entry) {
-//                         final sales = entry.value;
-//                         sales.sort((a, b) => a['date'].compareTo(b['date']));
-//
-//                         // Berechne Wachstumsrate
-//                         var growth = 0.0;
-//                         if (sales.length > 1) {
-//                           final firstWeekSales = sales.take(7).fold<double>(
-//                               0, (sum, item) => sum + (item['total'] as double)
-//                           );
-//                           final lastWeekSales = sales.skip(sales.length - 7).fold<double>(
-//                               0, (sum, item) => sum + (item['total'] as double)
-//                           );
-//
-//                           if (firstWeekSales > 0) {
-//                             growth = ((lastWeekSales - firstWeekSales) / firstWeekSales) * 100;
-//                           }
-//                         }
-//
-//                         return MapEntry(
-//                           entry.key,
-//                           {
-//                             'name': sales.first['name'],
-//                             'totalSales': sales.fold<double>(
-//                                 0, (sum, item) => sum + (item['total'] as double)
-//                             ),
-//                             'totalQuantity': sales.fold<int>(
-//                                 0, (sum, item) => sum + (item['quantity'] as double)
-//                             ),
-//                             'growth': growth,
-//                           },
-//                         );
-//                       }).toList()
-//                         ..sort((a, b) => b.value['growth'].compareTo(a.value['growth']));
-//
-//                       return Column(
-//                         children: [
-//                           ...trends.take(10).map((trend) {
-//                             final isPositiveGrowth = trend.value['growth'] > 0;
-//                             return ListTile(
-//                               title: Text(trend.value['name'] as String),
-//                               subtitle: Text(
-//                                 '''Verkaufte Menge: ${trend.value['totalQuantity']}
-// Umsatz: ${NumberFormat.currency(
-//                                   locale: 'de_CH',
-//                                   symbol: 'CHF',
-//                                 ).format(trend.value['totalSales'])}''',
-//                               ),
-//                               trailing: Row(
-//                                 mainAxisSize: MainAxisSize.min,
-//                                 children: [
-//                                   Icon(
-//                                     isPositiveGrowth
-//                                         ? Icons.trending_up
-//                                         : Icons.trending_down,
-//                                     color: isPositiveGrowth
-//                                         ? Colors.green
-//                                         : Colors.red,
-//                                   ),
-//                                   const SizedBox(width: 8),
-//                                   Text(
-//                                     '${trend.value['growth'].toStringAsFixed(1)}%',
-//                                     style: TextStyle(
-//                                       color: isPositiveGrowth
-//                                           ? Colors.green
-//                                           : Colors.red,
-//                                       fontWeight: FontWeight.bold,
-//                                     ),
-//                                   ),
-//                                 ],
-//                               ),
-//                             );
-//                           }),
-//                         ],
-//                       );
-//                     },
-//                   ),
+
                 ],
               ),
             ),
@@ -4695,6 +4472,7 @@ ${fairData['orders']} Bestellungen, ${customers.length} Kunden''',
       String title,
       String value,
       IconData icon,
+      String iconName,
       Color color,
       ) {
     return Card(
@@ -4705,7 +4483,7 @@ ${fairData['orders']} Bestellungen, ${customers.length} Kunden''',
           children: [
             Row(
               children: [
-                Icon(icon, color: color),
+            getAdaptiveIcon(iconName: iconName, defaultIcon:icon, color: color),
                 const SizedBox(width: 8),
                 Text(
                   title,
@@ -4734,8 +4512,8 @@ ${fairData['orders']} Bestellungen, ${customers.length} Kunden''',
       String title,
       String value,
       IconData icon,
+  String iconName,
       Color color,
-      {String? iconName} // Neuer Parameter für adaptiveIcon
       ) {
     return Card(
       child: Padding(
@@ -4752,7 +4530,7 @@ ${fairData['orders']} Bestellungen, ${customers.length} Kunden''',
                   color: color,
                   size: 24,
                 )
-                    : Icon(icon, color: color),
+                    :  getAdaptiveIcon(iconName: iconName, defaultIcon:icon, color: color),
                 const SizedBox(width: 8),
                 Text(
                   title,
@@ -4847,12 +4625,13 @@ ${fairData['orders']} Bestellungen, ${customers.length} Kunden''',
               },
             ),
             Icons.attach_money,
+            'attach_money',
             Theme.of(context).colorScheme.primary,
             subtitle: _getTimeRangeText(),
           ),
         ),
 
-        // Weitere KPI-Cards analog...
+
       ],
     );
   }
@@ -4934,33 +4713,6 @@ ${fairData['orders']} Bestellungen, ${customers.length} Kunden''',
   }
 
 
-  Widget _buildKpiCard(String title, Widget value, IconData icon, Color color) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: color),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            value,
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildSalesSection() {
     return Column(

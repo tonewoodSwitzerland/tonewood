@@ -102,7 +102,23 @@ class ShippingCostsManager {
       rethrow;
     }
   }
+// Speichere Versandkosten direkt aus Daten (für Quote-Kopie)
+  static Future<void> saveShippingCostsFromData(Map<String, dynamic> costsData) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection(COLLECTION_NAME)
+          .doc(DOCUMENT_ID)
+          .set({
+        ...costsData,
+        'timestamp': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
+      print('Versandkosten aus Quote-Daten gespeichert');
+    } catch (e) {
+      print('Fehler beim Speichern der Versandkosten aus Daten: $e');
+      rethrow;
+    }
+  }
   // Lösche aus Firebase
   static Future<void> clearShippingCosts() async {
     try {

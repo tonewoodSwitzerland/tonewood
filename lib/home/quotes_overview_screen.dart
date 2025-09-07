@@ -6,14 +6,17 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:tonewood/home/sales_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../components/order_service.dart';
 import '../components/quote_model.dart';
 // Oben bei den Imports ergänzen:
+import '../constants.dart';
 import '../services/additional_text_manager.dart';
 import '../services/icon_helper.dart';
 import '../services/pdf_generators/invoice_generator.dart';
 import '../services/preview_pdf_viewer_screen.dart';
+import '../services/swiss_rounding.dart';
 
 
 // Zentrale Farbdefinitionen für Angebote
@@ -147,6 +150,23 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                   ],
                 ),
               )),
+              PopupMenuItem(
+                value: 'cancelled_orders',
+                child: Row(
+                  children: [
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('Nachträglich storniert'),
+                  ],
+                ),
+              ),
             ],
           ),
         ],
@@ -441,6 +461,41 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                   ),
                   // Status-Chip
                   _buildCompactStatusChip(viewStatus),
+                  if (quote.isOrderCancelled && quote.status == QuoteStatus.accepted) ...[
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: Colors.red.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          getAdaptiveIcon(
+                            iconName: 'cancel',
+                            defaultIcon: Icons.cancel,
+                            size: 10,
+                            color: Colors.red[700],
+                          ),
+                          const SizedBox(width: 2),
+                          Text(
+                            'Storniert',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.red[700],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                 ],
               ),
 
@@ -525,6 +580,22 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   if (viewStatus == QuoteViewStatus.open) ...[
+                    _buildCompactActionButton(
+                      icon: Icons.content_copy,
+                      iconName:'content_copy',
+                      onPressed: () =>  _copyQuoteToNewQuote(quote),
+                      tooltip: 'Beauftragen',
+                      color: goldenColour,
+                    ),
+                    const SizedBox(width: 4),
+                    _buildCompactActionButton(
+                      icon: Icons.edit,
+                      iconName: 'edit',
+                      onPressed: () => _editQuote(quote),
+                      tooltip: 'Bearbeiten',
+                      color: goldenColour
+                    ),
+                    const SizedBox(width: 4),
                     _buildCompactActionButton(
                       icon: Icons.shopping_cart,
                       iconName:'shopping_cart',
@@ -690,6 +761,66 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // NEU: Stornierungshinweis wenn zutreffend
+                    if (quote.isOrderCancelled && quote.status == QuoteStatus.accepted) ...[
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        margin: const EdgeInsets.only(bottom: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.red.withOpacity(0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            getAdaptiveIcon(
+                              iconName: 'warning',
+                              defaultIcon: Icons.warning,
+                              color: Colors.red[700],
+                              size: 24,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Auftrag nachträglich storniert',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.red[700],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Der aus diesem Angebot erstellte Auftrag ${quote.orderId?.substring(2) ?? ''} wurde storniert.',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.red[700],
+                                    ),
+                                  ),
+                                  if (quote.orderCancelledAt != null) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Storniert am: ${DateFormat('dd.MM.yyyy HH:mm').format(quote.orderCancelledAt!)}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.red[600],
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     // Angebotsinformationen
                     _buildInfoSection('Angebotsinformationen', [
                       _buildInfoRow('Angebotsnummer:', quote.quoteNumber),
@@ -707,7 +838,58 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                       _buildInfoRow('E-Mail:', quote.customer['email'] ?? '-'),
                       _buildInfoRow('Adresse:', '${quote.customer['street']} ${quote.customer['houseNumber']}, ${quote.customer['zipCode']} ${quote.customer['city']}'),
                     ]),
+                    const SizedBox(height: 20),
 
+                    // NEU: Angebot kopieren Button
+                    Container(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _copyQuoteToNewQuote(quote),
+                        icon: getAdaptiveIcon(
+                          iconName: 'content_copy',
+                          defaultIcon: Icons.content_copy,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        label: const Text('Angebot kopieren und neues erstellen'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 2,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+// NEU: Angebot bearbeiten Button (nur bei offenen Angeboten)
+                    if (_getViewStatus(quote) == QuoteViewStatus.open) ...[
+                      Container(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _editQuote(quote),
+                          icon: getAdaptiveIcon(
+                            iconName: 'edit',
+                            defaultIcon: Icons.edit,
+                            color: Colors.white,
+                          ),
+                          label: const Text('Angebot bearbeiten'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            backgroundColor: goldenColour,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    ],
                     const SizedBox(height: 20),
 
 
@@ -1149,6 +1331,13 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                       String subtitle;
 
                       switch (action) {
+                        case 'order_cancelled':
+                          icon = Icons.cancel;
+                          iconName = 'cancel';
+                          color = Colors.red;
+                          title = 'Auftrag storniert';
+                          subtitle = 'Auftragsnummer: ${data['order_number'] ?? 'Unbekannt'}';
+                          break;
                         case 'status_change':
                           icon = Icons.swap_horiz;
                           iconName='swap_horiz';
@@ -1345,7 +1534,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Möchten Sie das Angebot ${quote.quoteNumber} in einen Auftrag umwandeln?'),
+            Text('Möchtest du das Angebot ${quote.quoteNumber} in einen Auftrag umwandeln?'),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -1537,7 +1726,7 @@ Status: ${_getViewStatus(quote).displayName}
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Möchten Sie das Angebot ${quote.quoteNumber} ablehnen?'),
+            Text('Möchtest du das Angebot ${quote.quoteNumber} ablehnen?'),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -1703,6 +1892,132 @@ Status: ${_getViewStatus(quote).displayName}
     }
   }
 
+  Future<void> _copyQuoteToNewQuote(Quote quote) async {
+    // Bestätigungsdialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Angebot kopieren'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Möchtest du das Angebot ${quote.quoteNumber} als Vorlage für ein neues Angebot verwenden?'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      getAdaptiveIcon(
+                          iconName: 'info',
+                          defaultIcon: Icons.info,
+                          color: Colors.blue,
+                          size: 20
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Was wird übernommen:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '• Kunde und Kontaktdaten\n'
+                        '• Kostenstelle\n'
+                        '• Währung und Steuereinstellungen\n'
+                        '• Artikel (wenn noch verfügbar)\n'
+                        '• Zusatztexte und Dokumentensprache',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: getAdaptiveIcon(iconName: 'content_copy', defaultIcon: Icons.content_copy),
+            label: const Text('Kopieren'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // Loading anzeigen
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Sammle die Daten - KORRIGIERT
+      final quoteData = {
+        'customer': quote.customer,
+        'costCenter': quote.costCenter,
+        'items': quote.items,
+        'currency': quote.metadata['currency'] ?? 'CHF',
+        'exchangeRates': quote.metadata['exchangeRates'] ?? {
+          'CHF': 1.0,
+          'EUR': 0.96,
+          'USD': 1.08,
+        },
+        'vatRate': quote.metadata['vatRate'] ?? 8.1,
+        'taxOption': quote.metadata['taxOption'] ?? 0,
+        'additionalTexts': quote.metadata['additionalTexts'] ?? {}, // KORRIGIERT
+        'documentLanguage': quote.customer['language'] ?? 'DE',
+        'shippingCosts': quote.metadata['shippingCosts'], // NEU: Versandkosten auch übernehmen
+      };
+
+      // Modal schließen
+      Navigator.pop(context); // Loading Dialog
+      Navigator.pop(context); // Quote Details Modal
+
+      // Navigiere zum Sales Screen mit den Daten
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SalesScreen(
+            quoteToCopy: quoteData,
+          ),
+        ),
+      );
+
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Loading Dialog schließen
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Kopieren: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _createHistoryEntry(Quote quote, String action) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -1723,7 +2038,142 @@ Status: ${_getViewStatus(quote).displayName}
       print('Error creating history entry: $e');
     }
   }
+  Future<void> _editQuote(Quote quote) async {
+    // Prüfe ob das Angebot noch bearbeitbar ist
+    if (quote.status != QuoteStatus.draft && quote.status != QuoteStatus.sent) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nur offene Angebote können bearbeitet werden'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
 
+    // Bestätigungsdialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Angebot bearbeiten'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Möchtest du das Angebot ${quote.quoteNumber} bearbeiten?'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      getAdaptiveIcon(
+                          iconName: 'warning',
+                          defaultIcon: Icons.warning,
+                          color: Colors.orange,
+                          size: 20
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Hinweis:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '• Alle Änderungen überschreiben das bestehende Angebot\n'
+                        '• Das PDF wird neu generiert\n'
+                        '• Die Angebotsnummer bleibt erhalten',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit),
+            label: const Text('Bearbeiten'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // Loading anzeigen
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Sammle die Daten für die Bearbeitung
+      final quoteData = {
+        'quoteId': quote.id,  // NEU: Quote ID für Update
+        'quoteNumber': quote.quoteNumber,  // NEU: Quote Nummer beibehalten
+        'customer': quote.customer,
+        'costCenter': quote.costCenter,
+        'items': quote.items,
+        'currency': quote.metadata['currency'] ?? 'CHF',
+        'exchangeRates': quote.metadata['exchangeRates'] ?? {
+          'CHF': 1.0,
+          'EUR': 0.96,
+          'USD': 1.08,
+        },
+        'vatRate': quote.metadata['vatRate'] ?? 8.1,
+        'taxOption': quote.metadata['taxOption'] ?? 0,
+        'additionalTexts': quote.metadata['additionalTexts'] ?? {},
+        'documentLanguage': quote.customer['language'] ?? 'DE',
+        'shippingCosts': quote.metadata['shippingCosts'],
+      };
+
+      // Modal schließen
+      Navigator.pop(context); // Loading Dialog
+      Navigator.pop(context); // Quote Details Modal falls offen
+
+      // Navigiere zum Sales Screen im Edit-Modus
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SalesScreen(
+            quoteToEdit: quoteData,  // NEU: Andere Property für Edit
+          ),
+        ),
+      );
+
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Loading Dialog schließen
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Laden: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
   @override
   void dispose() {
     _searchController.dispose();
@@ -2200,6 +2650,8 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
 
                     print('→ Rufe InvoiceGenerator.generateInvoicePdf auf...');
 
+                    final roundingSettings = await SwissRounding.loadRoundingSettings();
+                    
                     final pdfBytes = await InvoiceGenerator.generateInvoicePdf(
                       items: widget.quote.items,
                       customerData: widget.quote.customer,
@@ -2217,6 +2669,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                       vatRate: (widget.quote.metadata['vatRate'] as num?)?.toDouble() ?? 8.1,
                       downPaymentSettings: previewInvoiceSettings,
                       additionalTexts: additionalTexts,
+                      roundingSettings: roundingSettings
                     );
 
                     print('✓ PDF erfolgreich generiert');
@@ -2353,6 +2806,8 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
     );
   }
 
+
+
   @override
   void dispose() {
     _downPaymentController.dispose();
@@ -2360,4 +2815,5 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
     _additionalTextsSelectedNotifier.dispose();
     super.dispose();
   }
+
 }

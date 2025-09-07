@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:tonewood/components/quote_model.dart';
 import 'package:tonewood/components/order_model.dart';
+import '../services/swiss_rounding.dart';
 import 'movement_model.dart';
 import 'quote_service.dart';
 import '../services/pdf_generators/invoice_generator.dart';
@@ -242,7 +243,8 @@ class OrderService {
           exchangeRates[key] = (value as num).toDouble();
         }
       });
-
+      final roundingSettings = await SwissRounding.loadRoundingSettings();
+      
       // Generiere PDF basierend auf Dokumenttyp
       switch (documentType.toLowerCase()) {
         case 'rechnung':
@@ -262,7 +264,8 @@ class OrderService {
             calculations: orderData['calculations'],
             taxOption: metadata['taxOption'] ?? 0,
             vatRate: (metadata['vatRate'] ?? 8.1).toDouble(),
-            additionalTexts: additionalTexts, // NEU: Additional Texts übergeben
+            additionalTexts: additionalTexts,
+            roundingSettings: roundingSettings
           );
           break;
 
@@ -511,6 +514,7 @@ class OrderService {
         vatRate: orderData['vatRate'],
         downPaymentSettings: invoiceSettings,
         additionalTexts: additionalTexts,
+        roundingSettings: await SwissRounding.loadRoundingSettings(),
       );
 
       // 6. Speichere PDF
