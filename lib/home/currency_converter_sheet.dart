@@ -825,7 +825,7 @@ class CurrencyConverterSheet {
                               ),
                               const SizedBox(height: 12),
                               Text(
-                                'Wählen Sie für welche Währungen die Rappenrundung (0.05) angewendet werden soll:',
+                                'Wähle für welche Währungen die Rappenrundung (0.05) angewendet werden soll:',
                                 style: TextStyle(
                                   fontSize: 13,
                                   color: Theme.of(context).colorScheme.onSurfaceVariant,

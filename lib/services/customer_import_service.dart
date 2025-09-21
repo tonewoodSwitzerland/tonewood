@@ -28,7 +28,7 @@ class CustomerImportService {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Wählen Sie eine CSV-Datei zum Importieren von Kundendaten.',
+              'Wähle eine CSV-Datei zum Importieren von Kundendaten.',
               style: TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 16),

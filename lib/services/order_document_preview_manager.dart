@@ -539,7 +539,7 @@ class OrderDocumentPreviewManager {
               title: const Text('Keine Packliste konfiguriert'),
               content: const Text(
                   'Für diesen Auftrag wurde noch keine Packliste konfiguriert. '
-                      'Bitte erstellen Sie zuerst eine Packliste über "Dokumente erstellen".'
+                      'Bitte erstelle zuerst eine Packliste über "Dokumente erstellen".'
               ),
               actions: [
                 TextButton(

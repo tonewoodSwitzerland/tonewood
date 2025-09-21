@@ -27,6 +27,7 @@ import '../home/product_management_screen.dart';
 import '../home/sales_screen.dart';
 import '../services/icon_helper.dart';
 import 'analytics_screen2.dart';
+import 'combinet_shipment_screen.dart';
 import 'customer_management_screen.dart';
 import 'customer_selection.dart';
 import 'orders_overview_screen.dart';
@@ -519,6 +520,36 @@ class StartScreenState extends State<StartScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => const OrdersOverviewScreen(),
+                ),
+              );
+            },
+          ),
+          // Nach dem Aufträge ListTile:
+          ListTile(
+            leading: getAdaptiveIcon(iconName: 'local_shipping', defaultIcon: Icons.local_shipping),
+            title: const Text('Sammellieferungen'),
+            subtitle: const Text('Mehrere Aufträge gemeinsam versenden'),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'NEU',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue,
+                ),
+              ),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const CombinedShipmentScreen(),
                 ),
               );
             },

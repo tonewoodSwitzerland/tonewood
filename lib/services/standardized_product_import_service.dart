@@ -21,7 +21,7 @@ class StandardizedProductImportService {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Wählen Sie eine CSV-Datei mit Standardprodukten aus.\n\n'
+                'Wähle eine CSV-Datei mit Standardprodukten aus.\n\n'
                     'Die Datei sollte folgende Spalten enthalten:\n'
                     '• Artikelnummer (4-stellig)\n'
                     '• Produkt\n'

@@ -104,6 +104,14 @@ class CustomerSelectionSheet {
 
     bool _useShippingAddress = currentCustomer.hasDifferentShippingAddress;
 
+    bool showVatOnDocuments = currentCustomer.showVatOnDocuments ?? false;
+    bool showEoriOnDocuments = currentCustomer.showEoriOnDocuments ?? false;
+    bool showCustomFieldOnDocuments = currentCustomer.showCustomFieldOnDocuments ?? false;
+
+    final customFieldTitleController = TextEditingController(text: currentCustomer.customFieldTitle);
+    final customFieldValueController = TextEditingController(text: currentCustomer.customFieldValue);
+
+
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -239,14 +247,46 @@ class CustomerSelectionSheet {
                                     ),
                                     validator: (value) => value?.isEmpty == true ? 'Bitte Firma eingeben' : null,
                                   ),
-                                  const SizedBox(height: 16),
+                                  const SizedBox(height: 24),
+
+                                  // Info-Box
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    margin: const EdgeInsets.only(bottom: 16),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        getAdaptiveIcon(
+                                          iconName: 'info',
+                                          defaultIcon: Icons.info,
+                                          size: 16,
+                                          color: Theme.of(context).colorScheme.primary,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Aktiviere die Checkboxen, um die jeweiligen Felder im Dokumentenkopf anzuzeigen',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
+                                  // MwSt-Nummer mit Checkbox
                                   Row(
                                     children: [
                                       Expanded(
                                         child: TextFormField(
                                           controller: vatNumberController,
                                           decoration: InputDecoration(
-                                            labelText: 'MwSt-Nummer',
+                                            labelText: 'MwSt-Nummer / UID',
                                             border: OutlineInputBorder(
                                               borderRadius: BorderRadius.circular(12),
                                             ),
@@ -263,7 +303,31 @@ class CustomerSelectionSheet {
                                           ),
                                         ),
                                       ),
-                                      const SizedBox(width: 16),
+                                      const SizedBox(width: 8),
+                                      Column(
+                                        children: [
+                                          Checkbox(
+                                            value: showVatOnDocuments,
+                                            onChanged: (value) {
+                                              setState(() {
+                                                showVatOnDocuments = value ?? false;
+                                              });
+                                            },
+                                          ),
+                                          Text(
+                                            'Anzeigen',
+                                            style: TextStyle(fontSize: 10),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+
+                                  const SizedBox(height: 16),
+
+                                  // EORI-Nummer mit Checkbox
+                                  Row(
+                                    children: [
                                       Expanded(
                                         child: TextFormField(
                                           controller: eoriNumberController,
@@ -285,12 +349,104 @@ class CustomerSelectionSheet {
                                           ),
                                         ),
                                       ),
+                                      const SizedBox(width: 8),
+                                      Column(
+                                        children: [
+                                          Checkbox(
+                                            value: showEoriOnDocuments,
+                                            onChanged: (value) {
+                                              setState(() {
+                                                showEoriOnDocuments = value ?? false;
+                                              });
+                                            },
+                                          ),
+                                          Text(
+                                            'Anzeigen',
+                                            style: TextStyle(fontSize: 10),
+                                          ),
+                                        ],
+                                      ),
                                     ],
+                                  ),
+
+                                  const SizedBox(height: 24),
+
+                                  // Zusatzfeld mit Checkbox
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            getAdaptiveIcon(
+                                              iconName: 'add_box',
+                                              defaultIcon: Icons.add_box,
+                                              size: 18,
+                                              color: Theme.of(context).colorScheme.primary,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                'Zusätzliches Feld (z.B. CPF/CNPJ)',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Theme.of(context).colorScheme.primary,
+                                                ),
+                                              ),
+                                            ),
+                                            Checkbox(
+                                              value: showCustomFieldOnDocuments,
+                                              onChanged: (value) {
+                                                setState(() {
+                                                  showCustomFieldOnDocuments = value ?? false;
+                                                });
+                                              },
+                                            ),
+                                            Text(
+                                              'Anzeigen',
+                                              style: TextStyle(fontSize: 10),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        TextFormField(
+                                          controller: customFieldTitleController,
+                                          decoration: InputDecoration(
+                                            labelText: 'Feldbezeichnung',
+                                            hintText: 'z.B. Sendungsnummer, CPF/CNPJ, Tracking-ID',
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            isDense: true,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        TextFormField(
+                                          controller: customFieldValueController,
+                                          decoration: InputDecoration(
+                                            labelText: 'Wert',
+                                            hintText: 'z.B. 94838101, ABC-123456',
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            isDense: true,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
-
                             const SizedBox(height: 16),
 
                             // Kontaktperson
@@ -1210,6 +1366,13 @@ class CustomerSelectionSheet {
                                                   shippingCountryCode: _useShippingAddress ? shippingCountryCodeController.text.trim() : '',
                                                   shippingPhone: _useShippingAddress ? shippingPhoneController.text.trim() : '',
                                                   shippingEmail: _useShippingAddress ? shippingEmailController.text.trim() : '',
+                                                  showVatOnDocuments: showVatOnDocuments,
+                                                  showEoriOnDocuments: showEoriOnDocuments,
+                                                  showCustomFieldOnDocuments: showCustomFieldOnDocuments,
+                                                  customFieldTitle: customFieldTitleController.text.trim().isEmpty
+                                                      ? null : customFieldTitleController.text.trim(),
+                                                  customFieldValue: customFieldValueController.text.trim().isEmpty
+                                                      ? null : customFieldValueController.text.trim(),
                                                 );
                                                 print("streetcontr:${streetController.text.trim()},");
 
@@ -1317,6 +1480,12 @@ class CustomerSelectionSheet {
     final shippingPhoneController = TextEditingController();
 
     bool _useShippingAddress = false;
+    bool showVatOnDocuments =  false;
+    bool showEoriOnDocuments =  false;
+    bool showCustomFieldOnDocuments =false;
+
+    final customFieldTitleController = TextEditingController();
+    final customFieldValueController = TextEditingController();
 
     Customer? newCustomer;
 
@@ -1459,54 +1628,203 @@ class CustomerSelectionSheet {
     ),
    // validator: (value) => value?.isEmpty == true ? 'Bitte Firma eingeben' : null,
     ),
-    const SizedBox(height: 16),
-    Row(
-    children: [
-    Expanded(
-    child: TextFormField(
-    controller: vatNumberController,
-    decoration: InputDecoration(
-    labelText: 'MwSt-Nummer',
-    border: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    ),
-    filled: true,
-    fillColor: Colors.grey.shade50,
-    enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Colors.grey.shade300),
-    ),
-    focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-    ),
-    ),
-    ),
-    ),
-    const SizedBox(width: 16),
-    Expanded(
-    child: TextFormField(
-    controller: eoriNumberController,
-    decoration: InputDecoration(
-    labelText: 'EORI-Nummer',
-    border: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    ),
-    filled: true,
-    fillColor: Colors.grey.shade50,
-    enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Colors.grey.shade300),
-    ),
-    focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-    ),
-    ),
-    ),
-    ),
-    ],
-    ),
+      const SizedBox(height: 24),
+
+      // Info-Box
+      Container(
+        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            getAdaptiveIcon(
+              iconName: 'info',
+              defaultIcon: Icons.info,
+              size: 16,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Aktivieren Sie die Checkboxen, um die jeweiligen Felder im Dokumentenkopf anzuzeigen',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+
+      // MwSt-Nummer mit Checkbox
+      Row(
+        children: [
+          Expanded(
+            child: TextFormField(
+              controller: vatNumberController,
+              decoration: InputDecoration(
+                labelText: 'MwSt-Nummer / UID',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: Colors.grey.shade50,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            children: [
+              Checkbox(
+                value: showVatOnDocuments,
+                onChanged: (value) {
+                  setState(() {
+                    showVatOnDocuments = value ?? false;
+                  });
+                },
+              ),
+              Text(
+                'Anzeigen',
+                style: TextStyle(fontSize: 10),
+              ),
+            ],
+          ),
+        ],
+      ),
+
+      const SizedBox(height: 16),
+
+      // EORI-Nummer mit Checkbox
+      Row(
+        children: [
+          Expanded(
+            child: TextFormField(
+              controller: eoriNumberController,
+              decoration: InputDecoration(
+                labelText: 'EORI-Nummer',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: Colors.grey.shade50,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            children: [
+              Checkbox(
+                value: showEoriOnDocuments,
+                onChanged: (value) {
+                  setState(() {
+                    showEoriOnDocuments = value ?? false;
+                  });
+                },
+              ),
+              Text(
+                'Anzeigen',
+                style: TextStyle(fontSize: 10),
+              ),
+            ],
+          ),
+        ],
+      ),
+
+      const SizedBox(height: 24),
+
+      // Zusatzfeld mit Checkbox
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                getAdaptiveIcon(
+                  iconName: 'add_box',
+                  defaultIcon: Icons.add_box,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Zusätzliches Feld (z.B. für Lieferschein)',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+                Checkbox(
+                  value: showCustomFieldOnDocuments,
+                  onChanged: (value) {
+                    setState(() {
+                      showCustomFieldOnDocuments = value ?? false;
+                    });
+                  },
+                ),
+                Text(
+                  'Anzeigen',
+                  style: TextStyle(fontSize: 10),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: customFieldTitleController,
+              decoration: InputDecoration(
+                labelText: 'Feldbezeichnung',
+                hintText: 'z.B. Sendungsnummer, CPF/CNPJ, Tracking-ID',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: customFieldValueController,
+              decoration: InputDecoration(
+                labelText: 'Wert',
+                hintText: 'z.B. 94838101, ABC-123456',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                isDense: true,
+              ),
+            ),
+          ],
+        ),
+      ),
     ],
     ),
     ),
@@ -2429,6 +2747,13 @@ class CustomerSelectionSheet {
                             shippingCountryCode: _useShippingAddress ? shippingCountryCodeController.text.trim() : '',
                             shippingPhone: _useShippingAddress ? shippingPhoneController.text.trim() : '',
                             shippingEmail: _useShippingAddress ? shippingEmailController.text.trim() : '',
+                            showVatOnDocuments: showVatOnDocuments,
+                            showEoriOnDocuments: showEoriOnDocuments,
+                            showCustomFieldOnDocuments: showCustomFieldOnDocuments,
+                            customFieldTitle: customFieldTitleController.text.trim().isEmpty
+                                ? null : customFieldTitleController.text.trim(),
+                            customFieldValue: customFieldValueController.text.trim().isEmpty
+                                ? null : customFieldValueController.text.trim(),
                           );
 
                           final docRef = await FirebaseFirestore.instance
@@ -3154,6 +3479,173 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
     });
   }
 
+
+  // Füge diese Methode in CustomerManagementScreen oder als separate Utility-Funktion hinzu:
+
+  static Future<void> migrateCustomerCheckboxes(BuildContext context) async {
+    try {
+      print('=== START MIGRATION ===');
+
+      // Zeige Loading-Dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Daten-Migration'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              const Text('Aktualisiere Kundeneinstellungen...'),
+            ],
+          ),
+        ),
+      );
+
+      // Hole alle Kunden
+      print('Lade Kunden aus Firestore...');
+      final customersSnapshot = await FirebaseFirestore.instance
+          .collection('customers')
+          .get();
+
+      print('Anzahl gefundener Kunden: ${customersSnapshot.docs.length}');
+
+      int updatedCount = 0;
+      int skippedCount = 0;
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+      int batchCount = 0;
+
+      for (final doc in customersSnapshot.docs) {
+        final data = doc.data();
+        print('\n--- Prüfe Kunde: ${data['company'] ?? data['name'] ?? doc.id} ---');
+
+        Map<String, dynamic> updates = {};
+
+        // Debug: Zeige aktuelle Werte
+        print('  vatNumber: "${data['vatNumber']}"');
+        print('  showVatOnDocuments: ${data['showVatOnDocuments']}');
+        print('  eoriNumber: "${data['eoriNumber']}"');
+        print('  showEoriOnDocuments: ${data['showEoriOnDocuments']}');
+
+        // Prüfe ob MwSt vorhanden und setze Checkbox
+        final vatNumber = (data['vatNumber'] ?? '').toString().trim();
+        if (vatNumber.isNotEmpty) {
+          print('  -> MwSt gefüllt: "$vatNumber"');
+
+          // Setze Flag nur wenn es noch nicht true ist ODER wenn es noch gar nicht existiert
+          if (data['showVatOnDocuments'] != true) {
+            updates['showVatOnDocuments'] = true;
+            print('  -> Setze showVatOnDocuments auf true');
+          } else {
+            print('  -> showVatOnDocuments ist bereits true');
+          }
+        }
+
+        // Prüfe ob EORI vorhanden und setze Checkbox
+        final eoriNumber = (data['eoriNumber'] ?? '').toString().trim();
+        if (eoriNumber.isNotEmpty) {
+          print('  -> EORI gefüllt: "$eoriNumber"');
+
+          // Setze Flag nur wenn es noch nicht true ist ODER wenn es noch gar nicht existiert
+          if (data['showEoriOnDocuments'] != true) {
+            updates['showEoriOnDocuments'] = true;
+            print('  -> Setze showEoriOnDocuments auf true');
+          } else {
+            print('  -> showEoriOnDocuments ist bereits true');
+          }
+        }
+
+        // Setze Defaults für fehlende Felder (wichtig für alte Daten!)
+        if (!data.containsKey('showVatOnDocuments')) {
+          updates['showVatOnDocuments'] = vatNumber.isNotEmpty;
+          print('  -> Feld showVatOnDocuments existierte nicht, setze auf ${vatNumber.isNotEmpty}');
+        }
+
+        if (!data.containsKey('showEoriOnDocuments')) {
+          updates['showEoriOnDocuments'] = eoriNumber.isNotEmpty;
+          print('  -> Feld showEoriOnDocuments existierte nicht, setze auf ${eoriNumber.isNotEmpty}');
+        }
+
+        if (!data.containsKey('showCustomFieldOnDocuments')) {
+          updates['showCustomFieldOnDocuments'] = false;
+          print('  -> Feld showCustomFieldOnDocuments existierte nicht, setze auf false');
+        }
+
+        // Nur updaten wenn Änderungen vorhanden
+        if (updates.isNotEmpty) {
+          print('  => Update nötig mit ${updates.length} Änderungen');
+          batch.update(doc.reference, updates);
+          updatedCount++;
+          batchCount++;
+
+          // Firestore hat ein Limit von 500 Operations pro Batch
+          if (batchCount >= 500) {
+            print('\nCommitte Batch mit 500 Updates...');
+            await batch.commit();
+            batch = FirebaseFirestore.instance.batch();
+            batchCount = 0;
+          }
+        } else {
+          print('  => Kein Update nötig');
+          skippedCount++;
+        }
+      }
+
+      // Commit remaining updates
+      if (batchCount > 0) {
+        print('\nCommitte finalen Batch mit $batchCount Updates...');
+        await batch.commit();
+      }
+
+      print('\n=== MIGRATION ABGESCHLOSSEN ===');
+      print('Updates: $updatedCount');
+      print('Übersprungen: $skippedCount');
+      print('Gesamt: ${customersSnapshot.docs.length}');
+
+      if (context.mounted) {
+        Navigator.pop(context); // Schließe Loading-Dialog
+
+        // Zeige Erfolgsmeldung
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Migration abgeschlossen'),
+            content: Text('Verarbeitet: ${customersSnapshot.docs.length} Kunden\n'
+                'Aktualisiert: $updatedCount\n'
+                'Bereits korrekt: $skippedCount\n\n'
+                'Bei allen Kunden mit MwSt- oder EORI-Nummer wurden die '
+                'entsprechenden Checkboxen für die Anzeige in Dokumenten aktiviert.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e, stackTrace) {
+      print('=== FEHLER BEI MIGRATION ===');
+      print('Error: $e');
+      print('StackTrace: $stackTrace');
+
+      if (context.mounted) {
+        Navigator.pop(context); // Schließe Loading-Dialog
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler bei der Migration: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+
+
   Future<void> _applyFilters() async {
     if (!CustomerFilterService.hasActiveFilters(_activeFilters)) {
       // Wenn keine Filter aktiv sind, lade normale Daten
@@ -3467,6 +3959,39 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
           ],
         ),
         actions: [
+          // Füge einen Button in die CustomerManagementScreen AppBar hinzu:
+// In der AppBar actions Liste:
+          IconButton(
+            icon: getAdaptiveIcon(iconName: 'update', defaultIcon: Icons.update),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Daten-Migration'),
+                  content: const Text(
+                    'Diese Funktion aktiviert automatisch die Checkboxen für die Anzeige '
+                        'von MwSt- und EORI-Nummern in Dokumenten, wenn diese Felder '
+                        'bei Kunden ausgefüllt sind.\n\n'
+                        'Dies ist eine einmalige Migration für bestehende Kunden.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Abbrechen'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        migrateCustomerCheckboxes(context);
+                      },
+                      child: const Text('Migration starten'),
+                    ),
+                  ],
+                ),
+              );
+            },
+            tooltip: 'Daten-Migration',
+          ),
           IconButton(
             icon: getAdaptiveIcon(iconName: 'print', defaultIcon: Icons.print),
             onPressed: () {
@@ -4194,19 +4719,60 @@ SizedBox(height: 8,),
           const SizedBox(height: 16),
 
           // Steuerliche Angaben
-          if (customer.vatNumber?.isNotEmpty == true || customer.eoriNumber?.isNotEmpty == true)
+          // Steuerliche Angaben
+          if (customer.vatNumber?.isNotEmpty == true ||
+              customer.eoriNumber?.isNotEmpty == true ||
+              (customer.customFieldTitle?.isNotEmpty == true && customer.customFieldValue?.isNotEmpty == true))
             _buildDetailSection(
               context,
               'Steuerliche Angaben',
               [
                 if (customer.vatNumber?.isNotEmpty == true)
-                  _buildDetailRow('MwSt-Nummer / UID', customer.vatNumber!),
+                  _buildDetailRow(
+                      'MwSt-Nummer / UID',
+                      '${customer.vatNumber}${customer.showVatOnDocuments ? ' ✓' : ''}'
+                  ),
                 if (customer.eoriNumber?.isNotEmpty == true)
-                  _buildDetailRow('EORI-Nummer', customer.eoriNumber!),
+                  _buildDetailRow(
+                      'EORI-Nummer',
+                      '${customer.eoriNumber}${customer.showEoriOnDocuments ? ' ✓' : ''}'
+                  ),
+                if (customer.customFieldTitle?.isNotEmpty == true &&
+                    customer.customFieldValue?.isNotEmpty == true)
+                  _buildDetailRow(
+                      customer.customFieldTitle!,
+                      '${customer.customFieldValue}${customer.showCustomFieldOnDocuments ? ' ✓' : ''}'
+                  ),
+                // Hinweis-Zeile
+                if (customer.showVatOnDocuments || customer.showEoriOnDocuments || customer.showCustomFieldOnDocuments)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 12,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            '✓ = Wird in Dokumenten angezeigt',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontStyle: FontStyle.italic,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
-
-          if (customer.vatNumber?.isNotEmpty == true || customer.eoriNumber?.isNotEmpty == true)
+          if (customer.vatNumber?.isNotEmpty == true ||
+              customer.eoriNumber?.isNotEmpty == true ||
+              (customer.customFieldTitle?.isNotEmpty == true && customer.customFieldValue?.isNotEmpty == true))
             const SizedBox(height: 16),
 
           // Lieferadresse (falls abweichend)

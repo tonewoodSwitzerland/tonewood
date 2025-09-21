@@ -180,8 +180,6 @@ abstract class BasePdfGenerator {
     final bool hasShippingName = shippingFullName.isNotEmpty;
 
 
-
-    // Widget für Kontaktinformationen - kompakter und inline
     pw.Widget buildContactInfo({bool useShippingData = false, String documentTitle = ''}) {
       final shouldUseShipping = useShippingData && documentTitle == 'delivery_note';
       final isDeliveryNote = documentTitle == 'delivery_note';
@@ -195,121 +193,141 @@ abstract class BasePdfGenerator {
           ? customerData['shippingPhone']
           : customerData['phone1'];
 
-      final eoriField  = hasDifferentShippingAddress==true
-          ? customerData['shippingEoriNumber']
-          : customerData['eoriNumber'];
-
-      final vatField = hasDifferentShippingAddress==true
-          ? customerData['shippingVatNumber']
-          : customerData['vatNumber'];
-
       return pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          // Email
-          pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text(
-                getAddressTranslation('email'),
-                style: pw.TextStyle(
-                  fontSize: 9,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.blueGrey700,
-                ),
-              ),
-              pw.SizedBox(width: 4),
-              pw.Expanded(
-                child: pw.Text(
-                  emailField ?? '-',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
-                ),
-              ),
-            ],
-          ),
-
-          pw.SizedBox(height: 4),
-
-          // Telefon
-          pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text(
-                getAddressTranslation('phone'),
-                style: pw.TextStyle(
-                  fontSize: 9,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.blueGrey700,
-                ),
-              ),
-              pw.SizedBox(width: 4),
-              pw.Text(
-                phoneField?.toString().trim().isNotEmpty == true
-                    ? phoneField
-                    : '-',
-                style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
-              ),
-            ],
-          ),
-
-          pw.SizedBox(height: 4),
-
-          // NUR bei NICHT-Lieferscheinen EORI und MwSt anzeigen
-          if (!isDeliveryNote) ...[
-            pw.SizedBox(height: 4),
-
-            // EORI
-            pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  getAddressTranslation('eori'),
-                  style: pw.TextStyle(
-                    fontSize: 9,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.blueGrey700,
-                  ),
-                ),
-                pw.SizedBox(width: 4),
-                pw.Text(
-                  eoriField?.toString().trim().isNotEmpty == true
-                      ? eoriField
-                      : '-',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
-                ),
-              ],
+      // Email
+      pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            getAddressTranslation('email'),
+            style: pw.TextStyle(
+              fontSize: 9,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.blueGrey700,
             ),
-
-            pw.SizedBox(height: 4),
-
-            // MwSt-Nummer
-            pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(
-                  getAddressTranslation('vat_id'),
-                  style: pw.TextStyle(
-                    fontSize: 9,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.blueGrey700,
-                  ),
-                ),
-                pw.SizedBox(width: 4),
-                pw.Expanded(
-                  child: pw.Text(
-                    vatField?.toString().trim().isNotEmpty == true
-                        ? vatField
-                        : '-',
-                    style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
-                  ),
-                ),
-              ],
+          ),
+          pw.SizedBox(width: 4),
+          pw.Expanded(
+            child: pw.Text(
+              emailField ?? '-',
+              style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
             ),
-          ],
+          ),
         ],
+      ),
+
+      pw.SizedBox(height: 4),
+
+      // Telefon
+      pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+      pw.Text(
+      getAddressTranslation('phone'),
+      style: pw.TextStyle(
+      fontSize: 9,
+      fontWeight: pw.FontWeight.bold,
+      color: PdfColors.blueGrey700,
+      ),
+      ),
+      pw.SizedBox(width: 4),
+      pw.Text(
+      phoneField?.toString().trim().isNotEmpty == true
+      ? phoneField
+          : '-',
+      style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
+      ),
+      ],
+      ),
+
+      // NUR bei NICHT-Lieferscheinen EORI und MwSt
+      if (!isDeliveryNote) ...[
+      // EORI - wenn vorhanden UND Checkbox aktiviert
+      if (customerData['showEoriOnDocuments'] == true &&
+      customerData['eoriNumber']?.toString().trim().isNotEmpty == true) ...[
+      pw.SizedBox(height: 4),
+      pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+      pw.Text(
+      getAddressTranslation('eori'),
+      style: pw.TextStyle(
+      fontSize: 9,
+      fontWeight: pw.FontWeight.bold,
+      color: PdfColors.blueGrey700,
+      ),
+      ),
+      pw.SizedBox(width: 4),
+      pw.Text(
+      customerData['eoriNumber'],
+      style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
+      ),
+      ],
+      ),
+      ],
+
+      // MwSt - wenn vorhanden UND Checkbox aktiviert
+      if (customerData['showVatOnDocuments'] == true &&
+      customerData['vatNumber']?.toString().trim().isNotEmpty == true) ...[
+      pw.SizedBox(height: 4),
+      pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+      pw.Text(
+      getAddressTranslation('vat_id'),
+      style: pw.TextStyle(
+      fontSize: 9,
+      fontWeight: pw.FontWeight.bold,
+      color: PdfColors.blueGrey700,
+      ),
+      ),
+      pw.SizedBox(width: 4),
+      pw.Expanded(
+      child: pw.Text(
+      customerData['vatNumber'],
+      style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
+      ),
+      ),
+      ],
+      ),
+      ],
+      ],
+
+      // Custom Field - für ALLE Dokumente wenn aktiviert
+      if (customerData['showCustomFieldOnDocuments'] == true &&
+      customerData['customFieldTitle'] != null &&
+      customerData['customFieldTitle'].toString().trim().isNotEmpty &&
+      customerData['customFieldValue'] != null &&
+      customerData['customFieldValue'].toString().trim().isNotEmpty) ...[
+      pw.SizedBox(height: 4),
+      pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+      pw.Text(
+      '${customerData['customFieldTitle'].toString()}:',
+      style: pw.TextStyle(
+      fontSize: 9,
+      fontWeight: pw.FontWeight.bold,
+      color: PdfColors.blueGrey700,
+      ),
+      ),
+      pw.SizedBox(width: 4),
+      pw.Expanded(
+      child: pw.Text(
+      customerData['customFieldValue'].toString(),
+      style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
+      ),
+      ),
+      ],
+      ),
+
+      ],
+      ],
+
       );
     }
-
     if (hasDifferentShippingAddress) {
       // Drei-spaltige Darstellung bei unterschiedlichen Adressen
       return pw.Row(

@@ -1445,7 +1445,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Geben Sie die exakten Maße des Artikels ein. Diese Angaben erscheinen auf den Dokumenten.',
+                                'Gib die exakten Maße des Artikels ein. Diese Angaben erscheinen auf den Dokumenten.',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Theme.of(context).colorScheme.onPrimaryContainer,

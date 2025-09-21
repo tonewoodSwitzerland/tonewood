@@ -58,7 +58,7 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Erstellen Sie Ihr erstes Standardpaket',
+                    'Erstelle dein Ihr erstes Standardpaket',
                     style: TextStyle(fontSize: 14, color: Colors.grey),
                   ),
                 ],

@@ -38,6 +38,15 @@ class Customer {
   final String? shippingCountryCode;
   final String? shippingPhone;
   final String? shippingEmail;
+// NEU: Flags für Dokumentenanzeige
+  final bool showVatOnDocuments;
+  final bool showEoriOnDocuments;
+  final bool showCustomFieldOnDocuments;  // NEU: Auch für custom Feld
+
+  // NEU: Zusätzliche Felder für Lieferschein
+  final String? customFieldTitle;
+  final String? customFieldValue;
+
 
   Customer({
     required this.id,
@@ -77,6 +86,11 @@ class Customer {
     this.shippingCountryCode,
     this.shippingPhone,
     this.shippingEmail,
+    this.showCustomFieldOnDocuments = false,
+    this.showVatOnDocuments = false,
+    this.showEoriOnDocuments = false,
+    this.customFieldTitle,
+    this.customFieldValue,
   });
 
   factory Customer.fromMap(Map<String, dynamic> map, String id) {
@@ -118,6 +132,13 @@ class Customer {
       shippingCountryCode: map['shippingCountryCode'] ?? _getCountryCode(map['shippingCountry'] ?? ''),
       shippingPhone: map['shippingPhone'],
       shippingEmail: map['shippingEmail'],
+      showCustomFieldOnDocuments: map['showCustomFieldOnDocuments'] ?? false,
+      showVatOnDocuments: map['showVatOnDocuments'] ?? false,
+      showEoriOnDocuments: map['showEoriOnDocuments'] ?? false,
+      customFieldTitle: map['customFieldTitle'],
+      customFieldValue: map['customFieldValue'],
+
+
     );
   }
 
@@ -161,6 +182,11 @@ class Customer {
       'shippingCountryCode': shippingCountryCode ?? _getCountryCode(shippingCountry ?? ''),
       'shippingPhone': shippingPhone,
       'shippingEmail': shippingEmail,
+      'showCustomFieldOnDocuments': showCustomFieldOnDocuments,
+      'showVatOnDocuments': showVatOnDocuments,
+      'showEoriOnDocuments': showEoriOnDocuments,
+      'customFieldTitle': customFieldTitle,
+      'customFieldValue': customFieldValue,
     };
   }
 
