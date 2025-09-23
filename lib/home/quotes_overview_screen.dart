@@ -1606,6 +1606,8 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
           configResult['invoiceSettings'] as Map<String, dynamic>,
         );
 
+
+
         // History Entry wird automatisch durch OrderService erstellt
         final user = FirebaseAuth.instance.currentUser;
         await FirebaseFirestore.instance
@@ -2192,16 +2194,24 @@ class _OrderConfigurationSheet extends StatefulWidget {
 
 class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
   final ValueNotifier<bool> _additionalTextsSelectedNotifier = ValueNotifier<bool>(false);
+
+
   Map<String, dynamic> _invoiceSettings = {
     'down_payment_amount': 0.0,
     'down_payment_reference': '',
     'down_payment_date': null,
+    'show_dimensions': false,
+    // NEU:
+    'is_full_payment': false,
+    'payment_method': 'BAR',
+    'custom_payment_method': '',
+    'payment_term_days': 30,
   };
 
   final _downPaymentController = TextEditingController();
   final _referenceController = TextEditingController();
+  final _customPaymentController = TextEditingController(); // NEU
   DateTime? _downPaymentDate;
-  bool _isDownPaymentExpanded = false;
 
   @override
   void initState() {
@@ -2394,16 +2404,82 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
 
                   const SizedBox(height: 32),
 
-                  // Anzahlung Section
-                  Text(
-                    'Anzahlung (optional)',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
+                  // NEU: Toggle zwischen Anzahlung und 100% Vorkasse
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+
+                                _invoiceSettings['is_full_payment'] = false;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: !_invoiceSettings['is_full_payment']
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'Anzahlung',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: !_invoiceSettings['is_full_payment']
+                                      ? Theme.of(context).colorScheme.onPrimary
+                                      : Theme.of(context).colorScheme.onSurface,
+                                  fontWeight: !_invoiceSettings['is_full_payment'] ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _invoiceSettings['is_full_payment'] = true;
+
+                                // Bei 100% Vorkasse: Setze Gesamtbetrag
+                                final total = _convertPrice(widget.quote.calculations['total'], widget.quote);
+                                _invoiceSettings['down_payment_amount'] = total;
+                                _downPaymentController.text = total.toStringAsFixed(2);
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: _invoiceSettings['is_full_payment']
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '100% Vorauskasse',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: _invoiceSettings['is_full_payment']
+                                      ? Theme.of(context).colorScheme.onPrimary
+                                      : Theme.of(context).colorScheme.onSurface,
+                                  fontWeight: _invoiceSettings['is_full_payment'] ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+
+                  const SizedBox(height: 20),
 
                   // Gesamtbetrag anzeigen
                   Container(
@@ -2426,11 +2502,8 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                             color: Theme.of(context).colorScheme.primary,
                           ),
                         ),
-
                         Text(
                           '${widget.quote.metadata['currency']} ${_convertPrice(widget.quote.calculations['total'], widget.quote).toStringAsFixed(2)}',
-
-
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -2443,109 +2516,216 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
 
                   const SizedBox(height: 24),
 
-                  // Anzahlungsbetrag
-                  TextField(
-                    controller: _downPaymentController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      labelText: 'Anzahlung (${widget.quote.metadata['currency']})',
-                      prefixIcon:  getAdaptiveIcon(iconName: 'payment',defaultIcon:Icons.payment),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      helperText: 'Betrag der bereits geleisteten Anzahlung',
+                  // Bedingte Anzeige je nach Zahlungsart
+                  if (_invoiceSettings['is_full_payment']) ...[
+                    // 100% Vorkasse Optionen
+                    Text(
+                      'Zahlungsmethode',
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    onChanged: (value) {
-                      setState(() {
-                        _invoiceSettings['down_payment_amount'] = double.tryParse(value) ?? 0.0;
-                      });
-                    },
-                  ),
+                    const SizedBox(height: 12),
 
-                  const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: RadioListTile<String>(
+                            title: const Text('BAR'),
+                            value: 'BAR',
+                            groupValue: _invoiceSettings['payment_method'],
+                            onChanged: (value) {
+                              setState(() {
 
-                  // Belegnummer/Notiz
-                  TextField(
-                    controller: _referenceController,
-                    decoration: InputDecoration(
-                      labelText: 'Belegnummer / Notiz',
-                      prefixIcon: getAdaptiveIcon(iconName: 'description',defaultIcon:Icons.description),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      helperText: 'z.B. Anzahlung AR-2025-0004 vom 15.05.2025',
+                                _invoiceSettings['payment_method'] = value;
+                              });
+                            },
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                        Expanded(
+                          child: RadioListTile<String>(
+                            title: const Text('Andere'),
+                            value: 'custom',
+                            groupValue: _invoiceSettings['payment_method'],
+                            onChanged: (value) {
+                              setState(() {
+
+                                _invoiceSettings['payment_method'] = value;
+                              });
+                            },
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ],
                     ),
-                    onChanged: (value) {
-                      _invoiceSettings['down_payment_reference'] = value;
-                    },
-                  ),
 
-                  const SizedBox(height: 16),
+                    if (_invoiceSettings['payment_method'] == 'custom') ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _customPaymentController,
+                        decoration: InputDecoration(
+                          labelText: 'Zahlungsmethode (z.B. PayPal, Karte)',
+                          prefixIcon: getAdaptiveIcon(
+                            iconName: 'payment',
+                            defaultIcon: Icons.payment,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        onChanged: (value) {
+                          _invoiceSettings['custom_payment_method'] = value;
+                        },
+                      ),
+                    ],
 
-                  // Datum der Anzahlung
-                  InkWell(
-                    onTap: () async {
-                      final DateTime? picked = await showDatePicker(
-                        context: context,
-                        initialDate: _downPaymentDate ?? DateTime.now(),
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime.now(),
-                        locale: const Locale('de', 'DE'),
-                      );
-                      if (picked != null) {
-                        setState(() {
-                          _downPaymentDate = picked;
-                          _invoiceSettings['down_payment_date'] = picked;
-                        });
-                      }
-                    },
-                    child: Container(
+                    const SizedBox(height: 16),
+
+                    // Vorschau bei 100% Vorkasse
+                    Container(
                       padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Bruttobetrag:'),
+                              Text('${widget.quote.metadata['currency']} ${_convertPrice(widget.quote.calculations['total'], widget.quote).toStringAsFixed(2)}'),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Bezahlt per ${_invoiceSettings['payment_method'] == 'BAR' ? 'BAR' : _customPaymentController.text}:'),
+                              Text(
+                                '- ${widget.quote.metadata['currency']} ${_convertPrice(widget.quote.calculations['total'], widget.quote).toStringAsFixed(2)}',
+                                style: const TextStyle(color: Colors.green),
+                              ),
+                            ],
+                          ),
+                          const Divider(),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Restbetrag:',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                '${widget.quote.metadata['currency']} 0.00',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  ] else ...[
+                    // Anzahlung Felder
+                    TextField(
+                      controller: _downPaymentController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: 'Anzahlung BRUTTO (${widget.quote.metadata['currency']})',
+                        prefixIcon: getAdaptiveIcon(
+                          iconName: 'payments',
+                          defaultIcon: Icons.payments,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        helperText: 'Betrag der bereits geleisteten Anzahlung',
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _invoiceSettings['down_payment_amount'] = double.tryParse(value) ?? 0.0;
+                        });
+                      },
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Rest wie bisher (Belegnummer, Datum, etc.)
+                    TextField(
+                      controller: _referenceController,
+                      decoration: InputDecoration(
+                        labelText: 'Belegnummer / Notiz',
+                        prefixIcon: getAdaptiveIcon(iconName: 'description', defaultIcon: Icons.description),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        helperText: 'z.B. Anzahlung AR-2025-0004 vom 15.05.2025',
+                      ),
+                      onChanged: (value) {
+                        _invoiceSettings['down_payment_reference'] = value;
+                      },
+                    ),
+
+                    // ... Rest der Anzahlungsfelder (Datum, Vorschau)
+                  ],
+
+                  // NEU: Zahlungsziel (nur wenn nicht 100% Vorkasse)
+                  if (!_invoiceSettings['is_full_payment']) ...[
+                    const SizedBox(height: 24),
+                    Text(
+                      'Zahlungsziel',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 12),
+
+                    Container(
                       decoration: BoxDecoration(
                         border: Border.all(
                           color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
                         ),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Row(
+                      child: Column(
                         children: [
-                          getAdaptiveIcon(iconName: 'calendar_today',defaultIcon:Icons.calendar_today),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Datum der Anzahlung',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                Text(
-                                  _downPaymentDate != null
-                                      ? DateFormat('dd.MM.yyyy').format(_downPaymentDate!)
-                                      : 'Datum auswählen',
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                              ],
-                            ),
+                          RadioListTile<int>(
+                            title: const Text('10 Tage'),
+                            value: 10,
+                            groupValue: _invoiceSettings['payment_term_days'],
+                            onChanged: (value) {
+                              setState(() {
+                                _invoiceSettings['payment_term_days'] = value;
+                              });
+                            },
                           ),
-                          if (_downPaymentDate != null)
-                            IconButton(
-                              icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:Icons.clear),
-                              onPressed: () {
-                                setState(() {
-                                  _downPaymentDate = null;
-                                  _invoiceSettings['down_payment_date'] = null;
-                                });
-                              },
-                            ),
+                          RadioListTile<int>(
+                            title: const Text('14 Tage'),
+                            value: 14,
+                            groupValue: _invoiceSettings['payment_term_days'],
+                            onChanged: (value) {
+                              setState(() {
+
+                                _invoiceSettings['payment_term_days'] = value;
+                              });
+                            },
+                          ),
+                          RadioListTile<int>(
+                            title: const Text('30 Tage'),
+                            value: 30,
+                            groupValue: _invoiceSettings['payment_term_days'],
+                            onChanged: (value) {
+                              setState(() {
+
+                                _invoiceSettings['payment_term_days'] = value;
+                              });
+                            },
+                          ),
                         ],
                       ),
                     ),
-                  ),
-
+                  ],
 
 
 
@@ -2623,6 +2803,12 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                       'down_payment_amount': double.tryParse(_downPaymentController.text) ?? 0.0,
                       'down_payment_reference': _referenceController.text,
                       'down_payment_date': _downPaymentDate,
+                      'show_dimensions': _invoiceSettings['show_dimensions'] ?? false,
+                      // NEU: Die neuen Felder hinzufügen
+                      'is_full_payment': _invoiceSettings['is_full_payment'] ?? false,
+                      'payment_method': _invoiceSettings['payment_method'] ?? 'BAR',
+                      'custom_payment_method': _invoiceSettings['custom_payment_method'] ?? '',
+                      'payment_term_days': _invoiceSettings['payment_term_days'] ?? 30,
                     };
                     print('✓ previewInvoiceSettings erstellt');
 
@@ -2649,9 +2835,10 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                     print('✓ safeCalculations konvertiert');
 
                     print('→ Rufe InvoiceGenerator.generateInvoicePdf auf...');
-
+                    print(_invoiceSettings);
+                    print(previewInvoiceSettings);
                     final roundingSettings = await SwissRounding.loadRoundingSettings();
-                    
+
                     final pdfBytes = await InvoiceGenerator.generateInvoicePdf(
                       items: widget.quote.items,
                       customerData: widget.quote.customer,
@@ -2664,7 +2851,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                       quoteNumber: widget.quote.quoteNumber,
                       shippingCosts: widget.quote.metadata['shippingCosts'] as Map<String, dynamic>?,
                       calculations: safeCalculations,
-                      paymentTermDays: 30,
+                      paymentTermDays: _invoiceSettings['payment_term_days'] ?? 30, // NEU: Aus Settings
                       taxOption: widget.quote.metadata['taxOption'] ?? 0,
                       vatRate: (widget.quote.metadata['vatRate'] as num?)?.toDouble() ?? 8.1,
                       downPaymentSettings: previewInvoiceSettings,
@@ -2812,6 +2999,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
   void dispose() {
     _downPaymentController.dispose();
     _referenceController.dispose();
+    _customPaymentController.dispose();
     _additionalTextsSelectedNotifier.dispose();
     super.dispose();
   }

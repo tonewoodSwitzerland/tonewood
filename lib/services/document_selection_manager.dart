@@ -8,6 +8,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:tonewood/services/pdf_generators/commercial_invoice_generator.dart';
 import 'package:tonewood/services/pdf_generators/delivery_note_generator.dart';
 import 'package:tonewood/services/pdf_generators/packing_list_generator.dart';
@@ -502,6 +503,11 @@ class DocumentSelectionManager {
         'down_payment_reference': settings['down_payment_reference'] ?? '',
         'down_payment_date': settings['down_payment_date'],
         'show_dimensions': settings['show_dimensions'] ?? false,
+        // NEU - Diese Felder hinzufügen:
+        'is_full_payment': settings['is_full_payment'] ?? false,
+        'payment_method': settings['payment_method'] ?? 'BAR',
+        'custom_payment_method': settings['custom_payment_method'] ?? '',
+        'payment_term_days': settings['payment_term_days'] ?? 30,
         'timestamp': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -525,6 +531,11 @@ class DocumentSelectionManager {
               ? (data['down_payment_date'] as Timestamp).toDate()
               : null,
           'show_dimensions': data['show_dimensions'] ?? false,
+          // NEU - Diese Felder hinzufügen:
+          'is_full_payment': data['is_full_payment'] ?? false,
+          'payment_method': data['payment_method'] ?? 'BAR',
+          'custom_payment_method': data['custom_payment_method'] ?? '',
+          'payment_term_days': data['payment_term_days'] ?? 30,
         };
       }
     } catch (e) {
@@ -536,6 +547,11 @@ class DocumentSelectionManager {
       'down_payment_reference': '',
       'down_payment_date': null,
       'show_dimensions': false,
+      // NEU - Diese Defaults hinzufügen:
+      'is_full_payment': false,
+      'payment_method': 'BAR',
+      'custom_payment_method': '',
+      'payment_term_days': 30,
     };
   }
 // Nach saveInvoiceSettings() hinzufügen:
@@ -1128,6 +1144,9 @@ class DocumentSelectionManager {
       }).toList();
       final additionalTexts = await AdditionalTextsManager.loadAdditionalTexts();
 
+      // NEU: Hole paymentTermDays aus den Invoice Settings
+      final paymentTermDays = invoiceSettings['payment_term_days'] ?? 30;
+
       final currencySettings = await _loadCurrencySettings();
       final currency = currencySettings['currency'] as String;
       // Konvertiere die exchange rates korrekt
@@ -1155,7 +1174,7 @@ class DocumentSelectionManager {
         invoiceNumber: 'PREVIEW',
         shippingCosts: shippingCosts,
         calculations: calculations, // <-- Jetzt mit echten Rabatten
-        paymentTermDays: 30,
+        paymentTermDays: paymentTermDays,
         taxOption: taxOption,  // NEU (falls InvoiceGenerator das unterstützt)
         vatRate: vatRate,
         additionalTexts: additionalTexts,
@@ -2400,6 +2419,11 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
     DateTime? downPaymentDate;
     bool showDimensions = false;
 
+    // NEU - Ergänze diese Variablen:
+    bool isFullPayment = false; // false = Anzahlung, true = 100% Vorkasse
+    String paymentMethod = 'BAR'; // BAR oder custom
+    String customPaymentMethod = '';
+    int paymentTermDays = 30; // 10, 14 oder 30 Tage
 
     // Lade bestehende Einstellungen
     final existingSettings = await DocumentSelectionManager.loadInvoiceSettings();
@@ -2408,10 +2432,17 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
     downPaymentDate = existingSettings['down_payment_date'];
     showDimensions = existingSettings['show_dimensions'] ?? false; // NEU
 
+    // NEU - Lade auch diese Werte:
+    isFullPayment = existingSettings['is_full_payment'] ?? false;
+    paymentMethod = existingSettings['payment_method'] ?? 'BAR';
+    customPaymentMethod = existingSettings['custom_payment_method'] ?? '';
+    paymentTermDays = existingSettings['payment_term_days'] ?? 30;
+
     final downPaymentController = TextEditingController(text: downPaymentAmount > 0 ? downPaymentAmount.toString() : '');
     final referenceController = TextEditingController(text: downPaymentReference);
 
-
+// NEU - Zusätzlicher Controller:
+    final customPaymentController = TextEditingController(text: customPaymentMethod);
 
     // In showInvoiceSettingsDialog(), nach der Berechnung des totalAmount:
 
@@ -2547,6 +2578,82 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                         ),
                         const SizedBox(height: 24),
 
+                        // NEU: Toggle zwischen Anzahlung und 100% Vorkasse
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setDialogState(() {
+                                      isFullPayment = false;
+                                      downPaymentAmount = 0.0;
+                                      downPaymentController.text = '';
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: !isFullPayment
+                                          ? Theme.of(context).colorScheme.primary
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      'Anzahlung',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: !isFullPayment
+                                            ? Theme.of(context).colorScheme.onPrimary
+                                            : Theme.of(context).colorScheme.onSurface,
+                                        fontWeight: !isFullPayment ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setDialogState(() {
+                                      isFullPayment = true;
+                                      downPaymentAmount = double.parse(totalAmount.toStringAsFixed(2));
+                                      downPaymentController.text = downPaymentAmount.toStringAsFixed(2);
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: isFullPayment
+                                          ? Theme.of(context).colorScheme.primary
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      '100% Vorauskasse',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: isFullPayment
+                                            ? Theme.of(context).colorScheme.onPrimary
+                                            : Theme.of(context).colorScheme.onSurface,
+                                        fontWeight: isFullPayment ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
+                        const SizedBox(height: 24),
+
                         // Gesamtbetrag anzeigen
                         Container(
                           padding: const EdgeInsets.all(16),
@@ -2582,34 +2689,341 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
 
                         const SizedBox(height: 24),
 
-                        // Anzahlung Betrag
-                        TextField(
-                          controller: downPaymentController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: InputDecoration(
-                            labelText: 'Anzahlung BRUTTO (${currency})', // NEU: Dynamische Währung
-                            prefixIcon: getAdaptiveIcon(
-                              iconName: 'payments',
-                              defaultIcon: Icons.payments,
+                        // Bedingte Anzeige je nach Zahlungsart
+                        if (isFullPayment) ...[
+                          // 100% Vorkasse Optionen
+                          Text(
+                            'Zahlungsmethode',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 12),
+
+                          Row(
+                            children: [
+                              Expanded(
+                                child: RadioListTile<String>(
+                                  title: const Text('BAR'),
+                                  value: 'BAR',
+                                  groupValue: paymentMethod,
+                                  onChanged: (value) {
+                                    setDialogState(() {
+                                      paymentMethod = value!;
+                                    });
+                                  },
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                              ),
+                              Expanded(
+                                child: RadioListTile<String>(
+                                  title: const Text('Andere'),
+                                  value: 'custom',
+                                  groupValue: paymentMethod,
+                                  onChanged: (value) {
+                                    setDialogState(() {
+                                      paymentMethod = value!;
+                                    });
+                                  },
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          if (paymentMethod == 'custom') ...[
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: customPaymentController,
+                              decoration: InputDecoration(
+                                labelText: 'Zahlungsmethode (z.B. PayPal, Karte..)',
+                                prefixIcon: getAdaptiveIcon(
+                                  iconName: 'payment',
+                                  defaultIcon: Icons.payment,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              onChanged: (value) {
+                                customPaymentMethod = value;
+                              },
                             ),
-                            border: OutlineInputBorder(
+                          ],
+
+                          const SizedBox(height: 16),
+
+                          // Vorschau bei 100% Vorkasse
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            helperText: 'Betrag der bereits geleisteten Anzahlung',
+                            child: Column(
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('Bruttobetrag:'),
+                                    Text('${currency} ${totalAmount.toStringAsFixed(2)}'),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Bezahlt per ${paymentMethod == 'BAR' ? 'BAR' : customPaymentMethod}:'),
+                                    Text(
+                                      '- ${currency} ${totalAmount.toStringAsFixed(2)}',
+                                      style: const TextStyle(color: Colors.green),
+                                    ),
+                                  ],
+                                ),
+                                const Divider(),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Restbetrag:',
+                                      style: TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                    Text(
+                                      '${currency} 0.00',
+                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                          onChanged: (value) {
-                            setDialogState(() {
-                              downPaymentAmount = double.tryParse(value) ?? 0.0;
-                            });
-                          },
-                        ),
+
+                        ] else ...[
+                          // Anzahlung Felder (bestehender Code)
+                          TextField(
+                            controller: downPaymentController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: InputDecoration(
+                              labelText: 'Anzahlung BRUTTO (${currency})',
+                              prefixIcon: Padding(
+                                ///TODO checken ob das Sinn macht auch der App
+                                padding: const EdgeInsets.all(4.0),
+                                child: getAdaptiveIcon(
+                                  iconName: 'payments',
+                                  defaultIcon: Icons.payments,
+                                ),
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              helperText: 'Betrag der bereits geleisteten Anzahlung',
+                            ),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                            ],
+                            onChanged: (value) {
+                              setDialogState(() {
+                                final parsed = double.tryParse(value) ?? 0.0;
+                                // Zusätzliche Sicherheit: Runde auf 2 Nachkommastellen
+                                downPaymentAmount = double.parse(parsed.toStringAsFixed(2));
+                              });
+                            },
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // Belegnummer/Notiz
+                          TextField(
+                            controller: referenceController,
+                            decoration: InputDecoration(
+                              labelText: 'Belegnummer / Notiz',
+                              prefixIcon: getAdaptiveIcon(
+                                iconName: 'description',
+                                defaultIcon: Icons.description,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              helperText: 'z.B. Anzahlung AR-2025-0004 vom 15.05.2025',
+                            ),
+                            onChanged: (value) {
+                              downPaymentReference = value;
+                            },
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // Datum der Anzahlung
+                          InkWell(
+                            onTap: () async {
+                              final DateTime? picked = await showDatePicker(
+                                context: dialogContext,
+                                initialDate: downPaymentDate ?? DateTime.now(),
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime.now(),
+                                locale: const Locale('de', 'DE'),
+                              );
+                              if (picked != null) {
+                                setDialogState(() {
+                                  downPaymentDate = picked;
+                                });
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  getAdaptiveIcon(
+                                    iconName: 'calendar_today',
+                                    defaultIcon: Icons.calendar_today,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Datum der Anzahlung',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                        Text(
+                                          downPaymentDate != null
+                                              ? DateFormat('dd.MM.yyyy').format(downPaymentDate!)
+                                              : 'Datum auswählen',
+                                          style: const TextStyle(fontSize: 16),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (downPaymentDate != null)
+                                    IconButton(
+                                      icon: getAdaptiveIcon(
+                                        iconName: 'clear',
+                                        defaultIcon: Icons.clear,
+                                      ),
+                                      onPressed: () {
+                                        setDialogState(() {
+                                          downPaymentDate = null;
+                                        });
+                                      },
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // Vorschau der Berechnung bei Anzahlung
+                          if (downPaymentAmount > 0)
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text('Bruttobetrag:'),
+                                      Text('${currency} ${totalAmount.toStringAsFixed(2)}'),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text('Anzahlung:'),
+                                      Text(
+                                        '- ${currency} ${downPaymentAmount.toStringAsFixed(2)}',
+                                        style: const TextStyle(color: Colors.red),
+                                      ),
+                                    ],
+                                  ),
+                                  const Divider(),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text(
+                                        'Restbetrag:',
+                                        style: TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                      Text(
+                                        '${currency} ${(totalAmount - downPaymentAmount).toStringAsFixed(2)}',
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+
+                        // NEU: Zahlungsziel (nur wenn nicht 100% Vorkasse)
+                        if (!isFullPayment) ...[
+                          const SizedBox(height: 24),
+                          Text(
+                            'Zahlungsziel',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 12),
+
+                          Container(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              children: [
+                                RadioListTile<int>(
+                                  title: const Text('10 Tage'),
+                                  value: 10,
+                                  groupValue: paymentTermDays,
+                                  onChanged: (value) {
+                                    setDialogState(() {
+                                      paymentTermDays = value!;
+                                    });
+                                  },
+                                ),
+                                RadioListTile<int>(
+                                  title: const Text('14 Tage'),
+                                  value: 14,
+                                  groupValue: paymentTermDays,
+                                  onChanged: (value) {
+                                    setDialogState(() {
+                                      paymentTermDays = value!;
+                                    });
+                                  },
+                                ),
+                                RadioListTile<int>(
+                                  title: const Text('30 Tage'),
+                                  value: 30,
+                                  groupValue: paymentTermDays,
+                                  onChanged: (value) {
+                                    setDialogState(() {
+                                      paymentTermDays = value!;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
 
                         const SizedBox(height: 16),
 
-                        // Nach dem Datum der Anzahlung, vor der Vorschau der Berechnung
-                        const SizedBox(height: 16),
-
-// NEU: Checkbox für Maße anzeigen
+                        // Checkbox für Maße anzeigen (immer sichtbar)
                         Container(
                           decoration: BoxDecoration(
                             border: Border.all(
@@ -2629,155 +3043,16 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                 showDimensions = value ?? false;
                               });
                             },
-                            secondary:
-                            getAdaptiveIcon(iconName: 'straighten', defaultIcon: Icons.straighten, size: 16,
+                            secondary: getAdaptiveIcon(
+                              iconName: 'straighten',
+                              defaultIcon: Icons.straighten,
+                              size: 16,
                               color: Theme.of(context).colorScheme.primary,
                             ),
                           ),
                         ),
 
-                        const SizedBox(height: 24),
-
-
-
-
-                        // Belegnummer/Notiz
-                        TextField(
-                          controller: referenceController,
-                          decoration: InputDecoration(
-                            labelText: 'Belegnummer / Notiz',
-                            prefixIcon: getAdaptiveIcon(
-                              iconName: 'description',
-                              defaultIcon: Icons.description,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            helperText: 'z.B. Anzahlung AR-2025-0004 vom 15.05.2025',
-                          ),
-                          onChanged: (value) {
-                            downPaymentReference = value;
-                          },
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // Datum der Anzahlung
-                        InkWell(
-                          onTap: () async {
-                            final DateTime? picked = await showDatePicker(
-                              context: dialogContext,
-                              initialDate: downPaymentDate ?? DateTime.now(),
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime.now(),
-                              locale: const Locale('de', 'DE'),
-                            );
-                            if (picked != null) {
-                              setDialogState(() {
-                                downPaymentDate = picked;
-                              });
-                            }
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                getAdaptiveIcon(
-                                  iconName: 'calendar_today',
-                                  defaultIcon: Icons.calendar_today,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Datum der Anzahlung',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                      Text(
-                                        downPaymentDate != null
-                                            ? DateFormat('dd.MM.yyyy').format(downPaymentDate!)
-                                            : 'Datum auswählen',
-                                        style: const TextStyle(fontSize: 16),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (downPaymentDate != null)
-                                  IconButton(
-                                    icon: getAdaptiveIcon(
-                                      iconName: 'clear',
-                                      defaultIcon: Icons.clear,
-                                    ),
-                                    onPressed: () {
-                                      setDialogState(() {
-                                        downPaymentDate = null;
-                                      });
-                                    },
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        // Vorschau der Berechnung
-                        if (downPaymentAmount > 0)
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Column(
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Text('Bruttobetrag:'),
-                                    Text('${currency} ${totalAmount.toStringAsFixed(2)}'), // NEU
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Text('Anzahlung:'),
-                                    Text(
-                                      '- ${currency} ${downPaymentAmount.toStringAsFixed(2)}', // NEU
-                                      style: const TextStyle(color: Colors.red),
-                                    ),
-                                  ],
-                                ),
-                                const Divider(),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Text(
-                                      'Restbetrag:',
-                                      style: TextStyle(fontWeight: FontWeight.bold),
-                                    ),
-                                    Text(
-                                      '${currency} ${(totalAmount - downPaymentAmount).toStringAsFixed(2)}', // NEU
-                                      style: const TextStyle(fontWeight: FontWeight.bold),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-
+                        const SizedBox(height: 32),
                         const SizedBox(height: 32), // Fester Abstand statt Spacer
 
                         // Action Buttons
@@ -2800,14 +3075,17 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                               child: ElevatedButton.icon(
                                 onPressed: () async {
                                   await DocumentSelectionManager.saveInvoiceSettings({
-                                    'down_payment_amount': downPaymentAmount,
+                                    'is_full_payment': isFullPayment,
+                                    'payment_method': paymentMethod,
+                                    'custom_payment_method': customPaymentMethod,
+                                    'payment_term_days': paymentTermDays,
+                                    'down_payment_amount': isFullPayment ? totalAmount : downPaymentAmount,
                                     'down_payment_reference': downPaymentReference,
                                     'down_payment_date': downPaymentDate != null
                                         ? Timestamp.fromDate(downPaymentDate!)
                                         : null,
                                     'show_dimensions': showDimensions,
                                   });
-
                                   if (dialogContext.mounted) {
                                     Navigator.pop(dialogContext);
                                     ScaffoldMessenger.of(context).showSnackBar(

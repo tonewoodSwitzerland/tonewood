@@ -223,13 +223,16 @@ class OrderService {
     required Map<String, dynamic> orderData,
     required String language,
   }) async {
-    try {
+    try
+    {
       Uint8List pdfBytes;
       String filePrefix;
 
+
       // Extrahiere metadata für einfacheren Zugriff
       final metadata = orderData['metadata'] as Map<String, dynamic>? ?? {};
-
+      final invoiceSettings = metadata['invoiceSettings'] as Map<String, dynamic>? ?? {};
+      final paymentTermDays = invoiceSettings['payment_term_days'] ?? 30;
       // NEU: Hole Additional Texts aus metadata
       final additionalTexts = metadata['additionalTexts'] as Map<String, dynamic>?;
 
@@ -265,7 +268,9 @@ class OrderService {
             taxOption: metadata['taxOption'] ?? 0,
             vatRate: (metadata['vatRate'] ?? 8.1).toDouble(),
             additionalTexts: additionalTexts,
-            roundingSettings: roundingSettings
+            roundingSettings: roundingSettings,
+            paymentTermDays: paymentTermDays,
+            downPaymentSettings: invoiceSettings,
           );
           break;
 
@@ -453,7 +458,25 @@ class OrderService {
 
       // 3. Erstelle den Auftrag (die Additional Texts sind jetzt in der Quote gespeichert)
       final order = await createOrderFromQuote(quoteId);
+      // DEBUG
+      print('DEBUG createOrderFromQuoteWithConfig:');
+      print('Order created with ID: ${order.id}');
+      print('invoiceSettings: $invoiceSettings');
+      print('is_full_payment: ${invoiceSettings['is_full_payment']}');
 
+// NEU: Bei 100% Vorkasse den Zahlungsstatus setzen
+      if (invoiceSettings['is_full_payment'] == true) {
+        await FirebaseFirestore.instance
+            .collection('orders')
+            .doc(order.id)
+            .update({
+          'paymentStatus': PaymentStatus.paid.name,
+          'payment_updated_at': FieldValue.serverTimestamp(),
+          'payment_completed_at': FieldValue.serverTimestamp(),
+          'metadata.payment_method': invoiceSettings['payment_method'],
+          'metadata.custom_payment_method': invoiceSettings['custom_payment_method'],
+        });
+      }
       // 4. Erstelle die Rechnung mit den Einstellungen aus der Quote
       // HIER IST DIE KORREKTUR: Konvertiere exchangeRates zu Map<String, double>
       final rawExchangeRates = quote.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};

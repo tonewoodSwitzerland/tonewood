@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../components/order_model.dart';
 import '../components/order_service.dart';
 import '../components/quote_model.dart';
 import '../components/quote_service.dart';
@@ -635,6 +636,24 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
 
         // 2. Konvertiere zu Auftrag (bucht Produkte aus)
         final order = await OrderService.createOrderFromQuote(quote.id);
+// NEU: Füge dies hinzu:
+// Bei 100% Vorkasse den Zahlungsstatus setzen
+        if (data['metadata']['invoiceSettings']['is_full_payment'] == true) {
+          print('DEBUG: Setting payment status to PAID for order ${order.id}');
+
+          await FirebaseFirestore.instance
+              .collection('orders')
+              .doc(order.id)
+              .update({
+            'paymentStatus': PaymentStatus.paid.name,
+            'payment_updated_at': FieldValue.serverTimestamp(),
+            'payment_completed_at': FieldValue.serverTimestamp(),
+            'metadata.payment_method': data['metadata']['invoiceSettings']['payment_method'],
+            'metadata.custom_payment_method': data['metadata']['invoiceSettings']['custom_payment_method'],
+          });
+
+          print('DEBUG: Payment status updated successfully');
+        }
 
         // 3. Erstelle gewählte Dokumente
         final documentSelection = Map<String, bool>.from(_documentSelection);
@@ -735,7 +754,11 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
       final calculations = await _calculateTotals(basketSnapshot.docs);
 
       final invoiceSettings = await DocumentSelectionManager.loadInvoiceSettings();
-
+// DEBUG
+      print('DEBUG _loadTransactionData:');
+      print('invoiceSettings: $invoiceSettings');
+      print('is_full_payment: ${invoiceSettings['is_full_payment']}');
+      print('payment_method: ${invoiceSettings['payment_method']}');
 
       // Items vorbereiten
       final items = basketSnapshot.docs.map((doc) {

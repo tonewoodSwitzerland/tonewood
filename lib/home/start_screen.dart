@@ -524,36 +524,36 @@ class StartScreenState extends State<StartScreen> {
               );
             },
           ),
-          // Nach dem Aufträge ListTile:
-          ListTile(
-            leading: getAdaptiveIcon(iconName: 'local_shipping', defaultIcon: Icons.local_shipping),
-            title: const Text('Sammellieferungen'),
-            subtitle: const Text('Mehrere Aufträge gemeinsam versenden'),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text(
-                'NEU',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue,
-                ),
-              ),
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const CombinedShipmentScreen(),
-                ),
-              );
-            },
-          ),
+          // // Nach dem Aufträge ListTile:
+          // ListTile(
+          //   leading: getAdaptiveIcon(iconName: 'local_shipping', defaultIcon: Icons.local_shipping),
+          //   title: const Text('Sammellieferungen'),
+          //   subtitle: const Text('Mehrere Aufträge gemeinsam versenden'),
+          //   trailing: Container(
+          //     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          //     decoration: BoxDecoration(
+          //       color: Colors.blue.withOpacity(0.1),
+          //       borderRadius: BorderRadius.circular(12),
+          //     ),
+          //     child: const Text(
+          //       'NEU',
+          //       style: TextStyle(
+          //         fontSize: 10,
+          //         fontWeight: FontWeight.bold,
+          //         color: Colors.blue,
+          //       ),
+          //     ),
+          //   ),
+          //   onTap: () {
+          //     Navigator.pop(context);
+          //     Navigator.push(
+          //       context,
+          //       MaterialPageRoute(
+          //         builder: (context) => const CombinedShipmentScreen(),
+          //       ),
+          //     );
+          //   },
+          // ),
           // const Divider(),
           //
           // ListTile(

@@ -54,7 +54,7 @@ class InvoiceGenerator extends BasePdfGenerator {
     required String language,
     Map<String, dynamic>? shippingCosts,
     Map<String, dynamic>? calculations,
-    int paymentTermDays = 30,
+    required int paymentTermDays,
     required int taxOption,
     required double vatRate,
     Map<String, dynamic>? downPaymentSettings,
@@ -63,14 +63,27 @@ class InvoiceGenerator extends BasePdfGenerator {
     final pdf = pw.Document();
     final logo = await BasePdfGenerator.loadLogo();
 
+    print("paymentTermDayas:$paymentTermDays");
     // Generiere Rechnungs-Nummer falls nicht übergeben
     final invoiceNum = invoiceNumber ?? await getNextInvoiceNumber();
     final paymentDue = DateTime.now().add(Duration(days: paymentTermDays));
 
     // NEU: Lade Invoice-Einstellungen für showDimensions
-    final invoiceSettings = await DocumentSelectionManager.loadInvoiceSettings();
-    final showDimensions = invoiceSettings['show_dimensions'] ?? false;
 
+
+    final invoiceSettings = downPaymentSettings ?? await DocumentSelectionManager.loadInvoiceSettings();
+
+
+    final showDimensions = invoiceSettings['show_dimensions'] ?? false;
+    // NEU: Prüfe ob 100% Vorkasse und hole Zahlungsmethode
+    final isFullPayment = invoiceSettings['is_full_payment'] ?? false;
+    final paymentMethod = invoiceSettings['payment_method'] ?? 'BAR';
+    final customPaymentMethod = invoiceSettings['custom_payment_method'] ?? '';
+
+    // NEU: Hole das Zahlungsziel aus den Settings (überschreibt den Default)
+    if (invoiceSettings['payment_term_days'] != null) {
+      paymentTermDays = invoiceSettings['payment_term_days'];
+    }
 
     // Gruppiere Items nach Holzart
     final productItems = items.where((item) => item['is_service'] != true).toList();
@@ -102,6 +115,17 @@ class InvoiceGenerator extends BasePdfGenerator {
           'payment_note': 'Payment due within $paymentTermDays days until ${DateFormat('MMMM dd, yyyy', 'en_US').format(paymentDue)}.',
         }
       };
+
+      // NEU: Bei 100% Vorkasse andere Zahlungsnotiz
+      if (isFullPayment) {
+        final paymentMethodText = paymentMethod == 'BAR'
+            ? 'BAR'
+            : customPaymentMethod;
+
+        translations['DE']!['payment_note'] = 'Vollständig bezahlt';
+        translations['EN']!['payment_note'] = 'Fully paid';
+      }
+
       return translations[language]?[key] ?? translations['DE']?[key] ?? '';
     }
     pdf.addPage(
@@ -167,20 +191,38 @@ class InvoiceGenerator extends BasePdfGenerator {
                       paymentDue,roundingSettings),
 
                     pw.SizedBox(height: 10),
-                    // Zahlungshinweis
-                    pw.Container(
-                      alignment: pw.Alignment.centerLeft,
-                      padding: const pw.EdgeInsets.all(8),
-                      decoration: pw.BoxDecoration(
-                        color: PdfColors.blue50,
-                        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                        border: pw.Border.all(color: PdfColors.blue200, width: 0.5),
+                    // Zahlungshinweis - ANGEPASST
+                    if (!isFullPayment) ...[
+                      // Nur bei offener Zahlung anzeigen
+                      pw.Container(
+                        alignment: pw.Alignment.centerLeft,
+                        padding: const pw.EdgeInsets.all(8),
+                        decoration: pw.BoxDecoration(
+                          color: PdfColors.blue50,
+                          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                          border: pw.Border.all(color: PdfColors.blue200, width: 0.5),
+                        ),
+                        child: pw.Text(
+                          getTranslation('payment_note'),
+                          style: const pw.TextStyle(fontSize: 10, color: PdfColors.blue900),
+                        ),
                       ),
-                      child: pw.Text(
-                        getTranslation('payment_note'),
-                        style: const pw.TextStyle(fontSize: 10, color: PdfColors.blue900),
+                    ] else ...[
+                      // Bei 100% Vorkasse - Zahlungsbestätigung
+                      pw.Container(
+                        alignment: pw.Alignment.centerLeft,
+                        padding: const pw.EdgeInsets.all(8),
+                        decoration: pw.BoxDecoration(
+                          color: PdfColors.green50,
+                          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                          border: pw.Border.all(color: PdfColors.green200, width: 0.5),
+                        ),
+                        child: pw.Text(
+                          getTranslation('payment_note'), // Nutzt die angepasste Übersetzung
+                          style: const pw.TextStyle(fontSize: 10, color: PdfColors.green900),
+                        ),
                       ),
-                    ),
+                    ],
 
                     pw.SizedBox(height: 10),
                     additionalTextsWidget,
@@ -711,6 +753,11 @@ class InvoiceGenerator extends BasePdfGenerator {
     final List<String> parts = [];
 
     if (reference.isNotEmpty) {
+      // Bei Zahlungsmethoden direkt anzeigen
+      if (reference == 'Barzahlung' || reference == 'Cash payment') {
+        return ' (${reference})';
+      }
+      // Bei anderen Referenzen
       parts.add(reference);
     }
 
@@ -720,6 +767,13 @@ class InvoiceGenerator extends BasePdfGenerator {
 
     if (parts.isEmpty) {
       return '';
+    }
+
+    // Keine "Referenz:" Prefix bei Zahlungsmethoden
+    if (reference == 'Barzahlung' || reference == 'Cash payment' ||
+        reference.toLowerCase().contains('paypal') ||
+        reference.toLowerCase().contains('überweisung')) {
+      return ' (${parts.join(', ')})';
     }
 
     final referenceText = language == 'EN' ? 'Reference' : 'Referenz';
@@ -738,7 +792,8 @@ class InvoiceGenerator extends BasePdfGenerator {
       Map<String, dynamic>? downPaymentSettings, // NEU: Parameter hinzufügen
       DateTime? paymentDue,
       Map<String, bool> roundingSettings,
-      ) {
+      )
+  {
     double subtotal = 0.0;
     double actualItemDiscounts = 0.0;
 
@@ -794,16 +849,9 @@ class InvoiceGenerator extends BasePdfGenerator {
 
 
 
-    final downPaymentAmount = downPaymentSettings != null
-        ? ((downPaymentSettings['down_payment_amount'] as num?) ?? 0.0).toDouble()
-        : 0.0;
-    final downPaymentReference = downPaymentSettings?['down_payment_reference'] ?? '';
-    final downPaymentDate = downPaymentSettings?['down_payment_date'];
-
     print("test");
     print("$taxOption");
 
-    // MwSt-Berechnung basierend auf taxOption
     // MwSt-Berechnung basierend auf taxOption
     double vatAmount = 0.0;
     double totalWithTax = netAmount;
@@ -821,11 +869,12 @@ class InvoiceGenerator extends BasePdfGenerator {
       // Bei anderen Steueroptionen auch auf 2 Nachkommastellen runden
       totalWithTax = double.parse(netAmount.toStringAsFixed(2));
     }
+
     // NEU: Rundung anwenden
     double displayTotal = totalWithTax;
     double roundingDifference = 0.0;
 
-// Prüfe ob Rundung für diese Währung aktiviert ist
+    // Prüfe ob Rundung für diese Währung aktiviert ist
     if (roundingSettings[currency] == true) {
       // Konvertiere in Anzeigewährung
       if (currency != 'CHF') {
@@ -852,12 +901,41 @@ class InvoiceGenerator extends BasePdfGenerator {
       }
     }
 
-
-
-
-
-
     double totalInTargetCurrency = totalWithTax;
+    if (currency != 'CHF') {
+      totalInTargetCurrency = totalWithTax * (exchangeRates[currency] ?? 1.0);
+    }
+
+    // JETZT ERST die Anzahlung berechnen (NACH MwSt, Rundung und Währungsumrechnung!)
+    final isFullPayment = downPaymentSettings?['is_full_payment'] ?? false;
+
+    double downPaymentAmount = 0.0;
+    String downPaymentReference = '';
+    DateTime? downPaymentDate;
+
+    if (isFullPayment) {
+      // Bei 100% Vorkasse ist die "Anzahlung" = finaler Bruttobetrag in Zielwährung
+      downPaymentAmount = totalInTargetCurrency;
+
+      // Hole Zahlungsmethode
+      final paymentMethod = downPaymentSettings?['payment_method'] ?? 'BAR';
+      if (paymentMethod == 'BAR') {
+        downPaymentReference = language == 'EN' ? 'Cash payment' : 'Barzahlung';
+      } else {
+        downPaymentReference = downPaymentSettings?['custom_payment_method'] ?? '';
+      }
+      downPaymentDate = DateTime.now();
+    } else {
+      // Normale Anzahlung
+      downPaymentAmount = downPaymentSettings != null
+          ? ((downPaymentSettings['down_payment_amount'] as num?) ?? 0.0).toDouble()
+          : 0.0;
+      downPaymentReference = downPaymentSettings?['down_payment_reference'] ?? '';
+      downPaymentDate = downPaymentSettings?['down_payment_date'];
+    }
+
+
+
     if (currency != 'CHF') {
       totalInTargetCurrency = totalWithTax * (exchangeRates[currency] ?? 1.0);
     }
@@ -1160,6 +1238,7 @@ class InvoiceGenerator extends BasePdfGenerator {
     ),
 
     // NEU: Anzahlung abziehen falls vorhanden
+              // NEU: Anzahlung/Vollzahlung abziehen falls vorhanden
               if (downPaymentAmount > 0) ...[
                 pw.SizedBox(height: 8),
 
@@ -1168,13 +1247,17 @@ class InvoiceGenerator extends BasePdfGenerator {
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
                     pw.Text(
-                      language == 'EN'
+                      isFullPayment
+                          ? (language == 'EN'
+                          ? './ Payment received${_buildDownPaymentReference(downPaymentReference, downPaymentDate, language)}'
+                          : './ Zahlung erhalten${_buildDownPaymentReference(downPaymentReference, downPaymentDate, language)}')
+                          : (language == 'EN'
                           ? './ Down payment${_buildDownPaymentReference(downPaymentReference, downPaymentDate, language)}'
-                          : './ Anzahlung${_buildDownPaymentReference(downPaymentReference, downPaymentDate, language)}',
+                          : './ Anzahlung${_buildDownPaymentReference(downPaymentReference, downPaymentDate, language)}'),
                       style: const pw.TextStyle(fontSize: 9),
                     ),
                     pw.Text(
-                    '$currency ${downPaymentAmount.toStringAsFixed(2)}',
+                      '$currency ${downPaymentAmount.toStringAsFixed(2)}',
                       style: const pw.TextStyle(fontSize: 9),
                     ),
                   ],
@@ -1191,9 +1274,7 @@ class InvoiceGenerator extends BasePdfGenerator {
                           ? 'Balance due'
                           : 'Restbetrag',
                       style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
-
                     ),
-
                     pw.Text(
                       '$currency ${(totalInTargetCurrency - downPaymentAmount).toStringAsFixed(2)}',
                       style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
