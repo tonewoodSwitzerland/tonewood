@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart';
 import '../services/icon_helper.dart';
 
 class ShippingCostsManager {
@@ -102,7 +103,93 @@ class ShippingCostsManager {
       rethrow;
     }
   }
-// Speichere Versandkosten direkt aus Daten (für Quote-Kopie)
+
+
+  // Nach der loadShippingCosts Methode hinzufügen:
+
+// Lade Versandkosten und konvertiere in die gewünschte Währung
+  static Future<Map<String, dynamic>> loadShippingCostsWithCurrency(
+      String currency,
+      Map<String, double> exchangeRates,
+      ) async {
+    final costs = await loadShippingCosts();
+
+    // Wenn bereits in der Zielwährung gespeichert, direkt zurückgeben
+    if (costs['currency'] == currency) {
+      return costs;
+    }
+
+    // Konvertiere von CHF in die Zielwährung
+    final rate = exchangeRates[currency] ?? 1.0;
+
+    return {
+      ...costs,
+      'plant_certificate_cost': (costs['plant_certificate_cost'] ?? DEFAULT_PLANT_CERTIFICATE) * rate,
+      'packaging_cost': (costs['packaging_cost'] ?? DEFAULT_PACKAGING) * rate,
+      'freight_cost': (costs['freight_cost'] ?? DEFAULT_FREIGHT) * rate,
+      'deduction_1_amount': (costs['deduction_1_amount'] ?? 0.0) * rate,
+      'deduction_2_amount': (costs['deduction_2_amount'] ?? 0.0) * rate,
+      'deduction_3_amount': (costs['deduction_3_amount'] ?? 0.0) * rate,
+      'surcharge_1_amount': (costs['surcharge_1_amount'] ?? 0.0) * rate,
+      'surcharge_2_amount': (costs['surcharge_2_amount'] ?? 0.0) * rate,
+      'surcharge_3_amount': (costs['surcharge_3_amount'] ?? 0.0) * rate,
+      'currency': currency,
+    };
+  }
+
+// Speichere Versandkosten in CHF (für interne Verwendung)
+  static Future<void> saveShippingCostsWithCurrency(
+      Map<String, dynamic> costs,
+      String currency,
+      Map<String, double> exchangeRates,
+      ) async {
+    try {
+      // Konvertiere zurück nach CHF für die Speicherung
+      final rate = exchangeRates[currency] ?? 1.0;
+
+      final chfCosts = {
+        ...costs,
+        'plant_certificate_cost': currency == 'CHF'
+            ? costs['plant_certificate_cost']
+            : (costs['plant_certificate_cost'] ?? 0.0) / rate,
+        'packaging_cost': currency == 'CHF'
+            ? costs['packaging_cost']
+            : (costs['packaging_cost'] ?? 0.0) / rate,
+        'freight_cost': currency == 'CHF'
+            ? costs['freight_cost']
+            : (costs['freight_cost'] ?? 0.0) / rate,
+        'deduction_1_amount': currency == 'CHF'
+            ? costs['deduction_1_amount']
+            : (costs['deduction_1_amount'] ?? 0.0) / rate,
+        'deduction_2_amount': currency == 'CHF'
+            ? costs['deduction_2_amount']
+            : (costs['deduction_2_amount'] ?? 0.0) / rate,
+        'deduction_3_amount': currency == 'CHF'
+            ? costs['deduction_3_amount']
+            : (costs['deduction_3_amount'] ?? 0.0) / rate,
+        'surcharge_1_amount': currency == 'CHF'
+            ? costs['surcharge_1_amount']
+            : (costs['surcharge_1_amount'] ?? 0.0) / rate,
+        'surcharge_2_amount': currency == 'CHF'
+            ? costs['surcharge_2_amount']
+            : (costs['surcharge_2_amount'] ?? 0.0) / rate,
+        'surcharge_3_amount': currency == 'CHF'
+            ? costs['surcharge_3_amount']
+            : (costs['surcharge_3_amount'] ?? 0.0) / rate,
+        'stored_in_chf': true, // Markierung dass Werte in CHF gespeichert sind
+      };
+
+      await saveShippingCosts(chfCosts);
+    } catch (e) {
+      print('Fehler beim Speichern der Versandkosten mit Währung: $e');
+      rethrow;
+    }
+  }
+
+
+
+
+  // Speichere Versandkosten direkt aus Daten (für Quote-Kopie)
   static Future<void> saveShippingCostsFromData(Map<String, dynamic> costsData) async {
     try {
       await FirebaseFirestore.instance
@@ -135,6 +222,8 @@ class ShippingCostsManager {
 
 void showShippingCostsBottomSheet(BuildContext context, {
   required ValueNotifier<bool> costsConfiguredNotifier,
+  required String currency, // NEU
+  required Map<String, double> exchangeRates, // NEU
 }) {
   showModalBottomSheet(
     context: context,
@@ -144,6 +233,8 @@ void showShippingCostsBottomSheet(BuildContext context, {
       // Erstelle einen StatefulWidget für bessere State-Verwaltung
       return _ShippingCostsBottomSheet(
         costsConfiguredNotifier: costsConfiguredNotifier,
+        currency: currency, // NEU
+        exchangeRates: exchangeRates, // NEU
       );
     },
   );
@@ -151,10 +242,13 @@ void showShippingCostsBottomSheet(BuildContext context, {
 
 class _ShippingCostsBottomSheet extends StatefulWidget {
   final ValueNotifier<bool> costsConfiguredNotifier;
-
+  final String currency; // NEU
+  final Map<String, double> exchangeRates; // NEU
   const _ShippingCostsBottomSheet({
     Key? key,
     required this.costsConfiguredNotifier,
+    required this.currency, // NEU
+    required this.exchangeRates, // NEU
   }) : super(key: key);
 
   @override
@@ -422,8 +516,10 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
     );
   }
   Future<void> _loadShippingCosts() async {
-    final config = await ShippingCostsManager.loadShippingCosts();
-
+    final config = await ShippingCostsManager.loadShippingCostsWithCurrency(
+      widget.currency,
+      widget.exchangeRates,
+    );
     setState(() {
       shippingConfig = config;
       isLoading = false;
@@ -460,7 +556,7 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
       // Kombinierter Preis BASIEREND auf gespeicherten Werten
       final packaging = config['packaging_cost'] ?? 50.0;
       final freight = config['freight_cost'] ?? 50.0;
-      combinedCostController.text = (packaging + freight).toString();
+      combinedCostController.text = (packaging + freight).toStringAsFixed(2);
     });
   }
 
@@ -604,8 +700,8 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                           const SizedBox(height: 16),
                           TextFormField(
                             controller: plantCertificateController,
-                            decoration: const InputDecoration(
-                              labelText: 'Kosten (CHF)',
+                            decoration:  InputDecoration(
+                              labelText: 'Kosten (${widget.currency})',
                               border: OutlineInputBorder(),
 
                             ),
@@ -777,14 +873,17 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                           // Kombinierte Kosten
                           TextFormField(
                             controller: combinedCostController,
-                            decoration: const InputDecoration(
-                              labelText: 'Gesamtkosten Verpackung & Fracht (CHF)',
+                            decoration: InputDecoration(
+                              labelText: 'Gesamtkosten Verpackung & Fracht (${widget.currency})',
                               border: OutlineInputBorder(),
-
+                              suffixText: widget.currency,
                             ),
                             keyboardType: TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                            ],
                             onChanged: (value) {
-                              final total = double.tryParse(value) ?? 100.0;
+                              final total = double.tryParse(value.replaceAll(',', '.')) ?? 100.0;
                               setState(() {
                                 packagingController.text = (total / 2).toStringAsFixed(2);
                                 freightController.text = (total / 2).toStringAsFixed(2);
@@ -795,8 +894,8 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                           // Getrennte Kosten
                           TextFormField(
                             controller: packagingController,
-                            decoration: const InputDecoration(
-                              labelText: 'Verpackungskosten (CHF)',
+                            decoration: InputDecoration(
+                              labelText: 'Verpackungskosten (${widget.currency})',
                               border: OutlineInputBorder(),
 
                             ),
@@ -811,8 +910,8 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                           const SizedBox(height: 16),
                           TextFormField(
                             controller: freightController,
-                            decoration: const InputDecoration(
-                              labelText: 'Frachtkosten (CHF)',
+                            decoration:  InputDecoration(
+                              labelText: 'Frachtkosten (${widget.currency})',
                               border: OutlineInputBorder(),
 
                             ),
@@ -950,8 +1049,8 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                             Expanded(
                               child: TextFormField(
                                 controller: deduction1AmountController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Betrag (CHF)',
+                                decoration:  InputDecoration(
+                                  labelText: 'Betrag (${widget.currency})',
                                   border: OutlineInputBorder(),
 
                                 ),
@@ -979,8 +1078,8 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                             Expanded(
                               child: TextFormField(
                                 controller: deduction2AmountController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Betrag (CHF)',
+                                decoration:  InputDecoration(
+                                  labelText: 'Betrag (${widget.currency})',
                                   border: OutlineInputBorder(),
 
                                 ),
@@ -1008,8 +1107,8 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                             Expanded(
                               child: TextFormField(
                                 controller: deduction3AmountController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Betrag (CHF)',
+                                decoration: InputDecoration(
+                                  labelText: 'Betrag (${widget.currency})',
                                   border: OutlineInputBorder(),
 
                                 ),
@@ -1073,8 +1172,8 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                             Expanded(
                               child: TextFormField(
                                 controller: surcharge1AmountController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Betrag (CHF)',
+                                decoration: InputDecoration(
+                                  labelText: 'Betrag (${widget.currency})',
                                   border: OutlineInputBorder(),
 
                                 ),
@@ -1102,8 +1201,8 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                             Expanded(
                               child: TextFormField(
                                 controller: surcharge2AmountController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Betrag (CHF)',
+                                decoration:  InputDecoration(
+                                  labelText: 'Betrag (${widget.currency})',
                                   border: OutlineInputBorder(),
 
                                 ),
@@ -1131,8 +1230,8 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                             Expanded(
                               child: TextFormField(
                                 controller: surcharge3AmountController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Betrag (CHF)',
+                                decoration:  InputDecoration(
+                                  labelText: 'Betrag (${widget.currency})',
                                   border: OutlineInputBorder(),
                                 ),
                                 keyboardType: TextInputType.numberWithOptions(decimal: true),
@@ -1188,8 +1287,11 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
                           };
 
                           // Speichere die Konfiguration in Firebase
-                          await ShippingCostsManager.saveShippingCosts(finalConfig);
-
+                          await ShippingCostsManager.saveShippingCostsWithCurrency(
+                            finalConfig,
+                            widget.currency,
+                            widget.exchangeRates,
+                          );
                           // Setze den Notifier
                           widget.costsConfiguredNotifier.value = true;
 

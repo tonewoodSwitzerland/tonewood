@@ -95,6 +95,7 @@ class OrderX {
               ...itemMap,
               'quantity': (itemMap['quantity'] as num?)?.toDouble() ?? 0.0,
               'price_per_unit': (itemMap['price_per_unit'] as num?)?.toDouble() ?? 0.0,
+              'custom_price_per_unit': (itemMap['custom_price_per_unit'] as num?)?.toDouble(),  // NEU
               'volume_per_unit': (itemMap['volume_per_unit'] as num?)?.toDouble() ?? 0.0,
               'density': (itemMap['density'] as num?)?.toDouble() ??0.0,
               'weight': (itemMap['weight'] as num?)?.toDouble() ?? 0.0,

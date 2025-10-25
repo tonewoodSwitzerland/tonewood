@@ -2197,6 +2197,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
 
 
   Map<String, dynamic> _invoiceSettings = {
+    'invoice_date': DateTime.now(),
     'down_payment_amount': 0.0,
     'down_payment_reference': '',
     'down_payment_date': null,
@@ -2212,7 +2213,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
   final _referenceController = TextEditingController();
   final _customPaymentController = TextEditingController(); // NEU
   DateTime? _downPaymentDate;
-
+  DateTime? _invoiceDate = DateTime.now();
   @override
   void initState() {
     super.initState();
@@ -2398,6 +2399,64 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                             ],
                           ),
                         ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+// NEU: Rechnungsdatum auswählen
+                  InkWell(
+                    onTap: () async {
+                      final DateTime? picked = await showDatePicker(
+                        context: context,
+                        initialDate: _invoiceDate ?? DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2030),
+                        locale: const Locale('de', 'DE'),
+                      );
+                      if (picked != null) {
+                        setState(() {
+                          _invoiceDate = picked;
+                          _invoiceSettings['invoice_date'] = picked;
+                        });
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          getAdaptiveIcon(
+                            iconName: 'calendar_today',
+                            defaultIcon: Icons.calendar_today,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Rechnungsdatum',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                Text(
+                                  _invoiceDate != null
+                                      ? DateFormat('dd.MM.yyyy').format(_invoiceDate!)
+                                      : DateFormat('dd.MM.yyyy').format(DateTime.now()),
+                                  style: const TextStyle(fontSize: 16),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -2669,7 +2728,77 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                       },
                     ),
 
-                    // ... Rest der Anzahlungsfelder (Datum, Vorschau)
+                    const SizedBox(height: 16),
+
+// NEU: Datum der Anzahlung
+                    InkWell(
+                      onTap: () async {
+                        final DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: _downPaymentDate ?? DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now(),
+                          locale: const Locale('de', 'DE'),
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            _downPaymentDate = picked;
+                            _invoiceSettings['down_payment_date'] = picked;
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            getAdaptiveIcon(
+                              iconName: 'calendar_today',
+                              defaultIcon: Icons.calendar_today,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Datum der Anzahlung',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  Text(
+                                    _downPaymentDate != null
+                                        ? DateFormat('dd.MM.yyyy').format(_downPaymentDate!)
+                                        : 'Datum auswählen',
+                                    style: const TextStyle(fontSize: 16),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (_downPaymentDate != null)
+                              IconButton(
+                                icon: getAdaptiveIcon(
+                                  iconName: 'clear',
+                                  defaultIcon: Icons.clear,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _downPaymentDate = null;
+                                    _invoiceSettings['down_payment_date'] = null;
+                                  });
+                                },
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
 
                   // NEU: Zahlungsziel (nur wenn nicht 100% Vorkasse)
@@ -2800,6 +2929,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                     print('✓ additionalTexts geladen');
 
                     final previewInvoiceSettings = {
+                      'invoice_date': _invoiceDate,
                       'down_payment_amount': double.tryParse(_downPaymentController.text) ?? 0.0,
                       'down_payment_reference': _referenceController.text,
                       'down_payment_date': _downPaymentDate,
@@ -2974,6 +3104,13 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                 Expanded(
                   child: ElevatedButton(
                     onPressed: () async {
+                      // Aktualisiere die Settings vor dem Zurückgeben
+                      _invoiceSettings['invoice_date'] = _invoiceDate; // NEU
+                      _invoiceSettings['down_payment_date'] = _downPaymentDate; // NEU
+                      _invoiceSettings['down_payment_amount'] = double.tryParse(_downPaymentController.text) ?? 0.0;
+                      _invoiceSettings['down_payment_reference'] = _referenceController.text;
+
+
                       // Lade die aktuellen Zusatztexte
                       final additionalTexts = await AdditionalTextsManager.loadAdditionalTexts();
 

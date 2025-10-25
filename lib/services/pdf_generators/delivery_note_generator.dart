@@ -182,22 +182,6 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
                 ),
               ),
 
-              pw.SizedBox(height: 15),
-
-              // Währungshinweis (falls nicht CHF)
-              if (currency != 'CHF')
-                pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.amber50,
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                    border: pw.Border.all(color: PdfColors.amber200, width: 0.5),
-                  ),
-                  child: pw.Text(
-                    getTranslation('currency_note'),
-                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.amber900),
-                  ),
-                ),
 
               pw.SizedBox(height: 15),
 
@@ -359,8 +343,15 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
               BasePdfGenerator.buildContentCell(
                 pw.Text('CH', style: const pw.TextStyle(fontSize: 6)),
               ),
+              // NEU: Thermobehandlungs-Temperatur anzeigen
               BasePdfGenerator.buildContentCell(
-                pw.Text('', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(
+                  item['has_thermal_treatment'] == true && item['thermal_treatment_temperature'] != null
+                      ? item['thermal_treatment_temperature'].toString()
+                      : '',
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: pw.TextAlign.center,
+                ),
               ),
               // BasePdfGenerator.buildContentCell(
               //   pw.Text(dimensions, style: const pw.TextStyle(fontSize: 6)),

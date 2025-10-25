@@ -492,18 +492,17 @@ class DocumentSelectionManager {
 
 
   // In document_selection_manager.dart, nach den anderen save-Methoden hinzufügen:
-
   static Future<void> saveInvoiceSettings(Map<String, dynamic> settings) async {
     try {
       await FirebaseFirestore.instance
           .collection('temporary_document_settings')
           .doc('invoice_settings')
           .set({
+        'invoice_date': settings['invoice_date'], // <-- NEU!
         'down_payment_amount': settings['down_payment_amount'] ?? 0.0,
         'down_payment_reference': settings['down_payment_reference'] ?? '',
         'down_payment_date': settings['down_payment_date'],
         'show_dimensions': settings['show_dimensions'] ?? false,
-        // NEU - Diese Felder hinzufügen:
         'is_full_payment': settings['is_full_payment'] ?? false,
         'payment_method': settings['payment_method'] ?? 'BAR',
         'custom_payment_method': settings['custom_payment_method'] ?? '',
@@ -525,13 +524,15 @@ class DocumentSelectionManager {
       if (doc.exists) {
         final data = doc.data()!;
         return {
+          'invoice_date': data['invoice_date'] != null  // <-- NEU!
+              ? (data['invoice_date'] as Timestamp).toDate()
+              : null,
           'down_payment_amount': data['down_payment_amount'] ?? 0.0,
           'down_payment_reference': data['down_payment_reference'] ?? '',
           'down_payment_date': data['down_payment_date'] != null
               ? (data['down_payment_date'] as Timestamp).toDate()
               : null,
           'show_dimensions': data['show_dimensions'] ?? false,
-          // NEU - Diese Felder hinzufügen:
           'is_full_payment': data['is_full_payment'] ?? false,
           'payment_method': data['payment_method'] ?? 'BAR',
           'custom_payment_method': data['custom_payment_method'] ?? '',
@@ -543,11 +544,11 @@ class DocumentSelectionManager {
     }
 
     return {
+      'invoice_date': null, // <-- NEU!
       'down_payment_amount': 0.0,
       'down_payment_reference': '',
       'down_payment_date': null,
       'show_dimensions': false,
-      // NEU - Diese Defaults hinzufügen:
       'is_full_payment': false,
       'payment_method': 'BAR',
       'custom_payment_method': '',
@@ -2412,11 +2413,11 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
 
 
   // In der showDocumentSelectionBottomSheet Funktion, fügen Sie diese neue Funktion hinzu:
-
   Future<void> showInvoiceSettingsDialog() async {
     double downPaymentAmount = 0.0;
     String downPaymentReference = '';
     DateTime? downPaymentDate;
+    DateTime? invoiceDate; // NEU - Flexibles Rechnungsdatum
     bool showDimensions = false;
 
     // NEU - Ergänze diese Variablen:
@@ -2427,10 +2428,17 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
 
     // Lade bestehende Einstellungen
     final existingSettings = await DocumentSelectionManager.loadInvoiceSettings();
+    print('DEBUG - Geladene Settings: $existingSettings');
+    print('DEBUG - invoice_date aus Settings: ${existingSettings['invoice_date']}');
+
     downPaymentAmount = (existingSettings['down_payment_amount'] ?? 0.0).toDouble();
     downPaymentReference = existingSettings['down_payment_reference'] ?? '';
-    downPaymentDate = existingSettings['down_payment_date'];
-    showDimensions = existingSettings['show_dimensions'] ?? false; // NEU
+    downPaymentDate = existingSettings['down_payment_date']; // Ist bereits DateTime oder null
+    invoiceDate = existingSettings['invoice_date'] ?? DateTime.now(); // Ist bereits DateTime oder null
+
+    print('DEBUG - Geladenes invoiceDate: $invoiceDate');
+
+    showDimensions = existingSettings['show_dimensions'] ?? false;
 
     // NEU - Lade auch diese Werte:
     isFullPayment = existingSettings['is_full_payment'] ?? false;
@@ -2440,13 +2448,9 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
 
     final downPaymentController = TextEditingController(text: downPaymentAmount > 0 ? downPaymentAmount.toString() : '');
     final referenceController = TextEditingController(text: downPaymentReference);
-
-// NEU - Zusätzlicher Controller:
     final customPaymentController = TextEditingController(text: customPaymentMethod);
 
-    // In showInvoiceSettingsDialog(), nach der Berechnung des totalAmount:
-
-// Hole den Gesamtbetrag aus dem Warenkorb
+    // Hole den Gesamtbetrag aus dem Warenkorb
     double totalAmount = 0.0;
     try {
       // Berechne den Gesamtbetrag
@@ -2458,8 +2462,6 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
           basketSnapshot.docs.map((doc) => doc.data()).toList()
       );
 
-      // Hier müssen wir den Bruttobetrag berechnen
-      // Hier müssen wir den Bruttobetrag berechnen
       double subtotal = 0.0;
       for (final doc in basketSnapshot.docs) {
         final data = doc.data();
@@ -2468,7 +2470,6 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
             ? (customPriceValue as num).toDouble()
             : (data['price_per_unit'] as num).toDouble();
 
-        // FIX: Hier war der Fehler - quantity muss auch sicher konvertiert werden
         final quantity = (data['quantity'] as num).toDouble();
         subtotal += quantity * pricePerUnit;
       }
@@ -2508,8 +2509,6 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       print('Fehler beim Berechnen des Gesamtbetrags: $e');
     }
 
-
-
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -2537,7 +2536,6 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                   ),
                 ),
 
-                // Content
                 // Content
                 Expanded(
                   child: SingleChildScrollView(
@@ -2578,7 +2576,65 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                         ),
                         const SizedBox(height: 24),
 
-                        // NEU: Toggle zwischen Anzahlung und 100% Vorkasse
+                        // NEU: Rechnungsdatum auswählen
+                        InkWell(
+                          onTap: () async {
+                            final DateTime? picked = await showDatePicker(
+                              context: dialogContext,
+                              initialDate: invoiceDate ?? DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2030),
+                              locale: const Locale('de', 'DE'),
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                invoiceDate = picked;
+                              });
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                getAdaptiveIcon(
+                                  iconName: 'calendar_today',
+                                  defaultIcon: Icons.calendar_today,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Rechnungsdatum',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                      Text(
+                                        invoiceDate != null
+                                            ? DateFormat('dd.MM.yyyy').format(invoiceDate!)
+                                            : DateFormat('dd.MM.yyyy').format(DateTime.now()),
+                                        style: const TextStyle(fontSize: 16),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // Toggle zwischen Anzahlung und 100% Vorkasse
                         Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
@@ -2651,7 +2707,6 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                           ),
                         ),
 
-                        const SizedBox(height: 20),
                         const SizedBox(height: 24),
 
                         // Gesamtbetrag anzeigen
@@ -2797,14 +2852,13 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                           ),
 
                         ] else ...[
-                          // Anzahlung Felder (bestehender Code)
+                          // Anzahlung Felder
                           TextField(
                             controller: downPaymentController,
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             decoration: InputDecoration(
                               labelText: 'Anzahlung BRUTTO (${currency})',
                               prefixIcon: Padding(
-                                ///TODO checken ob das Sinn macht auch der App
                                 padding: const EdgeInsets.all(4.0),
                                 child: getAdaptiveIcon(
                                   iconName: 'payments',
@@ -2822,7 +2876,6 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                             onChanged: (value) {
                               setDialogState(() {
                                 final parsed = double.tryParse(value) ?? 0.0;
-                                // Zusätzliche Sicherheit: Runde auf 2 Nachkommastellen
                                 downPaymentAmount = double.parse(parsed.toStringAsFixed(2));
                               });
                             },
@@ -2968,7 +3021,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                             ),
                         ],
 
-                        // NEU: Zahlungsziel (nur wenn nicht 100% Vorkasse)
+                        // Zahlungsziel (nur wenn nicht 100% Vorkasse)
                         if (!isFullPayment) ...[
                           const SizedBox(height: 24),
                           Text(
@@ -3023,7 +3076,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
 
                         const SizedBox(height: 16),
 
-                        // Checkbox für Maße anzeigen (immer sichtbar)
+                        // Checkbox für Maße anzeigen
                         Container(
                           decoration: BoxDecoration(
                             border: Border.all(
@@ -3053,7 +3106,6 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                         ),
 
                         const SizedBox(height: 32),
-                        const SizedBox(height: 32), // Fester Abstand statt Spacer
 
                         // Action Buttons
                         Row(
@@ -3075,6 +3127,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                               child: ElevatedButton.icon(
                                 onPressed: () async {
                                   await DocumentSelectionManager.saveInvoiceSettings({
+                                    'invoice_date': invoiceDate != null ? Timestamp.fromDate(invoiceDate!) : Timestamp.fromDate(DateTime.now()), // NEU
                                     'is_full_payment': isFullPayment,
                                     'payment_method': paymentMethod,
                                     'custom_payment_method': customPaymentMethod,
@@ -3125,7 +3178,6 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       ),
     );
   }
-
   Future<void> showQuoteSettingsDialog() async {
     DateTime? validityDate;
     bool showDimensions = false; // NEU: Standard deaktiviert

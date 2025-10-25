@@ -37,7 +37,7 @@ class AdditionalTextsManager {
       'standard': 'Legende: Urs = Ursprung (ISO-Code Nation), °C = thermobehandelt (max. Temp. in °C)',
     },
     'EN': {
-      'standard': 'Legend: Urs = Origin (ISO country code), °C = heat treated (max. temp. in °C)',
+      'standard': 'Legend: Orig = Origin (ISO country code), °C = heat treated (max. temp. in °C)',
     },
   };
 

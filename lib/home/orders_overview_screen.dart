@@ -647,7 +647,14 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            order.customer['company'] ?? order.customer['fullName'] ?? 'Unbekannter Kunde',
+                            (order.customer['company']?.toString().trim().isNotEmpty == true)
+                                ? order.customer['company']
+                                : (order.customer['firstName']?.toString().trim().isNotEmpty == true ||
+                                order.customer['lastName']?.toString().trim().isNotEmpty == true)
+                                ? '${order.customer['firstName'] ?? ''} ${order.customer['lastName'] ?? ''}'.trim()
+                                : order.customer['fullName']?.toString().trim().isNotEmpty == true
+                                ? order.customer['fullName']
+                                : 'Unbekannter Kunde',
                             style: const TextStyle(fontSize: 13),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -657,6 +664,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                     ),
                   ),
                   // Betrag
+                  // Betrag
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
@@ -664,7 +672,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      'CHF ${(order.calculations['total'] as num? ?? 0).toStringAsFixed(2)}',
+                      '${order.metadata?['currency'] ?? 'CHF'} ${_convertPrice((order.calculations['total'] as num? ?? 0).toDouble(), order).toStringAsFixed(2)}',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -1032,14 +1040,23 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                           final index = entry.key;
                           final item = entry.value;
                           final quantity = item['quantity'] as num? ?? 0;
-                          final pricePerUnit = item['price_per_unit'] as num? ?? 0;
-                          final total = item['total'] as num? ?? (quantity * pricePerUnit);
+
+
                           final hasDiscount = (item['discount_amount'] as num? ?? 0) > 0;
 
                           // NEU: Gratisartikel-Logik
                           final isGratisartikel = item['is_gratisartikel'] == true;
                           final proformaValue = (item['proforma_value'] as num?)?.toDouble();
 
+// Dann erst den Preis berechnen
+                          final customPriceValue = item['custom_price_per_unit'];
+                          final pricePerUnit = isGratisartikel
+                              ? 0.0
+                              : customPriceValue != null
+                              ? (customPriceValue as num).toDouble()
+                              : (item['price_per_unit'] as num? ?? 0).toDouble();
+
+                          final total = item['total'] as num? ?? (quantity * pricePerUnit);
 
 
                           return Container(

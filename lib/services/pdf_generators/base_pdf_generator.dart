@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../countries.dart';
+
 abstract class BasePdfGenerator {
   // Gemeinsame Formatierungslogik
   static String formatCurrency(dynamic amount, String currency, Map<String, double> exchangeRates) {
@@ -28,8 +30,7 @@ abstract class BasePdfGenerator {
     return '$currency ${convertedAmount.toStringAsFixed(2)}';
   }
 
-  // Gemeinsame Header-Erstellung
-// Gemeinsame Header-Erstellung
+
   static pw.Widget buildHeader({
     required String documentTitle,
     required String documentNumber,
@@ -37,8 +38,8 @@ abstract class BasePdfGenerator {
     required pw.MemoryImage logo,
     String? costCenter,
     String language = 'DE',
-    String? additionalReference, // NEU
-    String? secondaryReference, // NEU
+    String? additionalReference,
+    String? secondaryReference,
   }) {
     // Übersetzungsfunktion für Header
     String getHeaderTranslation(String key, String lang) {
@@ -50,7 +51,7 @@ abstract class BasePdfGenerator {
           'ORDER': 'BESTELLUNG',
           'nr': 'Nr.:',
           'date': 'Datum:',
-          'cost_center': 'Kst-Nr.',
+          'cost_center': 'Kst-Nr.:',
           'invoice': 'RECHNUNG',
           'quote_nr': 'Angebotsnr.:',
           'invoice_nr': 'Rechnungsnr.:',
@@ -63,7 +64,7 @@ abstract class BasePdfGenerator {
           'ORDER': 'ORDER',
           'nr': 'No.:',
           'date': 'Date:',
-          'cost_center': 'Cost Center',
+          'cost_center': 'Cost Center:',
           'invoice': 'INVOICE',
           'quote_nr': 'Quote No.:',
           'invoice_nr': 'Invoice No.:',
@@ -79,6 +80,7 @@ abstract class BasePdfGenerator {
         pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
+            // Dokumenttitel - fett und groß
             pw.Text(
               getHeaderTranslation(documentTitle.toUpperCase().replaceAll(' ', '_'), language),
               style: pw.TextStyle(
@@ -88,20 +90,38 @@ abstract class BasePdfGenerator {
               ),
             ),
             pw.SizedBox(height: 8),
-            pw.Text(
-              '${getHeaderTranslation('nr', language)} $documentNumber',
-              style: const pw.TextStyle(fontSize: 12, color: PdfColors.blueGrey600),
+
+            // Dokumentnummer
+            pw.Row(
+              children: [
+                pw.SizedBox(
+                  width: 70,
+                  child: pw.Text(
+                    getHeaderTranslation('nr', language),
+                    style: const pw.TextStyle(
+                      fontSize: 10,
+                      color: PdfColors.blueGrey600,
+                    ),
+                  ),
+                ),
+                pw.Text(
+                  documentNumber,
+                  style: const pw.TextStyle(
+                    fontSize: 10,
+                    color: PdfColors.blueGrey600,
+                  ),
+                ),
+              ],
             ),
 
-            // NEU: Zusätzliche Referenzen
+            // Zusätzliche Referenzen
             if (additionalReference != null) ...[
               pw.SizedBox(height: 2),
               pw.Text(
                 additionalReference,
-                style:  pw.TextStyle(
+                style: const pw.TextStyle(
                   fontSize: 10,
                   color: PdfColors.blueGrey600,
-                  fontWeight: pw.FontWeight.bold,
                 ),
               ),
             ],
@@ -116,16 +136,56 @@ abstract class BasePdfGenerator {
               ),
             ],
 
-            pw.SizedBox(height: 4),
-            pw.Text(
-              '${getHeaderTranslation('date', language)} ${DateFormat('dd.MM.yyyy').format(date)}',
-              style: const pw.TextStyle(fontSize: 12, color: PdfColors.blueGrey600),
+            pw.SizedBox(height: 2),
+
+            // Datum
+            pw.Row(
+              children: [
+                pw.SizedBox(
+                  width: 70,
+                  child: pw.Text(
+                    getHeaderTranslation('date', language),
+                    style: const pw.TextStyle(
+                      fontSize: 10,
+                      color: PdfColors.blueGrey600,
+                    ),
+                  ),
+                ),
+                pw.Text(
+                  DateFormat('dd.MM.yyyy').format(date),
+                  style: const pw.TextStyle(
+                    fontSize: 10,
+                    color: PdfColors.blueGrey600,
+                  ),
+                ),
+              ],
             ),
-            if (costCenter != null)
-              pw.Text(
-                '${getHeaderTranslation('cost_center', language)} $costCenter',
-                style: const pw.TextStyle(fontSize: 12, color: PdfColors.blueGrey600),
+
+            // Cost Center
+            if (costCenter != null) ...[
+              pw.SizedBox(height: 2),
+              pw.Row(
+                children: [
+                  pw.SizedBox(
+                    width: 70,
+                    child: pw.Text(
+                      getHeaderTranslation('cost_center', language),
+                      style: const pw.TextStyle(
+                        fontSize: 8,
+                        color: PdfColors.blueGrey600,
+                      ),
+                    ),
+                  ),
+                  pw.Text(
+                    costCenter,
+                    style: const pw.TextStyle(
+                      fontSize: 8,
+                      color: PdfColors.blueGrey600,
+                    ),
+                  ),
+                ],
               ),
+            ],
           ],
         ),
         pw.Image(logo, width: 180),
@@ -178,7 +238,8 @@ abstract class BasePdfGenerator {
     final bool hasShippingCompany = customerData['shippingCompany'] != null &&
         customerData['shippingCompany'].toString().trim().isNotEmpty;
     final bool hasShippingName = shippingFullName.isNotEmpty;
-
+    final countryName = customerData['country'];
+    final country = Countries.getCountryByName(countryName);
 
     pw.Widget buildContactInfo({bool useShippingData = false, String documentTitle = ''}) {
       final shouldUseShipping = useShippingData && documentTitle == 'delivery_note';
@@ -390,11 +451,16 @@ abstract class BasePdfGenerator {
                     '${customerData['shippingZipCode'] ?? customerData['zipCode'] ?? ''} ${customerData['shippingCity'] ?? customerData['city'] ?? ''}'.trim(),
                     style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                   ),
-                  if ((customerData['shippingCountry'] ?? customerData['country'])?.toString().trim().isNotEmpty == true)
-                    pw.Text(
-                      customerData['shippingCountry'] ?? customerData['country'],
-                      style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
-                    ),
+                  if ((customerData['shippingCountry'] ?? customerData['country'])?.toString().trim().isNotEmpty == true) ...[
+                        () {
+                      final shippingCountryName = customerData['shippingCountry'] ?? customerData['country'];
+                      final shippingCountry = Countries.getCountryByName(shippingCountryName);
+                      return pw.Text(
+                        shippingCountry?.getNameForLanguage(language) ?? shippingCountryName,
+                        style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                      );
+                    }(),
+                  ],
                 ],
               ),
             ),
@@ -459,9 +525,10 @@ abstract class BasePdfGenerator {
                     '${customerData['zipCode'] ?? ''} ${customerData['city'] ?? ''}'.trim(),
                     style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                   ),
-                  if (customerData['country']?.toString().trim().isNotEmpty == true)
+                  if (customerData['country'] != null &&
+                      customerData['country'].toString().trim().isNotEmpty)
                     pw.Text(
-                      customerData['country'],
+                      country?.getNameForLanguage(language) ?? customerData['country'],
                       style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                     ),
                 ],

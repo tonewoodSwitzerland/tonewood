@@ -1649,7 +1649,7 @@ class CustomerSelectionSheet {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Aktivieren Sie die Checkboxen, um die jeweiligen Felder im Dokumentenkopf anzuzeigen',
+                'Aktiviere die Checkboxen, um die jeweiligen Felder im Dokumentenkopf anzuzeigen',
                 style: TextStyle(
                   fontSize: 11,
                   color: Theme.of(context).colorScheme.onPrimaryContainer,
@@ -1943,7 +1943,7 @@ class CustomerSelectionSheet {
       TextFormField(
         controller: phone1Controller,
         decoration: InputDecoration(
-          labelText: 'Telefon 1 *',
+          labelText: 'Telefon 1',
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -1966,7 +1966,7 @@ class CustomerSelectionSheet {
             borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
           ),
         ),
-        validator: (value) => value?.isEmpty == true ? 'Bitte Telefonnummer eingeben' : null,
+
       ),
       const SizedBox(height: 16),
       TextFormField(
@@ -2024,7 +2024,7 @@ class CustomerSelectionSheet {
     child: TextFormField(
     controller: streetController,
     decoration: InputDecoration(
-    labelText: 'Straße *',
+    labelText: 'Straße',
     border: OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
     ),
@@ -2047,7 +2047,6 @@ class CustomerSelectionSheet {
     borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
     ),
     ),
-    validator: (value) => value?.isEmpty == true ? 'Bitte Straße eingeben' : null,
     ),
     ),
     // const SizedBox(width: 16),
@@ -2083,7 +2082,7 @@ class CustomerSelectionSheet {
             child: TextFormField(
               controller: houseNumberController,
               decoration: InputDecoration(
-                labelText: 'Hausnummer *',
+                labelText: 'Hausnummer',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -2106,7 +2105,7 @@ class CustomerSelectionSheet {
                   borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
                 ),
               ),
-              validator: (value) => value?.isEmpty == true ? 'Bitte Hausnummer eingeben' : null,
+
             ),
           ),
           // const SizedBox(width: 16),
@@ -2143,7 +2142,7 @@ class CustomerSelectionSheet {
     child: TextFormField(
     controller: zipCodeController,
     decoration: InputDecoration(
-    labelText: 'PLZ *',
+    labelText: 'PLZ',
     border: OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
     ),
@@ -2166,7 +2165,7 @@ class CustomerSelectionSheet {
     borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
     ),
     ),
-    validator: (value) => value?.isEmpty == true ? 'Bitte PLZ eingeben' : null,
+
     keyboardType: TextInputType.number,
     inputFormatters: [
     FilteringTextInputFormatter.digitsOnly,
@@ -2180,7 +2179,7 @@ class CustomerSelectionSheet {
     child: TextFormField(
     controller: cityController,
     decoration: InputDecoration(
-    labelText: 'Ort *',
+    labelText: 'Ort',
     border: OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
     ),
@@ -2195,7 +2194,7 @@ class CustomerSelectionSheet {
     borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
     ),
     ),
-    validator: (value) => value?.isEmpty == true ? 'Bitte Ort eingeben' : null,
+
     ),
     ),
     ],
@@ -2206,7 +2205,7 @@ class CustomerSelectionSheet {
         countryController: countryController,
         countryCodeController: countryCodeController,
         label: 'Land',
-        isRequired: true,
+        isRequired: false,
         borderRadius: BorderRadius.circular(12), // Behalte den gleichen Radius wie andere Felder
       )
     ],

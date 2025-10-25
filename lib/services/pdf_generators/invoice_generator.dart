@@ -72,10 +72,30 @@ class InvoiceGenerator extends BasePdfGenerator {
 
 
     final invoiceSettings = downPaymentSettings ?? await DocumentSelectionManager.loadInvoiceSettings();
-
+    DateTime invoiceDate = invoiceSettings['invoice_date'] ?? DateTime.now();
 
     final showDimensions = invoiceSettings['show_dimensions'] ?? false;
     // NEU: Prüfe ob 100% Vorkasse und hole Zahlungsmethode
+
+
+    bool showExchangeRateOnDocument = false;
+    try {
+      final currencySettings = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('currency_settings')
+          .get();
+
+      if (currencySettings.exists) {
+        showExchangeRateOnDocument = currencySettings.data()?['show_exchange_rate_on_documents'] ?? false;
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Currency Settings: $e');
+    }
+
+
+
+
+
     final isFullPayment = invoiceSettings['is_full_payment'] ?? false;
     final paymentMethod = invoiceSettings['payment_method'] ?? 'BAR';
     final customPaymentMethod = invoiceSettings['custom_payment_method'] ?? '';
@@ -139,7 +159,7 @@ class InvoiceGenerator extends BasePdfGenerator {
               BasePdfGenerator.buildHeader(
                 documentTitle: getTranslation('invoice'),
                 documentNumber: invoiceNum,
-                date: DateTime.now(),
+                date: invoiceDate,
                 logo: logo,
                 costCenter: costCenterCode,
                 language: language,
@@ -155,7 +175,7 @@ class InvoiceGenerator extends BasePdfGenerator {
               pw.SizedBox(height: 15),
 
               // Währungshinweis (falls nicht CHF)
-              if (currency != 'CHF')
+              if (currency != 'CHF' && showExchangeRateOnDocument)
                 pw.Container(
                   padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
                   decoration: pw.BoxDecoration(
@@ -320,7 +340,9 @@ class InvoiceGenerator extends BasePdfGenerator {
     // Dienstleistungen hinzufügen
     for (final service in serviceItems) {
       final quantity = (service['quantity'] as num? ?? 0).toDouble();
-      final pricePerUnit = (service['price_per_unit'] as num? ?? 0).toDouble();
+      final pricePerUnit = (service['custom_price_per_unit'] as num?) != null
+          ? (service['custom_price_per_unit'] as num).toDouble()
+          : (service['price_per_unit'] as num? ?? 0).toDouble();
       // Nachher:
 // Rabatt-Berechnung
       final discount = service['discount'] as Map<String, dynamic>?;
@@ -443,7 +465,8 @@ class InvoiceGenerator extends BasePdfGenerator {
       String currency,
       Map<String, double> exchangeRates,
       String language,
-      bool showDimensions) {
+      bool showDimensions)
+  {
 
     final List<pw.TableRow> rows = [];
 
@@ -526,8 +549,11 @@ class InvoiceGenerator extends BasePdfGenerator {
         final quantity = (item['quantity'] as num? ?? 0).toDouble();
 
         // ÄNDERUNG: Preis bei Gratisartikeln auf 0 setzen
+        // NEU: Prüfe erst ob custom_price_per_unit existiert, sonst normalen Preis
         final pricePerUnit = isGratisartikel
-            ? 0.0  // Gratisartikel haben Preis 0
+            ? 0.0
+            : (item['custom_price_per_unit'] as num?) != null
+            ? (item['custom_price_per_unit'] as num).toDouble()
             : (item['price_per_unit'] as num? ?? 0).toDouble();
 
         final discount = item['discount'] as Map<String, dynamic>?;
@@ -581,7 +607,7 @@ class InvoiceGenerator extends BasePdfGenerator {
                         children: [
                           pw.Text(
                               language == 'EN' ? item['part_name_en'] : item['part_name'] ?? '',
-                              style: const pw.TextStyle(fontSize: 6)
+                              style: const pw.TextStyle(fontSize: 8)
                           ),
                           // NEU: Hinweise in Klammern hinzufügen
                           if (item['notes'] != null && item['notes'].toString().isNotEmpty)
@@ -617,43 +643,50 @@ class InvoiceGenerator extends BasePdfGenerator {
                 ),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(  language == 'EN' ?item['instrument_name_en']:item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['instrument_name_en']:item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
               ),
               // BasePdfGenerator.buildContentCell(
-              //   pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+              //   pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
               // ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['fsc_status'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(item['fsc_status'] ?? '', style: const pw.TextStyle(fontSize: 8)),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text('CH', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text('CH', style: const pw.TextStyle(fontSize: 8)),
               ),
+// NEU: Thermobehandlungs-Temperatur anzeigen
               BasePdfGenerator.buildContentCell(
-                pw.Text('', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(
+                  item['has_thermal_treatment'] == true && item['thermal_treatment_temperature'] != null
+                      ? item['thermal_treatment_temperature'].toString()
+                      : '',
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: pw.TextAlign.center,
+                ),
               ),
-              if (showDimensions) BasePdfGenerator.buildContentCell(pw.Text(dimensions, style: const pw.TextStyle(fontSize: 6)),),
+              if (showDimensions) BasePdfGenerator.buildContentCell(pw.Text(dimensions, style: const pw.TextStyle(fontSize: 8)),),
 
               BasePdfGenerator.buildContentCell(
                 pw.Text(
                   unit != "Stk"
                       ? quantity.toStringAsFixed(3)
                       : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
-                  style: const pw.TextStyle(fontSize: 6),
+                  style: const pw.TextStyle(fontSize: 8),
                   textAlign: pw.TextAlign.right,
                 ),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(unit, style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(unit, style: const pw.TextStyle(fontSize: 8)),
               ),
 
               // Originalpreis pro Einheit
               BasePdfGenerator.buildContentCell(
                 pw.Text(
                   BasePdfGenerator.formatCurrency(pricePerUnit, currency, exchangeRates),
-                  style: const pw.TextStyle(fontSize: 6),
+                  style: const pw.TextStyle(fontSize: 8),
                   textAlign: pw.TextAlign.right,
                 ),
               ),
@@ -662,7 +695,7 @@ class InvoiceGenerator extends BasePdfGenerator {
               BasePdfGenerator.buildContentCell(
                 pw.Text(
                   BasePdfGenerator.formatCurrency(quantity * pricePerUnit, currency, exchangeRates),
-                  style: const pw.TextStyle(fontSize: 6),
+                  style: const pw.TextStyle(fontSize: 8),
                   textAlign: pw.TextAlign.right,
                 ),
               ),
@@ -675,7 +708,7 @@ class InvoiceGenerator extends BasePdfGenerator {
                     if (discount != null && (discount['percentage'] as num? ?? 0) > 0)
                       pw.Text(
                         '${discount['percentage'].toStringAsFixed(2)}%',
-                        style: const pw.TextStyle(fontSize: 6, ),
+                        style: const pw.TextStyle(fontSize: 8, ),
                         textAlign: pw.TextAlign.right,
                       ),
                     if (discount != null && (discount['absolute'] as num? ?? 0) > 0)
@@ -685,7 +718,7 @@ class InvoiceGenerator extends BasePdfGenerator {
                             currency,
                             exchangeRates
                         ),
-                        style: const pw.TextStyle(fontSize: 6),
+                        style: const pw.TextStyle(fontSize: 8),
                         textAlign: pw.TextAlign.right,
                       ),
                   ],
@@ -697,7 +730,7 @@ class InvoiceGenerator extends BasePdfGenerator {
                 pw.Text(
                   BasePdfGenerator.formatCurrency(itemTotal, currency, exchangeRates),
                   style: pw.TextStyle(
-                    fontSize: 6,
+                    fontSize: 8,
                     fontWeight: discountAmount > 0 ? pw.FontWeight.bold : null,
 
                   ),
@@ -775,10 +808,12 @@ class InvoiceGenerator extends BasePdfGenerator {
         reference.toLowerCase().contains('überweisung')) {
       return ' (${parts.join(', ')})';
     }
-
-    final referenceText = language == 'EN' ? 'Reference' : 'Referenz';
-    return ' ($referenceText: ${parts.join(', ')})';
+    final referenceText = language == 'EN' ? '' : '';
+    //final referenceText = language == 'EN' ? 'Reference' : 'Referenz';
+    //return ' ($referenceText: ${parts.join(', ')})';
+    return ' (${parts.join(', ')})';
   }
+  // Erstelle Summen-Bereich
   // Erstelle Summen-Bereich
   static pw.Widget _buildTotalsSection(
       List<Map<String, dynamic>> items,
@@ -789,46 +824,45 @@ class InvoiceGenerator extends BasePdfGenerator {
       Map<String, dynamic>? calculations,
       int taxOption,
       double vatRate,
-      Map<String, dynamic>? downPaymentSettings, // NEU: Parameter hinzufügen
+      Map<String, dynamic>? downPaymentSettings,
       DateTime? paymentDue,
       Map<String, bool> roundingSettings,
-      )
-  {
+      ) {
+    print('===== DEBUG _buildTotalsSection START =====');
+    print('Currency: $currency');
+    print('Exchange Rates: $exchangeRates');
+    print('Tax Option: $taxOption');
+    print('VAT Rate: $vatRate');
+    print('Down Payment Settings: $downPaymentSettings');
+
     double subtotal = 0.0;
     double actualItemDiscounts = 0.0;
 
-    // Am Anfang von _buildTotalsSection:
-    print('Debug _buildTotalsSection:');
-    print('currency: $currency');
-    print('exchangeRates: $exchangeRates');
-    print('exchangeRates type: ${exchangeRates.runtimeType}');
-    exchangeRates.forEach((key, value) {
-      print('exchangeRates[$key] = $value (type: ${value.runtimeType})');
-    });
-
     for (final item in items) {
-      // NEU: Gratisartikel-Check
       final isGratisartikel = item['is_gratisartikel'] == true;
-
       final quantity = (item['quantity'] as num? ?? 0).toDouble();
-
-      // ÄNDERUNG: Preis bei Gratisartikeln
       final pricePerUnit = isGratisartikel
           ? 0.0
+          : (item['custom_price_per_unit'] as num?) != null
+          ? (item['custom_price_per_unit'] as num).toDouble()
           : (item['price_per_unit'] as num? ?? 0).toDouble();
 
       subtotal += quantity * pricePerUnit;
 
-      // NEU: Rabatte nur auf nicht-Gratisartikel berechnen
       if (!isGratisartikel) {
         final itemDiscountAmount = (item['discount_amount'] as num? ?? 0).toDouble();
         actualItemDiscounts += itemDiscountAmount;
       }
-
     }
+
+    print('Subtotal: $subtotal');
+    print('Actual Item Discounts: $actualItemDiscounts');
+
     final itemDiscounts = actualItemDiscounts > 0 ? actualItemDiscounts : (calculations?['item_discounts'] ?? 0.0);
     final totalDiscountAmount = calculations?['total_discount_amount'] ?? 0.0;
     final afterDiscounts = subtotal - itemDiscounts - totalDiscountAmount;
+
+    print('After Discounts: $afterDiscounts');
 
     // Versandkosten
     final plantCertificate = shippingCosts?['plant_certificate_enabled'] == true
@@ -847,77 +881,77 @@ class InvoiceGenerator extends BasePdfGenerator {
 
     final netAmount = afterDiscounts + plantCertificate + packagingCost + freightCost + totalSurcharges - totalDeductions;
 
-
-
-    print("test");
-    print("$taxOption");
+    print('Net Amount (before tax): $netAmount');
+    print('Net Amount in CHF: $netAmount');
 
     // MwSt-Berechnung basierend auf taxOption
     double vatAmount = 0.0;
     double totalWithTax = netAmount;
 
     if (taxOption == 0) { // TaxOption.standard
-      // NEU: Erst Nettobetrag auf 2 Nachkommastellen runden
       final netAmountRounded = double.parse(netAmount.toStringAsFixed(2));
-
-      // NEU: MwSt berechnen und auf 2 Nachkommastellen runden
       vatAmount = double.parse((netAmountRounded * (vatRate / 100)).toStringAsFixed(2));
-
-      // NEU: Total ist Summe der gerundeten Beträge
       totalWithTax = netAmountRounded + vatAmount;
+      print('Standard Tax - VAT Amount: $vatAmount');
+      print('Standard Tax - Total with Tax: $totalWithTax');
     } else {
-      // Bei anderen Steueroptionen auch auf 2 Nachkommastellen runden
       totalWithTax = double.parse(netAmount.toStringAsFixed(2));
+      print('No/Included Tax - Total: $totalWithTax');
     }
 
-    // NEU: Rundung anwenden
+    // Rundung anwenden
     double displayTotal = totalWithTax;
     double roundingDifference = 0.0;
 
-    // Prüfe ob Rundung für diese Währung aktiviert ist
+    print('Before Rounding - Display Total: $displayTotal');
+    print('Rounding Settings for $currency: ${roundingSettings[currency]}');
+
     if (roundingSettings[currency] == true) {
-      // Konvertiere in Anzeigewährung
       if (currency != 'CHF') {
         displayTotal = totalWithTax * (exchangeRates[currency] ?? 1.0);
+        print('Converted to $currency for rounding: $displayTotal');
       }
 
-      // Wende Rundung an
       final roundedDisplayTotal = SwissRounding.round(
         displayTotal,
         currency: currency,
         roundingSettings: roundingSettings,
       );
 
+      print('After SwissRounding.round: $roundedDisplayTotal');
       roundingDifference = roundedDisplayTotal - displayTotal;
+      print('Rounding Difference: $roundingDifference');
 
-      // Setze den gerundeten Wert
       displayTotal = roundedDisplayTotal;
 
-      // Konvertiere zurück in CHF falls nötig
       if (currency != 'CHF') {
         totalWithTax = displayTotal / (exchangeRates[currency] ?? 1.0);
+        print('Converted back to CHF after rounding: $totalWithTax');
       } else {
         totalWithTax = displayTotal;
       }
     }
 
+    print('Final totalWithTax in CHF: $totalWithTax');
+
     double totalInTargetCurrency = totalWithTax;
     if (currency != 'CHF') {
       totalInTargetCurrency = totalWithTax * (exchangeRates[currency] ?? 1.0);
+      print('Total in Target Currency ($currency): $totalInTargetCurrency');
     }
 
-    // JETZT ERST die Anzahlung berechnen (NACH MwSt, Rundung und Währungsumrechnung!)
+    // Anzahlung berechnen
     final isFullPayment = downPaymentSettings?['is_full_payment'] ?? false;
+    print('Is Full Payment: $isFullPayment');
 
     double downPaymentAmount = 0.0;
     String downPaymentReference = '';
     DateTime? downPaymentDate;
 
     if (isFullPayment) {
-      // Bei 100% Vorkasse ist die "Anzahlung" = finaler Bruttobetrag in Zielwährung
       downPaymentAmount = totalInTargetCurrency;
+      print('Full Payment - Down Payment Amount = Total in Target Currency: $downPaymentAmount');
 
-      // Hole Zahlungsmethode
       final paymentMethod = downPaymentSettings?['payment_method'] ?? 'BAR';
       if (paymentMethod == 'BAR') {
         downPaymentReference = language == 'EN' ? 'Cash payment' : 'Barzahlung';
@@ -926,19 +960,58 @@ class InvoiceGenerator extends BasePdfGenerator {
       }
       downPaymentDate = DateTime.now();
     } else {
-      // Normale Anzahlung
       downPaymentAmount = downPaymentSettings != null
           ? ((downPaymentSettings['down_payment_amount'] as num?) ?? 0.0).toDouble()
           : 0.0;
+      print('Partial Payment - Down Payment Amount: $downPaymentAmount');
       downPaymentReference = downPaymentSettings?['down_payment_reference'] ?? '';
       downPaymentDate = downPaymentSettings?['down_payment_date'];
     }
 
+    // KRITISCHER BEREICH - Restbetragsberechnung
+    print('===== RESTBETRAG BERECHNUNG =====');
+    print('Tax Option: $taxOption');
+    print('Currency: $currency');
+    print('totalInTargetCurrency: $totalInTargetCurrency');
+    print('downPaymentAmount: $downPaymentAmount');
 
+    double balanceDue = 0.0;
 
-    if (currency != 'CHF') {
-      totalInTargetCurrency = totalWithTax * (exchangeRates[currency] ?? 1.0);
+    if (taxOption == 0) { // Standard Tax
+      balanceDue = totalInTargetCurrency - downPaymentAmount;
+      print('[Standard Tax] Balance Due = $totalInTargetCurrency - $downPaymentAmount = $balanceDue');
+    } else if (taxOption == 1) { // No Tax
+      if (currency != 'CHF') {
+        // Bei noTax müssen wir netAmount in Zielwährung umrechnen
+        final netInTargetCurrency = netAmount * (exchangeRates[currency] ?? 1.0);
+        balanceDue = netInTargetCurrency - downPaymentAmount;
+        print('[No Tax] Net in Target Currency: $netInTargetCurrency');
+        print('[No Tax] Balance Due = $netInTargetCurrency - $downPaymentAmount = $balanceDue');
+      } else {
+        balanceDue = netAmount - downPaymentAmount;
+        print('[No Tax CHF] Balance Due = $netAmount - $downPaymentAmount = $balanceDue');
+      }
+    } else { // Tax Option 2 - Total Only (Steuer inkludiert)
+      print('[Total Only] This is the problematic case!');
+      print('[Total Only] netAmount (CHF): $netAmount');
+      print('[Total Only] currency: $currency');
+
+      if (currency != 'CHF') {
+        // HIER IST VERMUTLICH DER FEHLER
+        final netInTargetCurrency = netAmount * (exchangeRates[currency] ?? 1.0);
+        print('[Total Only] Net in Target Currency: $netInTargetCurrency');
+        print('[Total Only] Down Payment Amount: $downPaymentAmount');
+        balanceDue = netInTargetCurrency - downPaymentAmount;
+        print('[Total Only] Balance Due = $netInTargetCurrency - $downPaymentAmount = $balanceDue');
+      } else {
+        balanceDue = netAmount - downPaymentAmount;
+        print('[Total Only CHF] Balance Due = $netAmount - $downPaymentAmount = $balanceDue');
+      }
     }
+
+    print('===== FINAL BALANCE DUE: $balanceDue =====');
+    print('===== DEBUG _buildTotalsSection END =====');
+
     return pw.Container(
       alignment: pw.Alignment.centerRight,
       child: pw.Container(
@@ -1354,7 +1427,7 @@ class InvoiceGenerator extends BasePdfGenerator {
     ),
     ],
 
-    ] else ...[  // TaxOption.totalOnly
+            ] else ...[  // TaxOption.totalOnly
               pw.Divider(color: PdfColors.blueGrey300),
 
               // Gesamtbetrag
@@ -1368,7 +1441,8 @@ class InvoiceGenerator extends BasePdfGenerator {
                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                   ),
                   pw.Text(
-                    BasePdfGenerator.formatCurrency(netAmount, currency, exchangeRates),
+                    // ÄNDERUNG: Verwende totalWithTax statt netAmount
+                    BasePdfGenerator.formatCurrency(totalWithTax, currency, exchangeRates),
                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                   ),
                 ],
@@ -1383,9 +1457,13 @@ class InvoiceGenerator extends BasePdfGenerator {
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
                     pw.Text(
-                      language == 'EN'
+                      isFullPayment
+                          ? (language == 'EN'
+                          ? './ Payment received${_buildDownPaymentReference(downPaymentReference, downPaymentDate, language)}'
+                          : './ Zahlung erhalten${_buildDownPaymentReference(downPaymentReference, downPaymentDate, language)}')
+                          : (language == 'EN'
                           ? './ Down payment${_buildDownPaymentReference(downPaymentReference, downPaymentDate, language)}'
-                          : './ Anzahlung${_buildDownPaymentReference(downPaymentReference, downPaymentDate, language)}',
+                          : './ Anzahlung${_buildDownPaymentReference(downPaymentReference, downPaymentDate, language)}'),
                       style: const pw.TextStyle(fontSize: 9),
                     ),
                     pw.Text(
@@ -1406,13 +1484,13 @@ class InvoiceGenerator extends BasePdfGenerator {
                       style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                     ),
                     pw.Text(
-                      BasePdfGenerator.formatCurrency(netAmount - downPaymentAmount, currency, exchangeRates),
+                      // ÄNDERUNG: Verwende totalInTargetCurrency - downPaymentAmount
+                      '$currency ${(totalInTargetCurrency - downPaymentAmount).toStringAsFixed(2)}',
                       style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                     ),
                   ],
                 ),
               ],
-
             ],
           ],
         ),

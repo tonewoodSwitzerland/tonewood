@@ -21,6 +21,7 @@ class CurrencyConverterSheet {
     String currentCurrency = currencyNotifier.value;
 
     Map<String, bool>? roundingEnabled;
+    bool? showExchangeRateOnDocuments;
 
     Widget _buildRoundingRow(String from, String to, String currency) {
       return Padding(
@@ -140,6 +141,8 @@ class CurrencyConverterSheet {
                     'EUR': settings['EUR'] ?? false,
                     'USD': settings['USD'] ?? false,
                   };
+                  showExchangeRateOnDocuments = doc.data()!['show_exchange_rate_on_documents'] ?? false;
+
                 });
               }
             });
@@ -361,6 +364,41 @@ class CurrencyConverterSheet {
                               ),
                             );
                           },
+                        ),
+                        const SizedBox(height: 16),
+// NEU: Wechselkurs auf Dokumenten anzeigen
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.tertiaryContainer.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.tertiary.withOpacity(0.3),
+                            ),
+                          ),
+                          child: CheckboxListTile(
+                            title: const Text(
+                              'Umrechnungskurs auf Dokumenten anzeigen',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: const Text(
+                              'Zeigt den verwendeten Wechselkurs auf Rechnungen, Angeboten etc. an',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            value: showExchangeRateOnDocuments ?? false,
+                            onChanged: (value) {
+                              setState(() {
+                                showExchangeRateOnDocuments = value ?? false;
+                              });
+                            },
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                            secondary: getAdaptiveIcon(
+                              iconName: 'description',
+                              defaultIcon: Icons.description,
+                              color: Theme.of(context).colorScheme.tertiary,
+                            ),
+                          ),
                         ),
 
 
@@ -1115,6 +1153,8 @@ class CurrencyConverterSheet {
                                     'EUR': false,
                                     'USD': false,
                                   },  // NEU
+                                  'show_exchange_rate_on_documents': showExchangeRateOnDocuments ?? false, // NEU
+
                                   'last_updated': FieldValue.serverTimestamp(),
                                 }, SetOptions(merge: true));
 

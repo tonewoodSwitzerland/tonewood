@@ -76,7 +76,19 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 // Nur Produkte gruppieren (Dienstleistungen haben keine Zolltarifnummer)
     final groupedProductItems = await _groupItemsByTariffNumber(productItems, language);
 
+    bool showExchangeRateOnDocument = false;
+    try {
+      final currencySettings = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('currency_settings')
+          .get();
 
+      if (currencySettings.exists) {
+        showExchangeRateOnDocument = currencySettings.data()?['show_exchange_rate_on_documents'] ?? false;
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Currency Settings: $e');
+    }
 
     final additionalTextsWidget = await _addInlineAdditionalTexts(language);
     final standardTextsWidget = await _addCommercialInvoiceStandardTexts( language,
@@ -131,8 +143,9 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
               pw.SizedBox(height: 15),
 
-              // Währungshinweis (falls nicht CHF)
-              if (currency != 'CHF')
+
+              // Währungshinweis (falls nicht CHF UND showExchangeRateOnDocument aktiviert)
+              if (currency != 'CHF' && showExchangeRateOnDocument)
                 pw.Container(
                   padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
                   decoration: pw.BoxDecoration(
@@ -688,7 +701,9 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     // Dienstleistungen hinzufügen
     for (final service in serviceItems) {
       final quantity = (service['quantity'] as num? ?? 0).toDouble();
-      final pricePerUnit = (service['price_per_unit'] as num? ?? 0).toDouble();
+      final pricePerUnit = (service['custom_price_per_unit'] as num?) != null
+          ? (service['custom_price_per_unit'] as num).toDouble()
+          : (service['price_per_unit'] as num? ?? 0).toDouble();
 
 // Rabatt-Berechnung
       final discount = service['discount'] as Map<String, dynamic>?;
@@ -980,6 +995,8 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         // ÄNDERUNG: Bei Gratisartikeln den Pro-forma-Wert verwenden
         final pricePerUnit = isGratisartikel && proformaValue != null
             ? proformaValue.toDouble()
+            : (item['custom_price_per_unit'] as num?) != null
+            ? (item['custom_price_per_unit'] as num).toDouble()
             : (item['price_per_unit'] as num? ?? 0).toDouble();
 
         // Rabatt-Berechnung
@@ -1120,8 +1137,9 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         // Bei Gratisartikeln Pro-forma-Wert verwenden
         final pricePerUnit = isGratisartikel && proformaValue != null
             ? proformaValue.toDouble()
+            : (item['custom_price_per_unit'] as num?) != null
+            ? (item['custom_price_per_unit'] as num).toDouble()
             : (item['price_per_unit'] as num? ?? 0).toDouble();
-
         // Rabatt-Berechnung
         final discount = item['discount'] as Map<String, dynamic>?;
         final totalBeforeDiscount = quantity * pricePerUnit;
@@ -1315,6 +1333,8 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       final quantity = (item['quantity'] as num? ?? 0).toDouble();
       final pricePerUnit = isGratisartikel
           ? 0.0
+          : (item['custom_price_per_unit'] as num?) != null
+          ? (item['custom_price_per_unit'] as num).toDouble()
           : (item['price_per_unit'] as num? ?? 0).toDouble();
 
       subtotal += quantity * pricePerUnit;

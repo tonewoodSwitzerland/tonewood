@@ -80,6 +80,23 @@ class QuoteGenerator extends BasePdfGenerator {
 
     final additionalTextsWidget = await _addInlineAdditionalTexts(language);
 
+
+// Lade Currency Settings für Kurs-Anzeige
+    bool showExchangeRateOnDocument = false;
+    try {
+      final currencySettings = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('currency_settings')
+          .get();
+
+      if (currencySettings.exists) {
+        showExchangeRateOnDocument = currencySettings.data()?['show_exchange_rate_on_documents'] ?? false;
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Currency Settings: $e');
+    }
+
+
     // Übersetzungsfunktion
     String getTranslation(String key) {
       final translations = {
@@ -130,8 +147,8 @@ class QuoteGenerator extends BasePdfGenerator {
 
               pw.SizedBox(height: 15),
 
-              // Währungshinweis (falls nicht CHF)
-              if (currency != 'CHF')
+              // Währungshinweis (falls nicht CHF UND showExchangeRateOnDocument aktiviert)
+              if (currency != 'CHF' && showExchangeRateOnDocument)
                 pw.Container(
                   padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
                   decoration: pw.BoxDecoration(
@@ -268,7 +285,10 @@ class QuoteGenerator extends BasePdfGenerator {
     // Dienstleistungen hinzufügen
     for (final service in serviceItems) {
       final quantity = (service['quantity'] as num? ?? 0).toDouble();
-      final pricePerUnit = (service['price_per_unit'] as num? ?? 0).toDouble();
+      // NEU: Prüfe erst ob custom_price_per_unit existiert
+      final pricePerUnit = (service['custom_price_per_unit'] as num?) != null
+          ? (service['custom_price_per_unit'] as num).toDouble()
+          : (service['price_per_unit'] as num? ?? 0).toDouble();
       final total = quantity * pricePerUnit;
 
       rows.add(
@@ -420,7 +440,9 @@ class QuoteGenerator extends BasePdfGenerator {
 
         final quantity = (item['quantity'] as num? ?? 0).toDouble();
         final pricePerUnit = isGratisartikel
-            ? 0.0  // Gratisartikel haben Preis 0
+            ? 0.0
+            : (item['custom_price_per_unit'] as num?) != null
+            ? (item['custom_price_per_unit'] as num).toDouble()
             : (item['price_per_unit'] as num? ?? 0).toDouble();
 
         final totalBeforeDiscount = quantity * pricePerUnit;
@@ -526,8 +548,15 @@ class QuoteGenerator extends BasePdfGenerator {
           BasePdfGenerator.buildContentCell(
             pw.Text('CH', style: const pw.TextStyle(fontSize: 6)),
           ),
+          // NEU: Thermobehandlungs-Temperatur anzeigen
           BasePdfGenerator.buildContentCell(
-            pw.Text('', style: const pw.TextStyle(fontSize: 6)),
+            pw.Text(
+              item['has_thermal_treatment'] == true && item['thermal_treatment_temperature'] != null
+                  ? item['thermal_treatment_temperature'].toString()
+                  : '',
+              style: const pw.TextStyle(fontSize: 8),
+              textAlign: pw.TextAlign.center,
+            ),
           ),
         ];
 
@@ -665,10 +694,12 @@ class QuoteGenerator extends BasePdfGenerator {
     for (final item in items) {
       final isGratisartikel = item['is_gratisartikel'] == true;
       final quantity = (item['quantity'] as num? ?? 0).toDouble();
+      // NEU: Prüfe erst ob custom_price_per_unit existiert
       final pricePerUnit = isGratisartikel
           ? 0.0
+          : (item['custom_price_per_unit'] as num?) != null
+          ? (item['custom_price_per_unit'] as num).toDouble()
           : (item['price_per_unit'] as num? ?? 0).toDouble();
-
       final itemSubtotal = quantity * pricePerUnit;
       subtotal += itemSubtotal;
       // Rabatte nur auf nicht-Gratisartikel berechnen
@@ -823,8 +854,7 @@ class QuoteGenerator extends BasePdfGenerator {
                   ],
                 ),
               ] else if (packagingCost + freightCost > 0) ...[
-                // Normale Anzeige mit Carrier-Name
-              ]else if (packagingCost + freightCost > 0) ...[
+                // KORREKTUR: Normale Anzeige mit Carrier-Name
                 pw.SizedBox(height: 4),
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,

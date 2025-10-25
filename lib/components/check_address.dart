@@ -402,7 +402,7 @@ class _CheckAddressContentState extends State<_CheckAddressContent>
             ),
             child: CheckboxListTile(
               title: const Text('Abweichende Lieferadresse'),
-              subtitle: const Text('Aktivieren Sie diese Option, wenn die Lieferadresse von der Rechnungsadresse abweicht'),
+              subtitle: const Text('Aktiviere diese Option, wenn die Lieferadresse von der Rechnungsadresse abweicht'),
               value: _hasDifferentShippingAddress,
               onChanged: (value) {
                 setState(() {
