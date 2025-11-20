@@ -254,13 +254,18 @@ class CurrencyConverterSheet {
                                   border: OutlineInputBorder(),
                                   filled: true,
                                   fillColor: Theme.of(context).colorScheme.surface,
-                                  prefixIcon: getAdaptiveIcon(
-                                    iconName: 'paid',
-                                    defaultIcon: Icons.paid,
+                                  prefixIcon: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: getAdaptiveIcon(
+                                      iconName: 'paid',
+                                      defaultIcon: Icons.paid,
+                                    ),
                                   ),
                                 ),
                                 value: currentCurrency,
-                                items: exchangeRatesNotifier.value.keys.map((currency) =>
+                                items: ['CHF', 'EUR', 'USD'].where((currency) =>
+                                    exchangeRatesNotifier.value.containsKey(currency)
+                                ).map((currency) =>
                                     DropdownMenuItem(
                                       value: currency,
                                       child: Text(currency),

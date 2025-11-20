@@ -518,12 +518,20 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            quote.customer['company'] ?? quote.customer['fullName'],
+                            ( quote.customer['company']?.toString().trim().isNotEmpty == true)
+                                ?  quote.customer['company']
+                                : ( quote.customer['firstName']?.toString().trim().isNotEmpty == true ||
+                                quote.customer['lastName']?.toString().trim().isNotEmpty == true)
+                                ? '${quote.customer['firstName'] ?? ''} ${ quote.customer['lastName'] ?? ''}'.trim()
+                                :  quote.customer['fullName']?.toString().trim().isNotEmpty == true
+                                ?  quote.customer['fullName']
+                                : 'Unbekannter Kunde',
                             style: const TextStyle(fontSize: 13),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+
                       ],
                     ),
                   ),

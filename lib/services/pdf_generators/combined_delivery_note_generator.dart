@@ -267,9 +267,9 @@ class CombinedDeliveryNoteGenerator {
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Product' : 'Produkt', 8),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Instr.' : 'Instr.', 8),
+              language == 'EN' ? 'Instrument' : 'Instrument', 8),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Qual.' : 'Qual.', 8),
+              language == 'EN' ? 'Quality' : 'Qualität', 8),
           BasePdfGenerator.buildHeaderCell('FSC®', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Orig' : 'Urs', 8),
@@ -309,10 +309,11 @@ class CombinedDeliveryNoteGenerator {
 
       for (final item in items) {
         final quantity = (item['quantity'] as num? ?? 0).toDouble();
+
         String unit = item['unit'] ?? '';
-        if (unit.toLowerCase() == 'stück') {
-          unit = 'Stk';
-        }
+if (unit.toLowerCase() == 'stück') {
+  unit = language == 'EN' ? 'pcs' : 'Stk';
+}
 
         rows.add(
           pw.TableRow(

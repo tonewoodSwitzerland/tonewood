@@ -14,6 +14,7 @@ import 'package:tonewood/services/pdf_generators/delivery_note_generator.dart';
 import 'package:tonewood/services/pdf_generators/packing_list_generator.dart';
 import 'package:tonewood/services/swiss_rounding.dart';
 import 'additional_text_manager.dart';
+import 'countries.dart';
 import 'pdf_generators/invoice_generator.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -1713,9 +1714,12 @@ Widget _buildPackageCard(
                     decoration: InputDecoration(
                       labelText: 'Verpackungsvorlage',
                       hintText: 'Bitte auswählen',
-                      prefixIcon: getAdaptiveIcon(
-                        iconName: 'inventory',
-                        defaultIcon: Icons.inventory,
+                      prefixIcon: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: getAdaptiveIcon(
+                          iconName: 'inventory',
+                          defaultIcon: Icons.inventory,
+                        ),
                       ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -1898,6 +1902,7 @@ Widget _buildPackageCard(
           const SizedBox(height: 12),
 
           // Tara-Gewicht
+          // Tara-Gewicht
           TextFormField(
             controller: controllers['weight']!,
             decoration: InputDecoration(
@@ -1909,7 +1914,9 @@ Widget _buildPackageCard(
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             onChanged: (value) {
-              package['tare_weight'] = double.tryParse(value) ?? 0.0;
+              setModalState(() {
+                package['tare_weight'] = double.tryParse(value) ?? 0.0;
+              });
             },
           ),
 
@@ -1921,9 +1928,12 @@ Widget _buildPackageCard(
             decoration: InputDecoration(
               labelText: 'Bruttogewicht (gemessen) (kg)',
               helperText: 'Leer lassen für automatische Berechnung',
-              prefixIcon: getAdaptiveIcon(
-                iconName: 'scale',
-                defaultIcon: Icons.scale,
+              prefixIcon: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: getAdaptiveIcon(
+                  iconName: 'scale',
+                  defaultIcon: Icons.scale,
+                ),
               ),
               suffixIcon: controllers['gross_weight']!.text.isNotEmpty
                   ? IconButton(
@@ -3825,10 +3835,53 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
     final carrierTextController = TextEditingController(text: carrierText);
 
     final Map<String, TextEditingController> incotermControllers = {};
+    // Controller für bestehende Incoterms erstellen
+    // Controller für bestehende Incoterms erstellen
     for (String incotermId in selectedIncoterms) {
-      incotermControllers[incotermId] = TextEditingController(text: incotermsFreeTexts[incotermId] ?? '');
-    }
+      // Hole den Incoterm-Namen
+      final incotermDoc = await FirebaseFirestore.instance
+          .collection('incoterms')
+          .doc(incotermId)
+          .get();
 
+      String defaultText = incotermsFreeTexts[incotermId] ?? '';
+
+      // Wenn DAP: Prüfe ob es ein Auto-generierter Text ist und aktualisiere ihn
+      if (incotermDoc.exists) {
+        final incotermData = incotermDoc.data() as Map<String, dynamic>;
+        final incotermName = incotermData['name'] as String;
+
+        if (incotermName == 'DAP') {
+          // Prüfe ob der Text dem Standard-Format entspricht
+          final isDomicile = defaultText.startsWith('Domicile consignee,') ||
+              defaultText.startsWith('Domizil Käufer,');
+
+          // Wenn leer ODER Standard-Format: Neu generieren
+          if (defaultText.isEmpty || isDomicile) {
+            final customerSnapshot = await FirebaseFirestore.instance
+                .collection('temporary_customer')
+                .limit(1)
+                .get();
+
+            if (customerSnapshot.docs.isNotEmpty) {
+              final customerData = customerSnapshot.docs.first.data();
+              final countryName = customerData['country'];
+              final country = Countries.getCountryByName(countryName);
+              final language = languageNotifier.value;
+
+              defaultText = language == 'DE'
+                  ? 'Domizil Käufer, ${country?.name ?? countryName}'
+                  : 'Domicile consignee, ${country?.nameEn ?? countryName}';
+
+              // WICHTIG: Aktualisiere auch die Map, die gespeichert wird!
+              incotermsFreeTexts[incotermId] = defaultText;
+            }
+          }
+        }
+      }
+
+      incotermControllers[incotermId] = TextEditingController(text: defaultText);
+    }
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -4364,17 +4417,43 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                           return FilterChip(
                                             label: Text(name),
                                             selected: isSelected,
-                                            onSelected: (selected) {
+                                            onSelected: (selected) async {
                                               setDialogState(() {
                                                 if (selected) {
                                                   selectedIncoterms.add(doc.id);
-                                                  incotermsFreeTexts[doc.id] = incotermsFreeTexts[doc.id] ?? '';
-                                                  // Controller für neuen Incoterm erstellen
-                                                  incotermControllers[doc.id] = TextEditingController(text: incotermsFreeTexts[doc.id] ?? '');
+
+                                                  // NEU: Für DAP automatisch Default-Text setzen
+                                                  String initialText = '';
+                                                  if (name == 'DAP') {
+                                                    // Lade Kunde aus temporary_customer
+                                                    FirebaseFirestore.instance
+                                                        .collection('temporary_customer')
+                                                        .limit(1)
+                                                        .get()
+                                                        .then((snapshot) {
+                                                      if (snapshot.docs.isNotEmpty) {
+                                                        final customerData = snapshot.docs.first.data();
+                                                        final countryName = customerData['country'];
+                                                        final country = Countries.getCountryByName(countryName);
+                                                        final language = languageNotifier.value;
+
+                                                        final defaultText = language == 'DE'
+                                                            ? 'Domizil Käufer, ${country?.name ?? countryName}'
+                                                            : 'Domicile consignee, ${country?.nameEn ?? countryName}';
+
+                                                        setDialogState(() {
+                                                          incotermsFreeTexts[doc.id] = defaultText;
+                                                          incotermControllers[doc.id]?.text = defaultText;
+                                                        });
+                                                      }
+                                                    });
+                                                  }
+
+                                                  incotermsFreeTexts[doc.id] = initialText;
+                                                  incotermControllers[doc.id] = TextEditingController(text: initialText);
                                                 } else {
                                                   selectedIncoterms.remove(doc.id);
                                                   incotermsFreeTexts.remove(doc.id);
-                                                  // Controller entfernen
                                                   incotermControllers[doc.id]?.dispose();
                                                   incotermControllers.remove(doc.id);
                                                 }

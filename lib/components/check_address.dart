@@ -55,7 +55,7 @@ class _CheckAddressContentState extends State<_CheckAddressContent>
   late TabController _tabController;
   late Map<String, TextEditingController> _shippingControllers;
   bool _hasDifferentShippingAddress = false;
-
+  List<TextEditingController> shippingAdditionalAddressLines = [];
   @override
   void initState() {
     super.initState();
@@ -88,6 +88,9 @@ class _CheckAddressContentState extends State<_CheckAddressContent>
       'shippingCity': TextEditingController(
           text: widget.customerData['shippingCity'] ?? widget.customerData['city'] ?? ''
       ),
+      'shippingProvince': TextEditingController( // NEU
+          text: widget.customerData['shippingProvince'] ?? widget.customerData['province'] ?? ''
+      ),
       'shippingCountry': TextEditingController(
           text: widget.customerData['shippingCountry'] ?? widget.customerData['country'] ?? ''
       ),
@@ -104,12 +107,32 @@ class _CheckAddressContentState extends State<_CheckAddressContent>
           text: widget.customerData['shippingVatNumber'] ?? widget.customerData['vatNumber'] ?? ''
       ),
     };
+    // NEU: Zusätzliche Adresszeilen aus customerData laden
+    if (widget.customerData['shippingAdditionalAddressLines'] != null) {
+      final lines = widget.customerData['shippingAdditionalAddressLines'] as List;
+      shippingAdditionalAddressLines = lines
+          .map((line) => TextEditingController(text: line.toString()))
+          .toList();
+    } else if (widget.customerData['additionalAddressLines'] != null) {
+      // Fallback auf normale Adresszeilen wenn keine Lieferadress-Zeilen existieren
+      final lines = widget.customerData['additionalAddressLines'] as List;
+      shippingAdditionalAddressLines = lines
+          .map((line) => TextEditingController(text: line.toString()))
+          .toList();
+    }
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     _shippingControllers.forEach((_, controller) => controller.dispose());
+
+    // NEU: Zusätzliche Adresszeilen aufräumen
+    for (var controller in shippingAdditionalAddressLines) {
+      controller.dispose();
+    }
+
+
     super.dispose();
   }
 
@@ -328,14 +351,23 @@ class _CheckAddressContentState extends State<_CheckAddressContent>
                     if (widget.customerData['firstName'] != null || widget.customerData['lastName'] != null)
                       Text('${widget.customerData['firstName'] ?? ''} ${widget.customerData['lastName'] ?? ''}'.trim()),
                     Text('${widget.customerData['street'] ?? ''} ${widget.customerData['houseNumber'] ?? ''}'.trim()),
+
+                    // NEU: Zusätzliche Adresszeilen anzeigen
+                    if (widget.customerData['additionalAddressLines'] != null)
+                      ...(widget.customerData['additionalAddressLines'] as List).map((line) =>
+                          Text(line.toString())
+                      ).toList(),
+
                     Text('${widget.customerData['zipCode'] ?? ''} ${widget.customerData['city'] ?? ''}'.trim()),
+                    // NEU: Provinz anzeigen
+                    if (widget.customerData['province']?.toString().trim().isNotEmpty == true)
+                      Text(widget.customerData['province']),
+
                     if (widget.customerData['country'] != null)
                       Text(widget.customerData['country']),
                   ],
                 ),
               ),
-
-
             ],
           ),
         ),
@@ -477,6 +509,11 @@ class _CheckAddressContentState extends State<_CheckAddressContent>
               ],
             ),
             const SizedBox(height: 16),
+
+// NEU: Zusätzliche Adresszeilen
+            _buildAddressLinesSection(),
+
+            const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
@@ -496,6 +533,13 @@ class _CheckAddressContentState extends State<_CheckAddressContent>
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 16),
+            // NEU: Provinz
+            _buildTextField(
+              controller: _shippingControllers['shippingProvince']!,
+              label: 'Provinz/Bundesland/Kanton',
+              icon: Icons.map,
             ),
             const SizedBox(height: 16),
             _buildTextField(
@@ -578,12 +622,87 @@ class _CheckAddressContentState extends State<_CheckAddressContent>
     );
   }
 
+  Widget _buildAddressLinesSection() {
+    return Column(
+      children: [
+        ...shippingAdditionalAddressLines.asMap().entries.map((entry) {
+          final index = entry.key;
+          final controller = entry.value;
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildTextField(
+                    controller: controller,
+                    label: 'Adresszeile ${index + 1}',
+                    icon: Icons.notes,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      controller.dispose();
+                      shippingAdditionalAddressLines.removeAt(index);
+                    });
+                  },
+                  icon: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: getAdaptiveIcon(
+                      iconName: 'delete',
+                      defaultIcon: Icons.delete,
+                      color: Colors.red.shade700,
+                      size: 20,
+                    ),
+                  ),
+                  tooltip: 'Zeile entfernen',
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+
+        // Button zum Hinzufügen weiterer Zeilen
+        OutlinedButton.icon(
+          onPressed: () {
+            setState(() {
+              shippingAdditionalAddressLines.add(TextEditingController());
+            });
+          },
+          icon: getAdaptiveIcon(
+            iconName: 'add',
+            defaultIcon: Icons.add,
+            size: 20,
+            color: Theme.of(context).primaryColor,
+          ),
+          label: const Text('Weitere Zeile hinzufügen'),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            side: BorderSide(
+              color: Theme.of(context).primaryColor.withOpacity(0.5),
+              width: 1.5,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
     required IconData icon,
     TextInputType keyboardType = TextInputType.text,
-  }) {
+  })
+  {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
@@ -616,11 +735,23 @@ class _CheckAddressContentState extends State<_CheckAddressContent>
     _shippingControllers['shippingHouseNumber']!.text = widget.customerData['houseNumber'] ?? '';
     _shippingControllers['shippingZipCode']!.text = widget.customerData['zipCode'] ?? '';
     _shippingControllers['shippingCity']!.text = widget.customerData['city'] ?? '';
+    _shippingControllers['shippingProvince']!.text = widget.customerData['province'] ?? ''; // NEU
     _shippingControllers['shippingCountry']!.text = widget.customerData['country'] ?? '';
     _shippingControllers['shippingEmail']!.text = widget.customerData['email'] ?? '';
     _shippingControllers['shippingPhone']!.text = widget.customerData['phone1'] ?? '';
     _shippingControllers['shippingEoriNumber']!.text = widget.customerData['eoriNumber'] ?? '';
     _shippingControllers['shippingVatNumber']!.text = widget.customerData['vatNumber'] ?? '';
+    // NEU: Zusätzliche Adresszeilen auch kopieren
+    shippingAdditionalAddressLines.clear();
+    if (widget.customerData['additionalAddressLines'] != null) {
+      final lines = widget.customerData['additionalAddressLines'] as List;
+      shippingAdditionalAddressLines = lines
+          .map((line) => TextEditingController(text: line.toString()))
+          .toList();
+    }
+
+    setState(() {});
+
   }
 
   Future<void> _saveAddresses() async {
@@ -635,6 +766,11 @@ class _CheckAddressContentState extends State<_CheckAddressContent>
         _shippingControllers.forEach((key, controller) {
           updateData[key] = controller.text.trim();
         });
+        // NEU: Zusätzliche Adresszeilen speichern
+        updateData['shippingAdditionalAddressLines'] = shippingAdditionalAddressLines
+            .map((c) => c.text.trim())
+            .where((text) => text.isNotEmpty)
+            .toList();
       } else {
         // Lösche Lieferadresse-Felder wenn gleiche Adresse
         _shippingControllers.keys.forEach((key) {

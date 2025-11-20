@@ -75,7 +75,7 @@ SalesScreenState createState() => SalesScreenState();
 
 class SalesScreenState extends State<SalesScreen> {
   Fair? selectedFair;
-  final ValueNotifier<TaxOption> _taxOptionNotifier = ValueNotifier<TaxOption>(TaxOption.standard);
+  final ValueNotifier<TaxOption> _taxOptionNotifier = ValueNotifier<TaxOption>(TaxOption.noTax);
   final ValueNotifier<bool> _documentSelectionCompleteNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _additionalTextsSelectedNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _shippingCostsConfiguredNotifier = ValueNotifier<bool>(false);
@@ -1470,7 +1470,7 @@ return Scaffold(
                                 : null,
                           ),
                           child: RadioListTile<TaxOption>(
-                            title: const Text('Standard'),
+                            title: const Text('Gesamt exkl. MwSt'),
                             subtitle: const Text('Netto, MwSt und Brutto separat ausgewiesen',style: TextStyle(fontSize: 10),),
                             value: TaxOption.standard,
                             groupValue: selectedOption,
@@ -5052,6 +5052,9 @@ return Scaffold(
     final descriptionController = TextEditingController(
         text: itemData['description'] ?? ''
     );
+    final descriptionEnController = TextEditingController(
+        text: itemData['description_en'] ?? ''
+    );
     // Falls bereits ein angepasster Preis existiert, diesen verwenden, sonst Originalpreis
     final customPriceValue = itemData['custom_price_per_unit'];
     final double currentPriceInCHF = customPriceValue != null
@@ -5169,12 +5172,29 @@ return Scaffold(
             child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-            Text(
-            isService
-            ? 'Dienstleistung: ${itemData['name'] ?? 'Unbenannt'}'
-                : 'Artikel: ${itemData['product_name']}',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isService
+                        ? 'Dienstleistung: ${itemData['name'] ?? 'Unbenannt'}'
+                        : 'Artikel: ${itemData['product_name']}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  // Zeige englischen Namen falls vorhanden
+                  if (isService && itemData['name_en'] != null && itemData['name_en'].isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'EN: ${itemData['name_en']}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontStyle: FontStyle.italic,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             if (isService && itemData['description'] != null && itemData['description'].isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
@@ -5212,7 +5232,7 @@ return Scaffold(
             // Bei Dienstleistungen: Beschreibung bearbeiten
               if (isService) ...[
                 const SizedBox(height: 24),
-            
+
                 // Beschreibung bearbeiten
                 Text(
                   'Beschreibung anpassen',
@@ -5223,16 +5243,31 @@ return Scaffold(
                   ),
                 ),
                 const SizedBox(height: 8),
-            
+
                 TextFormField(
-                  controller: descriptionController, // NEU: Controller definieren
+                  controller: descriptionController,
                   decoration: InputDecoration(
-                    labelText: 'Beschreibung',
+                    labelText: 'Beschreibung (Deutsch)',
                     border: const OutlineInputBorder(),
                     filled: true,
                     fillColor: Theme.of(context).colorScheme.surface,
                     prefixIcon: getAdaptiveIcon(iconName: 'description', defaultIcon: Icons.description),
                     helperText: 'Optionale Beschreibung der Dienstleistung',
+                  ),
+                  maxLines: 3,
+                  minLines: 2,
+                ),
+                const SizedBox(height: 12),
+
+                TextFormField(
+                  controller: descriptionEnController,
+                  decoration: InputDecoration(
+                    labelText: 'Beschreibung (English)',
+                    border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Theme.of(context).colorScheme.surface,
+                    prefixIcon: getAdaptiveIcon(iconName: 'language', defaultIcon: Icons.language),
+                    helperText: 'Optional description of the service',
                   ),
                   maxLines: 3,
                   minLines: 2,
@@ -5387,7 +5422,7 @@ return Scaffold(
                                   } else if (snapshot.hasData && snapshot.data != null) {
                                     final standardVolume = snapshot.data!['volume'] ?? 0.0;
                                     if (standardVolume > 0) {
-                                      volumeController.text = standardVolume.toStringAsFixed(5);
+                                      volumeController.text = standardVolume.toStringAsFixed(7);
                                     }
                                   }
                                   standardValuesLoaded = true;
@@ -5497,7 +5532,7 @@ return Scaffold(
                                     ),
                                     keyboardType: TextInputType.numberWithOptions(decimal: true),
                                     inputFormatters: [
-                                      FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,5}')),
+                                      FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,7}')),
                                     ],
                                   ),
             
@@ -5545,7 +5580,9 @@ return Scaffold(
                                   itemData['custom_thickness'] != null ||
                                   itemData['custom_volume'] != null ||
                                   itemData['has_thermal_treatment'] == true)) ||
-                              (isService && descriptionController.text != (itemData['description'] ?? '')))
+                              (isService && (descriptionController.text != (itemData['description'] ?? '') ||
+                                  descriptionEnController.text != (itemData['description_en'] ?? ''))))
+
                             Expanded(
                               child: OutlinedButton.icon(
                                 onPressed: () async {
@@ -5568,15 +5605,17 @@ return Scaffold(
                                     }
             
                                     // Bei Dienstleistungen: Beschreibung aus Originaldaten wiederherstellen
+                                    // Bei Dienstleistungen: Beschreibung aus Originaldaten wiederherstellen
                                     if (isService) {
                                       // Hole die Original-Dienstleistungsdaten aus Firebase
                                       final serviceDoc = await FirebaseFirestore.instance
                                           .collection('services')
                                           .doc(itemData['service_id'])
                                           .get();
-            
+
                                       if (serviceDoc.exists) {
                                         updateData['description'] = serviceDoc.data()!['description'] ?? '';
+                                        updateData['description_en'] = serviceDoc.data()!['description_en'] ?? '';
                                       }
                                     }
             
@@ -5695,8 +5734,14 @@ return Scaffold(
             
             
                                   // Bei Dienstleistungen die Beschreibung mit updaten
-                                  if (isService && descriptionController.text != itemData['description']) {
-                                    updateData['description'] = descriptionController.text.trim();
+                                  // Bei Dienstleistungen die Beschreibungen mit updaten
+                                  if (isService) {
+                                    if (descriptionController.text != itemData['description']) {
+                                      updateData['description'] = descriptionController.text.trim();
+                                    }
+                                    if (descriptionEnController.text != (itemData['description_en'] ?? '')) {
+                                      updateData['description_en'] = descriptionEnController.text.trim();
+                                    }
                                   }
                                   // Speichere die Änderungen
                                   await FirebaseFirestore.instance
@@ -5768,12 +5813,13 @@ return Scaffold(
         final standardProduct = querySnapshot.docs.first.data();
 
         // Versuche verschiedene Volumen-Felder
-        final mm3Volume = standardProduct['volume']?['mm3_standard'];
-        final dm3Volume = standardProduct['volume']?['dm3_standard'];
+        final mm3Volume = standardProduct['volume']?['mm3_withAddition'];
+        final dm3Volume = standardProduct['volume']?['dm3_withAddition'];
 
         if (mm3Volume != null && mm3Volume > 0) {
           // Konvertiere mm³ zu m³
           final volumeInM3 = (mm3Volume as num).toDouble() / 1000000000.0;
+          print("volumeInM3:$volumeInM3");
           return {
             'volume': volumeInM3,
             'type': 'mm3',
@@ -6444,7 +6490,7 @@ return Scaffold(
                                       WidgetsBinding.instance.addPostFrameCallback((_) {
                                         final standardVolume = volumeSnapshot.data!['volume'] ?? 0.0;
                                         if (standardVolume > 0) {
-                                          volumeController.text = standardVolume.toStringAsFixed(5);
+                                          volumeController.text = standardVolume.toStringAsFixed(7);
                                         }
                                       });
                                     }
@@ -6562,7 +6608,7 @@ return Scaffold(
                                           ),
                                           keyboardType: TextInputType.numberWithOptions(decimal: true),
                                           inputFormatters: [
-                                            FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,5}')),
+                                            FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,7}')),
                                           ],
                                           onChanged: (value) {
                                             setState(() {});
@@ -6672,7 +6718,7 @@ return Scaffold(
                                                             ),
                                                             const SizedBox(height: 8),
                                                             Text(
-                                                              'Volumen: ${volumePerUnit.toStringAsFixed(5)} m³ × Dichte: ${density.toStringAsFixed(0)} kg/m³',
+                                                              'Volumen: ${volumePerUnit.toStringAsFixed(7)} m³ × Dichte: ${density.toStringAsFixed(0)} kg/m³',
                                                               style: TextStyle(fontSize: 12),
                                                             ),
                                                             const SizedBox(height: 4),
@@ -6981,8 +7027,8 @@ return Scaffold(
 
         // Extrahiere die Standardmaße (ohne Zumaß)
         return {
-          'length': standardProduct['dimensions']?['length']?['standard'],
-          'width': standardProduct['dimensions']?['width']?['standard'],
+          'length': standardProduct['dimensions']?['length']?['withAddition'],
+          'width': standardProduct['dimensions']?['width']?['withAddition'],
           'thickness': standardProduct['dimensions']?['thickness']?['value'],
         };
       }
@@ -7990,82 +8036,196 @@ Widget _buildSelectedProductInfo() {
   Map<String, Discount> _itemDiscounts = {};
 
 // Methode zum Anpassen des Rabatts für einen Artikel
-  void _showItemDiscountDialog(String itemId, double currentAmount) {
+  // Methode zum Anpassen des Rabatts für einen Artikel
+// Methode zum Anpassen des Rabatts für einen Artikel
+  void _showItemDiscountDialog(String itemId, double originalAmount) {
     final percentageController = TextEditingController(
         text: _itemDiscounts[itemId]?.percentage.toString() ?? '0.0'
     );
     final absoluteController = TextEditingController(
         text: _itemDiscounts[itemId]?.absolute.toString() ?? '0.0'
     );
+    final targetAmountController = TextEditingController();
+
+    // Flag um zu verhindern, dass Listener sich gegenseitig triggern
+    bool _isUpdating = false;
+
+    // Merke welches Feld zuletzt bearbeitet wurde
+    String _lastEdited = 'none';
+
+    // Listener für Prozent-Feld
+    percentageController.addListener(() {
+      if (_isUpdating) return;
+      _isUpdating = true;
+      _lastEdited = 'percentage';
+
+      final percentage = double.tryParse(percentageController.text) ?? 0;
+      final discount = originalAmount * (percentage / 100);
+      final newAmount = originalAmount - discount;
+
+      absoluteController.text = discount.toStringAsFixed(2);
+      targetAmountController.text = newAmount.toStringAsFixed(2);
+
+      _isUpdating = false;
+    });
+
+    // Listener für Absolut-Feld
+    absoluteController.addListener(() {
+      if (_isUpdating) return;
+      _isUpdating = true;
+      _lastEdited = 'absolute';
+
+      final absolute = double.tryParse(absoluteController.text) ?? 0;
+      final percentage = (absolute / originalAmount) * 100;
+      final newAmount = originalAmount - absolute;
+
+      percentageController.text = percentage.toStringAsFixed(2);
+      targetAmountController.text = newAmount.toStringAsFixed(2);
+
+      _isUpdating = false;
+    });
+
+    // Listener für Zielbetrag-Feld
+    targetAmountController.addListener(() {
+      if (_isUpdating) return;
+      _isUpdating = true;
+      _lastEdited = 'target';
+
+      final targetAmount = double.tryParse(targetAmountController.text) ?? originalAmount;
+      final discount = originalAmount - targetAmount;
+      final percentage = (discount / originalAmount) * 100;
+
+      absoluteController.text = discount.toStringAsFixed(2);
+      percentageController.text = percentage.toStringAsFixed(2);
+
+      _isUpdating = false;
+    });
+
+    // Initialisiere Zielbetrag basierend auf Original-Betrag
+    final initialDiscount = _itemDiscounts[itemId];
+    if (initialDiscount != null) {
+      // Prüfe welcher Wert gesetzt ist
+      if (initialDiscount.percentage > 0) {
+        _lastEdited = 'percentage';
+        final discount = originalAmount * (initialDiscount.percentage / 100);
+        targetAmountController.text = (originalAmount - discount).toStringAsFixed(2);
+      } else if (initialDiscount.absolute > 0) {
+        _lastEdited = 'absolute';
+        final discount = initialDiscount.absolute;
+        targetAmountController.text = (originalAmount - discount).toStringAsFixed(2);
+      } else {
+        targetAmountController.text = originalAmount.toStringAsFixed(2);
+      }
+    } else {
+      targetAmountController.text = originalAmount.toStringAsFixed(2);
+    }
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Rabatt eingeben'),
+        title: const Text('Rabatt'),
         content: ValueListenableBuilder<String>(
           valueListenable: _currencyNotifier,
           builder: (context, currency, child) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: percentageController,
-                        decoration: const InputDecoration(
-                          labelText: 'Rabatt %',
-                          suffixText: '%',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                        ],
-                      ),
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Aktueller Betrag
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: TextFormField(
-                        controller: absoluteController,
-                        decoration: InputDecoration(
-                          labelText: 'Rabatt $currency',
-                          suffixText: currency,
-                          border: const OutlineInputBorder(),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Ursprungsbetrag:',
+                          style: TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        keyboardType: TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                        ],
-                      ),
+                        Text(
+                          _formatPrice(originalAmount),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                StreamBuilder<double>(
-                  stream: _calculateItemDiscount(
-                    currentAmount,
-                    double.tryParse(percentageController.text) ?? 0,
-                    // Konvertiere den absoluten Rabatt in CHF, wenn eine andere Währung ausgewählt ist
-                    currency != 'CHF'
-                        ? (double.tryParse(absoluteController.text) ?? 0) / _exchangeRates[currency]!
-                        : double.tryParse(absoluteController.text) ?? 0,
                   ),
-                  builder: (context, snapshot) {
-                    final discount = snapshot.data ?? 0.0;
-                    return Text(
-                      'Rabattbetrag: ${_formatPrice(discount)}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    );
-                  },
-                ),
-              ],
+                  const SizedBox(height: 16),
+
+                  // Rabatt in Prozent
+                  TextFormField(
+                    controller: percentageController,
+                    decoration: const InputDecoration(
+                      labelText: 'Rabatt %',
+                      suffixText: '%',
+                      border: OutlineInputBorder(),
+                      helperText: 'Prozentuale Ermäßigung',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Rabatt absolut
+                  TextFormField(
+                    controller: absoluteController,
+                    decoration: InputDecoration(
+                      labelText: 'Rabatt $currency',
+                      suffixText: currency,
+                      border: const OutlineInputBorder(),
+                      helperText: 'Absoluter Rabattbetrag',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  const Divider(),
+                  const SizedBox(height: 12),
+
+                  // Zielbetrag (neuer Preis)
+                  TextFormField(
+                    controller: targetAmountController,
+                    decoration: InputDecoration(
+                      labelText: 'Neuer Betrag $currency',
+                      suffixText: currency,
+                      border: const OutlineInputBorder(),
+                      helperText: 'Gewünschter Endbetrag',
+                      filled: true,
+                      fillColor: Colors.green[50],
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                    ],
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              percentageController.dispose();
+              absoluteController.dispose();
+              targetAmountController.dispose();
+              Navigator.pop(context);
+            },
             child: const Text('Abbrechen'),
           ),
           ValueListenableBuilder<String>(
@@ -8073,17 +8233,26 @@ Widget _buildSelectedProductInfo() {
             builder: (context, currency, child) {
               return ElevatedButton(
                 onPressed: () async {
+                  // Speichere NUR den Wert, der zuletzt bearbeitet wurde
+                  double percentageValue = 0.0;
+                  double absoluteValue = 0.0;
 
-                  // Konvertiere den absoluten Rabatt in CHF, wenn eine andere Währung ausgewählt ist
-                  double absoluteValue = double.tryParse(absoluteController.text) ?? 0;
-                  if (currency != 'CHF') {
-                    absoluteValue = absoluteValue / _exchangeRates[currency]!;
+                  if (_lastEdited == 'percentage') {
+                    percentageValue = double.tryParse(percentageController.text) ?? 0;
+                    absoluteValue = 0.0;
+                  } else {
+                    // Bei 'absolute' oder 'target' speichern wir den absoluten Wert
+                    absoluteValue = double.tryParse(absoluteController.text) ?? 0;
+                    if (currency != 'CHF') {
+                      absoluteValue = absoluteValue / _exchangeRates[currency]!;
+                    }
+                    percentageValue = 0.0;
                   }
 
                   setState(() {
                     _itemDiscounts[itemId] = Discount(
-                      percentage: double.tryParse(percentageController.text) ?? 0,
-                      absolute: absoluteValue, // Immer in CHF speichern
+                      percentage: percentageValue,
+                      absolute: absoluteValue,
                     );
                   });
 
@@ -8092,12 +8261,15 @@ Widget _buildSelectedProductInfo() {
                       .doc(itemId)
                       .update({
                     'discount': {
-                      'percentage': double.tryParse(percentageController.text) ?? 0,
+                      'percentage': percentageValue,
                       'absolute': absoluteValue,
                     },
                     'discount_timestamp': FieldValue.serverTimestamp(),
                   });
 
+                  percentageController.dispose();
+                  absoluteController.dispose();
+                  targetAmountController.dispose();
                   Navigator.pop(context);
                 },
                 child: const Text('Übernehmen'),
@@ -8108,6 +8280,7 @@ Widget _buildSelectedProductInfo() {
       ),
     );
   }
+
   Stream<double> _calculateItemDiscount(
       double amount,
       double percentage,

@@ -26,26 +26,29 @@ class CountryDropdown extends StatefulWidget {
 
 class _CountryDropdownState extends State<CountryDropdown> {
   Country? _selectedCountry;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
-
-    // Initialisiere das ausgewählte Land basierend auf dem Controller
     _initSelectedCountry();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
   void _initSelectedCountry() {
-    // Stelle sicher, dass ein passender Ländercode gesetzt ist
     if (widget.countryController.text.isNotEmpty) {
       _selectedCountry = Countries.getCountryByName(widget.countryController.text);
       if (_selectedCountry != null && widget.countryCodeController.text.isEmpty) {
         widget.countryCodeController.text = _selectedCountry!.code;
       }
-    }
-
-    // Umgekehrt: Wenn ein Code gesetzt ist, aber kein Land, dann das Land ermitteln
-    else if (widget.countryCodeController.text.isNotEmpty) {
+    } else if (widget.countryCodeController.text.isNotEmpty) {
       _selectedCountry = Countries.getCountryByCode(widget.countryCodeController.text);
       if (_selectedCountry != null && _selectedCountry!.name != "Unbekannt") {
         widget.countryController.text = _selectedCountry!.name;
@@ -53,89 +56,148 @@ class _CountryDropdownState extends State<CountryDropdown> {
     }
   }
 
+  List<Country> _getFilteredCountries(String query) {
+    if (query.isEmpty) {
+      // Zeige beliebte Länder zuerst, dann alle anderen
+      return [
+        ...Countries.popularCountries,
+        ...Countries.allCountries.where((c) => !Countries.popularCountries.contains(c)),
+      ];
+    }
+
+    final queryLower = query.toLowerCase();
+    final List<Country> filtered = Countries.allCountries.where((country) {
+      return country.name.toLowerCase().contains(queryLower) ||
+          country.code.toLowerCase().contains(queryLower);
+    }).toList();
+
+    return filtered;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<Country>(
-      decoration: InputDecoration(
-        labelText: '${widget.label} ${widget.isRequired ? '*' : ''}',
-        border: OutlineInputBorder(
-          borderRadius: widget.borderRadius ?? BorderRadius.circular(4),
-        ),
-        filled: true,
-        fillColor: Colors.grey.shade50,
-        prefixIcon: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: getAdaptiveIcon(iconName: 'flag', defaultIcon:
-            Icons.flag,
-            color: Colors.grey.shade600,
-          ),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: widget.borderRadius ?? BorderRadius.circular(4),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: widget.borderRadius ?? BorderRadius.circular(4),
-          borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-        ),
-      ),
-      value: _selectedCountry,
-      items: _buildDropdownItems(),
-      onChanged: (Country? country) {
-        if (country != null) {
-          setState(() {
-            _selectedCountry = country;
-            widget.countryController.text = country.name;
-            widget.countryCodeController.text = country.code;
-          });
-        }
+    return Autocomplete<Country>(
+      optionsBuilder: (TextEditingValue textEditingValue) {
+        return _getFilteredCountries(textEditingValue.text);
       },
-      validator: widget.validator ?? _defaultValidator,
-      isExpanded: true,
-      icon:  getAdaptiveIcon(iconName: 'arrow_drop_down',defaultIcon:Icons.arrow_drop_down),
-      iconSize: 24,
-      elevation: 16,
-      style: const TextStyle(color: Colors.black),
-      dropdownColor: Colors.white,
+      displayStringForOption: (Country country) => country.name,
+      onSelected: (Country country) {
+        setState(() {
+          _selectedCountry = country;
+          widget.countryController.text = country.name;
+          widget.countryCodeController.text = country.code;
+        });
+      },
+      initialValue: _selectedCountry != null
+          ? TextEditingValue(text: _selectedCountry!.name)
+          : null,
+      fieldViewBuilder: (
+          BuildContext context,
+          TextEditingController textEditingController,
+          FocusNode focusNode,
+          VoidCallback onFieldSubmitted,
+          ) {
+        return TextFormField(
+          controller: textEditingController,
+          focusNode: focusNode,
+          decoration: InputDecoration(
+            labelText: '${widget.label} ${widget.isRequired ? '*' : ''}',
+            hintText: 'Suche nach Land oder Code (z.B. "CH", "Schweiz")',
+            border: OutlineInputBorder(
+              borderRadius: widget.borderRadius ?? BorderRadius.circular(4),
+            ),
+            filled: true,
+            fillColor: Colors.grey.shade50,
+            prefixIcon: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: getAdaptiveIcon(
+                iconName: 'flag',
+                defaultIcon: Icons.flag,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            suffixIcon: textEditingController.text.isNotEmpty
+                ? IconButton(
+              icon: const Icon(Icons.clear),
+              onPressed: () {
+                textEditingController.clear();
+                setState(() {
+                  _selectedCountry = null;
+                  widget.countryController.clear();
+                  widget.countryCodeController.clear();
+                });
+              },
+            )
+                : getAdaptiveIcon(
+              iconName: 'search',
+              defaultIcon: Icons.search,
+              color: Colors.grey.shade600,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: widget.borderRadius ?? BorderRadius.circular(4),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: widget.borderRadius ?? BorderRadius.circular(4),
+              borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+            ),
+          ),
+          validator: (value) {
+            if (widget.isRequired && (value == null || value.isEmpty)) {
+              return 'Bitte ${widget.label} auswählen';
+            }
+            if (widget.validator != null) {
+              return widget.validator!(_selectedCountry);
+            }
+            return null;
+          },
+        );
+      },
+      optionsViewBuilder: (
+          BuildContext context,
+          AutocompleteOnSelected<Country> onSelected,
+          Iterable<Country> options,
+          ) {
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 4.0,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              constraints: const BoxConstraints(maxHeight: 300),
+              width: MediaQuery.of(context).size.width - 32,
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                itemCount: options.length,
+                itemBuilder: (BuildContext context, int index) {
+                  final Country country = options.elementAt(index);
+                  final bool isPopular = Countries.popularCountries.contains(country);
+
+                  return ListTile(
+                    leading: Text(
+                      country.code,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    title: Text(country.name),
+                    trailing: isPopular
+                        ? Icon(Icons.star, color: Colors.amber.shade700, size: 16)
+                        : null,
+                    onTap: () {
+                      onSelected(country);
+                    },
+                    dense: true,
+                    hoverColor: Colors.grey.shade100,
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
     );
-  }
-
-  String? _defaultValidator(Country? country) {
-    if (widget.isRequired && (country == null)) {
-      return 'Bitte ${widget.label} auswählen';
-    }
-    return null;
-  }
-
-  List<DropdownMenuItem<Country>> _buildDropdownItems() {
-    final List<DropdownMenuItem<Country>> items = [];
-
-    // Beliebte Länder am Anfang
-    for (var country in Countries.popularCountries) {
-      items.add(DropdownMenuItem<Country>(
-        value: country,
-        child: Text(country.name),
-      ));
-    }
-
-    // Trennlinie
-    if (Countries.popularCountries.isNotEmpty) {
-      items.add(DropdownMenuItem<Country>(
-        enabled: false,
-        child: Divider(color: Colors.grey.shade300, height: 1),
-      ));
-    }
-
-    // Alle anderen Länder
-    for (var country in Countries.allCountries) {
-      if (!Countries.popularCountries.contains(country)) {
-        items.add(DropdownMenuItem<Country>(
-          value: country,
-          child: Text(country.name),
-        ));
-      }
-    }
-
-    return items;
   }
 }

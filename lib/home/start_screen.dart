@@ -26,6 +26,7 @@ import '../home/warehouse_screen.dart';
 import '../home/product_management_screen.dart';
 import '../home/sales_screen.dart';
 import '../services/icon_helper.dart';
+import '../temp/quality_updater.dart';
 import 'analytics_screen2.dart';
 import 'combinet_shipment_screen.dart';
 import 'customer_management_screen.dart';
@@ -236,7 +237,17 @@ class StartScreenState extends State<StartScreen> {
                         );
                       },
                     ),
+
                   ),
+
+                  // ElevatedButton(
+                  //   onPressed: () async {
+                  //     final updater = QualityUpdater();
+                  //     await updater.updateQualities();
+                  //   },
+                  //   child: Text('Qualities updaten'),
+                  // ),
+
                   SizedBox(
                     width: 60, // Feste Breite für das Avatar-Widget
                     child: _buildProfileAvatar(photoPic),

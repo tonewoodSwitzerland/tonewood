@@ -12,6 +12,7 @@ import 'package:tonewood/services/swiss_rounding.dart';
 import 'dart:typed_data';
 import '../services/icon_helper.dart';
 import '../components/order_model.dart';
+import 'countries.dart';
 import 'order_document_preview_manager.dart';
 import 'pdf_generators/invoice_generator.dart';
 import 'pdf_generators/delivery_note_generator.dart';
@@ -1177,9 +1178,44 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
     Map<String, String> incotermsFreeTexts = Map<String, String>.from(settings['incoterms_freetexts'] ?? {});
     final Map<String, TextEditingController> incotermControllers = {};
 
+
     // Controller für bestehende Incoterms erstellen
     for (String incotermId in selectedIncoterms) {
-      incotermControllers[incotermId] = TextEditingController(text: incotermsFreeTexts[incotermId] ?? '');
+      // Hole den Incoterm-Namen
+      final incotermDoc = await FirebaseFirestore.instance
+          .collection('incoterms')
+          .doc(incotermId)
+          .get();
+
+      String defaultText = incotermsFreeTexts[incotermId] ?? '';
+
+      // Wenn DAP: Prüfe ob es ein Auto-generierter Text ist und aktualisiere ihn
+      if (incotermDoc.exists) {
+        final incotermData = incotermDoc.data() as Map<String, dynamic>;
+        final incotermName = incotermData['name'] as String;
+
+        if (incotermName == 'DAP') {
+          // Prüfe ob der Text dem Standard-Format entspricht
+          final isDomicile = defaultText.startsWith('Domicile consignee,') ||
+              defaultText.startsWith('Domizil Käufer,');
+
+          // Wenn leer ODER Standard-Format: Neu generieren
+          if (defaultText.isEmpty || isDomicile) {
+            final countryName = widget.order.customer['country'];
+            final country = Countries.getCountryByName(countryName);
+            final language = widget.order.customer['language'] ?? 'DE';
+
+            defaultText = language == 'DE'
+                ? 'Domizil Käufer, ${country?.name?? countryName}'
+                : 'Domicile consignee, ${country?.nameEn ?? countryName}';
+
+            // WICHTIG: Aktualisiere auch die Map, die gespeichert wird!
+            incotermsFreeTexts[incotermId] = defaultText;
+          }
+        }
+      }
+
+      incotermControllers[incotermId] = TextEditingController(text: defaultText);
     }
 
     // NEU: Lieferdatum Variablen
@@ -1710,8 +1746,21 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                             setModalState(() {
                                               if (selected) {
                                                 selectedIncoterms.add(doc.id);
-                                                incotermsFreeTexts[doc.id] = incotermsFreeTexts[doc.id] ?? '';
-                                                incotermControllers[doc.id] = TextEditingController(text: incotermsFreeTexts[doc.id] ?? '');
+
+                                                // NEU: Für DAP automatisch Default-Text setzen
+                                                String initialText = '';
+                                                if (name == 'DAP') {
+                                                  final countryName = widget.order.customer['country'];
+                                                  final country = Countries.getCountryByName(countryName);
+                                                  final language = widget.order.customer['language'] ?? 'DE';
+
+                                                  initialText = language == 'DE'
+                                                      ? 'Domizil Käufer, ${country?.name ?? countryName}'
+                                                      : 'Domicile consignee, ${country?.nameEn ?? countryName}';
+                                                }
+
+                                                incotermsFreeTexts[doc.id] = initialText;
+                                                incotermControllers[doc.id] = TextEditingController(text: initialText);
                                               } else {
                                                 selectedIncoterms.remove(doc.id);
                                                 incotermsFreeTexts.remove(doc.id);
@@ -3014,7 +3063,10 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                       decoration: InputDecoration(
                         labelText: 'Verpackungsvorlage',
                         hintText: 'Bitte auswählen',
-                        prefixIcon:  getAdaptiveIcon(iconName: 'inventory',defaultIcon:Icons.inventory),
+                        prefixIcon:  Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: getAdaptiveIcon(iconName: 'inventory',defaultIcon:Icons.inventory),
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -3192,6 +3244,7 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
             const SizedBox(height: 12),
 
             // Tara-Gewicht
+            // Tara-Gewicht
             TextFormField(
               controller: weightController,
               decoration: InputDecoration(
@@ -3203,7 +3256,9 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               onChanged: (value) {
-                package['tare_weight'] = double.tryParse(value) ?? 0.0;
+                setModalState(() {
+                  package['tare_weight'] = double.tryParse(value) ?? 0.0;
+                });
               },
             ),
 
@@ -3215,7 +3270,10 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
               decoration: InputDecoration(
                 labelText: 'Bruttogewicht (gemessen) (kg)',
                 helperText: 'Leer lassen für automatische Berechnung',
-                prefixIcon:  getAdaptiveIcon(iconName: 'scale',defaultIcon:Icons.scale),
+                prefixIcon:  Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: getAdaptiveIcon(iconName: 'scale',defaultIcon:Icons.scale),
+                ),
                 suffixIcon: grossWeightController.text.isNotEmpty
                     ? IconButton(
                   icon:  getAdaptiveIcon(iconName: 'clear',defaultIcon:Icons.clear),

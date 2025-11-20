@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:tonewood/home/service_management_screen.dart';
 import '../services/icon_helper.dart';
-
+import '../services/pdf_generators/service_dialogs.dart';
 
 class ServiceSelectionSheet {
   static void show(
@@ -11,6 +11,7 @@ class ServiceSelectionSheet {
         required Function(Map<String, dynamic>) onServiceSelected,
         required ValueNotifier<String> currencyNotifier,
         required ValueNotifier<Map<String, double>> exchangeRatesNotifier,
+        String? customerLanguage, // NEU: Optional für Sprachauswahl
       }) {
     final searchController = TextEditingController();
     String searchQuery = '';
@@ -72,7 +73,7 @@ class ServiceSelectionSheet {
                       // Hinzufügen Button
                       IconButton(
                         onPressed: () {
-                          showAddServiceDialog(context);
+                          ServiceDialogs.showAddServiceDialog(context);
                         },
                         icon: getAdaptiveIcon(
                           iconName: 'add_circle',
@@ -126,7 +127,7 @@ class ServiceSelectionSheet {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              getAdaptiveIcon(iconName: 'error',defaultIcon:Icons.error, size: 48, color: Colors.red),
+                              getAdaptiveIcon(iconName: 'error', defaultIcon: Icons.error, size: 48, color: Colors.red),
                               const SizedBox(height: 16),
                               Text('Fehler: ${snapshot.error}'),
                             ],
@@ -144,8 +145,11 @@ class ServiceSelectionSheet {
                       final filteredServices = services.where((service) {
                         final data = service.data() as Map<String, dynamic>;
                         final name = (data['name'] ?? '').toString().toLowerCase();
+                        final nameEn = (data['name_en'] ?? '').toString().toLowerCase();
                         final description = (data['description'] ?? '').toString().toLowerCase();
-                        return name.contains(searchQuery) || description.contains(searchQuery);
+                        return name.contains(searchQuery) ||
+                            nameEn.contains(searchQuery) ||
+                            description.contains(searchQuery);
                       }).toList();
 
                       if (filteredServices.isEmpty) {
@@ -153,8 +157,9 @@ class ServiceSelectionSheet {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              getAdaptiveIcon(iconName: 'engineering', defaultIcon:
-                                Icons.engineering,
+                              getAdaptiveIcon(
+                                iconName: 'engineering',
+                                defaultIcon: Icons.engineering,
                                 size: 64,
                                 color: Colors.grey[400],
                               ),
@@ -172,7 +177,7 @@ class ServiceSelectionSheet {
                                 const SizedBox(height: 16),
                                 ElevatedButton.icon(
                                   onPressed: () {
-                                   showAddServiceDialog(context);
+                                    ServiceDialogs.showAddServiceDialog(context);
                                   },
                                   icon: getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add),
                                   label: const Text('Dienstleistung anlegen'),
@@ -190,6 +195,12 @@ class ServiceSelectionSheet {
                           final service = filteredServices[index];
                           final data = service.data() as Map<String, dynamic>;
 
+                          // Wähle den Namen basierend auf Kundensprache
+                          String displayName = data['name'] ?? 'Unbenannte Dienstleistung';
+                          if (customerLanguage == 'EN' && data['name_en'] != null && data['name_en'].isNotEmpty) {
+                            displayName = data['name_en'];
+                          }
+
                           return Card(
                             margin: const EdgeInsets.only(bottom: 8),
                             child: InkWell(
@@ -200,7 +211,7 @@ class ServiceSelectionSheet {
                                 service.id,
                                 data,
                                 onServiceSelected,
-
+                                customerLanguage,
                               ),
                               borderRadius: BorderRadius.circular(12),
                               child: Padding(
@@ -225,12 +236,34 @@ class ServiceSelectionSheet {
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            data['name'] ?? 'Unbenannte Dienstleistung',
+                                            displayName,
                                             style: const TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 16,
                                             ),
                                           ),
+                                          // Zeige andere Sprache als Untertitel
+                                          if (customerLanguage == 'EN' && data['name'] != null && data['name'].isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              'DE: ${data['name']}',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontStyle: FontStyle.italic,
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                          ] else if (customerLanguage != 'EN' && data['name_en'] != null && data['name_en'].isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              'EN: ${data['name_en']}',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontStyle: FontStyle.italic,
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                          ],
                                           if (data['description'] != null && data['description'].isNotEmpty) ...[
                                             const SizedBox(height: 4),
                                             Text(
@@ -325,149 +358,33 @@ class ServiceSelectionSheet {
     );
   }
 
-  static void showAddServiceDialog(BuildContext context) {
-    final nameController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final priceController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'Neue Dienstleistung',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                TextFormField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Name *',
-                    border: OutlineInputBorder(),
-                    hintText: 'z.B. Lohnbehandlung Thermo',
-                  ),
-                  autofocus: true,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Beschreibung',
-                    border: OutlineInputBorder(),
-                    hintText: 'Optionale Beschreibung der Dienstleistung',
-                  ),
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: priceController,
-                  decoration: const InputDecoration(
-                    labelText: 'Preis in CHF *',
-                    border: OutlineInputBorder(),
-                    suffixText: 'CHF',
-                    hintText: '0.00',
-                  ),
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Abbrechen'),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () async {
-                        if (nameController.text.isEmpty || priceController.text.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Bitte alle Pflichtfelder ausfüllen'),
-                              backgroundColor: Colors.orange,
-                            ),
-                          );
-                          return;
-                        }
-
-                        try {
-                          await FirebaseFirestore.instance.collection('services').add({
-                            'name': nameController.text.trim(),
-                            'description': descriptionController.text.trim(),
-                            'price_CHF': double.parse(priceController.text.replaceAll(',', '.')),
-                            'created_at': FieldValue.serverTimestamp(),
-                            'updated_at': FieldValue.serverTimestamp(),
-                          });
-
-                          if (context.mounted) {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Dienstleistung wurde angelegt'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          }
-                        } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Fehler beim Speichern: $e'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      },
-                      child: const Text('Speichern'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
   static void _showServiceQuantityDialog(
       BuildContext context,
-      ValueNotifier<String> currencyNotifier,  // NEU
-      ValueNotifier<Map<String, double>> exchangeRatesNotifier,  // NEU
+      ValueNotifier<String> currencyNotifier,
+      ValueNotifier<Map<String, double>> exchangeRatesNotifier,
       String serviceId,
       Map<String, dynamic> serviceData,
       Function(Map<String, dynamic>) onServiceSelected,
-
+      String? customerLanguage,
       ) {
     final quantityController = TextEditingController(text: '1');
     final selectedCurrency = currencyNotifier.value;
     final exchangeRates = exchangeRatesNotifier.value;
 
-// Preis in ausgewählter Währung
+    // Wähle den Namen basierend auf Kundensprache
+    String displayName = serviceData['name'] ?? 'Unbenannte Dienstleistung';
+    if (customerLanguage == 'EN' && serviceData['name_en'] != null && serviceData['name_en'].isNotEmpty) {
+      displayName = serviceData['name_en'];
+    }
+
+    // Preis in ausgewählter Währung
     final priceInCHF = serviceData['price_CHF'] as double;
     final displayPrice = selectedCurrency != 'CHF'
         ? priceInCHF * exchangeRates[selectedCurrency]!
         : priceInCHF;
 
     final customPriceController = TextEditingController(
-        text: displayPrice.toStringAsFixed(2)  // Angepasst
+        text: displayPrice.toStringAsFixed(2)
     );
     bool useCustomPrice = false;
 
@@ -510,7 +427,7 @@ class ServiceSelectionSheet {
                   child: Row(
                     children: [
                       Text(
-                        serviceData['name'],
+                        displayName,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -655,8 +572,11 @@ class ServiceSelectionSheet {
 
                               final serviceForBasket = {
                                 'service_id': serviceId,
-                                'name': serviceData['name'],
+                                'name': displayName, // Verwende den displayName basierend auf Sprache
+                                'name_de': serviceData['name'] ?? '',
+                                'name_en': serviceData['name_en'] ?? '',
                                 'description': serviceData['description'] ?? '',
+                                'description_en': serviceData['description_en'] ?? '',
                                 'quantity': quantity,
                                 'unit': "Stück",
                                 'price_per_unit': price,
@@ -688,5 +608,4 @@ class ServiceSelectionSheet {
       ),
     );
   }
-
 }

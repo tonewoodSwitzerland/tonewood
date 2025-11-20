@@ -119,8 +119,9 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
                 logo: logo,
                 costCenter: costCenterCode,
                 language: language,
-                  additionalReference: invoiceNumber != null ? 'Rechnungsnummer: $invoiceNumber' : null,
-                   secondaryReference: quoteNumber != null ? 'Angebotsnummer: $quoteNumber' : null,
+                additionalReference: invoiceNumber != null ? 'invoice_nr:$invoiceNumber' : null,
+                secondaryReference: quoteNumber != null ? 'quote_nr:$quoteNumber' : null,
+
               ),
               pw.SizedBox(height: 20),
 
@@ -262,11 +263,11 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Product' : 'Produkt', 8),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Instr.' : 'Instr.', 8),
+              language == 'EN' ? 'Instrument' : 'Instrument', 8),
           // BasePdfGenerator.buildHeaderCell(
           //     language == 'EN' ? 'Type' : 'Typ', 8),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Qual.' : 'Qual.', 8),
+              language == 'EN' ? 'Quality' : 'Qualität', 8),
           BasePdfGenerator.buildHeaderCell('FSC®', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Orig' : 'Urs', 8),
@@ -318,9 +319,10 @@ class DeliveryNoteGenerator extends BasePdfGenerator {
         }
 
         String unit = item['unit'] ?? '';
-        if (unit.toLowerCase() == 'stück') {
-          unit = 'Stk';
-        }
+
+if (unit.toLowerCase() == 'stück') {
+  unit = language == 'EN' ? 'pcs' : 'Stk';
+}
 
         rows.add(
           pw.TableRow(

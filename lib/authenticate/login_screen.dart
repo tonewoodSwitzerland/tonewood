@@ -320,8 +320,8 @@ class LoginScreenState extends State<LoginScreen> with SingleTickerProviderState
             ? IconButton(
           onPressed: () => setState(() => _obscureText = !_obscureText),
           icon: getAdaptiveIcon(
-            iconName: _obscureText ? 'visibility' : 'visibility_off_outlined',
-            defaultIcon: _obscureText ? Icons.visibility : Icons.visibility_off_outlined,
+            iconName: _obscureText ? 'visibility' : 'visibility_off',
+            defaultIcon: _obscureText ? Icons.visibility : Icons.visibility_off,
             color: focusNode.hasFocus ? primaryAppColor : Colors.grey,
             size: 20,
           ),

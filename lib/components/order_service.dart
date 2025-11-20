@@ -512,7 +512,7 @@ class OrderService {
         'shippingCosts': quote.metadata['shippingCosts'] ?? {},
         'currency': quote.metadata['currency'] ?? 'CHF',
         'exchangeRates': exchangeRates, // VERWENDE DIE KONVERTIERTEN EXCHANGE RATES
-        'costCenterCode': quote.metadata['costCenterCode'] ?? '00000',
+        'costCenterCode': quote.costCenter?['code'] ?? '00000',
         'fair': quote.metadata['fairData'],
         'taxOption': quote.metadata['taxOption'] ?? 0,
         'vatRate': (quote.metadata['vatRate'] as num?)?.toDouble() ?? 8.1,

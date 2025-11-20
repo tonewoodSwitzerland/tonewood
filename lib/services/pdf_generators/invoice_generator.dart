@@ -367,13 +367,17 @@ class InvoiceGenerator extends BasePdfGenerator {
           children: [
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                service['name'] ?? 'Unbenannte Dienstleistung',
-                style: const pw.TextStyle(fontSize: 6),
+                language == 'EN'
+                    ? (service['name_en']?.isNotEmpty == true ? service['name_en'] : service['name'] ?? 'Unnamed Service')
+                    : (service['name'] ?? 'Unbenannte Dienstleistung'),
+                style: pw.TextStyle(fontSize: 6, fontWeight: pw.FontWeight.bold),
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                service['description'] ?? '',
+                language == 'EN'
+                    ? (service['description_en']?.isNotEmpty == true ? service['description_en'] : service['description'] ?? '')
+                    : (service['description'] ?? ''),
                 style: const pw.TextStyle(fontSize: 6),
               ),
             ),
@@ -475,11 +479,11 @@ class InvoiceGenerator extends BasePdfGenerator {
       BasePdfGenerator.buildHeaderCell(
           language == 'EN' ? 'Product' : 'Produkt', 8),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Instr.' : 'Instr.', 8),
+          language == 'EN' ? 'Instrument' : 'Instrument', 8),
       // BasePdfGenerator.buildHeaderCell(
       //     language == 'EN' ? 'Type' : 'Typ', 8),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Qual.' : 'Qual.', 8),
+          language == 'EN' ? 'Quality' : 'Qualität', 8),
       BasePdfGenerator.buildHeaderCell('FSC®', 8),
       BasePdfGenerator.buildHeaderCell(
           language == 'EN' ? 'Orig' : 'Urs', 8),
@@ -590,9 +594,10 @@ class InvoiceGenerator extends BasePdfGenerator {
 
         // Einheit korrigieren: "Stück" zu "Stk"
         String unit = item['unit'] ?? '';
-        if (unit.toLowerCase() == 'stück') {
-          unit = 'Stk';
-        }
+
+if (unit.toLowerCase() == 'stück') {
+  unit = language == 'EN' ? 'pcs' : 'Stk';
+}
 
 
         rows.add(
@@ -1374,17 +1379,17 @@ class InvoiceGenerator extends BasePdfGenerator {
     ],
     ),
 
-    pw.SizedBox(height: 4),
-    pw.Text(
-    language == 'EN'
-    ? 'No VAT will be charged.'
-        : 'Es wird keine Mehrwertsteuer berechnet.',
-    style: pw.TextStyle(
-    fontSize: 9,
-    fontStyle: pw.FontStyle.italic,
-    color: PdfColors.grey700,
-    ),
-    ),
+    // pw.SizedBox(height: 4),
+    // pw.Text(
+    // language == 'EN'
+    // ? 'No VAT will be charged.'
+    //     : 'Es wird keine Mehrwertsteuer berechnet.',
+    // style: pw.TextStyle(
+    // fontSize: 9,
+    // fontStyle: pw.FontStyle.italic,
+    // color: PdfColors.grey700,
+    // ),
+    // ),
 
     // NEU: Anzahlung auch bei noTax abziehen
     if (downPaymentAmount > 0) ...[

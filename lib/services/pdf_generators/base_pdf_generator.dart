@@ -30,7 +30,29 @@ abstract class BasePdfGenerator {
     return '$currency ${convertedAmount.toStringAsFixed(2)}';
   }
 
+ static Map<String, String> _translateReference(String reference, String language) {
+    final parts = reference.split(':');
+    if (parts.length != 2) return {'label': reference, 'value': ''};
 
+    final key = parts[0];
+    final value = parts[1];
+
+    final translations = {
+      'DE': {
+        'invoice_nr': 'Rechnungsnr.:',
+        'quote_nr': 'Angebotsnr.:',
+        'order_nr': 'Auftragsnr.:',
+      },
+      'EN': {
+        'invoice_nr': 'Invoice No.:',
+        'quote_nr': 'Quote No.:',
+        'order_nr': 'Order No.:',
+      }
+    };
+
+    final translatedKey = translations[language]?[key] ?? translations['DE']?[key] ?? key;
+    return {'label': translatedKey, 'value': value};
+  }
   static pw.Widget buildHeader({
     required String documentTitle,
     required String documentNumber,
@@ -41,6 +63,7 @@ abstract class BasePdfGenerator {
     String? additionalReference,
     String? secondaryReference,
   }) {
+
     // Übersetzungsfunktion für Header
     String getHeaderTranslation(String key, String lang) {
       final translations = {
@@ -95,7 +118,7 @@ abstract class BasePdfGenerator {
             pw.Row(
               children: [
                 pw.SizedBox(
-                  width: 70,
+                  width: 90,
                   child: pw.Text(
                     getHeaderTranslation('nr', language),
                     style: const pw.TextStyle(
@@ -117,32 +140,65 @@ abstract class BasePdfGenerator {
             // Zusätzliche Referenzen
             if (additionalReference != null) ...[
               pw.SizedBox(height: 2),
-              pw.Text(
-                additionalReference,
-                style: const pw.TextStyle(
-                  fontSize: 10,
-                  color: PdfColors.blueGrey600,
-                ),
-              ),
+                  () {
+                final ref = _translateReference(additionalReference, language);
+                return pw.Row(
+                  children: [
+                    pw.SizedBox(
+                      width: 90,
+                      child: pw.Text(
+                        ref['label']!,
+                        style: const pw.TextStyle(
+                          fontSize: 10,
+                          color: PdfColors.blueGrey600,
+                        ),
+                      ),
+                    ),
+                    pw.Text(
+                      ref['value']!,
+                      style: const pw.TextStyle(
+                        fontSize: 10,
+                        color: PdfColors.blueGrey600,
+                      ),
+                    ),
+                  ],
+                );
+              }(),
             ],
             if (secondaryReference != null) ...[
               pw.SizedBox(height: 2),
-              pw.Text(
-                secondaryReference,
-                style: const pw.TextStyle(
-                  fontSize: 10,
-                  color: PdfColors.blueGrey600,
-                ),
-              ),
+                  () {
+                final ref = _translateReference(secondaryReference, language);
+                return pw.Row(
+                  children: [
+                    pw.SizedBox(
+                      width: 90,
+                      child: pw.Text(
+                        ref['label']!,
+                        style: const pw.TextStyle(
+                          fontSize: 10,
+                          color: PdfColors.blueGrey600,
+                        ),
+                      ),
+                    ),
+                    pw.Text(
+                      ref['value']!,
+                      style: const pw.TextStyle(
+                        fontSize: 10,
+                        color: PdfColors.blueGrey600,
+                      ),
+                    ),
+                  ],
+                );
+              }(),
             ],
-
             pw.SizedBox(height: 2),
 
             // Datum
             pw.Row(
               children: [
                 pw.SizedBox(
-                  width: 70,
+                  width: 90,
                   child: pw.Text(
                     getHeaderTranslation('date', language),
                     style: const pw.TextStyle(
@@ -167,7 +223,7 @@ abstract class BasePdfGenerator {
               pw.Row(
                 children: [
                   pw.SizedBox(
-                    width: 70,
+                    width: 90,
                     child: pw.Text(
                       getHeaderTranslation('cost_center', language),
                       style: const pw.TextStyle(
@@ -447,13 +503,30 @@ abstract class BasePdfGenerator {
                     '${customerData['shippingStreet'] ?? customerData['street'] ?? ''} ${customerData['shippingHouseNumber'] ?? customerData['houseNumber'] ?? ''}'.trim(),
                     style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                   ),
+                  // NEU: Zusätzliche Lieferadress-Zeilen
+                  if (customerData['shippingAdditionalAddressLines'] != null)
+                    ...(customerData['shippingAdditionalAddressLines'] as List).map((line) =>
+                        pw.Text(
+                          line.toString(),
+                          style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                        )
+                    ).toList(),
+
                   pw.Text(
                     '${customerData['shippingZipCode'] ?? customerData['zipCode'] ?? ''} ${customerData['shippingCity'] ?? customerData['city'] ?? ''}'.trim(),
                     style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                   ),
+                  // NEU: Provinz für Lieferadresse
+                  if ((customerData['shippingProvince'] ?? customerData['province'])?.toString().trim().isNotEmpty == true)
+                    pw.Text(
+                      customerData['shippingProvince'] ?? customerData['province'],
+                      style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                    ),
+
                   if ((customerData['shippingCountry'] ?? customerData['country'])?.toString().trim().isNotEmpty == true) ...[
                         () {
                       final shippingCountryName = customerData['shippingCountry'] ?? customerData['country'];
+
                       final shippingCountry = Countries.getCountryByName(shippingCountryName);
                       return pw.Text(
                         shippingCountry?.getNameForLanguage(language) ?? shippingCountryName,
@@ -521,10 +594,27 @@ abstract class BasePdfGenerator {
                     '${customerData['street'] ?? ''} ${customerData['houseNumber'] ?? ''}'.trim(),
                     style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                   ),
+                  // NEU: Zusätzliche Rechnungsadress-Zeilen
+                  if (customerData['additionalAddressLines'] != null)
+                    ...(customerData['additionalAddressLines'] as List).map((line) =>
+                        pw.Text(
+                          line.toString(),
+                          style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                        )
+                    ).toList(),
+
+
                   pw.Text(
                     '${customerData['zipCode'] ?? ''} ${customerData['city'] ?? ''}'.trim(),
                     style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                   ),
+// NEU: Provinz für Rechnungsadresse
+                  if (customerData['province']?.toString().trim().isNotEmpty == true)
+                    pw.Text(
+                      customerData['province'],
+                      style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                    ),
+
                   if (customerData['country'] != null &&
                       customerData['country'].toString().trim().isNotEmpty)
                     pw.Text(
@@ -590,20 +680,40 @@ abstract class BasePdfGenerator {
                   '${customerData['street'] ?? ''} ${customerData['houseNumber'] ?? ''}'.trim(),
                   style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                 ),
+// NEU: Zusätzliche Rechnungsadress-Zeilen
+                if (customerData['additionalAddressLines'] != null)
+                  ...(customerData['additionalAddressLines'] as List).map((line) =>
+                      pw.Text(
+                        line.toString(),
+                        style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                      )
+                  ).toList(),
 
                 // PLZ und Stadt
                 pw.Text(
                   '${customerData['zipCode'] ?? ''} ${customerData['city'] ?? ''}'.trim(),
                   style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                 ),
-
+// NEU: Provinz für Rechnungsadresse
+                if (customerData['province']?.toString().trim().isNotEmpty == true)
+                  pw.Text(
+                    customerData['province'],
+                    style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                  ),
                 // Land
+
                 if (customerData['country'] != null &&
                     customerData['country'].toString().trim().isNotEmpty)
                   pw.Text(
-                    customerData['country'],
+                    country?.getNameForLanguage(language) ?? customerData['country'],
                     style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                   ),
+
+
+
+
+
+
               ],
             ),
           ),
@@ -623,7 +733,7 @@ abstract class BasePdfGenerator {
   // Gemeinsamer Footer
   static pw.Widget buildFooter() {
     return pw.Container(
-      padding: const pw.EdgeInsets.only(top: 20),
+      padding: const pw.EdgeInsets.only(top: 8),
       decoration: const pw.BoxDecoration(
         border: pw.Border(
           top: pw.BorderSide(color: PdfColors.blueGrey200, width: 0.5),
@@ -636,28 +746,28 @@ abstract class BasePdfGenerator {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text('Florinett AG',
-                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey800)),
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey800, fontSize: 8)),
               pw.Text('Tonewood Switzerland',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600)),
+                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
               pw.Text('Veja Zinols 6',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600)),
+                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
               pw.Text('7482 Bergün',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600)),
+                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
               pw.Text('Switzerland',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600)),
+                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
             ],
           ),
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
               pw.Text('phone: +41 81 407 21 34',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600)),
+                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
               pw.Text('e-mail: info@tonewood.ch',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600)),
+                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
               pw.Text('website: www.tonewood.ch',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600)),
+                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
               pw.Text('VAT: CHE-102.853.600 MWST',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600)),
+                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
             ],
           ),
         ],

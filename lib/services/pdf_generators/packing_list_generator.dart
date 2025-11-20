@@ -322,8 +322,8 @@ class PackingListGenerator extends BasePdfGenerator {
             logo: logo,
             costCenter: costCenterCode,
             language: language,
-            additionalReference: invoiceNumber != null ? 'Rechnungsnummer: $invoiceNumber' : null,
-            secondaryReference: quoteNumber != null ? 'Angebotsnummer: $quoteNumber' : null,
+            additionalReference: invoiceNumber != null ? 'invoice_nr:$invoiceNumber' : null,
+            secondaryReference: quoteNumber != null ? 'quote_nr:$quoteNumber' : null,
           ));
           content.add(pw.SizedBox(height: 20));
 

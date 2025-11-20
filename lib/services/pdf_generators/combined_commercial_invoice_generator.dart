@@ -410,7 +410,7 @@ class CombinedCommercialInvoiceGenerator {
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Product' : 'Produkt', 7),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Instr.' : 'Instr.', 7),
+              language == 'EN' ? 'Instrument' : 'Instrument', 7),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Qual.' : 'Qual.', 7),
           BasePdfGenerator.buildHeaderCell('FSC®', 7),

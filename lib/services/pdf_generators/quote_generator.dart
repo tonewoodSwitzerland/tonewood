@@ -296,14 +296,18 @@ class QuoteGenerator extends BasePdfGenerator {
           children: [
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                service['name'] ?? 'Unbenannte Dienstleistung',
-                style:  pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+                language == 'EN'
+                    ? (service['name_en']?.isNotEmpty == true ? service['name_en'] : service['name'] ?? 'Unnamed Service')
+                    : (service['name'] ?? 'Unbenannte Dienstleistung'),
+                style: pw.TextStyle(fontSize: 6, fontWeight: pw.FontWeight.bold),
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                service['description'] ?? '',
-                style: const pw.TextStyle(fontSize: 7),
+                language == 'EN'
+                    ? (service['description_en']?.isNotEmpty == true ? service['description_en'] : service['description'] ?? '')
+                    : (service['description'] ?? ''),
+                style: const pw.TextStyle(fontSize: 6),
               ),
             ),
             BasePdfGenerator.buildContentCell(
@@ -366,11 +370,11 @@ class QuoteGenerator extends BasePdfGenerator {
       BasePdfGenerator.buildHeaderCell(
           language == 'EN' ? 'Product' : 'Produkt', 8),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Instr.' : 'Instr.', 8),
+          language == 'EN' ? 'Instrument' : 'Instrument', 8),
       // BasePdfGenerator.buildHeaderCell(
       //     language == 'EN' ? 'Type' : 'Typ', 8),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Qual.' : 'Qual.', 8),
+          language == 'EN' ? 'Quality' : 'Qualität', 8),
       BasePdfGenerator.buildHeaderCell('FSC®', 8),
       BasePdfGenerator.buildHeaderCell(
           language == 'EN' ? 'Orig' : 'Urs', 8),
@@ -480,11 +484,11 @@ class QuoteGenerator extends BasePdfGenerator {
           }
         }
 
-        // Einheit korrigieren
+
         String unit = item['unit'] ?? '';
-        if (unit.toLowerCase() == 'stück') {
-          unit = 'Stk';
-        }
+if (unit.toLowerCase() == 'stück') {
+  unit = language == 'EN' ? 'pcs' : 'Stk';
+}
 
         // Zeilen-Zellen erstellen
         final rowCells = <pw.Widget>[
@@ -496,14 +500,14 @@ class QuoteGenerator extends BasePdfGenerator {
                     children: [
                       pw.Text(
                           language == 'EN' ? item['part_name_en'] : item['part_name'] ?? '',
-                          style: const pw.TextStyle(fontSize: 6)
+                          style: const pw.TextStyle(fontSize: 8)
                       ),
                       // NEU: Hinweise in Klammern hinzufügen
                       if (item['notes'] != null && item['notes'].toString().isNotEmpty)
                         pw.Text(
                           ' (${item['notes']})',
                           style: pw.TextStyle(
-                            fontSize: 6,
+                            fontSize: 8,
                             fontStyle: pw.FontStyle.italic,
                             color: PdfColors.grey700,
                           ),
@@ -533,20 +537,20 @@ class QuoteGenerator extends BasePdfGenerator {
           ),
           BasePdfGenerator.buildContentCell(
             pw.Text(language == 'EN' ? item['instrument_name_en'] : item['instrument_name'] ?? '',
-                style: const pw.TextStyle(fontSize: 6)),
+                style: const pw.TextStyle(fontSize: 8)),
           ),
           // BasePdfGenerator.buildContentCell(
           //   pw.Text(language == 'EN' ? item['part_name_en'] : item['part_name'] ?? '',
           //       style: const pw.TextStyle(fontSize: 6)),
           // ),
           BasePdfGenerator.buildContentCell(
-            pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+            pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
           ),
           BasePdfGenerator.buildContentCell(
-            pw.Text(item['fsc_status'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+            pw.Text(item['fsc_status'] ?? '', style: const pw.TextStyle(fontSize: 8)),
           ),
           BasePdfGenerator.buildContentCell(
-            pw.Text('CH', style: const pw.TextStyle(fontSize: 6)),
+            pw.Text('CH', style: const pw.TextStyle(fontSize: 8)),
           ),
           // NEU: Thermobehandlungs-Temperatur anzeigen
           BasePdfGenerator.buildContentCell(
@@ -564,7 +568,7 @@ class QuoteGenerator extends BasePdfGenerator {
         if (showDimensions) {
           rowCells.add(
             BasePdfGenerator.buildContentCell(
-              pw.Text(dimensions, style: const pw.TextStyle(fontSize: 6)),
+              pw.Text(dimensions, style: const pw.TextStyle(fontSize: 8)),
             ),
           );
         }
@@ -575,24 +579,24 @@ class QuoteGenerator extends BasePdfGenerator {
               unit != "Stk"
                   ? quantity.toStringAsFixed(3)
                   : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
-              style: const pw.TextStyle(fontSize: 6),
+              style: const pw.TextStyle(fontSize: 8),
               textAlign: pw.TextAlign.right,
             ),
           ),
           BasePdfGenerator.buildContentCell(
-            pw.Text(unit, style: const pw.TextStyle(fontSize: 6)),
+            pw.Text(unit, style: const pw.TextStyle(fontSize: 8)),
           ),
           BasePdfGenerator.buildContentCell(
             pw.Text(
               BasePdfGenerator.formatCurrency(pricePerUnit, currency, exchangeRates),
-              style: const pw.TextStyle(fontSize: 6),
+              style: const pw.TextStyle(fontSize: 8),
               textAlign: pw.TextAlign.right,
             ),
           ),
           BasePdfGenerator.buildContentCell(
             pw.Text(
               BasePdfGenerator.formatCurrency(totalBeforeDiscount, currency, exchangeRates),
-              style: const pw.TextStyle(fontSize: 6),
+              style: const pw.TextStyle(fontSize: 8),
               textAlign: pw.TextAlign.right,
             ),
           ),
@@ -603,7 +607,7 @@ class QuoteGenerator extends BasePdfGenerator {
                 if (discount != null && (discount['percentage'] as num? ?? 0) > 0)
                   pw.Text(
                     '${discount['percentage'].toStringAsFixed(2)}%',
-                    style: const pw.TextStyle(fontSize: 6, ),
+                    style: const pw.TextStyle(fontSize: 8, ),
                     textAlign: pw.TextAlign.right,
                   ),
                 if (discount != null && (discount['absolute'] as num? ?? 0) > 0)
@@ -613,7 +617,7 @@ class QuoteGenerator extends BasePdfGenerator {
                         currency,
                         exchangeRates
                     ),
-                    style: const pw.TextStyle(fontSize: 6,),
+                    style: const pw.TextStyle(fontSize: 8,),
                     textAlign: pw.TextAlign.right,
                   ),
               ],
@@ -623,7 +627,7 @@ class QuoteGenerator extends BasePdfGenerator {
             pw.Text(
               BasePdfGenerator.formatCurrency(itemTotal, currency, exchangeRates),
               style: pw.TextStyle(
-                fontSize: 6,
+                fontSize: 8,
                 fontWeight: discountAmount > 0 ? pw.FontWeight.bold : null,
 
               ),
@@ -657,13 +661,13 @@ class QuoteGenerator extends BasePdfGenerator {
       1: const pw.FlexColumnWidth(2.2),    // Instr.
      // 2: const pw.FlexColumnWidth(2.2),    // Typ
       2: const pw.FlexColumnWidth(1.8),    // Qual.
-      3: const pw.FlexColumnWidth(1.8),    // FSC
+      3: const pw.FlexColumnWidth(1.5),    // FSC
       4: const pw.FlexColumnWidth(1.5),    // Urs
       5: const pw.FlexColumnWidth(1.0),    // °C
       6: const pw.FlexColumnWidth(1.5),    // Anz.
-      7: const pw.FlexColumnWidth(1.5),    // Einh
+      7: const pw.FlexColumnWidth(1.2),    // Einh
       8: const pw.FlexColumnWidth(2.2),    // Preis/E
-      9: const pw.FlexColumnWidth(2.2),   // Gesamt
+      9: const pw.FlexColumnWidth(2.3),   // Gesamt
       10: const pw.FlexColumnWidth(1.8),   // Rabatt
       11: const pw.FlexColumnWidth(2.3),   // Netto Gesamt
     };
@@ -1092,17 +1096,17 @@ class QuoteGenerator extends BasePdfGenerator {
                 ],
               ),
 
-              pw.SizedBox(height: 4),
-              pw.Text(
-                language == 'EN'
-                    ? 'No VAT will be charged.'
-                    : 'Es wird keine Mehrwertsteuer berechnet.',
-                style: pw.TextStyle(
-                  fontSize: 9,
-                  fontStyle: pw.FontStyle.italic,
-                  color: PdfColors.grey700,
-                ),
-              ),
+              // pw.SizedBox(height: 4),
+              // pw.Text(
+              //   language == 'EN'
+              //       ? 'No VAT will be charged.'
+              //       : 'Es wird keine Mehrwertsteuer berechnet.',
+              //   style: pw.TextStyle(
+              //     fontSize: 9,
+              //     fontStyle: pw.FontStyle.italic,
+              //     color: PdfColors.grey700,
+              //   ),
+              // ),
 
             ] else ...[  // TaxOption.totalOnly
               pw.Divider(color: PdfColors.blueGrey300),

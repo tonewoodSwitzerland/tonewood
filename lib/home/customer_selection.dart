@@ -76,6 +76,8 @@ class CustomerSelectionSheet {
     final houseNumberController = TextEditingController(text: currentCustomer.houseNumber);
     final zipCodeController = TextEditingController(text: currentCustomer.zipCode);
     final cityController = TextEditingController(text: currentCustomer.city);
+    final provinceController = TextEditingController(text: currentCustomer.province); // NEU
+
     final countryController = TextEditingController(text: currentCustomer.country);
     final countryCodeController = TextEditingController(text: currentCustomer.countryCode);
     final emailController = TextEditingController(text: currentCustomer.email);
@@ -96,11 +98,24 @@ class CustomerSelectionSheet {
     final shippingStreetController = TextEditingController(text: currentCustomer.shippingStreet);
     final shippingHouseNumberController = TextEditingController(text: currentCustomer.shippingHouseNumber);
     final shippingZipCodeController = TextEditingController(text: currentCustomer.shippingZipCode);
+    final shippingProvinceController = TextEditingController(text: currentCustomer.shippingProvince); // NEU
+
     final shippingCityController = TextEditingController(text: currentCustomer.shippingCity);
     final shippingCountryController = TextEditingController(text: currentCustomer.shippingCountry);
     final shippingCountryCodeController = TextEditingController(text: currentCustomer.shippingCountryCode);
     final shippingEmailController = TextEditingController(text: currentCustomer.shippingEmail);
     final shippingPhoneController = TextEditingController(text: currentCustomer.shippingPhone);
+
+    // NEU: Zusätzliche Adresszeilen initialisieren
+    final List<TextEditingController> additionalAddressLines =
+    currentCustomer.additionalAddressLines
+        .map((line) => TextEditingController(text: line))
+        .toList();
+
+    final List<TextEditingController> shippingAdditionalAddressLines =
+    currentCustomer.shippingAdditionalAddressLines
+        .map((line) => TextEditingController(text: line))
+        .toList();
 
     bool _useShippingAddress = currentCustomer.hasDifferentShippingAddress;
 
@@ -111,7 +126,111 @@ class CustomerSelectionSheet {
     final customFieldTitleController = TextEditingController(text: currentCustomer.customFieldTitle);
     final customFieldValueController = TextEditingController(text: currentCustomer.customFieldValue);
 
+    Widget buildAddressLinesSection(
+        BuildContext context, // NEU: Context als Parameter
 
+        List<TextEditingController> controllers,
+        StateSetter setState,
+        String labelPrefix,
+        ) {
+      return Column(
+        children: [
+          ...controllers.asMap().entries.map((entry) {
+            final index = entry.key;
+            final controller = entry.value;
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: controller,
+                      decoration: InputDecoration(
+                        labelText: '$labelPrefix ${index + 1}',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                        prefixIcon: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: getAdaptiveIcon(
+                            iconName: 'notes',
+                            defaultIcon: Icons.notes,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: Theme.of(context).primaryColor,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        controller.dispose();
+                        controllers.removeAt(index);
+                      });
+                    },
+                    icon: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: getAdaptiveIcon(
+                        iconName: 'delete',
+                        defaultIcon: Icons.delete,
+                        color: Colors.red.shade700,
+                        size: 20,
+                      ),
+                    ),
+                    tooltip: 'Zeile entfernen',
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+
+          // Button zum Hinzufügen weiterer Zeilen
+          OutlinedButton.icon(
+            onPressed: () {
+              setState(() {
+                controllers.add(TextEditingController());
+              });
+            },
+            icon: getAdaptiveIcon(
+              iconName: 'add',
+              defaultIcon: Icons.add,
+              size: 20,
+              color: Theme.of(context).primaryColor,
+            ),
+            label: const Text('Weitere Zeile hinzufügen'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              side: BorderSide(
+                color: Theme.of(context).primaryColor.withOpacity(0.5),
+                width: 1.5,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -699,7 +818,7 @@ class CustomerSelectionSheet {
                                         child: TextFormField(
                                           controller: houseNumberController,
                                           decoration: InputDecoration(
-                                            labelText: 'Hausnummer *',
+                                            labelText: 'Hausnummer',
                                             border: OutlineInputBorder(
                                               borderRadius: BorderRadius.circular(12),
                                             ),
@@ -722,8 +841,7 @@ class CustomerSelectionSheet {
                                               borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
                                             ),
                                           ),
-                                          validator: (value) => value?.isEmpty == true ? 'Bitte Hausnr. eingeben' : null,
-                                        ),
+                                       ),
                                       ),
                                       // const SizedBox(width: 16),
                                       // Expanded(
@@ -749,6 +867,16 @@ class CustomerSelectionSheet {
                                       //   ),
                                       // ),
                                     ],
+                                  ),
+
+                                  const SizedBox(height: 16),
+
+// NEU: Zusätzliche Adresszeilen
+                                  buildAddressLinesSection(
+                                    context,
+                                    additionalAddressLines,
+                                    setState,
+                                    'Adresszeile',
                                   ),
                                   const SizedBox(height: 16),
 
@@ -784,11 +912,7 @@ class CustomerSelectionSheet {
                                             ),
                                           ),
                                           validator: (value) => value?.isEmpty == true ? 'Bitte PLZ eingeben' : null,
-                                          keyboardType: TextInputType.number,
-                                          inputFormatters: [
-                                            FilteringTextInputFormatter.digitsOnly,
-                                            LengthLimitingTextInputFormatter(5),
-                                          ],
+
                                         ),
                                       ),
                                       const SizedBox(width: 16),
@@ -816,6 +940,35 @@ class CustomerSelectionSheet {
                                         ),
                                       ),
                                     ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  // NEU: Provinz/Bundesland/Kanton
+                                  TextFormField(
+                                    controller: provinceController,
+                                    decoration: InputDecoration(
+                                      labelText: 'Provinz/Bundesland/Kanton',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      filled: true,
+                                      fillColor: Colors.grey.shade50,
+                                      prefixIcon: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                                        child: getAdaptiveIcon(
+                                          iconName: 'map',
+                                          defaultIcon: Icons.map,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(color: Colors.grey.shade300),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(height: 16),
                                   // Land mit CountryDropdown
@@ -1015,7 +1168,7 @@ class CustomerSelectionSheet {
                                           child: TextFormField(
                                             controller: shippingHouseNumberController,
                                             decoration: InputDecoration(
-                                              labelText: 'Nr. *',
+                                              labelText: 'Nr.',
                                               border: OutlineInputBorder(
                                                 borderRadius: BorderRadius.circular(12),
                                               ),
@@ -1030,12 +1183,19 @@ class CustomerSelectionSheet {
                                                 borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
                                               ),
                                             ),
-                                            validator: (value) => _useShippingAddress && value?.isEmpty == true
-                                                ? 'Bitte Nr. eingeben'
-                                                : null,
+
                                           ),
                                         ),
                                       ],
+                                    ),
+                                    const SizedBox(height: 16),
+
+// NEU: Zusätzliche Adresszeilen für Lieferadresse
+                                    buildAddressLinesSection(
+                                        context,
+                                      shippingAdditionalAddressLines,
+                                      setState,
+                                      'Adresszeile',
                                     ),
                                     const SizedBox(height: 16),
                                     Row(
@@ -1063,11 +1223,7 @@ class CustomerSelectionSheet {
                                             validator: (value) => _useShippingAddress && value?.isEmpty == true
                                                 ? 'Bitte PLZ eingeben'
                                                 : null,
-                                            keyboardType: TextInputType.number,
-                                            inputFormatters: [
-                                              FilteringTextInputFormatter.digitsOnly,
-                                              LengthLimitingTextInputFormatter(5),
-                                            ],
+
                                           ),
                                         ),
                                         const SizedBox(width: 16),
@@ -1099,6 +1255,39 @@ class CustomerSelectionSheet {
                                       ],
                                     ),
                                     const SizedBox(height: 16),
+                                    // NEU: Provinz für Lieferadresse
+                                    TextFormField(
+                                      controller: shippingProvinceController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Provinz/Bundesland/Kanton',
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        filled: true,
+                                        fillColor: Colors.grey.shade50,
+                                        prefixIcon: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                                          child: getAdaptiveIcon(
+                                            iconName: 'map',
+                                            defaultIcon: Icons.map,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: BorderSide(color: Colors.grey.shade300),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                                        ),
+                                      ),
+                                      validator: (value) => _useShippingAddress && value?.isEmpty == true
+                                          ? 'Bitte Provinz eingeben'
+                                          : null,
+                                    ),
+                                    const SizedBox(height: 16),
+
                                     CountryDropdown(
                                       countryController: shippingCountryController,
                                       countryCodeController: shippingCountryCodeController,
@@ -1337,6 +1526,7 @@ class CustomerSelectionSheet {
                                                   houseNumber: houseNumberController.text.trim(),
                                                   zipCode: zipCodeController.text.trim(),
                                                   city: cityController.text.trim(),
+                                                  province: provinceController.text.trim(), // NEU
                                                   country: countryController.text.trim(),
                                                   countryCode: countryCodeController.text.trim(),
                                                   email: emailController.text.trim(),
@@ -1361,6 +1551,7 @@ class CustomerSelectionSheet {
                                                   shippingStreet: _useShippingAddress ? shippingStreetController.text.trim() : '',
                                                   shippingHouseNumber: _useShippingAddress ? shippingHouseNumberController.text.trim() : '',
                                                   shippingZipCode: _useShippingAddress ? shippingZipCodeController.text.trim() : '',
+                                                  shippingProvince: _useShippingAddress ? shippingProvinceController.text.trim() : '', // NEU
                                                   shippingCity: _useShippingAddress ? shippingCityController.text.trim() : '',
                                                   shippingCountry: _useShippingAddress ? shippingCountryController.text.trim() : '',
                                                   shippingCountryCode: _useShippingAddress ? shippingCountryCodeController.text.trim() : '',
@@ -1373,6 +1564,18 @@ class CustomerSelectionSheet {
                                                       ? null : customFieldTitleController.text.trim(),
                                                   customFieldValue: customFieldValueController.text.trim().isEmpty
                                                       ? null : customFieldValueController.text.trim(),
+
+                                                  // NEU: Zusätzliche Adresszeilen
+                                                  additionalAddressLines: additionalAddressLines
+                                                      .map((c) => c.text.trim())
+                                                      .where((text) => text.isNotEmpty)
+                                                      .toList(),
+                                                  shippingAdditionalAddressLines: _useShippingAddress
+                                                      ? shippingAdditionalAddressLines
+                                                      .map((c) => c.text.trim())
+                                                      .where((text) => text.isNotEmpty)
+                                                      .toList()
+                                                      : [],
                                                 );
                                                 print("streetcontr:${streetController.text.trim()},");
 
@@ -1440,6 +1643,13 @@ class CustomerSelectionSheet {
         },
       ),
     );
+    // Controller aufräumen
+    for (var controller in additionalAddressLines) {
+      controller.dispose();
+    }
+    for (var controller in shippingAdditionalAddressLines) {
+      controller.dispose();
+    }
   }
 
   /// Zeigt einen Dialog zum Erstellen eines neuen Kunden an
@@ -1454,6 +1664,7 @@ class CustomerSelectionSheet {
     final houseNumberController = TextEditingController();
     final zipCodeController = TextEditingController();
     final cityController = TextEditingController();
+    final provinceController = TextEditingController(); // NEU
     final countryController = TextEditingController(text: 'Schweiz'); // Default
     final countryCodeController = TextEditingController(text: 'CH'); // Default für Schweiz
     final emailController = TextEditingController();
@@ -1473,6 +1684,7 @@ class CustomerSelectionSheet {
     final shippingStreetController = TextEditingController();
     final shippingHouseNumberController = TextEditingController();
     final shippingZipCodeController = TextEditingController();
+    final shippingProvinceController = TextEditingController(); // NEU
     final shippingCityController = TextEditingController();
     final shippingCountryController = TextEditingController();
     final shippingCountryCodeController = TextEditingController();
@@ -1487,9 +1699,117 @@ class CustomerSelectionSheet {
     final customFieldTitleController = TextEditingController();
     final customFieldValueController = TextEditingController();
 
+
+    // Nach den bestehenden Controllern:
+    final List<TextEditingController> additionalAddressLines = [];
+    final List<TextEditingController> shippingAdditionalAddressLines = [];
     Customer? newCustomer;
 
+    Widget buildAddressLinesSection(
+        BuildContext context, // NEU: Context als Parameter
 
+        List<TextEditingController> controllers,
+        StateSetter setState,
+        String labelPrefix,
+        ) {
+      return Column(
+        children: [
+          ...controllers.asMap().entries.map((entry) {
+            final index = entry.key;
+            final controller = entry.value;
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: controller,
+                      decoration: InputDecoration(
+                        labelText: '$labelPrefix ${index + 1}',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                        prefixIcon: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: getAdaptiveIcon(
+                            iconName: 'notes',
+                            defaultIcon: Icons.notes,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: Theme.of(context).primaryColor,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        controller.dispose();
+                        controllers.removeAt(index);
+                      });
+                    },
+                    icon: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: getAdaptiveIcon(
+                        iconName: 'delete',
+                        defaultIcon: Icons.delete,
+                        color: Colors.red.shade700,
+                        size: 20,
+                      ),
+                    ),
+                    tooltip: 'Zeile entfernen',
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+
+          // Button zum Hinzufügen weiterer Zeilen
+          OutlinedButton.icon(
+            onPressed: () {
+              setState(() {
+                controllers.add(TextEditingController());
+              });
+            },
+            icon: getAdaptiveIcon(
+              iconName: 'add',
+              defaultIcon: Icons.add,
+              size: 20,
+              color: Theme.of(context).primaryColor,
+            ),
+            label: const Text('Weitere Zeile hinzufügen'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              side: BorderSide(
+                color: Theme.of(context).primaryColor.withOpacity(0.5),
+                width: 1.5,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
 
 
 
@@ -2108,6 +2428,10 @@ class CustomerSelectionSheet {
 
             ),
           ),
+
+
+
+
           // const SizedBox(width: 16),
           // Expanded(
           // child: TextFormField(
@@ -2135,6 +2459,19 @@ class CustomerSelectionSheet {
       ),
       const SizedBox(height: 16),
     // PLZ und Ort
+
+      // Zusätzliche Adresszeilen
+      buildAddressLinesSection(
+          context,
+        additionalAddressLines,
+        setState,
+        'Adresszeile',
+      ),
+
+      const SizedBox(height: 16),
+
+
+
     Row(
     children: [
     Expanded(
@@ -2166,11 +2503,6 @@ class CustomerSelectionSheet {
     ),
     ),
 
-    keyboardType: TextInputType.number,
-    inputFormatters: [
-    FilteringTextInputFormatter.digitsOnly,
-    LengthLimitingTextInputFormatter(5),
-    ],
     ),
     ),
     const SizedBox(width: 16),
@@ -2200,6 +2532,36 @@ class CustomerSelectionSheet {
     ],
     ),
     const SizedBox(height: 16),
+
+// NEU: Provinz/Bundesland/Kanton
+      TextFormField(
+        controller: provinceController,
+        decoration: InputDecoration(
+          labelText: 'Provinz/Bundesland/Kanton',
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          filled: true,
+          fillColor: Colors.grey.shade50,
+          prefixIcon: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: getAdaptiveIcon(
+              iconName: 'map',
+              defaultIcon: Icons.map,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
     // Land mit Flag-Icon
       CountryDropdown(
         countryController: countryController,
@@ -2428,6 +2790,17 @@ class CustomerSelectionSheet {
     ],
     ),
     const SizedBox(height: 16),
+
+// Zusätzliche Adresszeilen für Lieferadresse
+      buildAddressLinesSection(
+        context,
+        shippingAdditionalAddressLines,
+        setState,
+        'Adresszeile',
+      ),
+
+      const SizedBox(height: 16),
+
     Row(
     children: [
     Expanded(
@@ -2452,11 +2825,7 @@ class CustomerSelectionSheet {
       validator: (value) => _useShippingAddress && value?.isEmpty == true
           ? 'Bitte PLZ eingeben'
           : null,
-      keyboardType: TextInputType.number,
-      inputFormatters: [
-        FilteringTextInputFormatter.digitsOnly,
-        LengthLimitingTextInputFormatter(5),
-      ],
+
     ),
     ),
       const SizedBox(width: 16),
@@ -2487,6 +2856,35 @@ class CustomerSelectionSheet {
       ),
     ],
     ),
+      const SizedBox(height: 16),
+      // NEU: Provinz für Lieferadresse
+      TextFormField(
+        controller: shippingProvinceController,
+        decoration: InputDecoration(
+          labelText: 'Provinz/Bundesland/Kanton',
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          filled: true,
+          fillColor: Colors.grey.shade50,
+          prefixIcon: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: getAdaptiveIcon(
+              iconName: 'map',
+              defaultIcon: Icons.map,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+          ),
+        ),
+      ),
       const SizedBox(height: 16),
       CountryDropdown(
         countryController: shippingCountryController,
@@ -2720,6 +3118,7 @@ class CustomerSelectionSheet {
                             houseNumber: houseNumberController.text.trim(),
                             zipCode: zipCodeController.text.trim(),
                             city: cityController.text.trim(),
+                            province: provinceController.text.trim(), // NEU
                             country: countryController.text.trim(),
                             countryCode: countryCodeController.text.trim(),
                             email: emailController.text.trim(),
@@ -2741,6 +3140,8 @@ class CustomerSelectionSheet {
                             shippingStreet: _useShippingAddress ? shippingStreetController.text.trim() : '',
                             shippingHouseNumber: _useShippingAddress ? shippingHouseNumberController.text.trim() : '',
                             shippingZipCode: _useShippingAddress ? shippingZipCodeController.text.trim() : '',
+                            shippingProvince: _useShippingAddress ? shippingProvinceController.text.trim() : '', // NEU
+
                             shippingCity: _useShippingAddress ? shippingCityController.text.trim() : '',
                             shippingCountry: _useShippingAddress ? shippingCountryController.text.trim() : '',
                             shippingCountryCode: _useShippingAddress ? shippingCountryCodeController.text.trim() : '',
@@ -2753,6 +3154,21 @@ class CustomerSelectionSheet {
                                 ? null : customFieldTitleController.text.trim(),
                             customFieldValue: customFieldValueController.text.trim().isEmpty
                                 ? null : customFieldValueController.text.trim(),
+
+                            additionalAddressLines: additionalAddressLines
+                                .map((c) => c.text.trim())
+                                .where((text) => text.isNotEmpty)
+                                .toList(),
+                            shippingAdditionalAddressLines: _useShippingAddress
+                                ? shippingAdditionalAddressLines
+                                .map((c) => c.text.trim())
+                                .where((text) => text.isNotEmpty)
+                                .toList()
+                                : [],
+
+
+
+
                           );
 
                           final docRef = await FirebaseFirestore.instance
@@ -2821,7 +3237,13 @@ class CustomerSelectionSheet {
         },
         ),
     );
-
+// Controller aufräumen
+    for (var controller in additionalAddressLines) {
+      controller.dispose();
+    }
+    for (var controller in shippingAdditionalAddressLines) {
+      controller.dispose();
+    }
     return newCustomer;
   }
 

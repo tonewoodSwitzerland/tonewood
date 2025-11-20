@@ -12,6 +12,7 @@ class Customer {
   final String houseNumber;
   final String zipCode;
   final String city;
+  final String? province;
   final String country;
   final String? countryCode; // GEÄNDERT: Nullable machen
   final String email;
@@ -34,6 +35,7 @@ class Customer {
   final String? shippingHouseNumber;
   final String? shippingZipCode;
   final String? shippingCity;
+  final String? shippingProvince;
   final String? shippingCountry;
   final String? shippingCountryCode;
   final String? shippingPhone;
@@ -47,6 +49,9 @@ class Customer {
   final String? customFieldTitle;
   final String? customFieldValue;
 
+// NEU: Zusätzliche Adresszeilen
+  final List<String> additionalAddressLines;
+  final List<String> shippingAdditionalAddressLines;
 
   Customer({
     required this.id,
@@ -60,6 +65,7 @@ class Customer {
     required this.houseNumber,
     required this.zipCode,
     required this.city,
+    this.province, // NEU
     required this.country,
     this.countryCode, // GEÄNDERT: Kein Standardwert mehr
     required this.email,
@@ -82,6 +88,7 @@ class Customer {
     this.shippingHouseNumber,
     this.shippingZipCode,
     this.shippingCity,
+    this.shippingProvince, // NEU
     this.shippingCountry,
     this.shippingCountryCode,
     this.shippingPhone,
@@ -91,6 +98,9 @@ class Customer {
     this.showEoriOnDocuments = false,
     this.customFieldTitle,
     this.customFieldValue,
+    // NEU: Zusätzliche Adresszeilen
+    this.additionalAddressLines = const [],
+    this.shippingAdditionalAddressLines = const [],
   });
 
   factory Customer.fromMap(Map<String, dynamic> map, String id) {
@@ -104,6 +114,7 @@ class Customer {
       houseNumber: map['houseNumber'] ?? '',
       zipCode: map['zipCode'] ?? '',
       city: map['city'] ?? '',
+      province: map['province'], // NEU
       country: map['country'] ?? '',
       countryCode: map['countryCode'] ?? _getCountryCode(map['country'] ?? ''),
       email: map['email'] ?? '',
@@ -128,6 +139,7 @@ class Customer {
       shippingHouseNumber: map['shippingHouseNumber'],
       shippingZipCode: map['shippingZipCode'],
       shippingCity: map['shippingCity'],
+      shippingProvince: map['shippingProvince'], // NEU
       shippingCountry: map['shippingCountry'],
       shippingCountryCode: map['shippingCountryCode'] ?? _getCountryCode(map['shippingCountry'] ?? ''),
       shippingPhone: map['shippingPhone'],
@@ -137,7 +149,13 @@ class Customer {
       showEoriOnDocuments: map['showEoriOnDocuments'] ?? false,
       customFieldTitle: map['customFieldTitle'],
       customFieldValue: map['customFieldValue'],
-
+      // NEU: Zusätzliche Adresszeilen
+      additionalAddressLines: map['additionalAddressLines'] != null
+          ? List<String>.from(map['additionalAddressLines'])
+          : [],
+      shippingAdditionalAddressLines: map['shippingAdditionalAddressLines'] != null
+          ? List<String>.from(map['shippingAdditionalAddressLines'])
+          : [],
 
     );
   }
@@ -153,6 +171,7 @@ class Customer {
       'houseNumber': houseNumber,
       'zipCode': zipCode,
       'city': city,
+      'province': province, // NEU
       'country': country,
       'countryCode': countryCode ?? _getCountryCode(country),
       'email': email,
@@ -178,6 +197,7 @@ class Customer {
       'shippingHouseNumber': shippingHouseNumber,
       'shippingZipCode': shippingZipCode,
       'shippingCity': shippingCity,
+      'shippingProvince': shippingProvince,
       'shippingCountry': shippingCountry,
       'shippingCountryCode': shippingCountryCode ?? _getCountryCode(shippingCountry ?? ''),
       'shippingPhone': shippingPhone,
@@ -187,20 +207,40 @@ class Customer {
       'showEoriOnDocuments': showEoriOnDocuments,
       'customFieldTitle': customFieldTitle,
       'customFieldValue': customFieldValue,
+
+      // NEU: Zusätzliche Adresszeilen
+      'additionalAddressLines': additionalAddressLines,
+      'shippingAdditionalAddressLines': shippingAdditionalAddressLines,
     };
   }
 
   // Getter für vollständigen Namen
   String get fullName => '$firstName $lastName'.trim();
 
-  // Getter für vollständige Adresse
-  String get fullAddress => '$street $houseNumber, $zipCode $city, $country'.trim();
+  String get fullAddress {
+    final parts = [
+      '$street $houseNumber'.trim(),
+      ...additionalAddressLines.where((line) => line.isNotEmpty),
+      '$zipCode $city'.trim(),
+      if (province?.isNotEmpty == true) province!, // KORRIGIERT
+      country,
+    ].where((part) => part.isNotEmpty);
 
-  // Getter für vollständige Lieferadresse
-  String get fullShippingAddress => hasDifferentShippingAddress
-      ? '${shippingStreet ?? ''} ${shippingHouseNumber ?? ''}, ${shippingZipCode ?? ''} ${shippingCity ?? ''}, ${shippingCountry ?? ''}'.trim()
-      : fullAddress;
+    return parts.join(', ');
+  }
+  String get fullShippingAddress {
+    if (!hasDifferentShippingAddress) return fullAddress;
 
+    final parts = [
+      '${shippingStreet ?? ''} ${shippingHouseNumber ?? ''}'.trim(),
+      ...shippingAdditionalAddressLines.where((line) => line.isNotEmpty),
+      '${shippingZipCode ?? ''} ${shippingCity ?? ''}'.trim(),
+      if (shippingProvince?.isNotEmpty == true) shippingProvince!, // KORRIGIERT
+      shippingCountry ?? '',
+    ].where((part) => part.isNotEmpty);
+
+    return parts.join(', ');
+  }
   // Getter für den Lieferempfänger
   String get shippingRecipientName {
     if (!hasDifferentShippingAddress) return fullName;
@@ -289,6 +329,7 @@ class Customer {
     String? houseNumber,
     String? zipCode,
     String? city,
+    String? province, // NEU
     String? country,
     String? countryCode,
     String? email,
@@ -307,10 +348,14 @@ class Customer {
     String? shippingHouseNumber,
     String? shippingZipCode,
     String? shippingCity,
+    String? shippingProvince, // NEU
     String? shippingCountry,
     String? shippingCountryCode,
     String? shippingPhone,
     String? shippingEmail,
+    // NEU: Zusätzliche Adresszeilen
+    List<String>? additionalAddressLines,
+    List<String>? shippingAdditionalAddressLines,
   }) {
     return Customer(
       id: id ?? this.id,
@@ -324,6 +369,7 @@ class Customer {
       houseNumber: houseNumber ?? this.houseNumber,
       zipCode: zipCode ?? this.zipCode,
       city: city ?? this.city,
+      province: province ?? this.province, // NEU
       country: country ?? this.country,
       countryCode: countryCode ?? this.countryCode,
       email: email ?? this.email,
@@ -342,10 +388,14 @@ class Customer {
       shippingHouseNumber: shippingHouseNumber ?? this.shippingHouseNumber,
       shippingZipCode: shippingZipCode ?? this.shippingZipCode,
       shippingCity: shippingCity ?? this.shippingCity,
+      shippingProvince: shippingProvince ?? this.shippingProvince, // NEU
       shippingCountry: shippingCountry ?? this.shippingCountry,
       shippingCountryCode: shippingCountryCode ?? this.shippingCountryCode,
       shippingPhone: shippingPhone ?? this.shippingPhone,
       shippingEmail: shippingEmail ?? this.shippingEmail,
+      additionalAddressLines: additionalAddressLines ?? this.additionalAddressLines,
+      shippingAdditionalAddressLines: shippingAdditionalAddressLines ?? this.shippingAdditionalAddressLines,
+
     );
   }
 }

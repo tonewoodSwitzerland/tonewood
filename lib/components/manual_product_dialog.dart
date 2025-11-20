@@ -146,14 +146,14 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
       };
 
       // NEU: Englische Bezeichnungen hinzufügen falls vorhanden
-      if (_selectedInstrument!['name_en'] != null) {
-        manualProduct['instrument_name_en'] = _selectedInstrument!['name_en'];
+      if (_selectedInstrument!['name_english'] != null) {
+        manualProduct['instrument_name_en'] = _selectedInstrument!['name_english'];
       }
-      if (_selectedPart!['name_en'] != null) {
-        manualProduct['part_name_en'] = _selectedPart!['name_en'];
+      if (_selectedPart!['name_english'] != null) {
+        manualProduct['part_name_en'] = _selectedPart!['name_english'];
       }
-      if (_selectedWood!['name_en'] != null) {
-        manualProduct['wood_name_en'] = _selectedWood!['name_en'];
+      if (_selectedWood!['name_english'] != null) {
+        manualProduct['wood_name_en'] = _selectedWood!['name_english'];
       }
 
       // Füge Maße hinzu, falls vorhanden
@@ -403,9 +403,12 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                               contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               filled: true,
                               fillColor: Theme.of(context).colorScheme.surface,
-                              prefixIcon: getAdaptiveIcon(
-                                iconName: 'numbers',
-                                defaultIcon: Icons.numbers,
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: getAdaptiveIcon(
+                                  iconName: 'numbers',
+                                  defaultIcon: Icons.numbers,
+                                ),
                               ),
                             ),
                             style: TextStyle(fontSize: 14),
@@ -435,10 +438,13 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                               contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                               filled: true,
                               fillColor: Theme.of(context).colorScheme.surface,
-                              prefixIcon: getAdaptiveIcon(
-                                iconName: 'straighten',
-                                defaultIcon: Icons.straighten,
-                                size: 20,
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: getAdaptiveIcon(
+                                  iconName: 'straighten',
+                                  defaultIcon: Icons.straighten,
+                                  size: 20,
+                                ),
                               ),
                             ),
                             // style: TextStyle(fontSize: 14), // Diese Zeile entfernen
@@ -467,9 +473,12 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         filled: true,
                         fillColor: Theme.of(context).colorScheme.surface,
-                        prefixIcon: getAdaptiveIcon(
-                          iconName: 'attach_money',
-                          defaultIcon: Icons.attach_money,
+                        prefixIcon: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: getAdaptiveIcon(
+                            iconName: 'attach_money',
+                            defaultIcon: Icons.attach_money,
+                          ),
                         ),
                       ),
                       style: TextStyle(fontSize: 14),
@@ -502,9 +511,12 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                         border: const OutlineInputBorder(),
                         filled: true,
                         fillColor: Theme.of(context).colorScheme.surface,
-                        prefixIcon: getAdaptiveIcon(
-                          iconName: 'eco',
-                          defaultIcon: Icons.eco,
+                        prefixIcon: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: getAdaptiveIcon(
+                            iconName: 'eco',
+                            defaultIcon: Icons.eco,
+                          ),
                         ),
                       ),
                       items: const [
@@ -536,9 +548,12 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                         border: const OutlineInputBorder(),
                         filled: true,
                         fillColor: Theme.of(context).colorScheme.surface,
-                        prefixIcon: getAdaptiveIcon(
-                          iconName: 'note',
-                          defaultIcon: Icons.note_alt,
+                        prefixIcon: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: getAdaptiveIcon(
+                            iconName: 'note',
+                            defaultIcon: Icons.note_alt,
+                          ),
                         ),
                       ),
                       maxLines: 3,
@@ -563,7 +578,10 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                               border: const OutlineInputBorder(),
                               filled: true,
                               fillColor: Theme.of(context).colorScheme.surface,
-                              prefixIcon: getAdaptiveIcon(iconName: 'straighten', defaultIcon: Icons.straighten, size: 20),
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: getAdaptiveIcon(iconName: 'straighten', defaultIcon: Icons.straighten, size: 20),
+                              ),
                             ),
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             inputFormatters: [
@@ -582,7 +600,10 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                               border: const OutlineInputBorder(),
                               filled: true,
                               fillColor: Theme.of(context).colorScheme.surface,
-                              prefixIcon: getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon: Icons.swap_horiz, size: 20),
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon: Icons.swap_horiz, size: 20),
+                              ),
                             ),
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             inputFormatters: [
@@ -601,7 +622,10 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                               border: const OutlineInputBorder(),
                               filled: true,
                               fillColor: Theme.of(context).colorScheme.surface,
-                              prefixIcon: getAdaptiveIcon(iconName: 'layers', defaultIcon: Icons.layers, size: 20),
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: getAdaptiveIcon(iconName: 'layers', defaultIcon: Icons.layers, size: 20),
+                              ),
                             ),
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             inputFormatters: [
@@ -623,10 +647,13 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                         border: const OutlineInputBorder(),
                         filled: true,
                         fillColor: Theme.of(context).colorScheme.surface,
-                        prefixIcon: getAdaptiveIcon(
-                            iconName: 'view_in_ar',
-                            defaultIcon: Icons.view_in_ar,
-                            size: 20
+                        prefixIcon: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: getAdaptiveIcon(
+                              iconName: 'view_in_ar',
+                              defaultIcon: Icons.view_in_ar,
+                              size: 20
+                          ),
                         ),
                         helperText: 'Optional: Volumen manuell eingeben oder aus Maßen berechnen lassen',
                       ),
@@ -647,10 +674,13 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                         border: const OutlineInputBorder(),
                         filled: true,
                         fillColor: Theme.of(context).colorScheme.surface,
-                        prefixIcon: getAdaptiveIcon(
-                            iconName: 'grain',
-                            defaultIcon: Icons.grain,
-                            size: 20
+                        prefixIcon: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: getAdaptiveIcon(
+                              iconName: 'grain',
+                              defaultIcon: Icons.grain,
+                              size: 20
+                          ),
                         ),
                         helperText: _selectedWood != null && _selectedWood!['density'] != null
                             ? 'Dichte aus Holzart: ${_selectedWood!['density']} kg/m³'
@@ -828,9 +858,12 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                                   border: const OutlineInputBorder(),
                                   filled: true,
                                   fillColor: Theme.of(context).colorScheme.surface,
-                                  prefixIcon: getAdaptiveIcon(
-                                      iconName: 'receipt_long',
-                                      defaultIcon: Icons.receipt_long
+                                  prefixIcon: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: getAdaptiveIcon(
+                                        iconName: 'receipt_long',
+                                        defaultIcon: Icons.receipt_long
+                                    ),
                                   ),
                                   helperText: 'Dieser Wert erscheint nur auf der Handelsrechnung',
                                 ),
@@ -885,7 +918,7 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                     child: ElevatedButton.icon(
                       onPressed: _submitProduct,
                       icon: getAdaptiveIcon(
-                        iconName: 'add_shopping_cart',
+                        iconName: 'shopping_cart',
                         defaultIcon: Icons.add_shopping_cart,
                         color: Colors.white,
                       ),
@@ -944,10 +977,13 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
         border: const OutlineInputBorder(),
         filled: true,
         fillColor: Theme.of(context).colorScheme.surface,
-        prefixIcon: getAdaptiveIcon(
-          iconName: iconName,
-          defaultIcon: icon,
-          size: 14,
+        prefixIcon: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: getAdaptiveIcon(
+            iconName: iconName,
+            defaultIcon: icon,
+            size: 14,
+          ),
         ),
       ),
       items: items?.map((doc) {

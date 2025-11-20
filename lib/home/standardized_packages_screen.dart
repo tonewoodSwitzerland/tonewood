@@ -369,9 +369,12 @@ class _PackageDialogState extends State<PackageDialog> {
                     decoration: InputDecoration(
                       labelText: 'Paketname *',
                       hintText: 'z.B. Kartonschachtel Klein',
-                      prefixIcon:  getAdaptiveIcon(
-                          iconName:  'label',
-                          defaultIcon:Icons.label),
+                      prefixIcon:  Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: getAdaptiveIcon(
+                            iconName:  'label',
+                            defaultIcon:Icons.label),
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -391,9 +394,12 @@ class _PackageDialogState extends State<PackageDialog> {
                     decoration: InputDecoration(
                       labelText: 'Package name (English) *',
                       hintText: 'e.g. Small Cardboard Box',
-                      prefixIcon:  getAdaptiveIcon(
-                          iconName: 'translate',
-                          defaultIcon:Icons.translate),
+                      prefixIcon:  Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: getAdaptiveIcon(
+                            iconName: 'translate',
+                            defaultIcon:Icons.translate),
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -413,9 +419,12 @@ class _PackageDialogState extends State<PackageDialog> {
                     decoration: InputDecoration(
                       labelText: 'Beschreibung (optional)',
                       hintText: 'z.B. Für kleine Bauteile',
-                      prefixIcon:  getAdaptiveIcon(
-                          iconName: 'description',
-                          defaultIcon:Icons.description),
+                      prefixIcon:  Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: getAdaptiveIcon(
+                            iconName: 'description',
+                            defaultIcon:Icons.description),
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -443,9 +452,12 @@ class _PackageDialogState extends State<PackageDialog> {
                           controller: _lengthController,
                           decoration: InputDecoration(
                             labelText: 'Länge (cm) *',
-                            prefixIcon:  getAdaptiveIcon(
-                                iconName: 'straighten',
-                                defaultIcon:Icons.straighten),
+                            prefixIcon:  Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: getAdaptiveIcon(
+                                  iconName: 'straighten',
+                                  defaultIcon:Icons.straighten),
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -473,9 +485,12 @@ class _PackageDialogState extends State<PackageDialog> {
                           controller: _widthController,
                           decoration: InputDecoration(
                             labelText: 'Breite (cm) *',
-                            prefixIcon:  getAdaptiveIcon(
-                                iconName: 'swap_horiz',
-                                defaultIcon:Icons.swap_horiz),
+                            prefixIcon:  Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: getAdaptiveIcon(
+                                  iconName: 'swap_horiz',
+                                  defaultIcon:Icons.swap_horiz),
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -503,9 +518,12 @@ class _PackageDialogState extends State<PackageDialog> {
                           controller: _heightController,
                           decoration: InputDecoration(
                             labelText: 'Höhe (cm) *',
-                            prefixIcon: getAdaptiveIcon(
-                                iconName: 'height',
-                                defaultIcon:Icons.height),
+                            prefixIcon: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: getAdaptiveIcon(
+                                  iconName: 'height',
+                                  defaultIcon:Icons.height),
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -546,9 +564,12 @@ class _PackageDialogState extends State<PackageDialog> {
                     decoration: InputDecoration(
                       labelText: 'Leergewicht (kg) *',
                       hintText: 'Gewicht der leeren Verpackung',
-                      prefixIcon:  getAdaptiveIcon(
-                          iconName: 'scale',
-                          defaultIcon:Icons.scale),
+                      prefixIcon:  Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: getAdaptiveIcon(
+                            iconName: 'scale',
+                            defaultIcon:Icons.scale),
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
