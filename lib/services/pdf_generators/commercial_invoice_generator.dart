@@ -511,39 +511,47 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     final Map<String, Map<String, dynamic>> woodTypeCache = {};
 
     for (final item in items) {
-      final woodCode = item['wood_code'] as String;
-
-      // Lade Holzart-Info (mit Cache)
-      if (!woodTypeCache.containsKey(woodCode)) {
-        final woodTypeDoc = await FirebaseFirestore.instance
-            .collection('wood_types')
-            .doc(woodCode)
-            .get();
-
-        if (woodTypeDoc.exists) {
-          woodTypeCache[woodCode] = woodTypeDoc.data()!;
-        } else {
-          woodTypeCache[woodCode] = {};
-        }
-      }
-
-      final woodInfo = woodTypeCache[woodCode]!;
-
-      // NEU: Hole Dichte aus Datenbank
-      final density = (woodInfo['density'] as num?)?.toDouble() ?? 0; // Default 0 kg/m³
-
-      // Bestimme Zolltarifnummer basierend auf der Dicke
-      final thickness = (item['custom_thickness'] != null)
-          ? (item['custom_thickness'] is int
-          ? (item['custom_thickness'] as int).toDouble()
-          : item['custom_thickness'] as double)
-          : 0.0;
       String tariffNumber = '';
 
-      if (thickness <= 6.0) {
-        tariffNumber = woodInfo['z_tares_1'] ?? '4408.1000';
+      // PRIORITÄT 1: Individuelle Zolltarifnummer (vom Benutzer eingegeben)
+      if (item['custom_tariff_number'] != null &&
+          (item['custom_tariff_number'] as String).isNotEmpty) {
+        tariffNumber = item['custom_tariff_number'] as String;
       } else {
-        tariffNumber = woodInfo['z_tares_2'] ?? '4407.1200';
+        // PRIORITÄT 2: Standard-Zolltarifnummer aus Datenbank
+        final woodCode = item['wood_code'] as String;
+
+        // Lade Holzart-Info (mit Cache)
+        if (!woodTypeCache.containsKey(woodCode)) {
+          final woodTypeDoc = await FirebaseFirestore.instance
+              .collection('wood_types')
+              .doc(woodCode)
+              .get();
+
+          if (woodTypeDoc.exists) {
+            woodTypeCache[woodCode] = woodTypeDoc.data()!;
+          } else {
+            woodTypeCache[woodCode] = {};
+          }
+        }
+
+        final woodInfo = woodTypeCache[woodCode]!;
+
+        // NEU: Hole Dichte aus Datenbank
+        final density = (woodInfo['density'] as num?)?.toDouble() ?? 0;
+
+        // Bestimme Zolltarifnummer basierend auf der Dicke
+        final thickness = (item['custom_thickness'] != null)
+            ? (item['custom_thickness'] is int
+            ? (item['custom_thickness'] as int).toDouble()
+            : item['custom_thickness'] as double)
+            : 0.0;
+
+        if (thickness <= 6.0) {
+          tariffNumber = woodInfo['z_tares_1'] ?? '4408.1000';
+        } else {
+          tariffNumber = woodInfo['z_tares_2'] ?? '4407.1200';
+        }
       }
 
       // Berechne m³
@@ -561,21 +569,19 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
       final quantity = (item['quantity'] as num? ?? 0).toDouble();
 
-      // m³ pro Stück (in Meter umrechnen: mm -> m)
       double totalVolume = 0.0;
 
-// 1. Priorität: Manuell eingegebenes Volumen
+      // 1. Priorität: Manuell eingegebenes Volumen
       if (item['custom_volume'] != null && (item['custom_volume'] as num) > 0) {
         totalVolume = (item['custom_volume'] as num).toDouble() * quantity;
       }
-// 2. Priorität: Berechnetes Volumen aus Maßen
+      // 2. Priorität: Berechnetes Volumen aus Maßen
       else if (length > 0 && width > 0 && thicknessValue > 0) {
         final volumePerPiece = (length / 1000) * (width / 1000) * (thicknessValue / 1000);
         totalVolume = volumePerPiece * quantity;
       }
-// 3. Priorität: Standardvolumen aus der Datenbank
+      // 3. Priorität: Standardvolumen aus der Datenbank
       else {
-        // Hole Standardvolumen aus standardized_products
         final instrumentCode = item['instrument_code'] as String?;
         final partCode = item['part_code'] as String?;
 
@@ -591,12 +597,10 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
             if (standardProductQuery.docs.isNotEmpty) {
               final standardProduct = standardProductQuery.docs.first.data();
-              // Versuche verschiedene Volumen-Felder
               final standardVolume = standardProduct['volume']?['mm3_standard'] ??
                   standardProduct['volume']?['dm3_standard'] ?? 0;
 
               if (standardVolume > 0) {
-                // Konvertiere mm³ zu m³ (falls mm3_standard)
                 totalVolume = (standardVolume / 1000000000.0) * quantity;
               }
             }
@@ -606,17 +610,32 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         }
       }
 
+      // Hole Dichte für Gewichtsberechnung
+      final woodCode = item['wood_code'] as String;
+      if (!woodTypeCache.containsKey(woodCode)) {
+        final woodTypeDoc = await FirebaseFirestore.instance
+            .collection('wood_types')
+            .doc(woodCode)
+            .get();
+
+        if (woodTypeDoc.exists) {
+          woodTypeCache[woodCode] = woodTypeDoc.data()!;
+        } else {
+          woodTypeCache[woodCode] = {};
+        }
+      }
+
+      final woodInfo = woodTypeCache[woodCode]!;
+      final density = (woodInfo['density'] as num?)?.toDouble() ?? 0;
+
       // Gewicht berechnen
       double weight = 0.0;
 
-// Workaround: Wenn Einheit kg ist, verwende Quantity als Gewicht
       if (item['unit']?.toString().toLowerCase() == 'kg') {
         weight = quantity;
       } else if (totalVolume > 0) {
-        // Normale Berechnung über Volumen * Dichte nur wenn Volumen vorhanden
         weight = totalVolume * density;
       } else {
-        // Fallback: Versuche manuell eingegebenes Gewicht
         weight = (item['custom_weight'] as num?)?.toDouble() ?? 0.0;
       }
 
@@ -676,6 +695,8 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         decoration: pw.BoxDecoration(color: PdfColors.blueGrey50),
         children: [
           BasePdfGenerator.buildHeaderCell(
+              language == 'EN' ? 'Tariff No.' : 'Zolltarif', 8),
+          BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Service' : 'Dienstleistung', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Description' : 'Beschreibung', 8),
@@ -685,11 +706,6 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               language == 'EN' ? 'Unit' : 'Einh', 8),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Price/U' : 'Preis/E', 8, align: pw.TextAlign.right),
-          // BasePdfGenerator.buildHeaderCell(language == 'EN' ? 'Curr' : 'Wä', 8),
-          // BasePdfGenerator.buildHeaderCell(
-          //     language == 'EN' ? 'Total' : 'Betrag', 8, align: pw.TextAlign.right),
-          // BasePdfGenerator.buildHeaderCell(
-          //     language == 'EN' ? 'Disc.' : 'Rab.', 8, align: pw.TextAlign.right),
           BasePdfGenerator.buildHeaderCell(
               language == 'EN' ? 'Net Total' : 'Netto Gesamt', 8, align: pw.TextAlign.right),
         ],
@@ -705,7 +721,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           ? (service['custom_price_per_unit'] as num).toDouble()
           : (service['price_per_unit'] as num? ?? 0).toDouble();
 
-// Rabatt-Berechnung
+      // Rabatt-Berechnung
       final discount = service['discount'] as Map<String, dynamic>?;
       final totalBeforeDiscount = quantity * pricePerUnit;
 
@@ -724,9 +740,19 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       final total = totalBeforeDiscount - discountAmount;
       totalAmount += total;
 
+      // Zolltarifnummer holen
+      final tariffNumber = service['custom_tariff_number'] as String? ?? '-';
+
       rows.add(
         pw.TableRow(
           children: [
+            // Zolltarifnummer in erster Spalte
+            BasePdfGenerator.buildContentCell(
+              pw.Text(
+                tariffNumber,
+                style: const pw.TextStyle(fontSize: 6),
+              ),
+            ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 language == 'EN'
@@ -747,11 +773,13 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               pw.Text(
                 quantity.toStringAsFixed(0),
                 style: const pw.TextStyle(fontSize: 6),
-
               ),
             ),
             BasePdfGenerator.buildContentCell(
-              pw.Text( language == 'EN' ? 'pcs' : 'Stk', style: const pw.TextStyle(fontSize: 6)),
+              pw.Text(
+                  language == 'EN' ? 'pcs' : 'Stk',
+                  style: const pw.TextStyle(fontSize: 6)
+              ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
@@ -760,41 +788,6 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                 textAlign: pw.TextAlign.right,
               ),
             ),
-            // BasePdfGenerator.buildContentCell(
-            //   pw.Text(currency, style: const pw.TextStyle(fontSize: 6)),
-            // ),
-            // Gesamtpreis vor Rabatt
-//             BasePdfGenerator.buildContentCell(
-//               pw.Text(
-//                 BasePdfGenerator.formatCurrency(totalBeforeDiscount, currency, exchangeRates),
-//                 style: const pw.TextStyle(fontSize: 6),
-//                 textAlign: pw.TextAlign.right,
-//               ),
-//             ),
-// // Rabatt-Spalte
-//             BasePdfGenerator.buildContentCell(
-//               pw.Column(
-//                 crossAxisAlignment: pw.CrossAxisAlignment.end,
-//                 children: [
-//                   if (discount != null && (discount['percentage'] as num? ?? 0) > 0)
-//                     pw.Text(
-//                       '${discount['percentage'].toStringAsFixed(2)}%',
-//                       style: const pw.TextStyle(fontSize: 6),
-//                       textAlign: pw.TextAlign.right,
-//                     ),
-//                   if (discount != null && (discount['absolute'] as num? ?? 0) > 0)
-//                     pw.Text(
-//                       BasePdfGenerator.formatCurrency(
-//                           (discount['absolute'] as num).toDouble(),
-//                           currency,
-//                           exchangeRates
-//                       ),
-//                       style: const pw.TextStyle(fontSize: 6),
-//                       textAlign: pw.TextAlign.right,
-//                     ),
-//                 ],
-//               ),
-//             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 BasePdfGenerator.formatCurrency(total, currency, exchangeRates),
@@ -822,7 +815,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 6),
             ),
           ),
-          ...List.generate(4, (index) => pw.SizedBox()),
+          ...List.generate(5, (index) => pw.SizedBox()),
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
@@ -851,15 +844,13 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         pw.Table(
           border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
           columnWidths: {
-            0: const pw.FlexColumnWidth(3),    // Dienstleistung
-            1: const pw.FlexColumnWidth(4),    // Beschreibung
-            2: const pw.FlexColumnWidth(1),    // Anzahl
-            3: const pw.FlexColumnWidth(1),    // Einheit
-            4: const pw.FlexColumnWidth(2),    // Preis/E
-           // 5: const pw.FlexColumnWidth(1),    // Währung
-            5: const pw.FlexColumnWidth(2),    // Betrag
-            6: const pw.FlexColumnWidth(1.5),  // Rabatt (NEU)
-            7: const pw.FlexColumnWidth(2),    // Netto Gesamt (NEU)
+            0: const pw.FlexColumnWidth(2),    // Zolltarif (erste Spalte)
+            1: const pw.FlexColumnWidth(3),    // Dienstleistung
+            2: const pw.FlexColumnWidth(4),    // Beschreibung
+            3: const pw.FlexColumnWidth(1),    // Anzahl
+            4: const pw.FlexColumnWidth(1),    // Einheit
+            5: const pw.FlexColumnWidth(2),    // Preis/E
+            6: const pw.FlexColumnWidth(2),    // Netto Gesamt
           },
           children: rows,
         ),

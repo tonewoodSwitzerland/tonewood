@@ -419,6 +419,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
 // Alternative als Stream für reaktive UI-Updates
   Stream<bool> _itemInCartStream(String barcode) {
+    if (barcode == null || barcode.isEmpty) {
+      return Stream.value(false);
+    }
     return FirebaseFirestore.instance
         .collection('temporary_basket')
         .where('online_shop_barcode', isEqualTo: barcode)
@@ -427,9 +430,11 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
 
   Future<void> _addToTemporaryBasket(Map<String, dynamic> productData, double quantity) async {
-    await FirebaseFirestore.instance
-        .collection('temporary_basket')
-        .add({
+    // Lade die Standardmaße, Volumen UND Parts aus der Datenbank
+    final measurements = await _getStandardMeasurementsAndVolume(productData);
+    final density = await _getDensityForProduct(productData);
+
+    final Map<String, dynamic> basketData = {
       'product_id': productData['short_barcode'],
       'product_name': productData['product_name'],
       'quantity': quantity,
@@ -445,16 +450,47 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       'quality_name': productData['quality_name'],
       'quality_code': productData['quality_code'],
 
-
-      // NEU: Englische Bezeichnungen hinzufügen
+      // Englische Bezeichnungen
       'instrument_name_en': productData['instrument_name_en'] ?? '',
       'part_name_en': productData['part_name_en'] ?? '',
       'wood_name_en': productData['wood_name_en'] ?? '',
       'product_name_en': productData['product_name_en'] ?? '',
+    };
 
-    });
+    // Füge Standardmaße hinzu, wenn vorhanden
+    if (measurements != null) {
+      if (measurements['length'] != null) {
+        basketData['custom_length'] = measurements['length'];
+      }
+      if (measurements['width'] != null) {
+        basketData['custom_width'] = measurements['width'];
+      }
+      if (measurements['thickness'] != null) {
+        basketData['custom_thickness'] = measurements['thickness'];
+      }
+      if (measurements['volume'] != null) {
+        basketData['volume_per_unit'] = measurements['volume'];
+      }
+      // NEU: Parts hinzufügen
+      if (measurements['parts'] != null) {
+        basketData['parts'] = measurements['parts'];
+      }
+    }
+
+    // Füge Dichte hinzu, wenn vorhanden
+    if (density != null) {
+      basketData['density'] = density;
+    }
+
+    // FSC-Status (Standard: Kein FSC, außer es ist Fichte)
+    basketData['fsc_status'] = productData['wood_name']?.toString().toLowerCase() == 'fichte'
+        ? '100%'
+        : '-';
+
+    await FirebaseFirestore.instance
+        .collection('temporary_basket')
+        .add(basketData);
   }
-
 // Füge diese Methode zur WarehouseScreenState Klasse hinzu
 // Diese Methode zur WarehouseScreenState Klasse hinzufügen
   Stream<double> _getReservedQuantityStream(String shortBarcode) {
@@ -471,6 +507,117 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       );
     });
   }
+
+
+
+  Future<void> _showPriceChangeDialog(Map<String, dynamic> data) async {
+    final currentPrice = (data['price_CHF'] as num?)?.toInt() ?? 0;
+    final TextEditingController priceController = TextEditingController(
+      text: currentPrice.toString(),
+    );
+
+    final newPrice = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F4A29).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: getAdaptiveIcon(
+                iconName: 'edit',
+                defaultIcon: Icons.edit,
+                color: const Color(0xFF0F4A29),
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text('Preis ändern'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Aktueller Preis: CHF $currentPrice',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: priceController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Neuer Preis',
+                suffixText: 'CHF',
+                border: const OutlineInputBorder(),
+                helperText: 'Nur ganze CHF-Beträge',
+              ),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final price = int.tryParse(priceController.text);
+              if (price != null && price > 0) {
+                Navigator.pop(context, price);
+              }
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF0F4A29),
+            ),
+            child: const Text('Speichern'),
+          ),
+        ],
+      ),
+    );
+
+    if (newPrice != null && newPrice != currentPrice) {
+      await _updateOnlineShopPrice(data, newPrice, currentPrice);
+    }
+  }
+  Future<void> _updateOnlineShopPrice(Map<String, dynamic> data, int newPrice, int oldPrice) async {
+    try {
+      final updates = {
+        'price_CHF': newPrice,
+        'original_price_CHF': oldPrice,
+        'discounted': newPrice < oldPrice,
+        'price_changed_at': FieldValue.serverTimestamp(),
+      };
+
+      await FirebaseFirestore.instance
+          .collection('onlineshop')
+          .doc(data['barcode'])
+          .update(updates);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Preis erfolgreich auf CHF $newPrice geändert'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Fehler beim Ändern des Preises: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+
 
   void _showOnlineShopDetails(Map<String, dynamic> data) {
     print(widget.isDialog);
@@ -713,7 +860,214 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
                           const SizedBox(height: 16),
 
+// NEU: Preis bearbeiten Sektion
+                          if (!data['sold'])
+                            _buildDetailSection(
+                              title: 'Preis',
+                              iconName: 'attach_money',
+                              icon: Icons.attach_money,
+                              content: StatefulBuilder(
+                                builder: (context, setInnerState) {
+                                  final currentPrice = (data['price_CHF'] as num?)?.toInt() ?? 0;
+                                  final originalPrice = (data['original_price_CHF'] as num?)?.toInt();
+                                  final isDiscounted = data['discounted'] == true;
+                                  final TextEditingController priceController = TextEditingController(
+                                    text: currentPrice.toString(),
+                                  );
 
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      if (isDiscounted && originalPrice != null)
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          margin: const EdgeInsets.only(bottom: 12),
+                                          decoration: BoxDecoration(
+                                            color: Colors.orange.withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              getAdaptiveIcon(
+                                                iconName: 'discount',
+                                                defaultIcon: Icons.discount,
+                                                color: Colors.orange,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    const Text(
+                                                      'Rabattierter Artikel',
+                                                      style: TextStyle(
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.orange,
+                                                      ),
+                                                    ),
+                                                    Text(
+                                                      'Ursprünglicher Preis: CHF $originalPrice',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        color: Colors.grey[600],
+                                                        decoration: TextDecoration.lineThrough,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+
+                                      // Aktueller Preis Anzeige
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        margin: const EdgeInsets.only(bottom: 12),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF0F4A29).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              'Aktueller Preis:',
+                                              style: TextStyle(
+                                                color: Colors.grey[700],
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            Text(
+                                              'CHF $currentPrice',
+                                              style: const TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFF0F4A29),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+
+                                      // Neuer Preis Eingabe
+                                      TextField(
+                                        controller: priceController,
+                                        keyboardType: TextInputType.number,
+                                        enabled: !isInCart,
+                                        decoration: InputDecoration(
+                                          labelText: 'Neuer Preis',
+                                          suffixText: 'CHF',
+                                          border: const OutlineInputBorder(),
+                                          helperText: 'Nur ganze CHF-Beträge',
+                                          filled: true,
+                                          fillColor: isInCart ? Colors.grey[100] : Colors.white,
+                                        ),
+                                      ),
+
+                                      if (isInCart)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 8),
+                                          child: Text(
+                                            'Preis kann nicht geändert werden während Artikel im Warenkorb ist',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.orange[700],
+                                              fontStyle: FontStyle.italic,
+                                            ),
+                                          ),
+                                        ),
+
+                                      const SizedBox(height: 12),
+
+                                      // Speichern Button
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: FilledButton.icon(
+                                          onPressed: isInCart ? null : () async {
+                                            final newPrice = int.tryParse(priceController.text);
+                                            if (newPrice != null && newPrice > 0 && newPrice != currentPrice) {
+                                              final updates = <String, dynamic>{
+                                                'price_CHF': newPrice,
+                                                'price_changed_at': FieldValue.serverTimestamp(),
+                                              };
+
+                                              // Wenn es das erste Mal reduziert wird, speichere den Original-Preis
+                                              if (!isDiscounted) {
+                                                updates['original_price_CHF'] = currentPrice;
+                                              }
+
+                                              // Setze discounted Flag basierend auf Original- oder aktuellem Preis
+                                              final comparePrice = originalPrice ?? currentPrice;
+                                              updates['discounted'] = newPrice < comparePrice;
+
+                                              try {
+                                                await FirebaseFirestore.instance
+                                                    .collection('onlineshop')
+                                                    .doc(data['barcode'])
+                                                    .update(updates);
+
+                                                // Aktualisiere lokale Daten
+                                                setInnerState(() {
+                                                  data['price_CHF'] = newPrice;
+                                                  if (!isDiscounted) {
+                                                    data['original_price_CHF'] = currentPrice;
+                                                  }
+                                                  data['discounted'] = newPrice < comparePrice;
+                                                });
+
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text('Preis erfolgreich auf CHF $newPrice geändert'),
+                                                    backgroundColor: Colors.green,
+                                                  ),
+                                                );
+                                              } catch (e) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text('Fehler beim Ändern des Preises: $e'),
+                                                    backgroundColor: Colors.red,
+                                                  ),
+                                                );
+                                              }
+                                            } else if (newPrice == currentPrice) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('Der neue Preis ist identisch mit dem aktuellen Preis'),
+                                                  backgroundColor: Colors.orange,
+                                                ),
+                                              );
+                                            } else {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('Bitte gib einen gültigen Preis ein'),
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                              );
+                                            }
+                                          },
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor: const Color(0xFF0F4A29),
+                                            disabledBackgroundColor: Colors.grey[300],
+                                            padding: const EdgeInsets.symmetric(vertical: 16),
+                                          ),
+                                          icon: getAdaptiveIcon(
+                                            iconName: 'save',
+                                            defaultIcon: Icons.save,
+                                          ),
+                                          label: const Text('Preis speichern'),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                            ),
+
+                          const SizedBox(height: 16),
+
+                          const SizedBox(height: 16),
                           // Produktinformationen
                           _buildDetailSection(
                             title: 'Produktinformationen',
@@ -794,6 +1148,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                 );
                               },
                             ),
+
                           ),
                         ],
                       ),
@@ -1293,7 +1648,14 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                             },
                           ),
                         ),
+
+
                         const SizedBox(height: 16),
+// NEU: Material-Details
+                        _buildMaterialDetails(data),
+
+                        const SizedBox(height: 16),
+
 
                         // Bestand und Preis
                         _buildDetailSection(
@@ -1915,7 +2277,13 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
       // Online Shop spezifische Filter
       if (_shopFilter != null) {
-        query = query.where('sold', isEqualTo: _shopFilter == 'sold');
+        if (_shopFilter == 'sold') {
+          query = query.where('sold', isEqualTo: true);
+        } else if (_shopFilter == 'available') {
+          query = query.where('sold', isEqualTo: false);
+        } else if (_shopFilter == 'discounted') {
+          query = query.where('discounted', isEqualTo: true);
+        }
       }
 
       // Gemeinsame Filter für beide Ansichten
@@ -2009,7 +2377,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           print(snapshot.error);
-          return const Center(child: Text('Ein Fehler ist aufgetreten'));
+          return  Center(child: Text('Ein Fehler ist aufgetreten: ${snapshot.error}'));
         }
 
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -2043,16 +2411,16 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                 getAdaptiveIcon(iconName: 'search_off', defaultIcon: Icons.search_off, size: 48),
                 const SizedBox(height: 16),
                 Text(
-                  'Keine Produkte für "${_activeSearchText}" gefunden',  // Hier ändern
+                  'Keine Produkte für "${_activeSearchText}" gefunden',
                   style: TextStyle(color: Colors.grey[700]),
                 ),
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: () {
                     setState(() {
-                     _searchController.clear();
-    _activeSearchText = '';
-                     _hasUnsearchedChanges = false;
+                      _searchController.clear();
+                      _activeSearchText = '';
+                      _hasUnsearchedChanges = false;
                     });
                   },
                   child: const Text('Suche zurücksetzen'),
@@ -2067,8 +2435,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
             if (_isOnlineShopView)
               Container(
                 padding: const EdgeInsets.all(8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                child: Wrap(
+                  spacing: 8,
+                  alignment: WrapAlignment.center,
                   children: [
                     FilterChip(
                       label: const Text('Alle'),
@@ -2076,26 +2445,43 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                       onSelected: (selected) {
                         setState(() {
                           _shopFilter = null;
+                          _updateProductStream();
                         });
                       },
                     ),
-                    const SizedBox(width: 8),
                     FilterChip(
                       label: const Text('Im Shop'),
                       selected: _shopFilter == 'available',
                       onSelected: (selected) {
                         setState(() {
                           _shopFilter = selected ? 'available' : null;
+                          _updateProductStream();
                         });
                       },
                     ),
-                    const SizedBox(width: 8),
                     FilterChip(
                       label: const Text('Verkauft'),
                       selected: _shopFilter == 'sold',
                       onSelected: (selected) {
                         setState(() {
                           _shopFilter = selected ? 'sold' : null;
+                          _updateProductStream();
+                        });
+                      },
+                    ),
+                    FilterChip(
+                      avatar: Icon(
+                        Icons.discount,
+                        size: 18,
+                        color: _shopFilter == 'discounted' ? Colors.orange : null,
+                      ),
+                      label: const Text('Rabattiert'),
+                      selected: _shopFilter == 'discounted',
+                      selectedColor: Colors.orange.withOpacity(0.2),
+                      onSelected: (selected) {
+                        setState(() {
+                          _shopFilter = selected ? 'discounted' : null;
+                          _updateProductStream();
                         });
                       },
                     ),
@@ -2108,10 +2494,10 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   children: [
-                     getAdaptiveIcon(iconName: 'search',defaultIcon:Icons.search, size: 16, color: Colors.grey[600]),
+                    getAdaptiveIcon(iconName: 'search',defaultIcon:Icons.search, size: 16, color: Colors.grey[600]),
                     const SizedBox(width: 8),
                     Text(
-                      '${filteredDocs.length} Ergebnis${filteredDocs.length == 1 ? '' : 'se'} für "${_activeSearchText}"',  // Hier auch ändern
+                      '${filteredDocs.length} Ergebnis${filteredDocs.length == 1 ? '' : 'se'} für "${_activeSearchText}"',
                       style: TextStyle(
                         color: Colors.grey[600],
                         fontSize: 14,
@@ -2184,22 +2570,34 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                             decoration: BoxDecoration(
-                                              color: Colors.green.shade50,
+                                              color: (data['discounted'] == true ? Colors.orange : Colors.green).shade50,
                                               borderRadius: BorderRadius.circular(6),
                                               border: Border.all(
-                                                color: Colors.green.shade200,
+                                                color: (data['discounted'] == true ? Colors.orange : Colors.green).shade200,
                                                 width: 1,
                                               ),
                                             ),
                                             child: Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
+                                                if (data['discounted'] == true) ...[
+                                                  Text(
+                                                    data['original_price_CHF']?.toString() ?? '',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.w500,
+                                                      color: Colors.grey.shade600,
+                                                      decoration: TextDecoration.lineThrough,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                ],
                                                 Text(
                                                   data['price_CHF']?.toString() ?? '0.00',
                                                   style: TextStyle(
                                                     fontSize: 13,
                                                     fontWeight: FontWeight.bold,
-                                                    color: Colors.green.shade800,
+                                                    color: (data['discounted'] == true ? Colors.orange : Colors.green).shade800,
                                                   ),
                                                 ),
                                                 const SizedBox(width: 4),
@@ -2208,7 +2606,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                                   style: TextStyle(
                                                     fontSize: 11,
                                                     fontWeight: FontWeight.w600,
-                                                    color: Colors.green.shade600,
+                                                    color: (data['discounted'] == true ? Colors.orange : Colors.green).shade600,
                                                   ),
                                                 ),
                                               ],
@@ -2249,8 +2647,6 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       },
     );
   }
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -2317,7 +2713,10 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                       ),
                       Expanded(
                         child: GestureDetector(
-                          onTap: () => setState(() => _isOnlineShopView = true),
+                          onTap: () {
+                            setState(() => _isOnlineShopView = true);
+                            _updateProductStream(); // HIER hinzufügen
+                          },
                           child: Container(
                             alignment: Alignment.center,
                             height: 36,
@@ -3086,7 +3485,502 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     );
   }
 
+// Kombinierte Funktion zum Abrufen von Standardmaßen und Volumen
+  // Kombinierte Funktion zum Abrufen von Standardmaßen, Volumen UND Parts
+  Future<Map<String, dynamic>?> _getStandardMeasurementsAndVolume(Map<String, dynamic> productData) async {
+    try {
+      // Erstelle die Artikelnummer aus Instrument- und Bauteil-Code
+      final instrumentCode = productData['instrument_code'] as String?;
+      final partCode = productData['part_code'] as String?;
 
+      if (instrumentCode == null || partCode == null) {
+        return null;
+      }
+
+      final articleNumber = instrumentCode + partCode;
+
+      // Suche in der standardized_products Collection
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('standardized_products')
+          .where('articleNumber', isEqualTo: articleNumber)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        final standardProduct = querySnapshot.docs.first.data();
+
+        // Extrahiere die Standardmaße
+        final measurements = {
+          'length': standardProduct['dimensions']?['length']?['withAddition'],
+          'width': standardProduct['dimensions']?['width']?['withAddition'],
+          'thickness': standardProduct['dimensions']?['thickness']?['value'],
+        };
+
+        // NEU: Extrahiere parts
+        final parts = standardProduct['parts'] ?? 1;
+        print("parts: $parts");
+        measurements['parts'] = parts;
+
+        // Extrahiere das Volumen
+        final mm3Volume = standardProduct['volume']?['mm3_withAddition'];
+        final dm3Volume = standardProduct['volume']?['dm3_withAddition'];
+
+        if (mm3Volume != null && mm3Volume > 0) {
+          // Konvertiere mm³ zu m³
+          final volumeInM3 = (mm3Volume as num).toDouble() / 1000000000.0;
+          measurements['volume'] = volumeInM3;
+          measurements['volume_type'] = 'mm3';
+          measurements['volume_original'] = mm3Volume;
+          print("volumeInM3 (aus mm³):$volumeInM3");
+        } else if (dm3Volume != null && dm3Volume > 0) {
+          // Konvertiere dm³ zu m³
+          final volumeInM3 = (dm3Volume as num).toDouble() / 1000.0;
+          measurements['volume'] = volumeInM3;
+          measurements['volume_type'] = 'dm3';
+          measurements['volume_original'] = dm3Volume;
+          print("volumeInM3 (aus dm³):$volumeInM3");
+        }
+
+        return measurements;
+      }
+
+      return null;
+    } catch (e) {
+      print('Fehler beim Abrufen der Standardmaße und Volumen: $e');
+      return null;
+    }
+  }
+  Widget _buildMaterialDetails(Map<String, dynamic> data) {
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: _getStandardMeasurementsAndVolume(data),
+      builder: (context, measurementSnapshot) {
+        return FutureBuilder<double?>(
+          future: _getDensityForProduct(data),
+          builder: (context, densitySnapshot) {
+            // Prüfe ob Daten verfügbar sind
+            final hasMeasurements = measurementSnapshot.hasData &&
+                measurementSnapshot.data != null;
+            final hasDensity = densitySnapshot.hasData &&
+                densitySnapshot.data != null;
+
+            // Wenn keine Material-Details verfügbar, zeige nichts an
+            if (!hasMeasurements && !hasDensity) {
+              return const SizedBox.shrink();
+            }
+
+            final measurements = measurementSnapshot.data;
+            final density = densitySnapshot.data;
+
+            // NEU: Hole die Anzahl Teile aus parts
+            final parts = measurements!['parts'] ?? 1;
+
+            // Berechne Gewicht wenn möglich - JETZT MIT PARTS MULTIPLIZIERT
+            double? weightPerUnit;
+            double? totalWeight;
+            if (measurements?['volume'] != null && density != null) {
+              final volume = measurements!['volume'] as double;
+              weightPerUnit = volume * density ; // Pro Einheit (inklusive alle Teile)
+              totalWeight = weightPerUnit;
+            }
+
+            return _buildDetailSection(
+              title: 'Material-Details',
+              iconName: 'science',
+              icon: Icons.science,
+              content: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Info-Banner
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.blue.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'info',
+                          defaultIcon: Icons.info,
+                          size: 16,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Diese Werte können im Warenkorb individuell angepasst werden',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue[800],
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // NEU: Anzahl Teile
+                  Row(
+                    children: [
+                      getAdaptiveIcon(
+                        iconName: 'inventory',
+                        defaultIcon: Icons.inventory,
+                        size: 20,
+                        color: const Color(0xFF0F4A29),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Anzahl Teile',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey[200]!),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Teile pro Produkt',
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontSize: 13,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F4A29).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '$parts ${parts == 1 ? 'Teil' : 'Teile'}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: Color(0xFF0F4A29),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Maße
+                  if (hasMeasurements && measurements != null) ...[
+                    Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'straighten',
+                          defaultIcon: Icons.straighten,
+                          size: 20,
+                          color: const Color(0xFF0F4A29),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Standardmaße${parts > 1 ? ' (pro Teil)' : ''}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey[200]!),
+                      ),
+                      child: Column(
+                        children: [
+                          if (measurements['length'] != null)
+                            _buildMaterialInfoRow(
+                              'Länge',
+                              '${measurements['length']} mm',
+                              Icons.straighten,
+                              'straighten',
+                            ),
+                          if (measurements['width'] != null) ...[
+                            const SizedBox(height: 8),
+                            _buildMaterialInfoRow(
+                              'Breite',
+                              '${measurements['width']} mm',
+                              Icons.swap_horiz,
+                              'swap_horiz',
+                            ),
+                          ],
+                          if (measurements['thickness'] != null) ...[
+                            const SizedBox(height: 8),
+                            _buildMaterialInfoRow(
+                              'Dicke',
+                              '${measurements['thickness']} mm',
+                              Icons.layers,
+                              'layers',
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Volumen
+                  if (measurements?['volume'] != null) ...[
+                    Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'view_in_ar',
+                          defaultIcon: Icons.view_in_ar,
+                          size: 20,
+                          color: const Color(0xFF0F4A29),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Gesamtvolumen',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey[200]!),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Volumen',
+                                style: TextStyle(
+                                  color: Colors.grey[700],
+                                  fontSize: 13,
+                                ),
+                              ),
+                              Text(
+                                '${(measurements!['volume'] as double).toStringAsFixed(7)} m³',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Dichte
+                  if (hasDensity) ...[
+                    Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'grain',
+                          defaultIcon: Icons.grain,
+                          size: 20,
+                          color: const Color(0xFF0F4A29),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Spezifisches Gewicht',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey[200]!),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Dichte (${data['wood_name']})',
+                            style: TextStyle(
+                              color: Colors.grey[700],
+                              fontSize: 13,
+                            ),
+                          ),
+                          Text(
+                            '${density!.toStringAsFixed(0)} kg/m³',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Gewichtsberechnung - ANGEPASST
+                  if (weightPerUnit != null) ...[
+                    Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'scale',
+                          defaultIcon: Icons.scale,
+                          size: 20,
+                          color: const Color(0xFF0F4A29),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Gewicht',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0F4A29).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: const Color(0xFF0F4A29).withOpacity(0.3),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Produktgewicht',
+                                style: TextStyle(
+                                  color: Colors.grey[700],
+                                  fontSize: 13,
+                                ),
+                              ),
+                              Text(
+                                '${weightPerUnit.toStringAsFixed(2)} kg',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: Color(0xFF0F4A29),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+
+                                 'Berechnet: ${(measurements!['volume'] as double).toStringAsFixed(7)} m³ × ${density!.toStringAsFixed(0)} kg/m³',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[600],
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+// Hilfsmethode für einzelne Material-Info-Zeilen
+  Widget _buildMaterialInfoRow(String label, String value, IconData icon, String iconName) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Row(
+          children: [
+            getAdaptiveIcon(
+              iconName: iconName,
+              defaultIcon: icon,
+              size: 16,
+              color: Colors.grey[600],
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.grey[700],
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+          ),
+        ),
+      ],
+    );
+  }
+  Future<double?> _getDensityForProduct(Map<String, dynamic> productData) async {
+    try {
+      final woodCode = productData['wood_code'] as String?;
+      if (woodCode == null) return null;
+
+      final doc = await FirebaseFirestore.instance
+          .collection('wood_types')
+          .doc(woodCode)
+          .get();
+
+      if (doc.exists && doc.data()?['density'] != null) {
+        return (doc.data()!['density'] as num).toDouble();
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Dichte: $e');
+    }
+    return null;
+  }
 
 // Neue Hilfsmethode für Online-Shop Status
   Widget _buildOnlineShopStatus(Map<String, dynamic> data) {
@@ -3846,8 +4740,8 @@ getAdaptiveIcon(
                                       children: [
                                         IconButton(
                                           icon: getAdaptiveIcon(
-                                            iconName: 'favorite_border',
-                                            defaultIcon: Icons.favorite_border,
+                                            iconName: 'favorite',
+                                            defaultIcon: Icons.favorite,
                                             color: Colors.red,
                                           ),
                                           onPressed: _saveCurrentFilterAsFavorite,

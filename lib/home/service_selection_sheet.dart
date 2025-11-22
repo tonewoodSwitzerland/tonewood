@@ -371,6 +371,11 @@ class ServiceSelectionSheet {
     final selectedCurrency = currencyNotifier.value;
     final exchangeRates = exchangeRatesNotifier.value;
 
+    // NEU: Tariff Controller außerhalb deklarieren
+    final tariffController = TextEditingController(
+        text: serviceData['default_tariff_number']?.toString() ?? ''
+    );
+
     // Wähle den Namen basierend auf Kundensprache
     String displayName = serviceData['name'] ?? 'Unbenannte Dienstleistung';
     if (customerLanguage == 'EN' && serviceData['name_en'] != null && serviceData['name_en'].isNotEmpty) {
@@ -522,6 +527,59 @@ class ServiceSelectionSheet {
                             ],
                           ),
                         ),
+                        const SizedBox(height: 16),
+
+                        // Zolltarifnummer für Dienstleistungen
+                        Text(
+                          'Zolltarifnummer (optional)',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // GEÄNDERT: StatefulBuilder entfernt, Controller ist jetzt verfügbar
+                        Column(
+                          children: [
+
+
+                            // Freitextfeld
+                            TextFormField(
+                              controller: tariffController,
+                              decoration: InputDecoration(
+                                labelText: 'Individuelle Zolltarifnummer',
+                                hintText: 'z.B. 9801.0000',
+                                border: const OutlineInputBorder(),
+                                filled: true,
+                                fillColor: Theme.of(context).colorScheme.surface,
+                                prefixIcon: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: getAdaptiveIcon(
+                                    iconName: 'edit',
+                                    defaultIcon: Icons.edit,
+                                  ),
+                                ),
+                                helperText: 'Optional: Für Handelsrechnungen',
+                                suffixIcon: tariffController.text.isNotEmpty
+                                    ? IconButton(
+                                  icon: getAdaptiveIcon(
+                                    iconName: 'clear',
+                                    defaultIcon: Icons.clear,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      tariffController.clear();
+                                    });
+                                  },
+                                )
+                                    : null,
+                              ),
+                              onChanged: (value) => setState(() {}),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
@@ -572,7 +630,7 @@ class ServiceSelectionSheet {
 
                               final serviceForBasket = {
                                 'service_id': serviceId,
-                                'name': displayName, // Verwende den displayName basierend auf Sprache
+                                'name': displayName,
                                 'name_de': serviceData['name'] ?? '',
                                 'name_en': serviceData['name_en'] ?? '',
                                 'description': serviceData['description'] ?? '',
@@ -583,6 +641,9 @@ class ServiceSelectionSheet {
                                 'is_price_customized': useCustomPrice,
                                 'is_service': true,
                                 'timestamp': FieldValue.serverTimestamp(),
+                                'custom_tariff_number': tariffController.text.trim().isNotEmpty
+                                    ? tariffController.text.trim()
+                                    : null,
                               };
 
                               Navigator.pop(context);

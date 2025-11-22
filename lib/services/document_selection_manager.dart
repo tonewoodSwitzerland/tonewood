@@ -1611,7 +1611,9 @@ Widget _buildPackageCard(
       'length': TextEditingController(text: package['length']?.toString() ?? '0.0'),
       'width': TextEditingController(text: package['width']?.toString() ?? '0.0'),
       'height': TextEditingController(text: package['height']?.toString() ?? '0.0'),
-      'weight': TextEditingController(text: package['tare_weight']?.toString() ?? '0.0'),
+      'weight': TextEditingController(
+          text: (package['tare_weight'] as num).toStringAsFixed(2)  // HIER ändern
+      ),
       'custom_name': TextEditingController(text: package['packaging_type'] ?? ''),
       'gross_weight': TextEditingController(text: package['gross_weight']?.toString() ?? ''),
     };
@@ -4936,8 +4938,9 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
           'length': TextEditingController(text: package['length'].toString()),
           'width': TextEditingController(text: package['width'].toString()),
           'height': TextEditingController(text: package['height'].toString()),
-          'weight': TextEditingController(text: package['tare_weight'].toString()),
-
+          'weight': TextEditingController(
+              text: (package['tare_weight'] as num).toStringAsFixed(2)  // HIER ändern
+          ),
           'custom_name': TextEditingController(text: package['packaging_type'] ?? ''),
           'gross_weight': TextEditingController(
               text: package['gross_weight'] != null ? package['gross_weight'].toString() : ''

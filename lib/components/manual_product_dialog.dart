@@ -49,7 +49,7 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
   final TextEditingController _volumeController = TextEditingController();
   final TextEditingController _densityController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
-
+  final TextEditingController _customTariffController = TextEditingController();
   // NEU: Gratisartikel-Variablen
   bool _isGratisartikel = false;
   final TextEditingController _proformaController = TextEditingController();
@@ -145,6 +145,10 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
         'timestamp': FieldValue.serverTimestamp(),
       };
 
+      // Nach den anderen Feldern hinzufügen:
+      if (_customTariffController.text.trim().isNotEmpty) {
+        manualProduct['custom_tariff_number'] = _customTariffController.text.trim();
+      }
       // NEU: Englische Bezeichnungen hinzufügen falls vorhanden
       if (_selectedInstrument!['name_english'] != null) {
         manualProduct['instrument_name_en'] = _selectedInstrument!['name_english'];
@@ -191,6 +195,34 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
 
       widget.onProductAdded(manualProduct);
       Navigator.pop(context);
+    }
+  }
+  Future<String> _getAutomaticTariffNumber() async {
+    try {
+      if (_selectedWood == null) return 'Bitte Holzart wählen';
+
+      final woodCode = _selectedWood!['code'] as String;
+      final woodTypeDoc = await FirebaseFirestore.instance
+          .collection('wood_types')
+          .doc(woodCode)
+          .get();
+
+      if (!woodTypeDoc.exists) return 'Keine Zolltarifnummer';
+
+      final woodInfo = woodTypeDoc.data()!;
+
+      // Bestimme Zolltarifnummer basierend auf Dicke
+      final thicknessText = _thicknessController.text.replaceAll(',', '.');
+      final thickness = double.tryParse(thicknessText) ?? 0.0;
+
+      if (thickness <= 6.0) {
+        return woodInfo['z_tares_1'] ?? '4408.1000';
+      } else {
+        return woodInfo['z_tares_2'] ?? '4407.1200';
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Zolltarifnummer: $e');
+      return 'Fehler beim Laden';
     }
   }
   void _calculateVolumeFromDimensions() {
@@ -527,6 +559,134 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                         DropdownMenuItem(value: '-', child: Text('Kein FSC')),
                       ],
                       onChanged: (value) => setState(() => _selectedFscStatus = value!),
+                    ),
+
+                    const SizedBox(height: 24),
+
+// Zolltarifnummer
+                    _buildSectionTitle('Zolltarifnummer', Icons.local_shipping),
+                    const SizedBox(height: 12),
+
+// Info-Box
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          getAdaptiveIcon(
+                            iconName: 'info',
+                            defaultIcon: Icons.info,
+                            color: Colors.blue,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Die Zolltarifnummer wird automatisch basierend auf Holzart und Dicke ermittelt. Sie können diese überschreiben.',
+                              style: TextStyle(fontSize: 12, color: Colors.blue[800]),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+// Automatische Zolltarifnummer anzeigen
+                    FutureBuilder<String>(
+                      future: _getAutomaticTariffNumber(),
+                      builder: (context, snapshot) {
+                        final automaticTariff = snapshot.data ?? 'Wird berechnet...';
+
+                        return Column(
+                          children: [
+                            // Anzeige der automatischen Zolltarifnummer
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  getAdaptiveIcon(
+                                    iconName: 'auto_awesome',
+                                    defaultIcon: Icons.auto_awesome,
+                                    size: 20,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Automatische Zolltarifnummer',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          automaticTariff,
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 12),
+
+                            // Freitextfeld für individuelle Zolltarifnummer
+                            TextFormField(
+                              controller: _customTariffController,
+                              decoration: InputDecoration(
+                                labelText: 'Individuelle Zolltarifnummer (optional)',
+                                hintText: 'z.B. 4407.1200',
+                                border: const OutlineInputBorder(),
+                                filled: true,
+                                fillColor: Theme.of(context).colorScheme.surface,
+                                prefixIcon: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: getAdaptiveIcon(
+                                    iconName: 'edit',
+                                    defaultIcon: Icons.edit,
+                                  ),
+                                ),
+                                helperText: 'Überschreibt die automatische Zolltarifnummer',
+                                suffixIcon: _customTariffController.text.isNotEmpty
+                                    ? IconButton(
+                                  icon: getAdaptiveIcon(
+                                    iconName: 'clear',
+                                    defaultIcon: Icons.clear,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _customTariffController.clear();
+                                    });
+                                  },
+                                )
+                                    : null,
+                              ),
+                              onChanged: (value) => setState(() {}),
+                            ),
+                          ],
+                        );
+                      },
                     ),
 
 
@@ -1021,10 +1181,11 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
     _lengthController.dispose();
     _widthController.dispose();
     _thicknessController.dispose();
-    _volumeController.dispose(); // NEU
-    _densityController.dispose(); // NEU
-    _notesController.dispose(); // NEU
-    _proformaController.dispose(); // NEU
+    _volumeController.dispose();
+    _densityController.dispose();
+    _notesController.dispose();
+    _proformaController.dispose();
+    _customTariffController.dispose();
     super.dispose();
   }
 }

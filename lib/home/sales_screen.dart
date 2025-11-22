@@ -1507,7 +1507,10 @@ return Scaffold(
                                     suffixText: '%',
                                     border: const OutlineInputBorder(),
                                     filled: true,
-                                    prefixIcon: getAdaptiveIcon(iconName: 'percent', defaultIcon: Icons.percent),
+                                    prefixIcon: Padding(
+                                      padding: const EdgeInsets.all(8.0),
+                                      child: getAdaptiveIcon(iconName: 'percent', defaultIcon: Icons.percent),
+                                    ),
                                   ),
                                   keyboardType: TextInputType.numberWithOptions(decimal: true),
                                   inputFormatters: [
@@ -2131,7 +2134,10 @@ return Scaffold(
                     controller: searchController,
                     decoration: InputDecoration(
                       labelText: 'Suchen',
-                      prefixIcon: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search,),
+                      prefixIcon: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search,),
+                      ),
                       border: const OutlineInputBorder(),
                       filled: true,
                       fillColor: Theme.of(context).colorScheme.surface,
@@ -2628,7 +2634,10 @@ return Scaffold(
                     controller: searchController,
                     decoration: InputDecoration(
                       labelText: 'Suchen',
-                      prefixIcon:    getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search,),
+                      prefixIcon:    Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search,),
+                      ),
                       border: const OutlineInputBorder(),
                       filled: true,
                       fillColor: Theme.of(context).colorScheme.surface,
@@ -3824,7 +3833,7 @@ return Scaffold(
                     Column(
                       children: [
                         ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           title: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -4155,7 +4164,7 @@ return Scaffold(
                         top: 0,
                         right: 0,
                         child: Container(
-                          constraints: const BoxConstraints(maxWidth: 140),
+                          constraints: const BoxConstraints(maxWidth: 250),
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                           decoration: BoxDecoration(
                             color: Colors.blue.shade700,
@@ -5056,6 +5065,9 @@ return Scaffold(
         text: itemData['description_en'] ?? ''
     );
     // Falls bereits ein angepasster Preis existiert, diesen verwenden, sonst Originalpreis
+    final customTariffController = TextEditingController(
+        text: itemData['custom_tariff_number']?.toString() ?? ''
+    );
     final customPriceValue = itemData['custom_price_per_unit'];
     final double currentPriceInCHF = customPriceValue != null
         ? (customPriceValue as num).toDouble()
@@ -5251,7 +5263,10 @@ return Scaffold(
                     border: const OutlineInputBorder(),
                     filled: true,
                     fillColor: Theme.of(context).colorScheme.surface,
-                    prefixIcon: getAdaptiveIcon(iconName: 'description', defaultIcon: Icons.description),
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: getAdaptiveIcon(iconName: 'description', defaultIcon: Icons.description),
+                    ),
                     helperText: 'Optionale Beschreibung der Dienstleistung',
                   ),
                   maxLines: 3,
@@ -5266,7 +5281,10 @@ return Scaffold(
                     border: const OutlineInputBorder(),
                     filled: true,
                     fillColor: Theme.of(context).colorScheme.surface,
-                    prefixIcon: getAdaptiveIcon(iconName: 'language', defaultIcon: Icons.language),
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: getAdaptiveIcon(iconName: 'language', defaultIcon: Icons.language),
+                    ),
                     helperText: 'Optional description of the service',
                   ),
                   maxLines: 3,
@@ -5287,7 +5305,10 @@ return Scaffold(
             border: const OutlineInputBorder(),
             filled: true,
             fillColor: Theme.of(context).colorScheme.surface,
-            prefixIcon: getAdaptiveIcon(iconName: 'euro', defaultIcon: Icons.euro),
+            prefixIcon: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: getAdaptiveIcon(iconName: 'euro', defaultIcon: Icons.euro),
+            ),
             ),
             keyboardType: TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
@@ -5296,8 +5317,151 @@ return Scaffold(
             );
             },
             ),
-            
+
+
+              const SizedBox(height: 24),
+
+// Zolltarifnummer (für ALLE - Produkte UND Dienstleistungen)
+              Text(
+                'Zolltarifnummer',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 8),
+
+// Bei PRODUKTEN: Zeige Standard-Zolltarifnummer an
+              if (!isService) ...[
+                FutureBuilder<String>(
+                  future: _getStandardTariffNumber(itemData),
+                  builder: (context, snapshot) {
+                    final standardTariff = snapshot.data ?? 'Wird geladen...';
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Standard-Zolltarifnummer',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      standardTariff,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    );
+                  },
+                ),
+              ],
+
+// Bei DIENSTLEISTUNGEN: Info-Box
+              if (isService) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      getAdaptiveIcon(
+                        iconName: 'info',
+                        defaultIcon: Icons.info,
+                        color: Colors.blue,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Zolltarifnummer für Dienstleistungen (optional für Handelsrechnungen)',
+                          style: TextStyle(fontSize: 12, color: Colors.blue[800]),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+// Freitextfeld für BEIDE (Produkte UND Dienstleistungen)
+              TextFormField(
+                controller: customTariffController,
+                decoration: InputDecoration(
+                  labelText: isService
+                      ? 'Zolltarifnummer (optional)'
+                      : 'Individuelle Zolltarifnummer',
+                  hintText: 'z.B. 4407.1200',
+                  border: const OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Theme.of(context).colorScheme.surface,
+                  prefixIcon: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: getAdaptiveIcon(
+                      iconName: 'local_shipping',
+                      defaultIcon: Icons.local_shipping,
+                    ),
+                  ),
+                  helperText: isService
+                      ? 'Für Handelsrechnungen'
+                      : 'Überschreibt die Standard-Zolltarifnummer',
+                  suffixIcon: customTariffController.text.isNotEmpty
+                      ? IconButton(
+                    icon: getAdaptiveIcon(
+                      iconName: 'clear',
+                      defaultIcon: Icons.clear,
+                    ),
+                    onPressed: () {
+                      setDialogState(() {
+                        customTariffController.clear();
+                      });
+                    },
+                  )
+                      : null,
+                ),
+                onChanged: (value) => setDialogState(() {}),
+              ),
+              const SizedBox(height: 24),
+
+
+
             // NUR bei Artikeln (nicht bei Dienstleistungen) die weiteren Optionen anzeigen
+
+
+
+
+
             if (!isService) ...[
             const SizedBox(height: 24),
             
@@ -5310,6 +5474,8 @@ return Scaffold(
             color: Theme.of(context).colorScheme.primary,
             ),
             ),
+
+
             const SizedBox(height: 8),
             
             // FSC Status Dropdown
@@ -5319,7 +5485,10 @@ return Scaffold(
             border: const OutlineInputBorder(),
             filled: true,
             fillColor: Theme.of(context).colorScheme.surface,
-            prefixIcon: getAdaptiveIcon(iconName: 'eco', defaultIcon: Icons.eco),
+            prefixIcon: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: getAdaptiveIcon(iconName: 'eco', defaultIcon: Icons.eco),
+            ),
             ),
             value: itemData['fsc_status'] as String? ?? '100%',
             items: const [
@@ -5333,9 +5502,10 @@ return Scaffold(
             // Temporär speichern für später
             },
             ),
-            
-            
               const SizedBox(height: 24),
+
+
+
             
             // NEU: Thermobehandlung
               Text(
@@ -5387,9 +5557,12 @@ return Scaffold(
                     border: const OutlineInputBorder(),
                     filled: true,
                     fillColor: Theme.of(context).colorScheme.surface,
-                    prefixIcon: getAdaptiveIcon(
-                      iconName: 'thermostat',
-                      defaultIcon: Icons.thermostat,
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: getAdaptiveIcon(
+                        iconName: 'thermostat',
+                        defaultIcon: Icons.thermostat,
+                      ),
                     ),
                     suffixText: '°C',
                     helperText: 'Behandlungstemperatur (z.B. 180, 200, 212)',
@@ -5473,7 +5646,10 @@ return Scaffold(
                                             border: const OutlineInputBorder(),
                                             filled: true,
                                             fillColor: Theme.of(context).colorScheme.surface,
-                                            prefixIcon:   getAdaptiveIcon(iconName: 'straighten', defaultIcon:Icons.straighten, size: 20),
+                                            prefixIcon:   Padding(
+                                              padding: const EdgeInsets.all(8.0),
+                                              child: getAdaptiveIcon(iconName: 'straighten', defaultIcon:Icons.straighten, size: 20),
+                                            ),
                                           ),
                                           keyboardType: TextInputType.numberWithOptions(decimal: true),
                                           inputFormatters: [
@@ -5490,7 +5666,10 @@ return Scaffold(
                                             border: const OutlineInputBorder(),
                                             filled: true,
                                             fillColor: Theme.of(context).colorScheme.surface,
-                                            prefixIcon:   getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon:Icons.swap_horiz, size: 20),
+                                            prefixIcon:   Padding(
+                                              padding: const EdgeInsets.all(8.0),
+                                              child: getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon:Icons.swap_horiz, size: 20),
+                                            ),
                                           ),
                                           keyboardType: TextInputType.numberWithOptions(decimal: true),
                                           inputFormatters: [
@@ -5508,7 +5687,10 @@ return Scaffold(
                                       border: const OutlineInputBorder(),
                                       filled: true,
                                       fillColor: Theme.of(context).colorScheme.surface,
-                                      prefixIcon:   getAdaptiveIcon(iconName: 'layers', defaultIcon:Icons.layers, size: 20),
+                                      prefixIcon:   Padding(
+                                        padding: const EdgeInsets.all(8.0),
+                                        child: getAdaptiveIcon(iconName: 'layers', defaultIcon:Icons.layers, size: 20),
+                                      ),
                                     ),
                                     keyboardType: TextInputType.numberWithOptions(decimal: true),
                                     inputFormatters: [
@@ -5525,7 +5707,10 @@ return Scaffold(
                                       border: const OutlineInputBorder(),
                                       filled: true,
                                       fillColor: Theme.of(context).colorScheme.surface,
-                                      prefixIcon: getAdaptiveIcon(iconName: 'view_in_ar', defaultIcon:Icons.view_in_ar, size: 20),
+                                      prefixIcon: Padding(
+                                        padding: const EdgeInsets.all(8.0),
+                                        child: getAdaptiveIcon(iconName: 'view_in_ar', defaultIcon:Icons.view_in_ar, size: 20),
+                                      ),
                                       helperText: snapshot.hasData && snapshot.data != null
                                           ? 'Standardvolumen geladen - kann angepasst werden'
                                           : 'Optional: Manuelles Volumen überschreibt berechneten Wert',
@@ -5579,7 +5764,8 @@ return Scaffold(
                                   itemData['custom_width'] != null ||
                                   itemData['custom_thickness'] != null ||
                                   itemData['custom_volume'] != null ||
-                                  itemData['has_thermal_treatment'] == true)) ||
+                                  itemData['has_thermal_treatment'] == true ||
+              itemData['custom_tariff_number'] != null)) ||
                               (isService && (descriptionController.text != (itemData['description'] ?? '') ||
                                   descriptionEnController.text != (itemData['description_en'] ?? ''))))
 
@@ -5601,7 +5787,7 @@ return Scaffold(
             
                                       updateData['has_thermal_treatment'] = false;
                                       updateData['thermal_treatment_temperature'] = FieldValue.delete();
-            
+                                      updateData['custom_tariff_number'] = FieldValue.delete();
                                     }
             
                                     // Bei Dienstleistungen: Beschreibung aus Originaldaten wiederherstellen
@@ -5719,6 +5905,12 @@ return Scaffold(
                                   } else {
                                     updateData['custom_volume'] = FieldValue.delete();
                                   }
+                                  if (customTariffController.text.trim().isNotEmpty) {
+                                    updateData['custom_tariff_number'] = customTariffController.text.trim();
+                                  } else {
+                                    updateData['custom_tariff_number'] = FieldValue.delete();
+                                  }
+
             }
             
             
@@ -5790,6 +5982,39 @@ return Scaffold(
     );
   }
 
+  Future<String> _getStandardTariffNumber(Map<String, dynamic> itemData) async {
+    try {
+      final woodCode = itemData['wood_code'] as String?;
+      if (woodCode == null) return 'Keine Zolltarifnummer';
+
+      // Lade Holzart-Info
+      final woodTypeDoc = await FirebaseFirestore.instance
+          .collection('wood_types')
+          .doc(woodCode)
+          .get();
+
+      if (!woodTypeDoc.exists) return 'Keine Zolltarifnummer';
+
+      final woodInfo = woodTypeDoc.data()!;
+
+      // Bestimme Zolltarifnummer basierend auf Dicke
+      final thickness = (itemData['custom_thickness'] != null)
+          ? (itemData['custom_thickness'] is int
+          ? (itemData['custom_thickness'] as int).toDouble()
+          : itemData['custom_thickness'] as double)
+          : 0.0;
+
+      if (thickness <= 6.0) {
+        return woodInfo['z_tares_1'] ?? '4408.1000';
+      } else {
+        return woodInfo['z_tares_2'] ?? '4407.1200';
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Zolltarifnummer: $e');
+      return 'Fehler beim Laden';
+    }
+  }
+// NEU: Hilfsmethode zum Laden des Standard-Volumens für einen bestimmten Artikel
 // NEU: Hilfsmethode zum Laden des Standard-Volumens für einen bestimmten Artikel
   Future<Map<String, dynamic>?> _getStandardVolumeForItem(Map<String, dynamic> itemData) async {
     try {
@@ -5815,6 +6040,8 @@ return Scaffold(
         // Versuche verschiedene Volumen-Felder
         final mm3Volume = standardProduct['volume']?['mm3_withAddition'];
         final dm3Volume = standardProduct['volume']?['dm3_withAddition'];
+        final parts = standardProduct['parts'];
+        print("parts::$parts");
 
         if (mm3Volume != null && mm3Volume > 0) {
           // Konvertiere mm³ zu m³
@@ -5824,6 +6051,7 @@ return Scaffold(
             'volume': volumeInM3,
             'type': 'mm3',
             'original_value': mm3Volume,
+            'parts': parts, // NEU: Hier fehlte es!
           };
         } else if (dm3Volume != null && dm3Volume > 0) {
           // Konvertiere dm³ zu m³
@@ -5832,6 +6060,7 @@ return Scaffold(
             'volume': volumeInM3,
             'type': 'dm3',
             'original_value': dm3Volume,
+            'parts': parts,
           };
         }
       }
@@ -5842,7 +6071,6 @@ return Scaffold(
       return null;
     }
   }
-
 
 // Erweiterte _addToTemporaryBasket Methode in sales_screen.dart
 
@@ -6105,58 +6333,58 @@ return Scaffold(
                 });
 
                 // Zeige Bestätigung
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                        packingListAssignments.docs.isNotEmpty
-                            ? 'Artikel wurde entfernt (inkl. ${packingListAssignments.docs.length} Packlisten-Zuordnung${packingListAssignments.docs.length > 1 ? "en" : ""})'
-                            : 'Artikel wurde entfernt'
-                    ),
-                    backgroundColor: Colors.orange,
-                    action: SnackBarAction(
-                      label: 'Rückgängig',
-                      textColor: Colors.white,
-                      onPressed: () async {
-                        try {
-                          final restorationBatch = FirebaseFirestore.instance.batch();
-
-                          // 1. Artikel wiederherstellen
-                          restorationBatch.set(
-                              FirebaseFirestore.instance
-                                  .collection('temporary_basket')
-                                  .doc(basketItemId),
-                              itemData
-                          );
-
-                          // 2. Packlisten-Zuordnungen wiederherstellen
-                          for (final packingDoc in packingListAssignments.docs) {
-                            restorationBatch.set(
-                                packingDoc.reference,
-                                packingDoc.data()
-                            );
-                          }
-
-                          await restorationBatch.commit();
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Artikel wurde wiederhergestellt'),
-                              backgroundColor: Colors.green,
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Fehler beim Wiederherstellen: $e'),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                );
+                // ScaffoldMessenger.of(context).showSnackBar(
+                //   SnackBar(
+                //     content: Text(
+                //         packingListAssignments.docs.isNotEmpty
+                //             ? 'Artikel wurde entfernt (inkl. ${packingListAssignments.docs.length} Packlisten-Zuordnung${packingListAssignments.docs.length > 1 ? "en" : ""})'
+                //             : 'Artikel wurde entfernt'
+                //     ),
+                //     backgroundColor: Colors.orange,
+                //     action: SnackBarAction(
+                //       label: 'Rückgängig',
+                //       textColor: Colors.white,
+                //       onPressed: () async {
+                //         try {
+                //           final restorationBatch = FirebaseFirestore.instance.batch();
+                //
+                //           // 1. Artikel wiederherstellen
+                //           restorationBatch.set(
+                //               FirebaseFirestore.instance
+                //                   .collection('temporary_basket')
+                //                   .doc(basketItemId),
+                //               itemData
+                //           );
+                //
+                //           // 2. Packlisten-Zuordnungen wiederherstellen
+                //           for (final packingDoc in packingListAssignments.docs) {
+                //             restorationBatch.set(
+                //                 packingDoc.reference,
+                //                 packingDoc.data()
+                //             );
+                //           }
+                //
+                //           await restorationBatch.commit();
+                //
+                //           ScaffoldMessenger.of(context).showSnackBar(
+                //             const SnackBar(
+                //               content: Text('Artikel wurde wiederhergestellt'),
+                //               backgroundColor: Colors.green,
+                //               duration: Duration(seconds: 2),
+                //             ),
+                //           );
+                //         } catch (e) {
+                //           ScaffoldMessenger.of(context).showSnackBar(
+                //             SnackBar(
+                //               content: Text('Fehler beim Wiederherstellen: $e'),
+                //               backgroundColor: Colors.red,
+                //             ),
+                //           );
+                //         }
+                //       },
+                //     ),
+                //   ),
+                // );
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -6210,6 +6438,7 @@ return Scaffold(
     final notesController = TextEditingController();
     final volumeController = TextEditingController();
     final densityController = TextEditingController();
+
     // FSC-Status Variable
     String selectedFscStatus = '-'; // Standard
     if (productData['wood_name']?.toString().toLowerCase() == 'fichte') {
@@ -6370,7 +6599,10 @@ return Scaffold(
                                 border: const OutlineInputBorder(),
                                 filled: true,
                                 fillColor: Theme.of(context).colorScheme.surface,
-                                prefixIcon: getAdaptiveIcon(iconName: 'numbers', defaultIcon: Icons.numbers),
+                                prefixIcon: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: getAdaptiveIcon(iconName: 'numbers', defaultIcon: Icons.numbers),
+                                ),
                               ),
                               keyboardType: TextInputType.numberWithOptions(decimal: true),
                               inputFormatters: [
@@ -6405,7 +6637,10 @@ return Scaffold(
                                 border: const OutlineInputBorder(),
                                 filled: true,
                                 fillColor: Theme.of(context).colorScheme.surface,
-                                prefixIcon: getAdaptiveIcon(iconName: 'eco', defaultIcon: Icons.eco),
+                                prefixIcon: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: getAdaptiveIcon(iconName: 'eco', defaultIcon: Icons.eco),
+                                ),
                               ),
                               value: selectedFscStatus,
                               items: const [
@@ -6461,6 +6696,9 @@ return Scaffold(
                                 return FutureBuilder<Map<String, dynamic>?>(
                                   future: _getStandardVolumeForItem(productData),
                                   builder: (context, volumeSnapshot) {
+
+                                    print("test2");
+                                    print( volumeSnapshot.data!['parts']);
                                     // Einmalig die Standardwerte setzen, aber nur wenn Controller leer sind
                                     if (snapshot.connectionState == ConnectionState.done &&
                                         snapshot.hasData &&
@@ -6528,7 +6766,58 @@ return Scaffold(
                                           ],
                                         ),
                                         const SizedBox(height: 8),
-
+// NEU: Anzahl Bauteile (Info-Feld)
+                                        if (volumeSnapshot.connectionState == ConnectionState.done &&
+                                            volumeSnapshot.hasData &&
+                                            volumeSnapshot.data != null &&
+                                            volumeSnapshot.data!['parts'] != null) ...[
+                                          const SizedBox(height: 12),
+                                          Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(
+                                                color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                                              ),
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                getAdaptiveIcon(
+                                                  iconName: 'category',
+                                                  defaultIcon: Icons.category,
+                                                  size: 20,
+                                                  color: Theme.of(context).colorScheme.primary,
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        'Anzahl Bauteile',
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: Theme.of(context).colorScheme.primary,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        '${volumeSnapshot.data!['parts']} Teile',
+                                                        style: TextStyle(
+                                                          fontSize: 14,
+                                                          fontWeight: FontWeight.w600,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                        const SizedBox(height: 8),
                                         // Maß-Eingabefelder - User-Eingaben haben Vorrang
                                         Row(
                                           children: [
@@ -6541,7 +6830,10 @@ return Scaffold(
                                                   filled: true,
                                                   fillColor: Theme.of(context).colorScheme.surface,
                                                   prefixIcon:
-                                                  getAdaptiveIcon(iconName: 'straighten', defaultIcon:Icons.straighten, size: 20),
+                                                  Padding(
+                                                    padding: const EdgeInsets.all(8.0),
+                                                    child: getAdaptiveIcon(iconName: 'straighten', defaultIcon:Icons.straighten, size: 20),
+                                                  ),
 
                                                 ),
                                                 keyboardType: TextInputType.numberWithOptions(decimal: true),
@@ -6560,7 +6852,10 @@ return Scaffold(
                                                   filled: true,
                                                   fillColor: Theme.of(context).colorScheme.surface,
                                                   prefixIcon:
-                                                  getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon:Icons.swap_horiz, size: 20),
+                                                  Padding(
+                                                    padding: const EdgeInsets.all(8.0),
+                                                    child: getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon:Icons.swap_horiz, size: 20),
+                                                  ),
 
                                                 ),
                                                 keyboardType: TextInputType.numberWithOptions(decimal: true),
@@ -6579,7 +6874,10 @@ return Scaffold(
                                             border: const OutlineInputBorder(),
                                             filled: true,
                                             fillColor: Theme.of(context).colorScheme.surface,
-                                            prefixIcon: getAdaptiveIcon(iconName: 'layers', defaultIcon:Icons.layers, size: 20),
+                                            prefixIcon: Padding(
+                                              padding: const EdgeInsets.all(8.0),
+                                              child: getAdaptiveIcon(iconName: 'layers', defaultIcon:Icons.layers, size: 20),
+                                            ),
 
                                           ),
                                           keyboardType: TextInputType.numberWithOptions(decimal: true),
@@ -6597,10 +6895,13 @@ return Scaffold(
                                             border: const OutlineInputBorder(),
                                             filled: true,
                                             fillColor: Theme.of(context).colorScheme.surface,
-                                            prefixIcon: getAdaptiveIcon(
-                                                iconName: 'view_in_ar',
-                                                defaultIcon: Icons.view_in_ar,
-                                                size: 20
+                                            prefixIcon: Padding(
+                                              padding: const EdgeInsets.all(8.0),
+                                              child: getAdaptiveIcon(
+                                                  iconName: 'view_in_ar',
+                                                  defaultIcon: Icons.view_in_ar,
+                                                  size: 20
+                                              ),
                                             ),
                                             helperText: volumeSnapshot.hasData && volumeSnapshot.data != null
                                                 ? 'Standardvolumen aus Produktdefinition'
@@ -6649,10 +6950,13 @@ return Scaffold(
                                                     border: const OutlineInputBorder(),
                                                     filled: true,
                                                     fillColor: Theme.of(context).colorScheme.surface,
-                                                    prefixIcon: getAdaptiveIcon(
-                                                        iconName: 'grain',
-                                                        defaultIcon: Icons.grain,
-                                                        size: 20
+                                                    prefixIcon: Padding(
+                                                      padding: const EdgeInsets.all(8.0),
+                                                      child: getAdaptiveIcon(
+                                                          iconName: 'grain',
+                                                          defaultIcon: Icons.grain,
+                                                          size: 20
+                                                      ),
                                                     ),
                                                     helperText: densitySnapshot.hasData
                                                         ? 'Dichte aus Holzart: ${densitySnapshot.data} kg/m³'
@@ -6853,9 +7157,12 @@ return Scaffold(
                                           border: const OutlineInputBorder(),
                                           filled: true,
                                           fillColor: Theme.of(context).colorScheme.surface,
-                                          prefixIcon: getAdaptiveIcon(
-                                              iconName: 'receipt_long',
-                                              defaultIcon: Icons.receipt_long
+                                          prefixIcon: Padding(
+                                            padding: const EdgeInsets.all(8.0),
+                                            child: getAdaptiveIcon(
+                                                iconName: 'receipt_long',
+                                                defaultIcon: Icons.receipt_long
+                                            ),
                                           ),
                                           helperText: 'Dieser Wert erscheint nur auf der Handelsrechnung',
                                         ),
@@ -8551,7 +8858,10 @@ Widget _buildSelectedProductInfo() {
                                     suffixText: '%',
                                     border: OutlineInputBorder(),
                                     filled: true,
-                                    prefixIcon: getAdaptiveIcon(iconName: 'percent', defaultIcon: Icons.percent),
+                                    prefixIcon: Padding(
+                                      padding: const EdgeInsets.all(8.0),
+                                      child: getAdaptiveIcon(iconName: 'percent', defaultIcon: Icons.percent),
+                                    ),
                                   ),
                                   keyboardType: TextInputType.numberWithOptions(decimal: true),
                                   inputFormatters: [
@@ -8575,7 +8885,10 @@ Widget _buildSelectedProductInfo() {
                                     suffixText: currency,
                                     border: OutlineInputBorder(),
                                     filled: true,
-                                    prefixIcon: getAdaptiveIcon(iconName: 'money_off', defaultIcon: Icons.money_off),
+                                    prefixIcon: Padding(
+                                      padding: const EdgeInsets.all(8.0),
+                                      child: getAdaptiveIcon(iconName: 'money_off', defaultIcon: Icons.money_off),
+                                    ),
                                   ),
                                   keyboardType: TextInputType.numberWithOptions(decimal: true),
                                   inputFormatters: [
@@ -8635,7 +8948,10 @@ Widget _buildSelectedProductInfo() {
                                     suffixText: currency,
                                     border: OutlineInputBorder(),
                                     filled: true,
-                                    prefixIcon: getAdaptiveIcon(iconName: 'price_check', defaultIcon: Icons.price_check),
+                                    prefixIcon: Padding(
+                                      padding: const EdgeInsets.all(8.0),
+                                      child: getAdaptiveIcon(iconName: 'price_check', defaultIcon: Icons.price_check),
+                                    ),
                                     helperText: _taxOptionNotifier.value == TaxOption.standard
                                         ? 'Gewünschter Endbetrag inkl. MwSt'
                                         : 'Gewünschter Endbetrag',

@@ -124,8 +124,8 @@ class _FilterFavoritesContentState extends State<_FilterFavoritesContent> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         getAdaptiveIcon(
-                          iconName: 'favorite_border',
-                          defaultIcon: Icons.favorite_border,
+                          iconName: 'favorite',
+                          defaultIcon: Icons.favorite,
                           size: 48,
                           color: Colors.grey,
                         ),
