@@ -123,6 +123,10 @@ class CustomerSelectionSheet {
     bool showEoriOnDocuments = currentCustomer.showEoriOnDocuments ?? false;
     bool showCustomFieldOnDocuments = currentCustomer.showCustomFieldOnDocuments ?? false;
 
+
+    bool _showFirstName = currentCustomer.firstName.isNotEmpty;
+    bool _showShippingFirstName = (currentCustomer.shippingFirstName ?? '').isNotEmpty;
+
     final customFieldTitleController = TextEditingController(text: currentCustomer.customFieldTitle);
     final customFieldValueController = TextEditingController(text: currentCustomer.customFieldValue);
 
@@ -340,7 +344,7 @@ class CustomerSelectionSheet {
                                   TextFormField(
                                     controller: companyController,
                                     decoration: InputDecoration(
-                                      labelText: 'Firma *',
+                                      labelText: 'Firma',
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(12),
                                         borderSide: BorderSide(color: Colors.grey.shade300),
@@ -364,7 +368,6 @@ class CustomerSelectionSheet {
                                         borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
                                       ),
                                     ),
-                                    validator: (value) => value?.isEmpty == true ? 'Bitte Firma eingeben' : null,
                                   ),
                                   const SizedBox(height: 24),
 
@@ -569,6 +572,7 @@ class CustomerSelectionSheet {
                             const SizedBox(height: 16),
 
                             // Kontaktperson
+                            // Kontaktperson
                             buildSectionCard(
                               context,
                               title: 'Kontaktperson',
@@ -579,65 +583,96 @@ class CustomerSelectionSheet {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const SizedBox(height: 16),
-                                  // Vorname und Nachname
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextFormField(
-                                          controller: firstNameController,
-                                          decoration: InputDecoration(
-                                            labelText: 'Vorname',
-                                            border: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            filled: true,
-                                            fillColor: Colors.grey.shade50,
-                                            prefixIcon: Padding(
-                                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                                              child: getAdaptiveIcon(
-                                                iconName: 'person',
-                                                defaultIcon: Icons.person,
-                                                color: Colors.grey.shade600,
-                                              ),
-                                            ),
-                                            enabledBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                              borderSide: BorderSide(color: Colors.grey.shade300),
-                                            ),
-                                            focusedBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                              borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-                                            ),
-                                          ),
-                                       //   validator: (value) => value?.isEmpty == true ? 'Bitte Vorname eingeben' : null,
+                                  // Name (ehemals Nachname)
+                                  TextFormField(
+                                    controller: lastNameController,
+                                    decoration: InputDecoration(
+                                      labelText: 'Name',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      filled: true,
+                                      fillColor: Colors.grey.shade50,
+                                      prefixIcon: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                                        child: getAdaptiveIcon(
+                                          iconName: 'person',
+                                          defaultIcon: Icons.person,
+                                          color: Colors.grey.shade600,
                                         ),
                                       ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: TextFormField(
-                                          controller: lastNameController,
-                                          decoration: InputDecoration(
-                                            labelText: 'Nachname',
-                                            border: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            filled: true,
-                                            fillColor: Colors.grey.shade50,
-                                            enabledBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                              borderSide: BorderSide(color: Colors.grey.shade300),
-                                            ),
-                                            focusedBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                              borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-                                            ),
-                                          ),
-                                      //    validator: (value) => value?.isEmpty == true ? 'Bitte Nachname eingeben' : null,
-                                        ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(color: Colors.grey.shade300),
                                       ),
-                                    ],
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                                      ),
+                                    ),
                                   ),
-                                  const SizedBox(height: 16),
+                                  const SizedBox(height: 8),
+                                  // Vorname optional
+                                  if (_showFirstName) ...[
+                                    TextFormField(
+                                      controller: firstNameController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Vorname',
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        filled: true,
+                                        fillColor: Colors.grey.shade50,
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: BorderSide(color: Colors.grey.shade300),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                                        ),
+                                        suffixIcon: IconButton(
+                                          icon: getAdaptiveIcon(
+                                            iconName: 'close',
+                                            defaultIcon: Icons.close,
+                                            size: 18,
+                                            color: Colors.grey,
+                                          ),
+                                          onPressed: () {
+                                            setState(() {
+                                              _showFirstName = false;
+                                              firstNameController.clear();
+                                            });
+                                          },
+                                          tooltip: 'Vorname entfernen',
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                  ] else ...[
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: TextButton.icon(
+                                        onPressed: () {
+                                          setState(() {
+                                            _showFirstName = true;
+                                          });
+                                        },
+                                        icon: getAdaptiveIcon(
+                                          iconName: 'add',
+                                          defaultIcon: Icons.add,
+                                          size: 16,
+                                          color: Theme.of(context).primaryColor,
+                                        ),
+                                        label: const Text('Vorname hinzufügen'),
+                                        style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          visualDensity: VisualDensity.compact,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                  ],
                                   // E-Mail
                                   TextFormField(
                                     controller: emailController,
@@ -1079,10 +1114,82 @@ class CustomerSelectionSheet {
                                       ),
                                     ),
                                     const SizedBox(height: 16),
-                                    Row(
+                                    // Lieferadresse Kontaktperson
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Expanded(
-                                          child: TextFormField(
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                          child: Row(
+                                            children: [
+                                              Text(
+                                                'Kontaktperson',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w500,
+                                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
+                                                ),
+                                              ),
+                                              const Spacer(),
+                                              TextButton.icon(
+                                                onPressed: () {
+                                                  setState(() {
+                                                    shippingLastNameController.text = lastNameController.text;
+                                                    shippingFirstNameController.text = firstNameController.text;
+                                                    if (firstNameController.text.isNotEmpty) {
+                                                      _showShippingFirstName = true;
+                                                    }
+                                                  });
+                                                },
+                                                icon: getAdaptiveIcon(
+                                                  iconName: 'content_copy',
+                                                  defaultIcon: Icons.content_copy,
+                                                  size: 16,
+                                                  color: Theme.of(context).colorScheme.primary,
+                                                ),
+                                                label: const Text('Von Hauptkontakt'),
+                                                style: TextButton.styleFrom(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  visualDensity: VisualDensity.compact,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        // Name (ehemals Nachname)
+                                        TextFormField(
+                                          controller: shippingLastNameController,
+                                          decoration: InputDecoration(
+                                            labelText: 'Name',
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(12),
+                                            ),
+                                            filled: true,
+                                            fillColor: Colors.grey.shade50,
+                                            prefixIcon: Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                                              child: getAdaptiveIcon(
+                                                iconName: 'person',
+                                                defaultIcon: Icons.person,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(12),
+                                              borderSide: BorderSide(color: Colors.grey.shade300),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(12),
+                                              borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        // Vorname optional
+                                        if (_showShippingFirstName) ...[
+                                          TextFormField(
                                             controller: shippingFirstNameController,
                                             decoration: InputDecoration(
                                               labelText: 'Vorname',
@@ -1091,47 +1198,56 @@ class CustomerSelectionSheet {
                                               ),
                                               filled: true,
                                               fillColor: Colors.grey.shade50,
-                                              prefixIcon: Padding(
-                                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                                child: getAdaptiveIcon(
-                                                  iconName: 'person',
-                                                  defaultIcon: Icons.person,
-                                                  color: Colors.grey.shade600,
+                                              enabledBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(12),
+                                                borderSide: BorderSide(color: Colors.grey.shade300),
+                                              ),
+                                              focusedBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(12),
+                                                borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                                              ),
+                                              suffixIcon: IconButton(
+                                                icon: getAdaptiveIcon(
+                                                  iconName: 'close',
+                                                  defaultIcon: Icons.close,
+                                                  size: 18,
+                                                  color: Colors.grey,
                                                 ),
-                                              ),
-                                              enabledBorder: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                                borderSide: BorderSide(color: Colors.grey.shade300),
-                                              ),
-                                              focusedBorder: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                                borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          child: TextFormField(
-                                            controller: shippingLastNameController,
-                                            decoration: InputDecoration(
-                                              labelText: 'Nachname',
-                                              border: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                              ),
-                                              filled: true,
-                                              fillColor: Colors.grey.shade50,
-                                              enabledBorder: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                                borderSide: BorderSide(color: Colors.grey.shade300),
-                                              ),
-                                              focusedBorder: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                                borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                                                onPressed: () {
+                                                  setState(() {
+                                                    _showShippingFirstName = false;
+                                                    shippingFirstNameController.clear();
+                                                  });
+                                                },
+                                                tooltip: 'Vorname entfernen',
                                               ),
                                             ),
                                           ),
-                                        ),
+                                          const SizedBox(height: 16),
+                                        ] else ...[
+                                          Align(
+                                            alignment: Alignment.centerLeft,
+                                            child: TextButton.icon(
+                                              onPressed: () {
+                                                setState(() {
+                                                  _showShippingFirstName = true;
+                                                });
+                                              },
+                                              icon: getAdaptiveIcon(
+                                                iconName: 'add',
+                                                defaultIcon: Icons.add,
+                                                size: 16,
+                                                color: Theme.of(context).primaryColor,
+                                              ),
+                                              label: const Text('Vorname hinzufügen'),
+                                              style: TextButton.styleFrom(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                visualDensity: VisualDensity.compact,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                        ],
                                       ],
                                     ),
                                     const SizedBox(height: 16),
@@ -1696,6 +1812,9 @@ class CustomerSelectionSheet {
     bool showEoriOnDocuments =  false;
     bool showCustomFieldOnDocuments =false;
 
+    bool _showFirstName = false;
+    bool _showShippingFirstName = false;
+
     final customFieldTitleController = TextEditingController();
     final customFieldValueController = TextEditingController();
 
@@ -2152,176 +2271,205 @@ class CustomerSelectionSheet {
     const SizedBox(height: 16),
 
     // Kontaktperson-Karte
-    buildSectionCard(
-    context,
-    title: 'Kontaktperson',
-    icon: 'contacts',
-    defaultIcon: Icons.contacts,
-    iconColor: Colors.green,
-    child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-    const SizedBox(height: 16),
-    // Vorname und Nachname in einer Reihe
-    Row(
-    children: [
-    Expanded(
-    child: TextFormField(
-    controller: firstNameController,
-    decoration: InputDecoration(
-    labelText: 'Vorname',
-    border: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    ),
-    filled: true,
-    fillColor: Colors.grey.shade50,
-    prefixIcon: Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 12),
-    child: getAdaptiveIcon(
-    iconName: 'person',
-    defaultIcon: Icons.person,
-    color: Colors.grey.shade600,
-    ),
-    ),
-    enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Colors.grey.shade300),
-    ),
-    focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-    ),
-    ),
-   // validator: (value) => value?.isEmpty == true ? 'Bitte Vorname eingeben' : null,
-    ),
-    ),
-    const SizedBox(width: 16),
-    Expanded(
-    child: TextFormField(
-    controller: lastNameController,
-    decoration: InputDecoration(
-    labelText: 'Nachname',
-    border: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    ),
-    filled: true,
-    fillColor: Colors.grey.shade50,
-    enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Colors.grey.shade300),
-    ),
-    focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-    ),
-    ),
-  //  validator: (value) => value?.isEmpty == true ? 'Bitte Nachname eingeben' : null,
-    ),
-    ),
-    ],
-    ),
-    const SizedBox(height: 16),
-    // E-Mail mit Icon
-    TextFormField(
-    controller: emailController,
-    decoration: InputDecoration(
-    labelText: 'E-Mail *',
-    border: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    ),
-    filled: true,
-    fillColor: Colors.grey.shade50,
-    prefixIcon: Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 12),
-    child: getAdaptiveIcon(
-    iconName: 'email',
-    defaultIcon: Icons.email,
-    color: Colors.grey.shade600,
-    ),
-    ),
-    enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Colors.grey.shade300),
-    ),
-    focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-    ),
-    ),
-    validator: (value) {
-    if (value?.isEmpty == true) {
-    return 'Bitte E-Mail eingeben';
-    }
-    if (!value!.contains('@')) {
-    return 'Bitte gültige E-Mail eingeben';
-    }
-    return null;
-    },
-    ),
-    const SizedBox(height: 16),
-    // Telefonnummern
-      TextFormField(
-        controller: phone1Controller,
-        decoration: InputDecoration(
-          labelText: 'Telefon 1',
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          filled: true,
-          fillColor: Colors.grey.shade50,
-          prefixIcon: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: getAdaptiveIcon(
-              iconName: 'phone',
-              defaultIcon: Icons.phone,
-              color: Colors.grey.shade600,
+      // Kontaktperson-Karte
+      buildSectionCard(
+        context,
+        title: 'Kontaktperson',
+        icon: 'contacts',
+        defaultIcon: Icons.contacts,
+        iconColor: Colors.green,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 16),
+            // Name (ehemals Nachname)
+            TextFormField(
+              controller: lastNameController,
+              decoration: InputDecoration(
+                labelText: 'Name',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: Colors.grey.shade50,
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: getAdaptiveIcon(
+                    iconName: 'person',
+                    defaultIcon: Icons.person,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                ),
+              ),
             ),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey.shade300),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-          ),
-        ),
-
-      ),
-      const SizedBox(height: 16),
-      TextFormField(
-        controller: phone2Controller,
-        decoration: InputDecoration(
-          labelText: 'Telefon 2',
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          filled: true,
-          fillColor: Colors.grey.shade50,
-          prefixIcon: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: getAdaptiveIcon(
-              iconName: 'phone',
-              defaultIcon: Icons.phone,
-              color: Colors.grey.shade600,
+            const SizedBox(height: 8),
+            // Vorname optional
+            if (_showFirstName) ...[
+              TextFormField(
+                controller: firstNameController,
+                decoration: InputDecoration(
+                  labelText: 'Vorname',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                  ),
+                  suffixIcon: IconButton(
+                    icon: getAdaptiveIcon(
+                      iconName: 'close',
+                      defaultIcon: Icons.close,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _showFirstName = false;
+                        firstNameController.clear();
+                      });
+                    },
+                    tooltip: 'Vorname entfernen',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ] else ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _showFirstName = true;
+                    });
+                  },
+                  icon: getAdaptiveIcon(
+                    iconName: 'add',
+                    defaultIcon: Icons.add,
+                    size: 16,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                  label: const Text('Vorname hinzufügen'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            // E-Mail
+            TextFormField(
+              controller: emailController,
+              decoration: InputDecoration(
+                labelText: 'E-Mail *',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: Colors.grey.shade50,
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: getAdaptiveIcon(
+                    iconName: 'email',
+                    defaultIcon: Icons.email,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                ),
+              ),
+              validator: (value) {
+                if (value?.isEmpty == true) {
+                  return 'Bitte E-Mail eingeben';
+                }
+                if (!value!.contains('@')) {
+                  return 'Bitte gültige E-Mail eingeben';
+                }
+                return null;
+              },
             ),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey.shade300),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-          ),
+            const SizedBox(height: 16),
+            // Telefon 1
+            TextFormField(
+              controller: phone1Controller,
+              decoration: InputDecoration(
+                labelText: 'Telefon 1',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: Colors.grey.shade50,
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: getAdaptiveIcon(
+                    iconName: 'phone',
+                    defaultIcon: Icons.phone,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Telefon 2
+            TextFormField(
+              controller: phone2Controller,
+              decoration: InputDecoration(
+                labelText: 'Telefon 2',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: Colors.grey.shade50,
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: getAdaptiveIcon(
+                    iconName: 'phone',
+                    defaultIcon: Icons.phone,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-
-      ],
-
-
-    ),
-    ),
 
     const SizedBox(height: 16),
 
@@ -2629,11 +2777,7 @@ class CustomerSelectionSheet {
     ),
     const SizedBox(height: 16),
 
-      // Im showEditCustomerDialog und showNewCustomerDialog,
-// ersetze den bestehenden Code für Vor- und Nachname in der Lieferadresse:
-
-
-// NEUE VERSION:
+      // Lieferadresse Kontaktperson
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2649,12 +2793,14 @@ class CustomerSelectionSheet {
                   ),
                 ),
                 const Spacer(),
-                // Option zum Kopieren der Hauptkontaktperson
                 TextButton.icon(
                   onPressed: () {
                     setState(() {
-                      shippingFirstNameController.text = firstNameController.text;
                       shippingLastNameController.text = lastNameController.text;
+                      shippingFirstNameController.text = firstNameController.text;
+                      if (firstNameController.text.isNotEmpty) {
+                        _showShippingFirstName = true;
+                      }
                     });
                   },
                   icon: getAdaptiveIcon(
@@ -2675,64 +2821,98 @@ class CustomerSelectionSheet {
               ],
             ),
           ),
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  controller: shippingFirstNameController,
-                  decoration: InputDecoration(
-                    labelText: 'Vorname',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey.shade50,
-                    prefixIcon: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: getAdaptiveIcon(
-                        iconName: 'person',
-                        defaultIcon: Icons.person,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-                    ),
-                  ),
+          // Name (ehemals Nachname)
+          TextFormField(
+            controller: shippingLastNameController,
+            decoration: InputDecoration(
+              labelText: 'Name',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              filled: true,
+              fillColor: Colors.grey.shade50,
+              prefixIcon: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: getAdaptiveIcon(
+                  iconName: 'person',
+                  defaultIcon: Icons.person,
+                  color: Colors.grey.shade600,
                 ),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: TextFormField(
-                  controller: shippingLastNameController,
-                  decoration: InputDecoration(
-                    labelText: 'Nachname',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey.shade50,
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-                    ),
-                  ),
-                ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey.shade300),
               ),
-            ],
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+              ),
+            ),
           ),
+          const SizedBox(height: 8),
+          // Vorname optional
+          if (_showShippingFirstName) ...[
+            TextFormField(
+              controller: shippingFirstNameController,
+              decoration: InputDecoration(
+                labelText: 'Vorname',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: Colors.grey.shade50,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                ),
+                suffixIcon: IconButton(
+                  icon: getAdaptiveIcon(
+                    iconName: 'close',
+                    defaultIcon: Icons.close,
+                    size: 18,
+                    color: Colors.grey,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _showShippingFirstName = false;
+                      shippingFirstNameController.clear();
+                    });
+                  },
+                  tooltip: 'Vorname entfernen',
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ] else ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _showShippingFirstName = true;
+                  });
+                },
+                icon: getAdaptiveIcon(
+                  iconName: 'add',
+                  defaultIcon: Icons.add,
+                  size: 16,
+                  color: Theme.of(context).primaryColor,
+                ),
+                label: const Text('Vorname separat hinzufügen (optional)'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
         ],
       ),
-
     const SizedBox(height: 16),
     Row(
     children: [
@@ -4899,7 +5079,7 @@ SizedBox(height: 8,),
               if (customer.firstName?.isNotEmpty == true)
                 _buildDetailRow('Vorname', customer.firstName!),
               if (customer.lastName?.isNotEmpty == true)
-                _buildDetailRow('Nachname', customer.lastName!),
+                _buildDetailRow('Name', customer.lastName!),
             ],
           ),
 
