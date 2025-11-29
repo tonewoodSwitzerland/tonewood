@@ -278,7 +278,7 @@ class PackingListGenerator extends BasePdfGenerator {
                   documentNumber: packingNum,
                   date: DateTime.now(),
                   logo: logo,
-                  costCenter: costCenterCode,
+                  costCenter: null,
                   language: language,
                 ),
                 pw.SizedBox(height: 20),
@@ -475,9 +475,13 @@ class PackingListGenerator extends BasePdfGenerator {
       final quality = item['quality_name'] as String? ?? '';
 
       // Einheit normalisieren
+
+
+
+
       String unit = item['unit'] ?? 'Stk';
       if (unit.toLowerCase() == 'stück') {
-        unit = 'Stk';
+        unit = language == 'EN' ? 'pcs' : 'Stk';
       }
 
       // Hole die Maße aus dem Cache

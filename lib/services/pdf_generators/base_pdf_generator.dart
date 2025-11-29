@@ -618,7 +618,7 @@ abstract class BasePdfGenerator {
                   if (customerData['country'] != null &&
                       customerData['country'].toString().trim().isNotEmpty)
                     pw.Text(
-                      country?.getNameForLanguage(language) ?? customerData['country'],
+                      country?.getNameForLanguage(language).toUpperCase() ?? customerData['country'].toUpperCase(),
                       style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                     ),
                 ],
@@ -705,7 +705,7 @@ abstract class BasePdfGenerator {
                 if (customerData['country'] != null &&
                     customerData['country'].toString().trim().isNotEmpty)
                   pw.Text(
-                    country?.getNameForLanguage(language) ?? customerData['country'],
+                    country?.getNameForLanguage(language).toUpperCase() ?? customerData['country'].toUpperCase(),
                     style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                   ),
 

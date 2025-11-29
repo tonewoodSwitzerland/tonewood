@@ -130,7 +130,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                 documentNumber: invoiceNum,
                 date: invoiceDate ?? DateTime.now(), // Verwende übergebenes Datum oder aktuelles
                 logo: logo,
-                costCenter: costCenterCode,
+                costCenter: null,
                 language: language,
                 additionalReference:  invoiceNumber != null ? 'invoice_nr:$invoiceNumber' : null,
                 secondaryReference: quoteNumber != null ? 'quote_nr:$quoteNumber' : null,
@@ -195,21 +195,16 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
   static Future<pw.Widget> _addCommercialInvoiceStandardTexts(
       String language,
-      {Map<String, dynamic>? taraSettings, String? orderId}  // NEU: Optional orderId
+      {Map<String, dynamic>? taraSettings, String? orderId}
       ) async {
     try {
-      // Lade die Standardtexte aus AdditionalTextsManager
       await AdditionalTextsManager.loadDefaultTextsFromFirebase();
 
       Map<String, dynamic> settings = {};
 
-      // Entscheidungslogik für Datenquelle
       if (taraSettings != null) {
-        // 1. Priorität: Übergebene taraSettings (von Order)
         settings = taraSettings;
-        print('Verwende übergebene taraSettings');
       } else if (orderId != null && orderId.isNotEmpty) {
-        // 2. Priorität: Lade aus Order-spezifischen Einstellungen
         final orderSettingsDoc = await FirebaseFirestore.instance
             .collection('orders')
             .doc(orderId)
@@ -219,9 +214,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
         if (orderSettingsDoc.exists) {
           settings = orderSettingsDoc.data()!;
-          print('Verwende Order-spezifische Einstellungen');
         } else {
-          // Fallback zu temporären Einstellungen wenn keine Order-Settings existieren
           final tempSettingsDoc = await FirebaseFirestore.instance
               .collection('temporary_document_settings')
               .doc('tara_settings')
@@ -229,13 +222,11 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
           if (tempSettingsDoc.exists) {
             settings = tempSettingsDoc.data()!;
-            print('Verwende temporäre Einstellungen (Fallback von Order)');
           } else {
             return pw.SizedBox.shrink();
           }
         }
       } else {
-        // 3. Priorität: Angebotsphase - lade aus temporären Einstellungen
         final tempSettingsDoc = await FirebaseFirestore.instance
             .collection('temporary_document_settings')
             .doc('tara_settings')
@@ -243,16 +234,13 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
         if (!tempSettingsDoc.exists) return pw.SizedBox.shrink();
         settings = tempSettingsDoc.data()!;
-        print('Verwende temporäre Einstellungen (Angebotsphase)');
       }
 
       final List<pw.Widget> textWidgets = [];
 
-
-
       // CITES
       if (settings['commercial_invoice_cites'] == true ||
-          settings['cites'] == true) {  // Unterstütze beide Varianten
+          settings['cites'] == true) {
         final citesText = AdditionalTextsManager.getTextContent(
             {'selected': true, 'type': 'standard'},
             'cites',
@@ -263,37 +251,48 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           textWidgets.add(
             pw.Container(
               alignment: pw.Alignment.centerLeft,
-              margin: const pw.EdgeInsets.only(bottom: 3),
+              margin: const pw.EdgeInsets.only(bottom: 6),
               child: pw.Text(
                 citesText,
-                style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+                style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
               ),
             ),
           );
         }
       }
 
-      // Grund des Exports - mit Freitext
-      // Grund des Exports - mit Freitext
+      // Export Reason
       if (settings['commercial_invoice_export_reason'] == true) {
         final exportReasonText = settings['commercial_invoice_export_reason_text'] as String? ?? 'Ware';
-
-        // Übersetze "Ware" zu "goods" für Englisch
         final displayText = (exportReasonText == 'Ware' && language == 'EN') ? 'goods' : exportReasonText;
 
         textWidgets.add(
           pw.Container(
             alignment: pw.Alignment.centerLeft,
-            margin: const pw.EdgeInsets.only(bottom: 3),
-            child: pw.Text(
-              language == 'EN' ? 'Export Reason: $displayText' : 'Grund des Exports: $exportReasonText',
-              style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+            margin: const pw.EdgeInsets.only(bottom: 6),
+            child: pw.RichText(
+              text: pw.TextSpan(
+                children: [
+                  pw.TextSpan(
+                    text: language == 'EN' ? 'Export Reason: ' : 'Grund des Exports: ',
+                    style: pw.TextStyle(
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blueGrey800,
+                    ),
+                  ),
+                  pw.TextSpan(
+                    text: displayText,
+                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
+                  ),
+                ],
+              ),
             ),
           ),
         );
       }
 
-      // Incoterms - mehrere aus Datenbank laden mit individuellen Freitexten
+      // Incoterms
       if (settings['commercial_invoice_incoterms'] == true &&
           settings['commercial_invoice_selected_incoterms'] != null) {
 
@@ -301,57 +300,57 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         final freeTexts = Map<String, String>.from(settings['commercial_invoice_incoterms_freetexts'] ?? {});
 
         if (incotermIds.isNotEmpty) {
-          List<pw.Widget> incotermWidgets = [];
-
-          // Header
-          incotermWidgets.add(
-            pw.Container(
-              alignment: pw.Alignment.centerLeft,
-              margin: const pw.EdgeInsets.only(bottom: 3),
-              child: pw.Text(
-                'Incoterm 2020:',
-                style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+          List<pw.InlineSpan> incotermSpans = [
+            pw.TextSpan(
+              text: 'Incoterm 2020: ',
+              style: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.blueGrey800,
               ),
             ),
-          );
+          ];
 
-          // Einzelne Incoterms
-          for (String incotermId in incotermIds) {
+          for (int i = 0; i < incotermIds.length; i++) {
             final incotermDoc = await FirebaseFirestore.instance
                 .collection('incoterms')
-                .doc(incotermId)
+                .doc(incotermIds[i])
                 .get();
 
             if (incotermDoc.exists) {
               final incotermData = incotermDoc.data()!;
               final incotermName = incotermData['name'] as String;
-              final freeText = freeTexts[incotermId] ?? '';
+              final freeText = freeTexts[incotermIds[i]] ?? '';
 
               String lineText = incotermName;
               if (freeText.isNotEmpty) {
                 lineText += ', $freeText';
               }
 
-              incotermWidgets.add(
-                pw.Container(
-                  alignment: pw.Alignment.centerLeft,
-                  margin: const pw.EdgeInsets.only(bottom: 3),
-                  child: pw.Text(
-                    lineText,
-                    style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
-                  ),
+              incotermSpans.add(
+                pw.TextSpan(
+                  text: lineText + (i < incotermIds.length - 1 ? '\n' : ''),
+                  style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
                 ),
               );
             }
           }
 
-          textWidgets.addAll(incotermWidgets);
+          textWidgets.add(
+            pw.Container(
+              alignment: pw.Alignment.centerLeft,
+              margin: const pw.EdgeInsets.only(bottom: 6),
+              child: pw.RichText(
+                text: pw.TextSpan(children: incotermSpans),
+              ),
+            ),
+          );
         }
       }
 
-      // Lieferdatum - aus gespeichertem Datum mit Format-Option
+      // Delivery Date
       if (settings['commercial_invoice_delivery_date'] == true) {
-        String dateText = language == 'EN' ? 'Delivery Date: ' : 'Lieferdatum: ';
+        String dateValue = '';
 
         if (settings['commercial_invoice_delivery_date_value'] != null) {
           final timestamp = settings['commercial_invoice_delivery_date_value'];
@@ -361,53 +360,75 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             final date = timestamp.toDate();
 
             if (monthOnly) {
-              // Nur Monat und Jahr
               final months = language == 'EN'
                   ? ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
                   : ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-              dateText += '${months[date.month - 1]} ${date.year}';
+              dateValue = '${months[date.month - 1]} ${date.year}';
             } else {
-              // Vollständiges Datum
-              dateText += '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+              dateValue = '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
             }
-          } else {
-            dateText += language == 'EN' ? 'April 2025' : 'April 2025';
           }
-        } else {
-          dateText += language == 'EN' ? 'April 2025' : 'April 2025';
         }
 
         textWidgets.add(
           pw.Container(
             alignment: pw.Alignment.centerLeft,
-            margin: const pw.EdgeInsets.only(bottom: 3),
-            child: pw.Text(
-              dateText,
-              style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+            margin: const pw.EdgeInsets.only(bottom: 6),
+            child: pw.RichText(
+              text: pw.TextSpan(
+                children: [
+                  pw.TextSpan(
+                    text: language == 'EN' ? 'Delivery Date: ' : 'Lieferdatum: ',
+                    style: pw.TextStyle(
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blueGrey800,
+                    ),
+                  ),
+                  pw.TextSpan(
+                    text: dateValue,
+                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
+                  ),
+                ],
+              ),
             ),
           ),
         );
       }
 
-      // Transporteur - aus Freitext
+      // Carrier
       if (settings['commercial_invoice_carrier'] == true) {
         final carrierText = settings['commercial_invoice_carrier_text'] as String? ?? 'Swiss Post';
 
         textWidgets.add(
           pw.Container(
             alignment: pw.Alignment.centerLeft,
-            margin: const pw.EdgeInsets.only(bottom: 3),
-            child: pw.Text(
-              language == 'EN' ? 'Carrier: $carrierText' : 'Transporteur: $carrierText',
-              style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+            margin: const pw.EdgeInsets.only(bottom: 6),
+            child: pw.RichText(
+              text: pw.TextSpan(
+                children: [
+                  pw.TextSpan(
+                    text: language == 'EN' ? 'Carrier: ' : 'Transporteur: ',
+                    style: pw.TextStyle(
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blueGrey800,
+                    ),
+                  ),
+                  pw.TextSpan(
+                    text: carrierText,
+                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
+                  ),
+                ],
+              ),
             ),
           ),
         );
       }
 
-      // Ursprungserklärung
+      // Origin Declaration (bleibt hervorgehoben)
       if (settings['commercial_invoice_origin_declaration'] == true ||
-          settings['origin_declaration'] == true) {  // Unterstütze beide Varianten
+          settings['origin_declaration'] == true) {
         final originText = AdditionalTextsManager.getTextContent(
             {'selected': true, 'type': 'standard'},
             'origin_declaration',
@@ -418,18 +439,19 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           textWidgets.add(
             pw.Container(
               alignment: pw.Alignment.centerLeft,
-              margin: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 2), // Mehr Margin
-              padding: const pw.EdgeInsets.all(8), // Zusätzliches Padding
+              margin: const pw.EdgeInsets.only(top: 8, bottom: 6),
+              padding: const pw.EdgeInsets.all(10),
               decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: PdfColors.blueGrey200, width: 0.5),
+
+                border: pw.Border.all(color: PdfColors.blueGrey700, width: 0.5),
                 borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
               ),
               child: pw.Text(
                 originText,
                 style: pw.TextStyle(
-                  fontSize: 8, // Etwas größer
-                  color: PdfColors.blueGrey800, // Dunkler
-                  fontWeight: pw.FontWeight.bold, // Fett
+                  fontSize: 9,
+                  color: PdfColors.blueGrey700,
+                  fontWeight: pw.FontWeight.bold,
                 ),
               ),
             ),
@@ -437,7 +459,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         }
       }
 
-      // Signatur - aus Datenbank laden
+      // Signature
       if (settings['commercial_invoice_signature'] == true &&
           settings['commercial_invoice_selected_signature'] != null) {
 
@@ -456,29 +478,35 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           textWidgets.add(
             pw.Container(
               alignment: pw.Alignment.centerLeft,
-              margin: const pw.EdgeInsets.only(top: 10, bottom: 3),
+              margin: const pw.EdgeInsets.only(top: 16),
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text(
                     language == 'EN' ? 'Signature:' : 'Signatur:',
-                    style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+                    style: pw.TextStyle(
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blueGrey800,
+                    ),
                   ),
-                  pw.SizedBox(height: 4),
+                  pw.SizedBox(height: 6),
                   pw.Text(
                     signerName,
-                    style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
                   ),
-                  pw.SizedBox(height: 20),
+                  pw.SizedBox(height: 25),
                   pw.Container(
                     width: 200,
                     height: 1,
                     color: PdfColors.blueGrey400,
                   ),
+                  pw.SizedBox(height: 4),
                   pw.Text(
                     'Florinett AG, Tonewood Switzerland',
-                    style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+                    style: const pw.TextStyle(fontSize: 8, color: PdfColors.blueGrey600),
                   ),
+                  pw.SizedBox(height: 8),
                 ],
               ),
             ),
@@ -492,6 +520,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
       return pw.Container(
         alignment: pw.Alignment.centerLeft,
+        margin: const pw.EdgeInsets.only(top: 8),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: textWidgets,
@@ -656,7 +685,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       // Füge zusätzliche Infos zum Item hinzu
       final enhancedItem = Map<String, dynamic>.from(item);
       enhancedItem['tariff_number'] = tariffNumber;
-      enhancedItem['wood_display_name'] = '$woodName ($woodNameLatin)';
+      enhancedItem['wood_display_name'] = '$woodName\n($woodNameLatin)';
       enhancedItem['wood_name_latin'] = woodNameLatin;
       enhancedItem['volume_m3'] = totalVolume;
       enhancedItem['weight_kg'] = weight;
@@ -750,7 +779,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 tariffNumber,
-                style: const pw.TextStyle(fontSize: 6),
+                style: const pw.TextStyle(fontSize: 8),
               ),
             ),
             BasePdfGenerator.buildContentCell(
@@ -758,7 +787,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                 language == 'EN'
                     ? (service['name_en']?.isNotEmpty == true ? service['name_en'] : service['name'] ?? 'Unnamed Service')
                     : (service['name'] ?? 'Unbenannte Dienstleistung'),
-                style: pw.TextStyle(fontSize: 6, fontWeight: pw.FontWeight.bold),
+                style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
               ),
             ),
             BasePdfGenerator.buildContentCell(
@@ -766,32 +795,32 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                 language == 'EN'
                     ? (service['description_en']?.isNotEmpty == true ? service['description_en'] : service['description'] ?? '')
                     : (service['description'] ?? ''),
-                style: const pw.TextStyle(fontSize: 6),
+                style: const pw.TextStyle(fontSize: 8),
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 quantity.toStringAsFixed(0),
-                style: const pw.TextStyle(fontSize: 6),
+                style: const pw.TextStyle(fontSize: 8),
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                   language == 'EN' ? 'pcs' : 'Stk',
-                  style: const pw.TextStyle(fontSize: 6)
+                  style: const pw.TextStyle(fontSize: 8)
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 BasePdfGenerator.formatCurrency(pricePerUnit, currency, exchangeRates),
-                style: const pw.TextStyle(fontSize: 6),
+                style: const pw.TextStyle(fontSize: 8),
                 textAlign: pw.TextAlign.right,
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 BasePdfGenerator.formatCurrency(total, currency, exchangeRates),
-                style: const pw.TextStyle(fontSize: 6),
+                style: const pw.TextStyle(fontSize: 8),
                 textAlign: pw.TextAlign.right,
               ),
             ),
@@ -812,7 +841,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
               language == 'EN' ? 'Services Total' : 'Dienstleistungen Gesamt',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 6),
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
             ),
           ),
           ...List.generate(5, (index) => pw.SizedBox()),
@@ -820,7 +849,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
               BasePdfGenerator.formatCurrency(totalAmount, currency, exchangeRates),
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 6),
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
               textAlign: pw.TextAlign.right,
             ),
           ),
@@ -948,7 +977,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                 woodDescription,
                 style: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold,
-                  fontSize: 7,
+                  fontSize: 8,
                   color: PdfColors.blueGrey800,
                 ),
               ),
@@ -967,7 +996,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                     : '', // Leer wenn 0
                 style: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold,
-                  fontSize: 7,
+                  fontSize: 8,
                   color: PdfColors.blueGrey800,
                 ),
 
@@ -1022,88 +1051,56 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           pw.TableRow(
             children: [
               BasePdfGenerator.buildContentCell(
-                pw.Text('', style: const pw.TextStyle(fontSize: 6)), // Zolltarifnummer nur im Header
+                pw.Text('', style: const pw.TextStyle(fontSize: 8)), // Zolltarifnummer nur im Header
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(  language == 'EN' ?item['instrument_name_en']:item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(  language == 'EN' ?item['instrument_name_en']:item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
               ),
               // BasePdfGenerator.buildContentCell(
-              //   pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+              //   pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
               // ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['fsc_status'] ?? '', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(item['fsc_status'] ?? '', style: const pw.TextStyle(fontSize: 8)),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text('CH', style: const pw.TextStyle(fontSize: 6)),
+                pw.Text('CH', style: const pw.TextStyle(fontSize: 8)),
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
                   volumeM3 > 0 ? volumeM3.toStringAsFixed(5) : '', // Leer wenn 0
-                  style: const pw.TextStyle(fontSize: 6),
+                  style: const pw.TextStyle(fontSize: 8),
 
                 ),
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
                   quantity.toStringAsFixed(3),
-                  style: const pw.TextStyle(fontSize: 6),
+                  style: const pw.TextStyle(fontSize: 8),
 
                 ),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(unit, style: const pw.TextStyle(fontSize: 6)),
+                pw.Text(unit, style: const pw.TextStyle(fontSize: 8)),
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
                   BasePdfGenerator.formatCurrency(pricePerUnit, currency, exchangeRates),
-                  style: const pw.TextStyle(fontSize: 6),
+                  style: const pw.TextStyle(fontSize: 8),
                   textAlign: pw.TextAlign.right,
                 ),
               ),
-              // // BasePdfGenerator.buildContentCell(pw.Text(currency, style: const pw.TextStyle(fontSize: 6)),),
-              // BasePdfGenerator.buildContentCell(
-              //   pw.Text(
-              //     BasePdfGenerator.formatCurrency(totalBeforeDiscount, currency, exchangeRates),
-              //     style: const pw.TextStyle(fontSize: 6),
-              //     textAlign: pw.TextAlign.right,
-              //   ),
-              // ),
-              // // NEU: Rabatt-Spalte
-              // BasePdfGenerator.buildContentCell(
-              //   pw.Column(
-              //     crossAxisAlignment: pw.CrossAxisAlignment.end,
-              //     children: [
-              //       if (discount != null && (discount['percentage'] as num? ?? 0) > 0)
-              //         pw.Text(
-              //           '${discount['percentage'].toStringAsFixed(2)}%',
-              //           style: const pw.TextStyle(fontSize: 6),
-              //           textAlign: pw.TextAlign.right,
-              //         ),
-              //       if (discount != null && (discount['absolute'] as num? ?? 0) > 0)
-              //         pw.Text(
-              //           BasePdfGenerator.formatCurrency(
-              //               (discount['absolute'] as num).toDouble(),
-              //               currency,
-              //               exchangeRates
-              //           ),
-              //           style: const pw.TextStyle(fontSize: 6),
-              //           textAlign: pw.TextAlign.right,
-              //         ),
-              //     ],
-              //   ),
-              // ),
-              // NEU: Netto Gesamtpreis
+
               BasePdfGenerator.buildContentCell(
                 pw.Text(
                   BasePdfGenerator.formatCurrency(itemTotal, currency, exchangeRates),
                   style: pw.TextStyle(
-                    fontSize: 6,
+                    fontSize: 8,
                     fontWeight: discountAmount > 0 ? pw.FontWeight.bold : null,
                   ),
                   textAlign: pw.TextAlign.right,
@@ -1169,7 +1166,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               language == 'EN'
                   ? 'Net Volume'
                   : 'Netto-Kubatur',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
             ),
           ),
           ...List.generate(5, (index) => pw.SizedBox()),
@@ -1178,7 +1175,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
               totalVolume.toStringAsFixed(5),
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
 
             ),
           ),
@@ -1189,7 +1186,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
               '${totalWeight.toStringAsFixed(2)} kg',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
 
             ),
           ),
@@ -1199,7 +1196,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
               BasePdfGenerator.formatCurrency(totalAmount, currency, exchangeRates),
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
               textAlign: pw.TextAlign.right,
             ),
           ),
@@ -1218,7 +1215,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               language == 'EN'
                   ? 'Tare'
                   : 'Tara',
-              style: const pw.TextStyle(fontSize: 7),
+              style: const pw.TextStyle(fontSize: 8),
             ),
           ),
           pw.Padding(
@@ -1227,7 +1224,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               language == 'EN'
                   ? 'Packaging: $numberOfPackages'
                   : 'Packungen: $numberOfPackages',
-              style: const pw.TextStyle(fontSize: 7),
+              style: const pw.TextStyle(fontSize: 8),
             ),
           ),
           ...List.generate(6, (index) => pw.SizedBox()),
@@ -1235,7 +1232,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
               '${packagingWeight.toStringAsFixed(2)} kg',
-              style: const pw.TextStyle(fontSize: 7),
+              style: const pw.TextStyle(fontSize: 8),
 
             ),
           ),
@@ -1258,7 +1255,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               language == 'EN'
                   ? 'Gross Volume'
                   : 'Brutto-Kubatur',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
             ),
           ),
           ...List.generate(5, (index) => pw.SizedBox()),
@@ -1266,7 +1263,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
               totalVolume.toStringAsFixed(5),
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
 
             ),
           ),
@@ -1275,7 +1272,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
               '${totalGrossWeight.toStringAsFixed(2)} kg',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
 
             ),
           ),
@@ -1428,100 +1425,78 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     );
   }
 
-  // Kopiere _addInlineAdditionalTexts aus QuoteGenerator
   static Future<pw.Widget> _addInlineAdditionalTexts(String language) async {
-    // Gleicher Code wie in QuoteGenerator
     try {
       final additionalTexts = await AdditionalTextsManager.loadAdditionalTexts();
       final List<pw.Widget> textWidgets = [];
 
+      // Legend
       if (additionalTexts['legend']?['selected'] == true) {
         textWidgets.add(
           pw.Container(
             alignment: pw.Alignment.centerLeft,
-            margin: const pw.EdgeInsets.only(bottom: 3),
+            margin: const pw.EdgeInsets.only(bottom: 6),
             child: pw.Text(
               AdditionalTextsManager.getTextContent(
                   additionalTexts['legend'],
                   'legend',
                   language: language
               ),
-              style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
-              textAlign: pw.TextAlign.left,
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
             ),
           ),
         );
       }
 
+      // FSC
       if (additionalTexts['fsc']?['selected'] == true) {
         textWidgets.add(
           pw.Container(
             alignment: pw.Alignment.centerLeft,
-            margin: const pw.EdgeInsets.only(bottom: 3),
+            margin: const pw.EdgeInsets.only(bottom: 6),
             child: pw.Text(
               AdditionalTextsManager.getTextContent(
                   additionalTexts['fsc'],
                   'fsc',
                   language: language
               ),
-              style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
-              textAlign: pw.TextAlign.left,
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
             ),
           ),
         );
       }
 
+      // Natural Product
       if (additionalTexts['natural_product']?['selected'] == true) {
         textWidgets.add(
           pw.Container(
             alignment: pw.Alignment.centerLeft,
-            margin: const pw.EdgeInsets.only(bottom: 3),
+            margin: const pw.EdgeInsets.only(bottom: 6),
             child: pw.Text(
               AdditionalTextsManager.getTextContent(
                   additionalTexts['natural_product'],
                   'natural_product',
                   language: language
               ),
-              style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
-              textAlign: pw.TextAlign.left,
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
             ),
           ),
         );
       }
 
-
-      //Bankverbindung wird in Handelsrechnung nicht angezeigt
-      // if (additionalTexts['bank_info']?['selected'] == true) {
-      //   textWidgets.add(
-      //     pw.Container(
-      //       alignment: pw.Alignment.centerLeft,
-      //       margin: const pw.EdgeInsets.only(bottom: 3),
-      //       child: pw.Text(
-      //         AdditionalTextsManager.getTextContent(
-      //             additionalTexts['bank_info'],
-      //             'bank_info',
-      //             language: language
-      //         ),
-      //         style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
-      //         textAlign: pw.TextAlign.left,
-      //       ),
-      //     ),
-      //   );
-      // }
-
+      // Free Text
       if (additionalTexts['free_text']?['selected'] == true) {
         textWidgets.add(
           pw.Container(
             alignment: pw.Alignment.centerLeft,
-            margin: const pw.EdgeInsets.only(bottom: 3),
+            margin: const pw.EdgeInsets.only(bottom: 6),
             child: pw.Text(
               AdditionalTextsManager.getTextContent(
                   additionalTexts['free_text'],
                   'free_text',
                   language: language
               ),
-              style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
-              textAlign: pw.TextAlign.left,
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
             ),
           ),
         );
@@ -1533,6 +1508,13 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
       return pw.Container(
         alignment: pw.Alignment.centerLeft,
+        margin: const pw.EdgeInsets.only(top: 12, bottom: 8),
+        padding: const pw.EdgeInsets.all(10),
+        decoration: pw.BoxDecoration(
+          color: PdfColors.grey100,
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+          border: pw.Border.all(color: PdfColors.blueGrey200, width: 0.5),
+        ),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: textWidgets,

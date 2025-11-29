@@ -5055,6 +5055,8 @@ return Scaffold(
     }
   }
   void _showPriceEditDialog(String basketItemId, Map<String, dynamic> itemData) {
+
+    String selectedFscStatus = itemData['fsc_status'] as String? ?? '-';
     // Sicheres Konvertieren von int oder double nach double
     final double originalPrice = (itemData['price_per_unit'] as num).toDouble();
     final bool isService = itemData['is_service'] == true;
@@ -5101,7 +5103,7 @@ return Scaffold(
     bool hasThermalTreatment = itemData['has_thermal_treatment'] ?? false;
     // NEU: Controller für Volumen - mit Standard-Volumen initialisieren falls leer
     final volumeController = TextEditingController();
-
+    final densityController = TextEditingController();
     // Variable um zu verfolgen ob Standardwerte gesetzt wurden
     bool standardValuesLoaded = false;
 
@@ -5499,7 +5501,9 @@ return Scaffold(
             DropdownMenuItem(value: '-', child: Text('Kein FSC')),
             ],
             onChanged: (value) {
-            // Temporär speichern für später
+              setDialogState(() {  // NEU: StatefulBuilder's setState
+                selectedFscStatus = value ?? '-';
+              });
             },
             ),
               const SizedBox(height: 24),
@@ -5634,7 +5638,61 @@ return Scaffold(
                                     ],
                                   ),
                                   const SizedBox(height: 8),
-            
+
+                                  // NEU: Anzahl Bauteile (Info-Feld)
+                                  if (snapshot.connectionState == ConnectionState.done &&
+                                      snapshot.hasData &&
+                                     snapshot.data != null &&
+                                      snapshot.data!['parts'] != null) ...[
+                                    const SizedBox(height: 12),
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          getAdaptiveIcon(
+                                            iconName: 'category',
+                                            defaultIcon: Icons.category,
+                                            size: 20,
+                                            color: Theme.of(context).colorScheme.primary,
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'Anzahl Bauteile',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Theme.of(context).colorScheme.primary,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  '${snapshot.data!['parts']} Teile',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
+                                  const SizedBox(height: 8),
+
                                   // Maß-Eingabefelder
                                   Row(
                                     children: [
@@ -5720,7 +5778,177 @@ return Scaffold(
                                       FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,7}')),
                                     ],
                                   ),
-            
+                                  const SizedBox(height: 12),
+                                  FutureBuilder<double?>(
+                                    future: _getDensityForProduct(itemData),
+                                    builder: (context, densitySnapshot) {
+                                      // Setze Dichte-Wert wenn verfügbar
+                                      if (densitySnapshot.hasData && densitySnapshot.data != null && densityController.text.isEmpty) {
+                                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                                          densityController.text = densitySnapshot.data!.toStringAsFixed(0);
+                                        });
+                                      }
+
+                                      return Column(
+                                        children: [
+                                          TextFormField(
+                                            controller: densityController,
+                                            decoration: InputDecoration(
+                                              labelText: 'Spezifisches Gewicht (kg/m³)',
+                                              border: const OutlineInputBorder(),
+                                              filled: true,
+                                              fillColor: Theme.of(context).colorScheme.surface,
+                                              prefixIcon: Padding(
+                                                padding: const EdgeInsets.all(8.0),
+                                                child: getAdaptiveIcon(
+                                                    iconName: 'grain',
+                                                    defaultIcon: Icons.grain,
+                                                    size: 20
+                                                ),
+                                              ),
+                                              helperText: densitySnapshot.hasData
+                                                  ? 'Dichte aus Holzart: ${densitySnapshot.data} kg/m³'
+                                                  : 'Manuell eingeben falls nicht automatisch geladen',
+                                            ),
+                                            keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                            inputFormatters: [
+                                              FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,0}')),
+                                            ],
+                                            onChanged: (value) {
+                                              setState(() {}); // Trigger rebuild für Gewichtsberechnung
+                                            },
+                                          ),
+
+                                          // NEU: Gewichtsberechnung
+                                          const SizedBox(height: 16),
+
+                                          // Berechne und zeige das Gewicht
+                                          Builder(
+                                            builder: (context) {
+                                              // Parse Werte
+                                              final quantityText = quantityController.text.replaceAll(',', '.');
+                                              final volumeText = volumeController.text.replaceAll(',', '.');
+                                              final densityText = densityController.text.replaceAll(',', '.');
+
+                                              final quantity = double.tryParse(quantityText) ?? 0.0;
+                                              final volumePerUnit = double.tryParse(volumeText) ?? 0.0;
+                                              final density = double.tryParse(densityText) ?? 0.0;
+
+                                              // Berechne Gewicht
+                                              final weightPerUnit = volumePerUnit * density; // kg pro Einheit
+                                              final totalWeight = weightPerUnit * quantity; // Gesamtgewicht
+
+                                              if (volumePerUnit > 0 && density > 0) {
+                                                return Container(
+                                                  padding: const EdgeInsets.all(12),
+                                                  decoration: BoxDecoration(
+                                                    color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    border: Border.all(
+                                                      color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                                                    ),
+                                                  ),
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Row(
+                                                        children: [
+                                                          getAdaptiveIcon(iconName: 'scale', defaultIcon:
+                                                          Icons.scale,
+                                                            size: 20,
+                                                            color: Theme.of(context).colorScheme.primary,
+                                                          ),
+                                                          const SizedBox(width: 8),
+                                                          Text(
+                                                            'Gewichtsberechnung',
+                                                            style: TextStyle(
+                                                              fontWeight: FontWeight.bold,
+                                                              color: Theme.of(context).colorScheme.primary,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      const SizedBox(height: 8),
+                                                      Text(
+                                                        'Volumen: ${volumePerUnit.toStringAsFixed(7)} m³ × Dichte: ${density.toStringAsFixed(0)} kg/m³',
+                                                        style: TextStyle(fontSize: 12),
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      Row(
+                                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                        children: [
+                                                          Text('Gewicht pro ${itemData['unit'] ?? 'Stück'}:'),
+                                                          Text(
+                                                            '${weightPerUnit.toStringAsFixed(2)} kg',
+                                                            style: TextStyle(fontWeight: FontWeight.bold),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      if (quantity > 0) ...[
+                                                        const SizedBox(height: 4),
+                                                        Divider(),
+                                                        const SizedBox(height: 4),
+                                                        Row(
+                                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                          children: [
+                                                            Text(
+                                                              'Gesamtgewicht:',
+                                                              style: TextStyle(
+                                                                fontWeight: FontWeight.bold,
+                                                                fontSize: 14,
+                                                              ),
+                                                            ),
+                                                            Text(
+                                                              '${totalWeight.toStringAsFixed(2)} kg',
+                                                              style: TextStyle(
+                                                                fontWeight: FontWeight.bold,
+                                                                fontSize: 16,
+                                                                color: Theme.of(context).colorScheme.primary,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ],
+                                                    ],
+                                                  ),
+                                                );
+                                              } else {
+                                                return Container(
+                                                  padding: const EdgeInsets.all(12),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.orange.withOpacity(0.1),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    border: Border.all(
+                                                      color: Colors.orange.withOpacity(0.3),
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      getAdaptiveIcon(iconName: 'info', defaultIcon:
+                                                      Icons.info,
+                                                        size: 16,
+                                                        color: Colors.orange,
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      Expanded(
+                                                        child: Text(
+                                                          'Gewichtsberechnung erfordert Volumen und Dichte',
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: Colors.orange[800],
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                );
+                                              }
+                                            },
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  ),
                                   const SizedBox(height: 16),
                                   Text(
                                     'Maße sind optional und werden nur gespeichert, wenn sie eingegeben werden.',
@@ -5757,8 +5985,8 @@ return Scaffold(
                     child: SafeArea(
                       child: Row(
                         children: [
-                          // Zurücksetzen Button (falls bereits angepasst)
-                          // Zurücksetzen Button - angepasste Bedingung
+
+                          // Zurücksetzen Button
                           if (currentPriceInCHF != originalPrice ||
                               (!isService && (itemData['custom_length'] != null ||
                                   itemData['custom_width'] != null ||
@@ -5784,7 +6012,7 @@ return Scaffold(
                                       updateData['custom_width'] = FieldValue.delete();
                                       updateData['custom_thickness'] = FieldValue.delete();
                                       updateData['custom_volume'] = FieldValue.delete();
-            
+                                      updateData['fsc_status'] = '-';
                                       updateData['has_thermal_treatment'] = false;
                                       updateData['thermal_treatment_temperature'] = FieldValue.delete();
                                       updateData['custom_tariff_number'] = FieldValue.delete();
@@ -5923,7 +6151,12 @@ return Scaffold(
             } else {
             updateData['thermal_treatment_temperature'] = FieldValue.delete();
             }
-            
+
+                                  // NEU: FSC-Status speichern
+                                  if (!isService) {
+                                    updateData['fsc_status'] = selectedFscStatus;
+                                  }
+
             
                                   // Bei Dienstleistungen die Beschreibung mit updaten
                                   // Bei Dienstleistungen die Beschreibungen mit updaten
@@ -6698,7 +6931,7 @@ return Scaffold(
                                   builder: (context, volumeSnapshot) {
 
                                     print("test2");
-                                    print( volumeSnapshot.data!['parts']);
+                                    //print( volumeSnapshot.data!['parts']);
                                     // Einmalig die Standardwerte setzen, aber nur wenn Controller leer sind
                                     if (snapshot.connectionState == ConnectionState.done &&
                                         snapshot.hasData &&
@@ -6816,6 +7049,7 @@ return Scaffold(
                                               ],
                                             ),
                                           ),
+                                          const SizedBox(height: 12),
                                         ],
                                         const SizedBox(height: 8),
                                         // Maß-Eingabefelder - User-Eingaben haben Vorrang

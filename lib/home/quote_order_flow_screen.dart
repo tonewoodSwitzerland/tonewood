@@ -744,6 +744,13 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
           .doc('currency_settings')
           .get();
 
+      //TaraSettings
+      final taraSettingsDoc = await FirebaseFirestore.instance
+          .collection('temporary_document_settings')
+          .doc('tara_settings')
+          .get();
+
+
       // Versandkosten
       final shippingCosts = await ShippingCostsManager.loadShippingCosts();
 
@@ -785,6 +792,7 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
           'currency': currencyDoc.exists ? (currencyDoc.data()?['selected_currency'] ?? 'CHF') : 'CHF',
           'exchangeRates': currencyDoc.exists ? (currencyDoc.data()?['exchange_rates'] ?? {'CHF': 1.0}) : {'CHF': 1.0},
           'language': await _getDocumentLanguage() ?? customerSnapshot.docs.first.data()['language'] ?? 'DE',
+          'taraSettings': taraSettingsDoc.exists ? taraSettingsDoc.data() : {},  // <-- RICHTIG: Nur die Daten!
 
           'shippingCosts': shippingCosts,
           'additionalTexts': additionalTexts,

@@ -3572,7 +3572,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
             final density = densitySnapshot.data;
 
             // NEU: Hole die Anzahl Teile aus parts
-            final parts = measurements!['parts'] ?? 1;
+            final parts = measurements?['parts'] ?? 1;
 
             // Berechne Gewicht wenn möglich - JETZT MIT PARTS MULTIPLIZIERT
             double? weightPerUnit;

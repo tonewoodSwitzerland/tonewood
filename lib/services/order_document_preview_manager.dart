@@ -302,8 +302,7 @@ class OrderDocumentPreviewManager {
         });
       }
 
-      final currency = metadata['currency'] ?? 'CHF';
-      print('Currency: $currency');
+
 
       // Debug exchangeRates VOR der Konvertierung
       final rawExchangeRates = metadata['exchangeRates'] ?? {'CHF': 1.0};
@@ -337,6 +336,9 @@ class OrderDocumentPreviewManager {
       print('Loading tara settings for order: ${order.id}');
       final taraSettings = await _loadOrderTaraSettings(order.id);
       print('TaraSettings loaded: ${taraSettings.keys.toList()}');
+
+      final currency = taraSettings['commercial_invoice_currency'] ?? metadata['currency'] ?? 'CHF';
+
 
       // Debug Tara Settings
       taraSettings.forEach((key, value) {

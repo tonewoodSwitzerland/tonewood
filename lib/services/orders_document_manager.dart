@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:tonewood/services/swiss_rounding.dart';
 import 'dart:typed_data';
@@ -209,6 +210,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
             'carrier_text': data['carrier_text'] ?? 'Swiss Post',
             'signature': data['signature'] ?? false,
             'selected_signature': data['selected_signature'],
+            'currency': data['commercial_invoice_currency'],
           };
         });
       }
@@ -689,9 +691,12 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           decoration: InputDecoration(
                             labelText: 'Anzahlung (CHF)',
-                            prefixIcon:   getAdaptiveIcon(
-                                iconName: 'payments',
-                                defaultIcon:Icons.payments),
+                            prefixIcon:   Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: getAdaptiveIcon(
+                                  iconName: 'payments',
+                                  defaultIcon:Icons.payments),
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -711,9 +716,12 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           controller: referenceController,
                           decoration: InputDecoration(
                             labelText: 'Belegnummer / Notiz',
-                            prefixIcon:    getAdaptiveIcon(
-                                iconName: 'description',
-                                defaultIcon:Icons.description),
+                            prefixIcon:    Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: getAdaptiveIcon(
+                                  iconName: 'description',
+                                  defaultIcon:Icons.description),
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -1162,6 +1170,12 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
           : settings['commercial_invoice_date'] as DateTime?;
     }
 
+
+    String selectedCurrency = widget.order.metadata['currency'] ?? 'CHF';
+    if (settings['currency'] != null) {
+      selectedCurrency = settings['currency'];
+    }
+
     // Controller für Textfelder
     final numberOfPackagesController = TextEditingController(
       text: numberOfPackages > 0 ? numberOfPackages.toString() : (settings['number_of_packages'] ?? 1).toString(),
@@ -1336,7 +1350,10 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           readOnly: numberOfPackages > 0,
                           decoration: InputDecoration(
                             labelText: 'Anzahl Packungen',
-                            prefixIcon: getAdaptiveIcon(iconName: 'inventory',defaultIcon:Icons.inventory),
+                            prefixIcon: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: getAdaptiveIcon(iconName: 'inventory',defaultIcon:Icons.inventory),
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -1466,6 +1483,80 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                         ),
 
                         const SizedBox(height: 24),
+
+
+
+// Währungsauswahl
+                        Text(
+                          'Währung',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SegmentedButton<String>(
+                                segments: const [
+                                  ButtonSegment(
+                                    value: 'CHF',
+                                    label: Text('CHF'),
+                                  ),
+                                  ButtonSegment(
+                                    value: 'EUR',
+                                    label: Text('EUR'),
+                                  ),
+                                  ButtonSegment(
+                                    value: 'USD',
+                                    label: Text('USD'),
+                                  ),
+                                ],
+                                selected: {selectedCurrency},
+                                onSelectionChanged: (Set<String> newSelection) {
+                                  setModalState(() {
+                                    selectedCurrency = newSelection.first;
+                                    settings['currency'] = selectedCurrency;
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (selectedCurrency != (widget.order.metadata['currency'] ?? 'CHF'))
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                              ),
+                              child: Row(
+                                children: [
+                                  getAdaptiveIcon(
+                                    iconName: 'info',
+                                    defaultIcon: Icons.info,
+                                    size: 16,
+                                    color: Colors.orange[700],
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Abweichend von Auftragswährung (${widget.order.metadata['currency'] ?? 'CHF'})',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.orange[700],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 16),
 
                         // Standardsätze
                         Text(
@@ -2034,6 +2125,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                     'commercial_invoice_date': commercialInvoiceDate != null
                                         ? Timestamp.fromDate(commercialInvoiceDate!)
                                         : null,
+                                    'commercial_invoice_currency': selectedCurrency,
                                     'commercial_invoice_origin_declaration': settings['origin_declaration'],
                                     'commercial_invoice_cites': settings['cites'],
                                     'commercial_invoice_export_reason': settings['export_reason'],
@@ -3168,7 +3260,10 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                 decoration: InputDecoration(
                   labelText: 'Verpackungsbezeichnung',
                   hintText: 'z.B. Spezialverpackung',
-                  prefixIcon: getAdaptiveIcon(iconName: 'edit',defaultIcon:Icons.edit),
+                  prefixIcon: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: getAdaptiveIcon(iconName: 'edit',defaultIcon:Icons.edit),
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -3243,10 +3338,8 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
 
             const SizedBox(height: 12),
 
-            // Tara-Gewicht
-            // Tara-Gewicht
             TextFormField(
-              controller: weightController,
+              controller: controllers['weight']!,
               decoration: InputDecoration(
                 labelText: 'Verpackungsgewicht / Tara (kg)',
                 border: OutlineInputBorder(
@@ -3255,9 +3348,16 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                 isDense: true,
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                TextInputFormatter.withFunction((oldValue, newValue) {
+                  return newValue.copyWith(
+                    text: newValue.text.replaceAll(',', '.'),
+                  );
+                }),
+              ],
               onChanged: (value) {
                 setModalState(() {
-                  package['tare_weight'] = double.tryParse(value) ?? 0.0;
+                  package['tare_weight'] = double.tryParse(value.replaceAll(',', '.')) ?? 0.0;
                 });
               },
             ),

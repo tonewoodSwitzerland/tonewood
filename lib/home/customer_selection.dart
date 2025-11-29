@@ -125,6 +125,8 @@ class CustomerSelectionSheet {
 
 
     bool _showFirstName = currentCustomer.firstName.isNotEmpty;
+    bool _showHouseNumber = currentCustomer.houseNumber.isNotEmpty; // NEU
+
     bool _showShippingFirstName = (currentCustomer.shippingFirstName ?? '').isNotEmpty;
 
     final customFieldTitleController = TextEditingController(text: currentCustomer.customFieldTitle);
@@ -664,7 +666,7 @@ class CustomerSelectionSheet {
                                           size: 16,
                                           color: Theme.of(context).primaryColor,
                                         ),
-                                        label: const Text('Vorname hinzufügen'),
+                                        label: const Text('Vorname hinzufügen (optional)'),
                                         style: TextButton.styleFrom(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                           visualDensity: VisualDensity.compact,
@@ -820,89 +822,79 @@ class CustomerSelectionSheet {
                                           validator: (value) => value?.isEmpty == true ? 'Bitte Straße eingeben' : null,
                                         ),
                                       ),
-                                      // const SizedBox(width: 16),
-                                      // Expanded(
-                                      //   child: TextFormField(
-                                      //     controller: houseNumberController,
-                                      //     decoration: InputDecoration(
-                                      //       labelText: 'Nr. *',
-                                      //       border: OutlineInputBorder(
-                                      //         borderRadius: BorderRadius.circular(12),
-                                      //       ),
-                                      //       filled: true,
-                                      //       fillColor: Colors.grey.shade50,
-                                      //       enabledBorder: OutlineInputBorder(
-                                      //         borderRadius: BorderRadius.circular(12),
-                                      //         borderSide: BorderSide(color: Colors.grey.shade300),
-                                      //       ),
-                                      //       focusedBorder: OutlineInputBorder(
-                                      //         borderRadius: BorderRadius.circular(12),
-                                      //         borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-                                      //       ),
-                                      //     ),
-                                      //     validator: (value) => value?.isEmpty == true ? 'Bitte Nr. eingeben' : null,
-                                      //   ),
-                                      // ),
+
                                     ],
                                   ),
-                                  const SizedBox(height: 16),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        flex: 3,
-                                        child: TextFormField(
-                                          controller: houseNumberController,
-                                          decoration: InputDecoration(
-                                            labelText: 'Hausnummer',
-                                            border: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            filled: true,
-                                            fillColor: Colors.grey.shade50,
-                                            prefixIcon: Padding(
-                                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                                              child: getAdaptiveIcon(
-                                                iconName: 'add_road',
-                                                defaultIcon: Icons.add_road,
-                                                color: Colors.grey.shade600,
-                                              ),
-                                            ),
-                                            enabledBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                              borderSide: BorderSide(color: Colors.grey.shade300),
-                                            ),
-                                            focusedBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                              borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-                                            ),
+                                  const SizedBox(height: 8),
+                                  // Hausnummer optional
+                                  if (_showHouseNumber) ...[
+                                    TextFormField(
+                                      controller: houseNumberController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Hausnummer',
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        filled: true,
+                                        fillColor: Colors.grey.shade50,
+                                        prefixIcon: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                                          child: getAdaptiveIcon(
+                                            iconName: 'tag',
+                                            defaultIcon: Icons.tag,
+                                            color: Colors.grey.shade600,
                                           ),
-                                       ),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: BorderSide(color: Colors.grey.shade300),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                                        ),
+                                        suffixIcon: IconButton(
+                                          icon: getAdaptiveIcon(
+                                            iconName: 'close',
+                                            defaultIcon: Icons.close,
+                                            size: 18,
+                                            color: Colors.grey,
+                                          ),
+                                          onPressed: () {
+                                            setState(() {
+                                              _showHouseNumber = false;
+                                              houseNumberController.clear();
+                                            });
+                                          },
+                                          tooltip: 'Hausnummer entfernen',
+                                        ),
                                       ),
-                                      // const SizedBox(width: 16),
-                                      // Expanded(
-                                      //   child: TextFormField(
-                                      //     controller: houseNumberController,
-                                      //     decoration: InputDecoration(
-                                      //       labelText: 'Nr. *',
-                                      //       border: OutlineInputBorder(
-                                      //         borderRadius: BorderRadius.circular(12),
-                                      //       ),
-                                      //       filled: true,
-                                      //       fillColor: Colors.grey.shade50,
-                                      //       enabledBorder: OutlineInputBorder(
-                                      //         borderRadius: BorderRadius.circular(12),
-                                      //         borderSide: BorderSide(color: Colors.grey.shade300),
-                                      //       ),
-                                      //       focusedBorder: OutlineInputBorder(
-                                      //         borderRadius: BorderRadius.circular(12),
-                                      //         borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-                                      //       ),
-                                      //     ),
-                                      //     validator: (value) => value?.isEmpty == true ? 'Bitte Nr. eingeben' : null,
-                                      //   ),
-                                      // ),
-                                    ],
-                                  ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                  ] else ...[
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: TextButton.icon(
+                                        onPressed: () {
+                                          setState(() {
+                                            _showHouseNumber = true;
+                                          });
+                                        },
+                                        icon: getAdaptiveIcon(
+                                          iconName: 'add',
+                                          defaultIcon: Icons.add,
+                                          size: 16,
+                                          color: Theme.of(context).primaryColor,
+                                        ),
+                                        label: const Text('Hausnummer hinzufügen  (optional)'),
+                                        style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          visualDensity: VisualDensity.compact,
+                                        ),
+                                      ),
+                                    ),
+
+                                  ],
 
                                   const SizedBox(height: 16),
 
@@ -1239,7 +1231,7 @@ class CustomerSelectionSheet {
                                                 size: 16,
                                                 color: Theme.of(context).primaryColor,
                                               ),
-                                              label: const Text('Vorname hinzufügen'),
+                                              label: const Text('Vorname hinzufügen (optional)'),
                                               style: TextButton.styleFrom(
                                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                                 visualDensity: VisualDensity.compact,
@@ -1258,7 +1250,7 @@ class CustomerSelectionSheet {
                                           child: TextFormField(
                                             controller: shippingStreetController,
                                             decoration: InputDecoration(
-                                              labelText: 'Straße *',
+                                              labelText: 'Straße und Hausnummer *',
                                               border: OutlineInputBorder(
                                                 borderRadius: BorderRadius.circular(12),
                                               ),
@@ -1274,34 +1266,34 @@ class CustomerSelectionSheet {
                                               ),
                                             ),
                                             validator: (value) => _useShippingAddress && value?.isEmpty == true
-                                                ? 'Bitte Straße eingeben'
+                                                ? 'Bitte Straße und Hausnummer eingeben'
                                                 : null,
                                           ),
                                         ),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          flex:1,
-                                          child: TextFormField(
-                                            controller: shippingHouseNumberController,
-                                            decoration: InputDecoration(
-                                              labelText: 'Nr.',
-                                              border: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                              ),
-                                              filled: true,
-                                              fillColor: Colors.grey.shade50,
-                                              enabledBorder: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                                borderSide: BorderSide(color: Colors.grey.shade300),
-                                              ),
-                                              focusedBorder: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                                borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-                                              ),
-                                            ),
-
-                                          ),
-                                        ),
+                                        // const SizedBox(width: 16),
+                                        // Expanded(
+                                        //   flex:1,
+                                        //   child: TextFormField(
+                                        //     controller: shippingHouseNumberController,
+                                        //     decoration: InputDecoration(
+                                        //       labelText: 'Nr.',
+                                        //       border: OutlineInputBorder(
+                                        //         borderRadius: BorderRadius.circular(12),
+                                        //       ),
+                                        //       filled: true,
+                                        //       fillColor: Colors.grey.shade50,
+                                        //       enabledBorder: OutlineInputBorder(
+                                        //         borderRadius: BorderRadius.circular(12),
+                                        //         borderSide: BorderSide(color: Colors.grey.shade300),
+                                        //       ),
+                                        //       focusedBorder: OutlineInputBorder(
+                                        //         borderRadius: BorderRadius.circular(12),
+                                        //         borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+                                        //       ),
+                                        //     ),
+                                        //
+                                        //   ),
+                                        // ),
                                       ],
                                     ),
                                     const SizedBox(height: 16),
@@ -1813,6 +1805,7 @@ class CustomerSelectionSheet {
     bool showCustomFieldOnDocuments =false;
 
     bool _showFirstName = false;
+    bool _showHouseNumber = false; // NEU
     bool _showShippingFirstName = false;
 
     final customFieldTitleController = TextEditingController();
@@ -2363,7 +2356,7 @@ class CustomerSelectionSheet {
                     size: 16,
                     color: Theme.of(context).primaryColor,
                   ),
-                  label: const Text('Vorname hinzufügen'),
+                  label: const Text('Vorname hinzufügen (optional)'),
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     visualDensity: VisualDensity.compact,
@@ -2542,69 +2535,76 @@ class CustomerSelectionSheet {
     // ),
     ],
     ),
-    const SizedBox(height: 16),
-      Row(
-        children: [
-          Expanded(
-            flex: 3,
-            child: TextFormField(
-              controller: houseNumberController,
-              decoration: InputDecoration(
-                labelText: 'Hausnummer',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: Colors.grey.shade50,
-                prefixIcon: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: getAdaptiveIcon(
-                    iconName: 'add_road',
-                    defaultIcon: Icons.add_road,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-                ),
+    const SizedBox(height: 8),
+      // Hausnummer optional
+      if (_showHouseNumber) ...[
+        TextFormField(
+          controller: houseNumberController,
+          decoration: InputDecoration(
+            labelText: 'Hausnummer',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            filled: true,
+            fillColor: Colors.grey.shade50,
+            prefixIcon: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: getAdaptiveIcon(
+                iconName: 'tag',
+                defaultIcon: Icons.tag,
+                color: Colors.grey.shade600,
               ),
-
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
+            ),
+            suffixIcon: IconButton(
+              icon: getAdaptiveIcon(
+                iconName: 'close',
+                defaultIcon: Icons.close,
+                size: 18,
+                color: Colors.grey,
+              ),
+              onPressed: () {
+                setState(() {
+                  _showHouseNumber = false;
+                  houseNumberController.clear();
+                });
+              },
+              tooltip: 'Hausnummer entfernen',
             ),
           ),
+        ),
+        const SizedBox(height: 16),
+      ] else ...[
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () {
+              setState(() {
+                _showHouseNumber = true;
+              });
+            },
+            icon: getAdaptiveIcon(
+              iconName: 'add',
+              defaultIcon: Icons.add,
+              size: 16,
+              color: Theme.of(context).primaryColor,
+            ),
+            label: const Text('Hausnummer hinzufügen (optional)'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+        ),
 
-
-
-
-          // const SizedBox(width: 16),
-          // Expanded(
-          // child: TextFormField(
-          // controller: houseNumberController,
-          // decoration: InputDecoration(
-          // labelText: 'Nr. *',
-          // border: OutlineInputBorder(
-          // borderRadius: BorderRadius.circular(12),
-          // ),
-          // filled: true,
-          // fillColor: Colors.grey.shade50,
-          // enabledBorder: OutlineInputBorder(
-          // borderRadius: BorderRadius.circular(12),
-          // borderSide: BorderSide(color: Colors.grey.shade300),
-          // ),
-          // focusedBorder: OutlineInputBorder(
-          // borderRadius: BorderRadius.circular(12),
-          // borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-          // ),
-          // ),
-          // validator: (value) => value?.isEmpty == true ? 'Bitte Nr. eingeben' : null,
-          // ),
-          // ),
-        ],
-      ),
+      ],
       const SizedBox(height: 16),
     // PLZ und Ort
 
@@ -2921,7 +2921,7 @@ class CustomerSelectionSheet {
     child: TextFormField(
     controller: shippingStreetController,
     decoration: InputDecoration(
-    labelText: 'Straße *',
+    labelText: 'Straße und Hausnummer*',
     border: OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
     ),
@@ -2937,36 +2937,11 @@ class CustomerSelectionSheet {
     ),
     ),
     validator: (value) => _useShippingAddress && value?.isEmpty == true
-    ? 'Bitte Straße eingeben'
+    ? 'Bitte Straße und Nr. eingeben'
         : null,
     ),
     ),
-    const SizedBox(width: 16),
-    Expanded(
-      flex:1,
-    child: TextFormField(
-    controller: shippingHouseNumberController,
-    decoration: InputDecoration(
-    labelText: 'Nr. *',
-    border: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    ),
-    filled: true,
-    fillColor: Colors.grey.shade50,
-    enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Colors.grey.shade300),
-    ),
-    focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
-    ),
-    ),
-    validator: (value) => _useShippingAddress && value?.isEmpty == true
-    ? 'Bitte Nr. eingeben'
-        : null,
-    ),
-    ),
+
     ],
     ),
     const SizedBox(height: 16),

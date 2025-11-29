@@ -239,7 +239,7 @@ class CombinedDeliveryNoteGenerator {
           : (woodInfo['name'] ?? item['wood_name'] ?? 'Unbekannte Holzart');
 
       final woodNameLatin = woodInfo['name_latin'] ?? '';
-      final groupKey = '$woodName ($woodNameLatin)';
+      final groupKey = '$woodName\n($woodNameLatin)';
 
       if (!grouped.containsKey(groupKey)) {
         grouped[groupKey] = [];

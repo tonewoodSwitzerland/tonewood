@@ -295,12 +295,15 @@ class OrderService {
         case 'handelsrechnung':
         case 'commercial invoice':
           filePrefix = 'commercial-invoice';
+          final taraSettings = metadata['taraSettings'] as Map<String, dynamic>? ?? {};
+
           pdfBytes = await CommercialInvoiceGenerator.generateCommercialInvoicePdf(
             items: orderData['items'],
             customerData: orderData['customer'],
             fairData: orderData['fair'],
             costCenterCode: orderData['costCenter']?['code'] ?? '00000',
-            currency: metadata['currency'] ?? 'CHF',
+            currency: taraSettings['commercial_invoice_currency'] ?? metadata['currency'] ?? 'CHF',
+
             exchangeRates: exchangeRates,
             invoiceNumber: orderNumber,
             language: language,
@@ -308,7 +311,7 @@ class OrderService {
             calculations: orderData['calculations'],
             taxOption: metadata['taxOption'] ?? 0,
             vatRate: (metadata['vatRate'] ?? 8.1).toDouble(),
-            taraSettings: metadata['taraSettings'],
+            taraSettings: taraSettings,
 
           );
           break;

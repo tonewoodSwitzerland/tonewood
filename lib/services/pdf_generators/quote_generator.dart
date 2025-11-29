@@ -114,7 +114,7 @@ class QuoteGenerator extends BasePdfGenerator {
           'quote': 'QUOTE',
           'currency_note': 'All prices in $currency (Exchange rate: 1 CHF = ${exchangeRates[currency]!.toStringAsFixed(4)} $currency)',
           'validity_note': 'This offer is valid until ${DateFormat('MMMM dd, yyyy', 'en_US').format(validUntil)}. If payment is not received by then, we will cancel the reservation.',
-          'net_amount': 'Net amount',
+          'net_amount': 'amount',
           'vat': 'VAT',
           'total': 'Total',
           'no_vat_note': 'No VAT will be charged.',
@@ -236,7 +236,7 @@ class QuoteGenerator extends BasePdfGenerator {
 
       final woodNameLatin = woodInfo['name_latin'] ?? '';
 
-      final groupKey = '$woodName ($woodNameLatin)';
+      final groupKey = '$woodName\n($woodNameLatin)';
 
       if (!grouped.containsKey(groupKey)) {
         grouped[groupKey] = [];
@@ -399,7 +399,7 @@ class QuoteGenerator extends BasePdfGenerator {
       BasePdfGenerator.buildHeaderCell(
           language == 'EN' ? 'Disc.' : 'Rab.', 8, align: pw.TextAlign.right),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Net Total' : 'Netto Gesamt', 8, align: pw.TextAlign.right),
+          language == 'EN' ? 'Total' : 'Netto Gesamt', 8, align: pw.TextAlign.right),
     ]);
 
     rows.add(
@@ -1019,7 +1019,7 @@ if (unit.toLowerCase() == 'stück') {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(language == 'EN' ? 'Net amount' : 'Nettobetrag', style: const pw.TextStyle(fontSize: 9)),
+                  pw.Text(language == 'EN' ? 'amount' : 'Nettobetrag', style: const pw.TextStyle(fontSize: 9)),
                   pw.Text(BasePdfGenerator.formatCurrency(netAmount, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
@@ -1086,7 +1086,7 @@ if (unit.toLowerCase() == 'stück') {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text(
-                    language == 'EN' ? 'Net amount' : 'Nettobetrag',
+                    language == 'EN' ? 'amount' : 'Nettobetrag',
                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                   ),
                   pw.Text(

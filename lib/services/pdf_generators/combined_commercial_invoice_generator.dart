@@ -363,7 +363,7 @@ class CombinedCommercialInvoiceGenerator {
           : (woodInfo['name'] ?? item['wood_name'] ?? 'Unbekannte Holzart');
       final woodNameLatin = woodInfo['name_latin'] ?? '';
 
-      final groupKey = '$tariffNumber - $woodName ($woodNameLatin)';
+      final groupKey = '$tariffNumber - $woodName\n($woodNameLatin)';
 
       if (!grouped.containsKey(groupKey)) {
         grouped[groupKey] = [];
@@ -372,7 +372,7 @@ class CombinedCommercialInvoiceGenerator {
       // Füge erweiterte Infos hinzu
       final enhancedItem = Map<String, dynamic>.from(item);
       enhancedItem['tariff_number'] = tariffNumber;
-      enhancedItem['wood_display_name'] = '$woodName ($woodNameLatin)';
+      enhancedItem['wood_display_name'] = '$woodName\n($woodNameLatin)';
       enhancedItem['wood_name_latin'] = woodNameLatin;
       enhancedItem['volume_m3'] = totalVolume;
       enhancedItem['weight_kg'] = weight;

@@ -142,6 +142,7 @@ class DocumentSelectionManager {
 
   static Future<void> _showCommercialInvoicePreview(BuildContext context, Map<String, dynamic> data, {String? language}) async {
     try {
+      String currency;
       final customerData = data['customer'] as Map<String, dynamic>;
       final documentLanguage = language ?? customerData['language'] ?? 'DE';
       final shippingCosts = await ShippingCostsManager.loadShippingCosts();
@@ -243,9 +244,12 @@ class DocumentSelectionManager {
 
         return newItem;
       }).toList();
+      if (taraSettings['commercial_invoice_currency'] != null){
+        currency = taraSettings['commercial_invoice_currency'] as String;;
+      }else{
+      final currencySettings = await loadCurrencySettings();
+      currency = currencySettings['currency'] as String;}
 
-      final currencySettings = await _loadCurrencySettings();
-      final currency = currencySettings['currency'] as String;
       final exchangeRates = await _fetchCurrentExchangeRates();
 
 
@@ -360,6 +364,7 @@ class DocumentSelectionManager {
         'commercial_invoice_signature': taraSettings['commercial_invoice_signature'] ?? false,
         'commercial_invoice_selected_signature': taraSettings['commercial_invoice_selected_signature'],
         'commercial_invoice_date': taraSettings['commercial_invoice_date'],
+        'commercial_invoice_currency': taraSettings['commercial_invoice_currency'],
       };
 
     } catch (e) {
@@ -631,35 +636,7 @@ class DocumentSelectionManager {
 
 
 
-// Neue Methode zum Laden der aktuellen Währungseinstellungen
-  static Future<Map<String, dynamic>> _loadCurrencySettings() async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('general_data')
-          .doc('currency_settings')
-          .get();
 
-      if (doc.exists) {
-        final data = doc.data()!;
-        return {
-          'currency': data['selected_currency'] ?? 'CHF',
-          'exchangeRates': {
-            'CHF': 1.0,
-            'EUR': (data['exchange_rates']?['EUR'] ?? 0.96).toDouble(),
-            'USD': (data['exchange_rates']?['USD'] ?? 1.08).toDouble(),
-          }
-        };
-      }
-    } catch (e) {
-      print('Fehler beim Laden der Währungseinstellungen: $e');
-    }
-
-    // Fallback-Werte
-    return {
-      'currency': 'CHF',
-      'exchangeRates': {'CHF': 1.0, 'EUR': 0.96, 'USD': 1.08}
-    };
-  }
 
 // Zeige Lieferschein-Preview
   static Future<void> _showDeliveryNotePreview(BuildContext context, Map<String, dynamic> data, {String? language}) async {
@@ -685,7 +662,7 @@ class DocumentSelectionManager {
         };
       }).toList();
 
-      final currencySettings = await _loadCurrencySettings();
+      final currencySettings = await loadCurrencySettings();
       final currency = currencySettings['currency'] as String;
       final exchangeRates = await _fetchCurrentExchangeRates();
 
@@ -878,12 +855,12 @@ class DocumentSelectionManager {
           .doc('current_tax')
           .get();
 
-      int taxOption = 0; // Standard als Fallback
+      int taxOption = 1; // Standard als Fallback
       double vatRate = 8.1; // Standard MwSt-Satz
 
       if (taxDoc.exists) {
         final taxData = taxDoc.data()!;
-        taxOption = taxData['tax_option'] ?? 0;
+        taxOption = taxData['tax_option'] ?? 1;
         vatRate = (taxData['vat_rate'] as num?)?.toDouble() ?? 8.1;
       }
 
@@ -981,7 +958,7 @@ class DocumentSelectionManager {
       print('Shipping costs loaded: ${shippingCosts.keys}');
 
       // Tax Settings Debug
-      final taxOption = data['taxOption'] ?? 0;
+      final taxOption = data['taxOption'] ?? 1;
       final vatRate = data['vatRate'] ?? 8.1;
       print('Tax option: $taxOption, VAT rate: $vatRate');
 
@@ -1041,7 +1018,7 @@ class DocumentSelectionManager {
 
       // Currency Settings Debug
       print('Loading currency settings...');
-      final currencySettings = await _loadCurrencySettings();
+      final currencySettings = await loadCurrencySettings();
       print('Currency settings: $currencySettings');
 
       final currency = currencySettings['currency'] as String;
@@ -1149,7 +1126,7 @@ class DocumentSelectionManager {
       // NEU: Hole paymentTermDays aus den Invoice Settings
       final paymentTermDays = invoiceSettings['payment_term_days'] ?? 30;
 
-      final currencySettings = await _loadCurrencySettings();
+      final currencySettings = await loadCurrencySettings();
       final currency = currencySettings['currency'] as String;
       // Konvertiere die exchange rates korrekt
       final exchangeRatesRaw = currencySettings['exchangeRates'] as Map<String, dynamic>;
@@ -1825,9 +1802,12 @@ Widget _buildPackageCard(
               decoration: InputDecoration(
                 labelText: 'Verpackungsbezeichnung',
                 hintText: 'z.B. Spezialverpackung',
-                prefixIcon: getAdaptiveIcon(
-                  iconName: 'edit',
-                  defaultIcon: Icons.edit,
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: getAdaptiveIcon(
+                    iconName: 'edit',
+                    defaultIcon: Icons.edit,
+                  ),
                 ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -1904,7 +1884,6 @@ Widget _buildPackageCard(
           const SizedBox(height: 12),
 
           // Tara-Gewicht
-          // Tara-Gewicht
           TextFormField(
             controller: controllers['weight']!,
             decoration: InputDecoration(
@@ -1915,9 +1894,16 @@ Widget _buildPackageCard(
               isDense: true,
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              TextInputFormatter.withFunction((oldValue, newValue) {
+                return newValue.copyWith(
+                  text: newValue.text.replaceAll(',', '.'),
+                );
+              }),
+            ],
             onChanged: (value) {
               setModalState(() {
-                package['tare_weight'] = double.tryParse(value) ?? 0.0;
+                package['tare_weight'] = double.tryParse(value.replaceAll(',', '.')) ?? 0.0;
               });
             },
           ),
@@ -2386,6 +2372,37 @@ return {
 }
 }
 
+// Neue Methode zum Laden der aktuellen Währungseinstellungen
+ Future<Map<String, dynamic>> loadCurrencySettings() async {
+try {
+final doc = await FirebaseFirestore.instance
+    .collection('general_data')
+    .doc('currency_settings')
+    .get();
+
+if (doc.exists) {
+final data = doc.data()!;
+return {
+'currency': data['selected_currency'] ?? 'CHF',
+'exchangeRates': {
+'CHF': 1.0,
+'EUR': (data['exchange_rates']?['EUR'] ?? 0.96).toDouble(),
+'USD': (data['exchange_rates']?['USD'] ?? 1.08).toDouble(),
+}
+};
+}
+} catch (e) {
+print('Fehler beim Laden der Währungseinstellungen: $e');
+}
+
+// Fallback-Werte
+return {
+'currency': 'CHF',
+'exchangeRates': {'CHF': 1.0, 'EUR': 0.96, 'USD': 1.08}
+};
+}
+
+
 Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
   required ValueNotifier<bool> selectionCompleteNotifier,
   ValueNotifier<String>? documentLanguageNotifier,
@@ -2802,9 +2819,12 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                               controller: customPaymentController,
                               decoration: InputDecoration(
                                 labelText: 'Zahlungsmethode (z.B. PayPal, Karte..)',
-                                prefixIcon: getAdaptiveIcon(
-                                  iconName: 'payment',
-                                  defaultIcon: Icons.payment,
+                                prefixIcon: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: getAdaptiveIcon(
+                                    iconName: 'payment',
+                                    defaultIcon: Icons.payment,
+                                  ),
                                 ),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
@@ -2900,9 +2920,12 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                             controller: referenceController,
                             decoration: InputDecoration(
                               labelText: 'Belegnummer / Notiz',
-                              prefixIcon: getAdaptiveIcon(
-                                iconName: 'description',
-                                defaultIcon: Icons.description,
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: getAdaptiveIcon(
+                                  iconName: 'description',
+                                  defaultIcon: Icons.description,
+                                ),
                               ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
@@ -3807,9 +3830,18 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
 
     }
 
+    final currencySettings = await loadCurrencySettings();
+
+    print("currencySettings:$currencySettings");
+    final projectCurrecy= currencySettings['currency'] as String;
+    String selectedCurrency = projectCurrecy;
+
 
     // Lade immer die Commercial Invoice Einstellungen
     final existingSettings = await DocumentSelectionManager.loadTaraSettings();
+print(existingSettings);
+    selectedCurrency = existingSettings['commercial_invoice_currency'] ?? selectedCurrency;
+    print(existingSettings['commercial_invoice_currency'] );
     originDeclaration = existingSettings['commercial_invoice_origin_declaration'] ?? false;
     cites = existingSettings['commercial_invoice_cites'] ?? false;
     exportReason = existingSettings['commercial_invoice_export_reason'] ?? false;
@@ -3822,14 +3854,15 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
     exportReasonText = existingSettings['commercial_invoice_export_reason_text'] ?? 'Ware';
     carrierText = existingSettings['commercial_invoice_carrier_text'] ?? 'Swiss Post';
     deliveryDateMonthOnly = existingSettings['commercial_invoice_delivery_date_month_only'] ?? false;
-    selectedSignature = existingSettings['commercial_invoice_selected_signature'];
-
+    selectedSignature = existingSettings['commercial_invoice_selected_signature'] ?? 'x4i6s1FMleIE0bdg0Ujv';
     if (existingSettings['commercial_invoice_delivery_date_value'] != null) {
       final timestamp = existingSettings['commercial_invoice_delivery_date_value'];
       if (timestamp is Timestamp) {
         selectedDeliveryDate = timestamp.toDate();
       }
     }
+
+
 
     final numberOfPackagesController = TextEditingController(text: numberOfPackages.toString());
     final packagingWeightController = TextEditingController(text: packagingWeight.toStringAsFixed(2) );
@@ -4003,9 +4036,12 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                             enabled: !valuesFromPackingList, // Deaktiviert wenn aus Packliste
                             decoration: InputDecoration(
                               labelText: 'Anzahl Packungen',
-                              prefixIcon: getAdaptiveIcon(
-                                iconName: 'inventory',
-                                defaultIcon: Icons.inventory,
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: getAdaptiveIcon(
+                                  iconName: 'inventory',
+                                  defaultIcon: Icons.inventory,
+                                ),
                               ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
@@ -4039,9 +4075,12 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                             enabled: !valuesFromPackingList, // Deaktiviert wenn aus Packliste
                             decoration: InputDecoration(
                               labelText: 'Verpackungsgewicht (kg)',
-                              prefixIcon: getAdaptiveIcon(
-                                iconName: 'scale',
-                                defaultIcon: Icons.scale,
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: getAdaptiveIcon(
+                                  iconName: 'scale',
+                                  defaultIcon: Icons.scale,
+                                ),
                               ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
@@ -4150,6 +4189,79 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                           ),
 
                           const SizedBox(height: 24),
+                          const SizedBox(height: 16),
+
+// Währungsauswahl
+                          Text(
+                            'Währung',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: SegmentedButton<String>(
+                                  segments: const [
+                                    ButtonSegment(
+                                      value: 'CHF',
+                                      label: Text('CHF'),
+                                    ),
+                                    ButtonSegment(
+                                      value: 'EUR',
+                                      label: Text('EUR'),
+                                    ),
+                                    ButtonSegment(
+                                      value: 'USD',
+                                      label: Text('USD'),
+                                    ),
+                                  ],
+                                  selected: {selectedCurrency},
+                                  onSelectionChanged: (Set<String> newSelection) {
+                                    setDialogState(() {
+                                      selectedCurrency = newSelection.first;
+
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (selectedCurrency != (projectCurrecy ?? 'CHF'))
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    getAdaptiveIcon(
+                                      iconName: 'info',
+                                      defaultIcon: Icons.info,
+                                      size: 16,
+                                      color: Colors.orange[700],
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Abweichend von Auftragswährung (${projectCurrecy ?? 'CHF'})',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.orange[700],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 16),
                           // Commercial Invoice Standardsätze (Rest bleibt gleich)
                           Text(
                             'Standardsätze für Handelsrechnung',
@@ -4159,8 +4271,61 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                               color: Theme.of(context).colorScheme.primary,
                             ),
                           ),
-                          const SizedBox(height: 16),
 
+                          const SizedBox(height: 16),
+// Alle auswählen / Alle abwählen
+                          Row(
+                            children: [
+                              TextButton.icon(
+                                onPressed: () {
+                                  setDialogState(() {
+                                    originDeclaration = true;
+                                    cites = true;
+                                    exportReason = true;
+                                    incoterms = true;
+                                    deliveryDate = true;
+                                    carrier = true;
+                                    signature = true;
+                                    // Setze Standard-Signatur wenn aktiviert
+                                    selectedSignature ??= 'x4i6s1FMleIE0bdg0Ujv';
+                                  });
+                                },
+                                icon: getAdaptiveIcon(
+                                  iconName: 'check_box',
+                                  defaultIcon: Icons.check_box,
+                                  size: 20,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                label: const Text('Alle auswählen'),
+                              ),
+                              const SizedBox(width: 8),
+                              TextButton.icon(
+                                onPressed: () {
+                                  setDialogState(() {
+                                    originDeclaration = false;
+                                    cites = false;
+                                    exportReason = false;
+                                    incoterms = false;
+                                    deliveryDate = false;
+                                    carrier = false;
+                                    signature = false;
+                                    selectedIncoterms.clear();
+                                    incotermsFreeTexts.clear();
+                                    selectedDeliveryDate = null;
+                                    selectedSignature = null;
+                                  });
+                                },
+                                icon: getAdaptiveIcon(
+                                  iconName: 'check_box_outline_blank',
+                                  defaultIcon: Icons.check_box_outline_blank,
+                                  size: 20,
+                                  color: Theme.of(context).colorScheme.outline,
+                                ),
+                                label: const Text('Alle abwählen'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
 
                           // Ursprungserklärung - mit Info-Icon
                           Row(
@@ -4411,7 +4576,14 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                         spacing: 8,
                                         runSpacing: 4,
                                         children: incotermDocs.map((doc) {
+
                                           final data = doc.data() as Map<String, dynamic>;
+                                          // DEBUG
+                                          print('Incoterm doc.id: ${doc.id}');
+                                          data.forEach((key, value) {
+                                            print('  $key: $value (${value.runtimeType})');
+                                          });
+
                                           final name = data['name'] as String;
                                           final description = data['de'] as String? ?? data['en'] as String? ?? '';
                                           final isSelected = selectedIncoterms.contains(doc.id);
@@ -4770,8 +4942,10 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                               'commercial_invoice_delivery_date_month_only': deliveryDateMonthOnly,
                               'commercial_invoice_carrier_text': carrierText,
                               'commercial_invoice_selected_signature': selectedSignature,
+                              'commercial_invoice_currency': selectedCurrency,
                               'timestamp': FieldValue.serverTimestamp(),
                               'commercial_invoice_date': commercialInvoiceDate != null
+
                                   ? Timestamp.fromDate(commercialInvoiceDate!)
                                   : null,
                             });
