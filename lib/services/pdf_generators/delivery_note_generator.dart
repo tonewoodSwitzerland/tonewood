@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../pdf_settings_screen.dart';
 import 'base_delivery_note_generator.dart';
 import '../additional_text_manager.dart';
 
@@ -79,6 +80,81 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
     return grouped;
   }
 
+  /// Fasst Items mit gleicher product_id zusammen (addiert Mengen)
+  static List<Map<String, dynamic>> _consolidateItems(List<Map<String, dynamic>> items) {
+    final Map<String, Map<String, dynamic>> consolidated = {};
+
+    for (final item in items) {
+      final productId = item['product_id']?.toString() ?? '';
+
+      if (productId.isEmpty) {
+        // Ohne product_id: als einzelnes Item behalten
+        consolidated[DateTime.now().microsecondsSinceEpoch.toString()] = Map<String, dynamic>.from(item);
+        continue;
+      }
+
+      if (consolidated.containsKey(productId)) {
+        // Existiert bereits: Menge addieren
+        final existing = consolidated[productId]!;
+        final existingQty = (existing['quantity'] as num? ?? 0).toDouble();
+        final newQty = (item['quantity'] as num? ?? 0).toDouble();
+        existing['quantity'] = existingQty + newQty;
+      } else {
+        // Neues Item
+        consolidated[productId] = Map<String, dynamic>.from(item);
+      }
+    }
+
+    return consolidated.values.toList();
+  }
+  /// Berechnet optimale Spaltenbreiten basierend auf Inhalt
+  static Map<int, pw.FlexColumnWidth> _calculateOptimalColumnWidths(
+      Map<String, List<Map<String, dynamic>>> groupedItems,
+      String language,
+      ) {
+    const double charWidth = 0.18;
+
+    int maxProductLen = language == 'EN' ? 7 : 7;
+    int maxInstrLen = 10;
+    int maxQualLen = language == 'EN' ? 8 : 10;
+    int maxFscLen = 4;
+
+    groupedItems.forEach((woodGroup, items) {
+      for (final item in items) {
+        String productText = language == 'EN'
+            ? (item['part_name_en'] ?? item['part_name'] ?? '')
+            : (item['part_name'] ?? '');
+        if (productText.length > maxProductLen) maxProductLen = productText.length;
+
+        String instrText = language == 'EN'
+            ? (item['instrument_name_en'] ?? item['instrument_name'] ?? '')
+            : (item['instrument_name'] ?? '');
+        if (instrText.length > maxInstrLen) maxInstrLen = instrText.length;
+
+        String qualText = item['quality_name'] ?? '';
+        if (qualText.length > maxQualLen) maxQualLen = qualText.length;
+
+        String fscText = item['fsc_status'] ?? '';
+        if (fscText.length > maxFscLen) maxFscLen = fscText.length;
+      }
+    });
+
+    double productWidth = (maxProductLen * charWidth).clamp(2.5, 4.0);
+    double instrWidth = (maxInstrLen * charWidth).clamp(2.5, 4.0);
+    double qualWidth = (maxQualLen * charWidth).clamp(1.5, 2.0);
+    double fscWidth = (maxFscLen * charWidth).clamp(1.0, 1.5);
+
+    return {
+      0: pw.FlexColumnWidth(productWidth),  // Produkt
+      1: pw.FlexColumnWidth(instrWidth),    // Instrument
+      2: pw.FlexColumnWidth(qualWidth),     // Qualität
+      3: pw.FlexColumnWidth(fscWidth),      // FSC
+      4: const pw.FlexColumnWidth(1.0),     // Ursprung
+      5: const pw.FlexColumnWidth(1.0),     // °C
+      6: const pw.FlexColumnWidth(1.5),     // Anzahl
+      7: const pw.FlexColumnWidth(1.0),     // Einheit
+    };
+  }
   // Produkttabelle (ohne Preise)
   static pw.Widget _buildProductTable(
       Map<String, List<Map<String, dynamic>>> groupedItems,
@@ -185,18 +261,15 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
       }
     });
 
+    // Optimierte Spaltenbreiten basierend auf Inhalt
+    final columnWidths = _calculateOptimalColumnWidths(
+      groupedItems,
+      language,
+    );
+
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
-      columnWidths: {
-        0: const pw.FlexColumnWidth(3),    // Produkt
-        1: const pw.FlexColumnWidth(3),    // Instrument
-        2: const pw.FlexColumnWidth(1.5),  // Qualität
-        3: const pw.FlexColumnWidth(1.0),  // FSC
-        4: const pw.FlexColumnWidth(1.0),  // Ursprung
-        5: const pw.FlexColumnWidth(1.0),  // °C
-        6: const pw.FlexColumnWidth(1.5),  // Anzahl
-        7: const pw.FlexColumnWidth(1.0),  // Einheit
-      },
+      columnWidths: columnWidths,
       children: rows,
     );
   }
@@ -288,13 +361,17 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
     DateTime? deliveryDate,
     DateTime? paymentDate,
   }) async {
+    final addressEmailSpacing = await PdfSettingsHelper.getDeliveryNoteAddressEmailSpacing();
+
     final pdf = pw.Document();
     final logo = await BaseDeliveryNotePdfGenerator.loadLogo();
 
     final deliveryNum = deliveryNoteNumber ?? await getNextDeliveryNoteNumber();
 
     final productItems = items.where((item) => item['is_service'] != true).toList();
-    final groupedItems = await _groupItemsByWoodType(productItems, language);
+    final consolidatedItems = _consolidateItems(productItems);  // NEU
+    final groupedItems = await _groupItemsByWoodType(consolidatedItems, language);  // GEÄNDERT
+
     final additionalTextsWidget = await _buildAdditionalTexts(language);
 
     pdf.addPage(
@@ -315,6 +392,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
                 invoiceNumber: invoiceNumber,
                 quoteNumber: quoteNumber,
                 language: language,
+                addressEmailSpacing: addressEmailSpacing,
               ),
 
               pw.SizedBox(height: 15),

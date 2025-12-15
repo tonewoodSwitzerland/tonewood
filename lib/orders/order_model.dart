@@ -89,7 +89,6 @@ class OrderX {
             final itemMap = Map<String, dynamic>.from(item);
             // Konvertiere alle numerischen Werte zu double
 
-            print("yuuuuuuuuuu");
 
             return {
               ...itemMap,

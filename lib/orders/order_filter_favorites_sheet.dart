@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../services/icon_helper.dart';
 import 'order_filter_service.dart';
-import 'order_model.dart';
+import '../orders/order_model.dart';
 
 class OrderFilterFavoritesSheet {
   static void show(

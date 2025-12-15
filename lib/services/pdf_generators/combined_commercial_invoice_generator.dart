@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'base_pdf_generator.dart';
 import '../additional_text_manager.dart';
-import '../../components/order_model.dart';
+import '../../orders/order_model.dart';
 
 class CombinedCommercialInvoiceGenerator {
   static Future<Uint8List> generatePdf({

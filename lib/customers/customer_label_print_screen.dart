@@ -11,7 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:another_brother/printer_info.dart';
 import 'package:another_brother/label_info.dart';
 
-import '../services/customer.dart';
+import 'customer.dart';
 import '../services/icon_helper.dart';
 import '../services/print_status.dart';
 import '../services/printer_service.dart';

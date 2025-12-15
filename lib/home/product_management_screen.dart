@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:tonewood/home/production_screen.dart';
-import 'package:tonewood/home/roundwood_entry_screen.dart';
+import 'package:tonewood/analytics/roundwood/roundwood_entry_screen.dart';
 import 'package:tonewood/home/warehouse_screen.dart';
 import '../analytics/roundwood/models/roundwood_models.dart';
 import '../analytics/roundwood/roundwood_list.dart';
@@ -688,8 +688,8 @@ print("sB:$searchBarcode");
                                           const SizedBox(height: 12),
                                           _buildDetailRow(
                                             icon: getAdaptiveIcon(
-                                              iconName: 'euro',
-                                              defaultIcon: Icons.euro,
+                                              iconName: 'money_bag',
+                                              defaultIcon: Icons.savings,
                                               color: Colors.grey[600],
                                               size: 20,
                                             ),

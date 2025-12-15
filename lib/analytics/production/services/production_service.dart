@@ -193,22 +193,26 @@ class ProductionService {
       };
 
       final totals = {
-        'quantities': <String, int>{
-          'Stk': 0,
-          'PAL': 0,
-          'KG': 0,
-          'M3': 0,
-          'M2': 0,
+        'quantities': <String, double>{
+          'Stk': 0.0,
+          'PAL': 0.0,
+          'KG': 0.0,
+          'M3': 0.0,
+          'M2': 0.0,
         },
         'total_value': 0.0,
         'batch_count': 0,
-        'special_wood': {
-          'moonwood': 0,
-          'haselfichte': 0,
-          'thermally_treated': 0,
+        'special_wood': <String, double>{
+          'moonwood': 0.0,
+          'haselfichte': 0.0,
+          'thermally_treated': 0.0,
         },
-        'document_count': documentCount, // Anzahl der Dokumente hinzufügen
+        'document_count': documentCount,
       };
+
+      print('DEBUG: totals initialized');
+      print('DEBUG: quantities type: ${totals['quantities'].runtimeType}');
+      print('DEBUG: special_wood type: ${totals['special_wood'].runtimeType}');
 
       for (var doc in docs) {
         final data = doc.data() as Map<String, dynamic>;
@@ -235,12 +239,19 @@ class ProductionService {
               final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
               if (!_isDateInRange(batchDate, filter)) continue;
 
-              final quantity = batchData['quantity'] as double? ?? 0;
+              print('DEBUG: batchData[quantity] = ${batchData['quantity']}');
+              print('DEBUG: batchData[quantity].runtimeType = ${batchData['quantity'].runtimeType}');
+
+              final quantity = (batchData['quantity'] as num?)?.toDouble() ?? 0.0;
+              print('DEBUG: quantity after conversion = $quantity (${quantity.runtimeType})');
+
               if (quantity == 0) continue;
 
               // Sichere Addition der Mengen mit normalisierter Einheit
               final quantities = totals['quantities'] as Map<String, double>;
-              quantities[unit] = (quantities[unit] ?? 0) + quantity;
+              print('DEBUG: quantities before add: ${quantities[unit]}');
+              quantities[unit] = (quantities[unit] ?? 0.0) + quantity;
+              print('DEBUG: quantities after add: ${quantities[unit]}');
 
               // Gesamtwert berechnen
               totals['total_value'] = (totals['total_value'] as double) + (quantity * price);
@@ -250,41 +261,59 @@ class ProductionService {
 
               // Spezialholz Mengen
               final specialWood = totals['special_wood'] as Map<String, double>;
+              print('DEBUG: specialWood type in loop: ${specialWood.runtimeType}');
+
               if (moonwood) {
-                specialWood['moonwood'] = (specialWood['moonwood'] ?? 0) + quantity;
+                print('DEBUG: moonwood before: ${specialWood['moonwood']}');
+                specialWood['moonwood'] = (specialWood['moonwood'] ?? 0.0) + quantity;
+                print('DEBUG: moonwood after: ${specialWood['moonwood']}');
               }
               if (haselfichte) {
-                specialWood['haselfichte'] = (specialWood['haselfichte'] ?? 0) + quantity;
+                specialWood['haselfichte'] = (specialWood['haselfichte'] ?? 0.0) + quantity;
               }
               if (thermallyTreated) {
-                specialWood['thermally_treated'] = (specialWood['thermally_treated'] ?? 0) + quantity;
+                specialWood['thermally_treated'] = (specialWood['thermally_treated'] ?? 0.0) + quantity;
               }
             } catch (e, stackTrace) {
-              // Fehlerbehandlung für einzelne Batches
+              print('DEBUG ERROR in batch loop: $e');
+              print('DEBUG STACKTRACE: $stackTrace');
             }
           }
         } catch (e, stackTrace) {
-          // Fehlerbehandlung für Batch-Collection
+          print('DEBUG ERROR in batches collection: $e');
+          print('DEBUG STACKTRACE: $stackTrace');
         }
       }
 
+      // Finale Werte loggen
+      print('DEBUG: Final totals:');
+      print('DEBUG: quantities = ${totals['quantities']}');
+      print('DEBUG: special_wood = ${totals['special_wood']}');
+      print('DEBUG: total_value = ${totals['total_value']}');
+      print('DEBUG: batch_count = ${totals['batch_count']}');
+
       // Stelle sicher, dass nur die standardisierten Einheiten zurückgegeben werden
-      final quantities = totals['quantities'] as Map<String, int>;
-      final normalizedQuantities = <String, int>{
-        'Stk': quantities['Stk'] ?? 0,
-        'PAL': quantities['PAL'] ?? 0,
-        'KG': quantities['KG'] ?? 0,
-        'M3': quantities['M3'] ?? 0,
-        'M2': quantities['M2'] ?? 0,
+      final quantities = totals['quantities'] as Map<String, double>;
+      final normalizedQuantities = <String, double>{
+        'Stk': quantities['Stk'] ?? 0.0,
+        'PAL': quantities['PAL'] ?? 0.0,
+        'KG': quantities['KG'] ?? 0.0,
+        'M3': quantities['M3'] ?? 0.0,
+        'M2': quantities['M2'] ?? 0.0,
       };
       totals['quantities'] = normalizedQuantities;
 
+      print('DEBUG: Returning totals with types:');
+      print('DEBUG: quantities type: ${totals['quantities'].runtimeType}');
+      print('DEBUG: special_wood type: ${totals['special_wood'].runtimeType}');
+
       return totals;
     } catch (e, stackTrace) {
+      print('DEBUG CRITICAL ERROR: $e');
+      print('DEBUG STACKTRACE: $stackTrace');
       rethrow;
     }
   }
-
 // Die getProductionWithBatches Methode sollten wir auch anpassen:
   Future<List<DocumentSnapshot>> getProductionWithBatches(ProductionFilter filter) async {
     final snapshot = await getProductionStream(filter).first;
@@ -302,7 +331,7 @@ class ProductionService {
         final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
         if (_isDateInRange(batchDate, filter)) {
-          totalQuantity += (batchData['quantity'] as double? ?? 0);
+          totalQuantity += (batchData['quantity'] as num?)?.toDouble() ?? 0.0;
         }
       }
 
@@ -349,12 +378,12 @@ class ProductionService {
         if (!stats.containsKey(instrumentCode)) {
           stats[instrumentCode] = {
             'name': instrumentName,
-            'quantities': <String, int>{
-              'Stk': 0,
-              'PAL': 0,
-              'KG': 0,
-              'M3': 0,
-              'M2': 0,
+            'quantities': <String, double>{
+              'Stk': 0.0,
+              'PAL': 0.0,
+              'KG': 0.0,
+              'M3': 0.0,
+              'M2': 0.0,
             },
             'total_value': 0.0,
           };
@@ -368,7 +397,7 @@ class ProductionService {
           final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
           if (_isDateInRange(batchDate, filter)) {
-            final quantity = batchData['quantity'] as double;
+            final quantity = (batchData['quantity'] as num?)?.toDouble() ?? 0.0;
 
             final quantities = stats[instrumentCode]!['quantities'] as Map<String, double>;
             quantities[unit] = (quantities[unit] ?? 0) + quantity;
@@ -416,12 +445,12 @@ class ProductionService {
         if (!stats.containsKey(partCode)) {
           stats[partCode] = {
             'name': partName,
-            'quantities': <String, int>{
-              'Stk': 0,
-              'PAL': 0,
-              'KG': 0,
-              'M3': 0,
-              'M2': 0,
+            'quantities': <String, double>{
+              'Stk': 0.0,
+              'PAL': 0.0,
+              'KG': 0.0,
+              'M3': 0.0,
+              'M2': 0.0,
             },
             'total_value': 0.0,
           };
@@ -435,7 +464,7 @@ class ProductionService {
           final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
           if (_isDateInRange(batchDate, filter)) {
-            final quantity = batchData['quantity'] as double;
+            final quantity = (batchData['quantity'] as num?)?.toDouble() ?? 0.0;
 
             final quantities = stats[partCode]!['quantities'] as Map<String, double>;
             quantities[unit] = (quantities[unit] ?? 0) + quantity;
@@ -482,12 +511,12 @@ class ProductionService {
         if (!stats.containsKey(woodCode)) {
           stats[woodCode] = {
             'name': woodName,
-            'quantities': <String, int>{
-              'Stk': 0,
-              'PAL': 0,
-              'KG': 0,
-              'M3': 0,
-              'M2': 0,
+            'quantities': <String, double>{
+              'Stk': 0.0,
+              'PAL': 0.0,
+              'KG': 0.0,
+              'M3': 0.0,
+              'M2': 0.0,
             },
             'total_value': 0.0,
           };
@@ -501,7 +530,7 @@ class ProductionService {
           final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
           if (_isDateInRange(batchDate, filter)) {
-            final quantity = batchData['quantity'] as double;
+            final quantity = (batchData['quantity'] as num?)?.toDouble() ?? 0.0;
 
             final quantities = stats[woodCode]!['quantities'] as Map<String, double>;
             quantities[unit] = (quantities[unit] ?? 0) + quantity;
@@ -547,12 +576,12 @@ class ProductionService {
         if (!stats.containsKey(qualityCode)) {
           stats[qualityCode] = {
             'name': qualityName,
-            'quantities': <String, int>{
-              'Stk': 0,
-              'PAL': 0,
-              'KG': 0,
-              'M3': 0,
-              'M2': 0,
+            'quantities': <String, double>{
+              'Stk': 0.0,
+              'PAL': 0.0,
+              'KG': 0.0,
+              'M3': 0.0,
+              'M2': 0.0,
             },
             'total_value': 0.0,
           };
@@ -566,7 +595,7 @@ class ProductionService {
           final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
           if (_isDateInRange(batchDate, filter)) {
-            final quantity = batchData['quantity'] as double;
+            final quantity = (batchData['quantity'] as num?)?.toDouble() ?? 0.0;
 
             final quantities = stats[qualityCode]!['quantities'] as Map<String, double>;
             quantities[unit] = (quantities[unit] ?? 0) + quantity;
@@ -714,7 +743,7 @@ class ProductionService {
           final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
           if (_isDateInRange(batchDate, filter)) {
-            final quantity = batchData['quantity'] as double? ?? 0;
+            final quantity = (batchData['quantity'] as num?)?.toDouble() ?? 0.0;
             final price = baseData['price_CHF'] as double;
 
             // Kombiniere Batch- und Basisdaten
@@ -764,7 +793,7 @@ class ProductionService {
   final batchDate = (batchData['stock_entry_date'] as Timestamp).toDate();
 
   if (_isDateInRange(batchDate, filter)) {
-  final quantity = batchData['quantity'] as double;
+  final quantity = (batchData['quantity'] as num?)?.toDouble() ?? 0.0;
   batchValue += quantity * price;
   }
   }

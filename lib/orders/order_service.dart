@@ -1,10 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:tonewood/components/quote_model.dart';
-import 'package:tonewood/components/order_model.dart';
+import 'package:tonewood/quotes/quote_model.dart';
+import 'package:tonewood/orders/order_model.dart';
+import '../quotes/quote_service.dart';
 import '../services/swiss_rounding.dart';
-import 'movement_model.dart';
-import 'quote_service.dart';
+import '../components/movement_model.dart';
+
 import '../services/pdf_generators/invoice_generator.dart';
 import '../services/pdf_generators/delivery_note_generator.dart';
 import '../services/pdf_generators/commercial_invoice_generator.dart';
@@ -47,7 +48,7 @@ class OrderService {
     }
   }
 
-  // Konvertiere Angebot zu Auftrag
+
   // Konvertiere Angebot zu Auftrag
   static Future<OrderX> createOrderFromQuote(String quoteId) async {
     try {
@@ -89,7 +90,9 @@ class OrderService {
       }
 
       // Generiere Auftragsnummer
-      final orderNumber = await getNextOrderNumber();
+   ///   final orderNumber = await getNextOrderNumber();
+      ///Achtung auf wunsch von Tonewood am 12.12. angepasst // Angebotsnummer = Auftragsnummer!
+        final orderNumber = quote.quoteNumber;  // Spiegele die Angebotsnummer
       final orderId = 'O-$orderNumber';
 
       // Erstelle initialen Auftrag mit Quote-PDF

@@ -70,11 +70,11 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     // Gruppiere Items nach Zolltarifnummer
     // Ersetzen durch:
 // Items nach Typ trennen
+    // NACHHER:
     final productItems = items.where((item) => item['is_service'] != true).toList();
     final serviceItems = items.where((item) => item['is_service'] == true).toList();
-
-// Nur Produkte gruppieren (Dienstleistungen haben keine Zolltarifnummer)
-    final groupedProductItems = await _groupItemsByTariffNumber(productItems, language);
+    final consolidatedItems = _consolidateItems(productItems);  // NEU
+    final groupedProductItems = await _groupItemsByTariffNumber(consolidatedItems, language);
 
     bool showExchangeRateOnDocument = false;
     try {
@@ -132,8 +132,8 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                 logo: logo,
                 costCenter: null,
                 language: language,
-                additionalReference:  invoiceNumber != null ? 'invoice_nr:$invoiceNumber' : null,
-                secondaryReference: quoteNumber != null ? 'quote_nr:$quoteNumber' : null,
+               // additionalReference:  invoiceNumber != null ? 'invoice_nr:$invoiceNumber' : null,
+               // secondaryReference: quoteNumber != null ? 'quote_nr:$quoteNumber' : null,
 
               ),
               pw.SizedBox(height: 20),
@@ -542,105 +542,9 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     for (final item in items) {
       String tariffNumber = '';
 
-      // PRIORITÄT 1: Individuelle Zolltarifnummer (vom Benutzer eingegeben)
-      if (item['custom_tariff_number'] != null &&
-          (item['custom_tariff_number'] as String).isNotEmpty) {
-        tariffNumber = item['custom_tariff_number'] as String;
-      } else {
-        // PRIORITÄT 2: Standard-Zolltarifnummer aus Datenbank
-        final woodCode = item['wood_code'] as String;
-
-        // Lade Holzart-Info (mit Cache)
-        if (!woodTypeCache.containsKey(woodCode)) {
-          final woodTypeDoc = await FirebaseFirestore.instance
-              .collection('wood_types')
-              .doc(woodCode)
-              .get();
-
-          if (woodTypeDoc.exists) {
-            woodTypeCache[woodCode] = woodTypeDoc.data()!;
-          } else {
-            woodTypeCache[woodCode] = {};
-          }
-        }
-
-        final woodInfo = woodTypeCache[woodCode]!;
-
-        // NEU: Hole Dichte aus Datenbank
-        final density = (woodInfo['density'] as num?)?.toDouble() ?? 0;
-
-        // Bestimme Zolltarifnummer basierend auf der Dicke
-        final thickness = (item['custom_thickness'] != null)
-            ? (item['custom_thickness'] is int
-            ? (item['custom_thickness'] as int).toDouble()
-            : item['custom_thickness'] as double)
-            : 0.0;
-
-        if (thickness <= 6.0) {
-          tariffNumber = woodInfo['z_tares_1'] ?? '4408.1000';
-        } else {
-          tariffNumber = woodInfo['z_tares_2'] ?? '4407.1200';
-        }
-      }
-
-      // Berechne m³
-      final length = item['custom_length'] != null
-          ? (item['custom_length'] is int ? (item['custom_length'] as int).toDouble() : item['custom_length'] as double)
-          : 0.0;
-
-      final width = item['custom_width'] != null
-          ? (item['custom_width'] is int ? (item['custom_width'] as int).toDouble() : item['custom_width'] as double)
-          : 0.0;
-
-      final thicknessValue = item['custom_thickness'] != null
-          ? (item['custom_thickness'] is int ? (item['custom_thickness'] as int).toDouble() : item['custom_thickness'] as double)
-          : 0.0;
-
-      final quantity = (item['quantity'] as num? ?? 0).toDouble();
-
-      double totalVolume = 0.0;
-
-      // 1. Priorität: Manuell eingegebenes Volumen
-      if (item['custom_volume'] != null && (item['custom_volume'] as num) > 0) {
-        totalVolume = (item['custom_volume'] as num).toDouble() * quantity;
-      }
-      // 2. Priorität: Berechnetes Volumen aus Maßen
-      else if (length > 0 && width > 0 && thicknessValue > 0) {
-        final volumePerPiece = (length / 1000) * (width / 1000) * (thicknessValue / 1000);
-        totalVolume = volumePerPiece * quantity;
-      }
-      // 3. Priorität: Standardvolumen aus der Datenbank
-      else {
-        final instrumentCode = item['instrument_code'] as String?;
-        final partCode = item['part_code'] as String?;
-
-        if (instrumentCode != null && partCode != null) {
-          final articleNumber = instrumentCode + partCode;
-
-          try {
-            final standardProductQuery = await FirebaseFirestore.instance
-                .collection('standardized_products')
-                .where('articleNumber', isEqualTo: articleNumber)
-                .limit(1)
-                .get();
-
-            if (standardProductQuery.docs.isNotEmpty) {
-              final standardProduct = standardProductQuery.docs.first.data();
-              final standardVolume = standardProduct['volume']?['mm3_standard'] ??
-                  standardProduct['volume']?['dm3_standard'] ?? 0;
-
-              if (standardVolume > 0) {
-                totalVolume = (standardVolume / 1000000000.0) * quantity;
-              }
-            }
-          } catch (e) {
-            print('Fehler beim Laden des Standard-Volumens: $e');
-          }
-        }
-      }
-
-      // Hole Dichte für Gewichtsberechnung
       final woodCode = item['wood_code'] as String;
+
+      // Lade Holzart-Info (mit Cache)
       if (!woodTypeCache.containsKey(woodCode)) {
         final woodTypeDoc = await FirebaseFirestore.instance
             .collection('wood_types')
@@ -657,15 +561,113 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       final woodInfo = woodTypeCache[woodCode]!;
       final density = (woodInfo['density'] as num?)?.toDouble() ?? 0;
 
-      // Gewicht berechnen
+      // PRIORITÄT 1: Individuelle Zolltarifnummer
+      if (item['custom_tariff_number'] != null &&
+          (item['custom_tariff_number'] as String).isNotEmpty) {
+        tariffNumber = item['custom_tariff_number'] as String;
+      } else {
+        // PRIORITÄT 2: Standard-Zolltarifnummer aus Datenbank
+        final thickness = (item['custom_thickness'] != null)
+            ? (item['custom_thickness'] is int
+            ? (item['custom_thickness'] as int).toDouble()
+            : item['custom_thickness'] as double)
+            : 0.0;
+
+        if (thickness <= 6.0) {
+          tariffNumber = woodInfo['z_tares_1'] ?? '4408.1000';
+        } else {
+          tariffNumber = woodInfo['z_tares_2'] ?? '4407.1200';
+        }
+      }
+
+      // Hole Maße
+      final length = item['custom_length'] != null
+          ? (item['custom_length'] is int ? (item['custom_length'] as int).toDouble() : item['custom_length'] as double)
+          : 0.0;
+
+      final width = item['custom_width'] != null
+          ? (item['custom_width'] is int ? (item['custom_width'] as int).toDouble() : item['custom_width'] as double)
+          : 0.0;
+
+      final thicknessValue = item['custom_thickness'] != null
+          ? (item['custom_thickness'] is int ? (item['custom_thickness'] as int).toDouble() : item['custom_thickness'] as double)
+          : 0.0;
+
+      final quantity = (item['quantity'] as num? ?? 0).toDouble();
+      final unit = item['unit']?.toString().toLowerCase() ?? '';
+
+      // ============ VOLUMEN BERECHNUNG (gleiche Logik wie Packing List) ============
+      double totalVolume = 0.0;
+      double volumePerPiece = 0.0;
+
+      // 1. Priorität: volume_per_unit aus Item (bereits pro Einheit inkl. aller Teile)
+      final volumeFromItem = item['volume_per_unit'];
+      if (volumeFromItem != null && (volumeFromItem as num) > 0) {
+        volumePerPiece = (volumeFromItem as num).toDouble();
+        totalVolume = volumePerPiece * quantity;
+      }
+      // 2. Priorität: Manuell eingegebenes Volumen
+      else if (item['custom_volume'] != null && (item['custom_volume'] as num) > 0) {
+        volumePerPiece = (item['custom_volume'] as num).toDouble();
+        totalVolume = volumePerPiece * quantity;
+      }
+      // 3. Priorität: Berechnetes Volumen aus Maßen
+      else if (length > 0 && width > 0 && thicknessValue > 0) {
+        volumePerPiece = (length / 1000) * (width / 1000) * (thicknessValue / 1000);
+        totalVolume = volumePerPiece * quantity;
+      }
+      // 4. Priorität: Standardvolumen aus der Datenbank
+      else {
+        final instrumentCode = item['instrument_code'] as String?;
+        final partCode = item['part_code'] as String?;
+
+        if (instrumentCode != null && partCode != null) {
+          final articleNumber = instrumentCode + partCode;
+
+          try {
+            final standardProductQuery = await FirebaseFirestore.instance
+                .collection('standardized_products')
+                .where('articleNumber', isEqualTo: articleNumber)
+                .limit(1)
+                .get();
+
+            if (standardProductQuery.docs.isNotEmpty) {
+              final standardProduct = standardProductQuery.docs.first.data();
+              final mm3Volume = standardProduct['volume_per_unit']?['mm3_standard'];
+              final dm3Volume = standardProduct['volume_per_unit']?['dm3_standard'];
+
+              if (mm3Volume != null && mm3Volume > 0) {
+                volumePerPiece = (mm3Volume / 1000000000.0); // mm³ zu m³
+              } else if (dm3Volume != null && dm3Volume > 0) {
+                volumePerPiece = (dm3Volume / 1000.0); // dm³ zu m³
+              }
+
+              totalVolume = volumePerPiece * quantity;
+            }
+          } catch (e) {
+            print('Fehler beim Laden des Standard-Volumens: $e');
+          }
+        }
+      }
+
+      // ============ GEWICHT BERECHNUNG (gleiche Logik wie Packing List) ============
       double weight = 0.0;
 
-      if (item['unit']?.toString().toLowerCase() == 'kg') {
+      if (unit == 'kg') {
+        // Wenn Einheit kg ist, ist quantity bereits das Gesamtgewicht
         weight = quantity;
-      } else if (totalVolume > 0) {
-        weight = totalVolume * density;
+        // Volumen aus Gewicht und Dichte berechnen (falls noch nicht gesetzt)
+        if (totalVolume == 0 && density > 0) {
+          totalVolume = weight / density;
+        }
       } else {
-        weight = (item['custom_weight'] as num?)?.toDouble() ?? 0.0;
+        // Standard-Berechnung: Gewicht = Volumen × Dichte
+        if (totalVolume > 0 && density > 0) {
+          weight = totalVolume * density;
+        } else {
+          // Fallback auf custom_weight
+          weight = (item['custom_weight'] as num?)?.toDouble() ?? 0.0;
+        }
       }
 
       // Verwende name_english wenn Sprache EN ist
@@ -706,6 +708,95 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     return sortedGrouped;
   }
 
+  /// Fasst Items mit gleicher product_id zusammen (addiert Mengen)
+  static List<Map<String, dynamic>> _consolidateItems(List<Map<String, dynamic>> items) {
+    final Map<String, Map<String, dynamic>> consolidated = {};
+
+    for (final item in items) {
+      final productId = item['product_id']?.toString() ?? '';
+
+      if (productId.isEmpty) {
+        // Ohne product_id: als einzelnes Item behalten
+        consolidated[DateTime.now().microsecondsSinceEpoch.toString()] = Map<String, dynamic>.from(item);
+        continue;
+      }
+
+      if (consolidated.containsKey(productId)) {
+        // Existiert bereits: Menge addieren
+        final existing = consolidated[productId]!;
+        final existingQty = (existing['quantity'] as num? ?? 0).toDouble();
+        final newQty = (item['quantity'] as num? ?? 0).toDouble();
+        existing['quantity'] = existingQty + newQty;
+      } else {
+        // Neues Item
+        consolidated[productId] = Map<String, dynamic>.from(item);
+      }
+    }
+
+    return consolidated.values.toList();
+  }
+
+
+  /// Berechnet optimale Spaltenbreiten basierend auf Inhalt
+  static Map<int, pw.FlexColumnWidth> _calculateOptimalColumnWidths(
+      Map<String, List<Map<String, dynamic>>> groupedItems,
+      String language,
+      ) {
+    const double charWidth = 0.18;
+
+    int maxTariffLen = language == 'EN' ? 10 : 9;
+    int maxProductLen = language == 'EN' ? 7 : 7;
+    int maxInstrLen = 10;
+    int maxQualLen = language == 'EN' ? 8 : 10;
+    int maxFscLen = 4;
+
+    groupedItems.forEach((groupKey, items) {
+      // Zolltarifnummer aus groupKey extrahieren
+      final parts = groupKey.split(' - ');
+      final tariffNumber = parts[0];
+      if (tariffNumber.length > maxTariffLen) maxTariffLen = tariffNumber.length;
+
+      for (final item in items) {
+        String productText = language == 'EN'
+            ? (item['part_name_en'] ?? item['part_name'] ?? '')
+            : (item['part_name'] ?? '');
+        if (item['is_gratisartikel'] == true) productText += '  GRATIS';
+        if (item['is_online_shop_item'] == true) productText += '  #0000';
+        if (productText.length > maxProductLen) maxProductLen = productText.length;
+
+        String instrText = language == 'EN'
+            ? (item['instrument_name_en'] ?? item['instrument_name'] ?? '')
+            : (item['instrument_name'] ?? '');
+        if (instrText.length > maxInstrLen) maxInstrLen = instrText.length;
+
+        String qualText = item['quality_name'] ?? '';
+        if (qualText.length > maxQualLen) maxQualLen = qualText.length;
+
+        String fscText = item['fsc_status'] ?? '';
+        if (fscText.length > maxFscLen) maxFscLen = fscText.length;
+      }
+    });
+
+    double tariffWidth = (maxTariffLen * charWidth).clamp(1.8, 2.5);
+    double productWidth = (maxProductLen * charWidth).clamp(2.0, 3.5);
+    double instrWidth = (maxInstrLen * charWidth).clamp(1.8, 2.5);
+    double qualWidth = (maxQualLen * charWidth).clamp(1.5, 2.0);
+    double fscWidth = (maxFscLen * charWidth).clamp(1.2, 1.8);
+
+    return {
+      0: pw.FlexColumnWidth(tariffWidth),   // Zolltarif
+      1: pw.FlexColumnWidth(productWidth),  // Produkt
+      2: pw.FlexColumnWidth(instrWidth),    // Instr.
+      3: pw.FlexColumnWidth(qualWidth),     // Qual.
+      4: pw.FlexColumnWidth(fscWidth),      // FSC
+      5: const pw.FlexColumnWidth(1.1),     // Urs
+      6: const pw.FlexColumnWidth(1.5),     // m³
+      7: const pw.FlexColumnWidth(1.5),     // Menge
+      8: const pw.FlexColumnWidth(1.5),     // Einh
+      9: const pw.FlexColumnWidth(2.0),     // Preis/E
+      10: const pw.FlexColumnWidth(2.0),    // Netto Gesamt
+    };
+  }
 
   // Nach der _buildProductTable Methode hinzufügen:
   static pw.Widget _buildServiceTable(
@@ -1281,24 +1372,15 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       ),
     );
 
+    // Optimierte Spaltenbreiten basierend auf Inhalt
+    final columnWidths = _calculateOptimalColumnWidths(
+      groupedItems,
+      language,
+    );
+
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
-      columnWidths: {
-        0: const pw.FlexColumnWidth(2.2),    // Zolltarif
-        1: const pw.FlexColumnWidth(2.8),      // Produkt
-        2: const pw.FlexColumnWidth(2.1),    // Instr.
-        3: const pw.FlexColumnWidth(1.5),    // Qual.
-        4: const pw.FlexColumnWidth(1.5),    // FSC
-        5: const pw.FlexColumnWidth(1.1),    // Urs
-        6: const pw.FlexColumnWidth(1.5),    // m³
-        7: const pw.FlexColumnWidth(1.5),    // Menge
-        8: const pw.FlexColumnWidth(1.5),    // Einh
-        9: const pw.FlexColumnWidth(2.0),   // Preis/E
-      //  10: const pw.FlexColumnWidth(1.0),   // Wä
-       // 10: const pw.FlexColumnWidth(2.0),   // Betrag
-       // 11: const pw.FlexColumnWidth(1.5),   // Rabatt (NEU)
-        10: const pw.FlexColumnWidth(2.0),   // Netto Gesamt (NEU)
-      },
+      columnWidths: columnWidths,
       children: rows,
     );
   }

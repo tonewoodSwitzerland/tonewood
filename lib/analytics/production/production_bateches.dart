@@ -21,7 +21,8 @@ class ProductionBatches extends StatelessWidget {
       future: service.getFilteredBatches(filter),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return const Center(child: Text('Fehler beim Laden der Chargen'));
+
+          return  Center(child: Text('Fehler beim Laden der Chargen: ${snapshot.error}'));
         }
 
         if (!snapshot.hasData) {

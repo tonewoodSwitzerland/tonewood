@@ -9,12 +9,11 @@ import '../models/roundwood_models.dart';
 class RoundwoodEditDialog extends StatefulWidget {
   final RoundwoodItem item;
   final bool isDesktopLayout;
-  final bool readOnly;
+
   const RoundwoodEditDialog({
     Key? key,
     required this.item,
     required this.isDesktopLayout,
-    this.readOnly = false, // Standard: bearbeitbar
   }) : super(key: key);
 
   @override
@@ -24,355 +23,240 @@ class RoundwoodEditDialog extends StatefulWidget {
 class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
   late Map<String, dynamic> editedData;
   final formKey = GlobalKey<FormState>();
-  List<QueryDocumentSnapshot>? purposes;
-  List<String> selectedPurposes = [];
+
+  // Dropdown Data
+  List<QueryDocumentSnapshot>? woodTypes;
+  List<QueryDocumentSnapshot>? qualities;
+
+  // Controller für editierbare Textfelder
+  final _originalNumberController = TextEditingController();
+  final _plaketteColorController = TextEditingController();
+  final _remarksController = TextEditingController();
+  final _volumeController = TextEditingController();
+  final _originController = TextEditingController();
+
+  // Hardcoded Verwendungszwecke (wie im Entry Screen)
+  final List<String> _availablePurposes = ['Gitarre', 'Violine', 'Viola', 'Cello', 'Bass'];
+  List<String> _selectedPurposes = [];
+  bool _hasOtherPurpose = false;
+  final _otherPurposeController = TextEditingController();
+
+  // Jahr Auswahl
+  int _selectedYear = DateTime.now().year;
+  bool _showCustomYearInput = false;
+  final _customYearController = TextEditingController();
+
+  // Spray Farben
+  final List<String> _sprayColors = ['ohne', 'blau', 'gelb', 'rot', 'grün'];
+  String? _selectedSprayColor;
 
   @override
   void initState() {
     super.initState();
     editedData = widget.item.toMap();
-    selectedPurposes = List<String>.from(editedData['purpose_codes'] ?? []);
-    _loadPurposes();
+    _loadDropdownData();
+    _initializeFromItem();
   }
 
-  Future<void> _loadPurposes() async {
+  void _initializeFromItem() {
+    _selectedYear = widget.item.year;
+    _selectedSprayColor = widget.item.sprayColor;
+    _selectedPurposes = List<String>.from(widget.item.purposes);
+
+    // Controller initialisieren
+    _originalNumberController.text = widget.item.originalNumber ?? '';
+    _plaketteColorController.text = widget.item.plaketteColor ?? '';
+    _remarksController.text = widget.item.remarks ?? '';
+    _volumeController.text = widget.item.volume > 0 ? widget.item.volume.toString() : '';
+    _originController.text = widget.item.origin ?? '';
+
+    // Prüfe ob "andere" verwendet wird
+    _hasOtherPurpose = widget.item.otherPurpose?.isNotEmpty ?? false;
+    _otherPurposeController.text = widget.item.otherPurpose ?? '';
+
+    // Entferne custom Einträge aus der Standard-Liste
+    _selectedPurposes = _selectedPurposes.where((p) => _availablePurposes.contains(p)).toList();
+  }
+
+  Future<void> _loadDropdownData() async {
     try {
-      final purposesSnapshot = await FirebaseFirestore.instance
-          .collection('instruments')
+      final woodTypesSnapshot = await FirebaseFirestore.instance
+          .collection('wood_types')
+          .orderBy('code')
+          .get();
+
+      final qualitiesSnapshot = await FirebaseFirestore.instance
+          .collection('qualities')
           .orderBy('code')
           .get();
 
       if (mounted) {
         setState(() {
-          purposes = purposesSnapshot.docs;
+          woodTypes = woodTypesSnapshot.docs;
+          qualities = qualitiesSnapshot.docs;
         });
       }
     } catch (e) {
-      print('Fehler beim Laden der Verwendungszwecke: $e');
+      print('Fehler beim Laden der Daten: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
-        initialChildSize: 0.95,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) {
-          return Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: Column(
-              children: [
-                // Drag Handle
-                Container(
-                  margin: const EdgeInsets.only(top: 8),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-
-                // Header
-                Container(
+      initialChildSize: 0.95,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              _buildDragHandle(),
+              _buildHeader(),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: scrollController,
                   padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0F4A29).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: getAdaptiveIcon(iconName: 'forest', defaultIcon:
-                          Icons.forest,
-                          color: Color(0xFF0F4A29),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Rundholz ${widget.item.internalNumber}',
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF0F4A29),
-                              ),
-                            ),
-                            if (widget.item.woodName != null)
-                              Text(
-                                widget.item.woodName!,
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 14,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ), // Nach dem Header:
-
-                      IconButton(
-                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                        onPressed: () => Navigator.of(context).pop(),
-                        color: Colors.grey[600],
-                      ),
-                    ],
-                  ),
-                ),
-                if (widget.readOnly)
-                  Container(
-                    margin: const EdgeInsets.all(16),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue[200]!),
-                    ),
-                    child: Row(
-                      children: [
-                         getAdaptiveIcon(iconName: 'lock',defaultIcon:Icons.lock, color: Colors.blue[700], size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Nur-Lesen-Modus',
-                          style: TextStyle(color: Colors.blue[700]),
-                        ),
-                      ],
-                    ),
-                  ),
-            // Content
-           Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: AbsorbPointer(
-                  absorbing: widget.readOnly,
                   child: Form(
                     key: formKey,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Identifikation Section
-                        _buildDetailSection(
-                          title: 'Identifikation',
-                          icon: Icons.badge,
-                          iconName: 'badge',
-                          content: Column(
-                            children: [
-                              _buildNumberInfo(),
-                              const SizedBox(height: 16),
-                              _buildWoodTypeSelection(),
-                            ],
-                          ),
-                        ),
-
+                        _buildBasicInfoSection(),
                         const SizedBox(height: 24),
-
-                        // Eigenschaften Section
-                        _buildDetailSection(
-                          title: 'Eigenschaften',
-                          icon: Icons.category,
-                          iconName: 'category',
-                          content: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildPurposeSection(),
-                              const SizedBox(height: 16),
-                              _buildMoonwoodSwitch(),
-                              const SizedBox(height: 16),
-
-                              _buildFSCSwitch(),
-                              const SizedBox(height: 16),
-                              _buildVolumeInput(),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        // Zusätzliche Informationen Section
-                        _buildDetailSection(
-                          title: 'Zusätzliche Informationen',
-                          icon: Icons.info,
-                          iconName: 'info',
-                          content: Column(
-                            children: [
-                              _buildQualitySelection(),
-                              const SizedBox(height: 16),
-                              _buildDatePicker(),
-                              const SizedBox(height: 16),
-                              _buildColorSelection(),
-                              const SizedBox(height: 16),
-                              _buildRemarksInput(),
-                            ],
-                          ),
-                        ),
-                        Center(
-                          child: TextButton.icon(
-                            icon: getAdaptiveIcon(iconName: 'delete',defaultIcon:Icons.delete, color: Colors.red),
-                            label: const Text('Löschen'),
-                            onPressed: _confirmDelete,
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.red,
-                            ),
-                          ),
-                        ),
+                        _buildAdditionalInfoSection(),
+                        const SizedBox(height: 16),
+                        _buildDeleteButton(),
                       ],
                     ),
                   ),
                 ),
               ),
-            ),
-
-            // Footer
-            Container(
-              padding: const EdgeInsets.all(16),
-
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-               mainAxisSize: MainAxisSize.min,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.grey[700],
-                      side: BorderSide(color: Colors.grey[300]!),
-                    ),
-                    child: const Text('Abbrechen'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    icon: getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save,),
-                    label: const Text('Speichern'),
-                    onPressed: _saveChanges,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF0F4A29),
-                    ),
-                  ),
-                ],
-              ),
-            )
-              ],
-            ),
-          );
-        },
+              _buildFooter(),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildDetailSection({
-    required String title,
-    required IconData icon,
-    required String iconName,
-    required Widget content,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            getAdaptiveIcon(iconName: iconName, defaultIcon:icon, size: 20, color: const Color(0xFF0F4A29)),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0F4A29),
-              ),
+  Widget _buildDragHandle() {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      width: 40,
+      height: 4,
+      decoration: BoxDecoration(
+        color: Colors.grey[300],
+        borderRadius: BorderRadius.circular(2),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F4A29).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
             ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.grey[50],
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey[200]!),
+            child: getAdaptiveIcon(
+              iconName: 'forest',
+              defaultIcon: Icons.forest,
+              color: const Color(0xFF0F4A29),
+            ),
           ),
-          child: content,
-        ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Rundholz ${widget.item.internalNumber} bearbeiten',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F4A29),
+                  ),
+                ),
+                Text(
+                  '${widget.item.woodName} • ${widget.item.year}',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
+            color: Colors.grey[600],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon, String iconName) {
+    return Row(
+      children: [
+        getAdaptiveIcon(iconName: iconName, defaultIcon: icon, size: 20, color: const Color(0xFF0F4A29)),
+        const SizedBox(width: 8),
+        Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F4A29))),
       ],
     );
   }
 
-  Widget _buildNumberInfo() {
+  Widget _buildSectionContainer(Widget child) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: child,
+    );
+  }
+
+  // ==================== GRUNDINFORMATIONEN ====================
+  Widget _buildBasicInfoSection() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Interne Nummer',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.item.internalNumber,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Original Nummer',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.item.originalNumber ?? 'Keine',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        _buildSectionHeader('Grundinformationen', Icons.badge, 'badge'),
         const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.blue[50],
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.blue[200]!),
-          ),
-          child: Row(
+        _buildSectionContainer(
+          Column(
             children: [
-               getAdaptiveIcon(iconName: 'calendar_month',defaultIcon:Icons.calendar_month, color: Colors.blue[700], size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Jahrgang: ${editedData['year'] ?? DateTime.now().year}',
-                style: TextStyle(
-                  color: Colors.blue[700],
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
-                ),
-              ),
+              _buildInternalNumberDisplay(), // Nur Anzeige, nicht editierbar
+              const SizedBox(height: 16),
+              _buildOriginalNumberInput(), // Editierbar
+              const SizedBox(height: 16),
+              _buildYearSelector(),
+              const SizedBox(height: 16),
+              _buildWoodTypeDropdown(),
+              const SizedBox(height: 16),
+              _buildQualitySelector(),
+              const SizedBox(height: 16),
+              _buildSprayColorSelector(),
+              const SizedBox(height: 16),
+              _buildPlaketteColorInput(),
+              const SizedBox(height: 16),
+              _buildDatePicker(),
+              const SizedBox(height: 16),
+              _buildPurposeSelector(),
+              const SizedBox(height: 16),
+              _buildRemarksInput(),
+              const SizedBox(height: 16),
+              _buildMoonwoodSwitch(),
             ],
           ),
         ),
@@ -380,587 +264,694 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
     );
   }
 
-  Widget _buildWoodTypeSelection() {
-    return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance.collection('wood_types').get(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const CircularProgressIndicator();
-        }
-
-        final woodTypes = snapshot.data!.docs;
-        return DropdownButtonFormField<String>(
-          value: editedData['wood_type'],
-          decoration: InputDecoration(
-            labelText: 'Holzart',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            filled: true,
-            fillColor: Colors.white,
+  // Interne Nummer - NUR ANZEIGE (nicht editierbar)
+  Widget _buildInternalNumberDisplay() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Row(
+        children: [
+          getAdaptiveIcon(iconName: 'lock', defaultIcon: Icons.lock, color: Colors.grey[600], size: 20),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Interne Nummer', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+              const SizedBox(height: 4),
+              Text(
+                widget.item.internalNumber,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ],
           ),
-          items: woodTypes.map((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            return DropdownMenuItem<String>(
-              value: data['code'],
-              child: Text('${data['name']} (${data['code']})'),
-            );
-          }).toList(),
-          onChanged: (value) {
-            if (value != null) {
-              setState(() {
-                editedData['wood_type'] = value;
-                editedData['wood_name'] = woodTypes
-                    .firstWhere((doc) => (doc.data() as Map<String, dynamic>)['code'] == value)
-                    .get('name');
-              });
-            }
-          },
-        );
-      },
-    );
-  }
-
-   void _showPurposeSelectionDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0F4A29).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: getAdaptiveIcon(iconName: 'assignment', defaultIcon:
-                      Icons.assignment,
-                      color: Color(0xFF0F4A29),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Verwendungszwecke',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF0F4A29),
-                    ),
-                  ),
-                ],
-              ),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (purposes != null)
-                      Expanded(
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: purposes!.length,
-                          itemBuilder: (context, index) {
-                            final data = purposes![index].data() as Map<String, dynamic>;
-                            final code = data['code'] as String;
-                            final name = data['name'] as String;
-
-                            return CheckboxListTile(
-                              title: Text(name),
-                              subtitle: Text('Code: $code'),
-                              value: selectedPurposes.contains(code),
-                              onChanged: (bool? value) {
-                                setState(() {
-                                  if (value == true) {
-                                    selectedPurposes.add(code);
-                                  } else {
-                                    selectedPurposes.remove(code);
-                                  }
-                                });
-                              },
-                              activeColor: const Color(0xFF0F4A29),
-                            );
-                          },
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Abbrechen'),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0F4A29),
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () {
-                    this.setState(() {
-                      editedData['purpose_codes'] = selectedPurposes;
-                      editedData['purpose_names'] = selectedPurposes
-                          .map((code) => purposes!
-                          .firstWhere((doc) => (doc.data() as Map<String, dynamic>)['code'] == code)
-                          .get('name'))
-                          .toList();
-                    });
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text('Auswählen'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-
-  Widget _buildPurposeSection() {
-    if (purposes == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Dropdown für Verwendungszwecke
-        InkWell(
-          onTap: _showPurposeSelectionDialog,
-          child: Container(
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[300]!),
-              borderRadius: BorderRadius.circular(8),
-              color: Colors.white,
+              color: Colors.grey[400],
+              borderRadius: BorderRadius.circular(4),
             ),
-            padding: const EdgeInsets.all(12),
-            child: Row(
+            child: Text('Nicht änderbar', style: TextStyle(color: Colors.grey[700], fontSize: 10)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Original Nummer - EDITIERBAR
+  Widget _buildOriginalNumberInput() {
+    return TextFormField(
+      controller: _originalNumberController,
+      decoration: InputDecoration(
+        labelText: 'Original Stammnummer',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        filled: true,
+        fillColor: Colors.white,
+        prefixIcon: getAdaptiveIcon(iconName: 'tag', defaultIcon: Icons.tag, color: const Color(0xFF0F4A29)),
+      ),
+      maxLength: 5,
+      onChanged: (value) => editedData['original_number'] = value,
+    );
+  }
+
+  Widget _buildYearSelector() {
+    int currentYear = DateTime.now().year;
+    List<int> years = [currentYear - 1, currentYear, currentYear + 1];
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey[300]!),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white,
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              getAdaptiveIcon(iconName: 'date_range', defaultIcon: Icons.date_range, color: const Color(0xFF0F4A29)),
+              const SizedBox(width: 8),
+              const Text('Jahrgang', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              ...years.map((year) => Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: _buildYearChip(year),
+                ),
+              )),
+              const SizedBox(width: 4),
+              _buildCustomYearButton(),
+            ],
+          ),
+          if (_showCustomYearInput) ...[
+            const SizedBox(height: 12),
+            Row(
               children: [
-                getAdaptiveIcon(iconName: 'assignment',defaultIcon:Icons.assignment, color: Color(0xFF0F4A29)),
-                const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    selectedPurposes.isEmpty
-                        ? 'Verwendungszwecke auswählen'
-                        : '${selectedPurposes.length} Verwendungszwecke ausgewählt',
-                    style: TextStyle(color: Colors.grey[700]),
+                  child: TextFormField(
+                    controller: _customYearController,
+                    decoration: const InputDecoration(hintText: 'YYYY', isDense: true, border: OutlineInputBorder()),
+                    keyboardType: TextInputType.number,
+                    maxLength: 4,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   ),
                 ),
-                 getAdaptiveIcon(iconName: 'arrow_drop_down',defaultIcon:Icons.arrow_drop_down, color: Colors.grey[600]),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    if (_customYearController.text.length == 4) {
+                      setState(() {
+                        _selectedYear = int.parse(_customYearController.text);
+                        editedData['year'] = _selectedYear;
+                        _showCustomYearInput = false;
+                      });
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F4A29)),
+                  child: const Text('OK', style: TextStyle(color: Colors.white)),
+                ),
               ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildYearChip(int year) {
+    bool isSelected = _selectedYear == year;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedYear = year;
+          editedData['year'] = year;
+          _showCustomYearInput = false;
+        });
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF0F4A29).withOpacity(0.15) : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF0F4A29) : Colors.grey[300]!,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            '$year',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              color: isSelected ? const Color(0xFF0F4A29) : Colors.grey[800],
             ),
           ),
         ),
+      ),
+    );
+  }
 
-        if (selectedPurposes.isNotEmpty) ...[
+  Widget _buildCustomYearButton() {
+    bool isCustomSelected = !([
+      DateTime.now().year - 1,
+      DateTime.now().year,
+      DateTime.now().year + 1,
+    ].contains(_selectedYear));
+
+    return InkWell(
+      onTap: () => setState(() => _showCustomYearInput = !_showCustomYearInput),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isCustomSelected ? const Color(0xFF0F4A29).withOpacity(0.15) : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isCustomSelected ? const Color(0xFF0F4A29) : Colors.grey[300]!,
+            width: isCustomSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.edit_calendar, size: 18, color: isCustomSelected ? const Color(0xFF0F4A29) : Colors.grey[600]),
+            if (isCustomSelected) ...[
+              const SizedBox(width: 4),
+              Text('$_selectedYear', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F4A29))),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+// Hilfsfunktion zum Bereinigen von Holzartnamen
+  String _cleanWoodName(String name) {
+    return name.replaceAll(RegExp(r'\bGemeine\s+', caseSensitive: false), '').trim();
+  }
+
+  Widget _buildWoodTypeDropdown() {
+    if (woodTypes == null) return const CircularProgressIndicator();
+
+    return DropdownButtonFormField<String>(
+      value: editedData['wood_type'],
+      decoration: InputDecoration(
+        labelText: 'Holzart',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        filled: true,
+        fillColor: Colors.white,
+        prefixIcon: getAdaptiveIcon(iconName: 'forest', defaultIcon: Icons.forest, color: const Color(0xFF0F4A29)),
+      ),
+      items: woodTypes!.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final displayName = _cleanWoodName(data['name'] as String);
+        return DropdownMenuItem<String>(
+          value: data['code'] as String,
+          child: Text('$displayName (${data['code']})'),
+        );
+      }).toList(),
+      onChanged: (value) {
+        if (value != null) {
+          setState(() {
+            editedData['wood_type'] = value;
+            final rawName = woodTypes!
+                .firstWhere((doc) => (doc.data() as Map<String, dynamic>)['code'] == value)
+                .get('name') as String;
+            editedData['wood_name'] = _cleanWoodName(rawName);
+          });
+        }
+      },
+      validator: (v) => v == null ? 'Pflichtfeld' : null,
+    );
+  }
+
+  Widget _buildQualitySelector() {
+    final primaryQualities = ['A', 'B', 'C', 'D', 'AB', 'BC', 'undefiniert'];
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey[300]!),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white,
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              getAdaptiveIcon(iconName: 'star', defaultIcon: Icons.star, color: const Color(0xFF0F4A29)),
+              const SizedBox(width: 8),
+              const Text('Qualität', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              if (editedData['quality'] != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F4A29),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(editedData['quality'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+            ],
+          ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: selectedPurposes.map((code) {
-              // Null-Check und Fehlerbehandlung
-              String name;
-              try {
-                name = purposes!
-                    .firstWhere((doc) => (doc.data() as Map<String, dynamic>)['code'] == code)
-                    .get('name');
-              } catch (e) {
-                name = code; // Fallback wenn Name nicht gefunden
-              }
-              return Chip(
-                label: Text(name),
-                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
-                onDeleted: () {
-                  setState(() {
-                    selectedPurposes.remove(code);
-                    editedData['purpose_codes'] = selectedPurposes;
-                    editedData['purpose_names'] = selectedPurposes
-                        .map((code) {
-                      try {
-                        return purposes!
-                            .firstWhere((doc) => (doc.data() as Map<String, dynamic>)['code'] == code)
-                            .get('name');
-                      } catch (e) {
-                        return code;
-                      }
-                    })
-                        .toList();
-                  });
-                },
-                backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-                labelStyle: const TextStyle(color: Color(0xFF0F4A29)),
-              );
-            }).toList(),
+            children: primaryQualities.map((q) => _buildQualityChip(q)).toList(),
           ),
         ],
+      ),
+    );
+  }
 
-        const SizedBox(height: 16),
-        TextFormField(
-          initialValue: editedData['additional_purpose'],
-          decoration: InputDecoration(
-            labelText: 'Weitere Verwendungszwecke',
-            hintText: 'Zusätzliche Verwendungszwecke hier eingeben',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            filled: true,
-            fillColor: Colors.white,
-          ),
-          maxLines: 2,
-          onChanged: (value) => editedData['additional_purpose'] = value,
+  Widget _buildQualityChip(String code) {
+    bool isSelected = editedData['quality'] == code;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          editedData['quality'] = code;
+          editedData['quality_name'] = code;
+        });
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF0F4A29) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: isSelected ? const Color(0xFF0F4A29) : Colors.grey[300]!),
         ),
-      ],
+        child: Text(
+          code,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.black87,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildMoonwoodSwitch() {
-    return SwitchListTile(
-      title: const Text('Mondholz'),
-      value: editedData['is_moonwood'] ?? false,
-      onChanged: (value) {
-        setState(() {
-          editedData['is_moonwood'] = value;
-        });
-      },
-      activeColor: const Color(0xFF0F4A29),
-      contentPadding: EdgeInsets.zero,
-    );
-  }
-  Widget _buildFSCSwitch() {
-    return SwitchListTile(
-      title: const Text('FSC-zertifiziert'),
-      value: editedData['is_fsc'] ?? false,
-      onChanged: (value) {
-        setState(() {
-          editedData['is_fsc'] = value;
-        });
-      },
-      secondary:  getAdaptiveIcon(iconName: 'eco',defaultIcon:Icons.eco, color: Color(0xFF0F4A29)),
-      activeColor: const Color(0xFF0F4A29),
-      contentPadding: EdgeInsets.zero,
-    );
-  }
-  Widget _buildQualitySelection() {
-    return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance.collection('qualities').get(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const CircularProgressIndicator();
-        }
-
-        final qualities = snapshot.data!.docs;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Qualität',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 12,
+  Widget _buildSprayColorSelector() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey[300]!),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white,
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              getAdaptiveIcon(iconName: 'color_lens', defaultIcon: Icons.color_lens, color: const Color(0xFF0F4A29)),
+              const SizedBox(width: 8),
+              const Text('Farbe/Spray', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: _sprayColors.map((color) => Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: _buildColorButton(color),
               ),
-            ),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              value: editedData['quality'],
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+            )).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildColorButton(String color) {
+    bool isSelected = _selectedSprayColor == color;
+    bool isNone = color == 'ohne';
+    Color btnColor = isNone ? Colors.grey[200]! : _getColorFromString(color);
+    bool isNarrow = MediaQuery.of(context).size.width < 600;
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedSprayColor = isSelected ? null : color;
+          editedData['spray_color'] = _selectedSprayColor;
+        });
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: EdgeInsets.symmetric(vertical: 12, horizontal: isNarrow && !isNone ? 4 : 8),
+        decoration: BoxDecoration(
+          color: btnColor,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? Colors.black : Colors.grey[400]!,
+            width: isSelected ? 3 : 1,
+          ),
+        ),
+        child: Center(
+          child: isNarrow && !isNone
+              ? (isSelected
+              ? const Icon(Icons.check, size: 18, color: Colors.black87)
+              : const SizedBox(height: 18))
+              : Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (isSelected) ...[
+                const Icon(Icons.check, size: 18, color: Colors.black87),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                isNone ? 'ohne' : color,
+                style: TextStyle(
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: Colors.black87,
                 ),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               ),
-              items: qualities.map((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                return DropdownMenuItem<String>(
-                  value: data['code'],
-                  child: Row(
-                    children: [
-                      getAdaptiveIcon(iconName: 'star', defaultIcon:
-                        Icons.star,
-                        size: 16,
-                        color: const Color(0xFF0F4A29),
-                      ),
-                      const SizedBox(width: 8),
-                      Text('${data['name']} (${data['code']})'),
-                    ],
-                  ),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    editedData['quality'] = value;
-                    editedData['quality_name'] = qualities
-                        .firstWhere((doc) => (doc.data() as Map<String, dynamic>)['code'] == value)
-                        .get('name');
-                  });
-                }
-              },
-            ),
-          ],
-        );
-      },
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  Widget _buildPlaketteColorInput() {
+    return TextFormField(
+      controller: _plaketteColorController,
+      decoration: InputDecoration(
+        labelText: 'Farbe Plakette',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        filled: true,
+        fillColor: Colors.white,
+        prefixIcon: getAdaptiveIcon(iconName: 'label', defaultIcon: Icons.label, color: const Color(0xFF0F4A29)),
+      ),
+      onChanged: (value) => editedData['plakette_color'] = value,
     );
   }
 
   Widget _buildDatePicker() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Einschnitt Datum',
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 12,
-          ),
+    final cuttingDate = editedData['cutting_date'] is Timestamp
+        ? (editedData['cutting_date'] as Timestamp).toDate()
+        : editedData['cutting_date'] as DateTime?;
+
+    return InkWell(
+      onTap: () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: cuttingDate ?? DateTime.now(),
+          firstDate: DateTime(2000),
+          lastDate: DateTime(2100),
+        );
+        if (picked != null) {
+          setState(() => editedData['cutting_date'] = Timestamp.fromDate(picked));
+        }
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey[300]!),
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.white,
         ),
-        const SizedBox(height: 8),
-        InkWell(
-          onTap: () async {
-            final DateTime? picked = await showDatePicker(
-              context: context,
-              initialDate: editedData['cutting_date']?.toDate() ?? DateTime.now(),
-              firstDate: DateTime(2000),
-              lastDate: DateTime(2100),
-              builder: (context, child) {
-                return Theme(
-                  data: Theme.of(context).copyWith(
-                    colorScheme: const ColorScheme.light(
-                      primary: Color(0xFF0F4A29),
-                    ),
-                  ),
-                  child: child!,
-                );
-              },
-            );
-            if (picked != null) {
-              setState(() {
-                editedData['cutting_date'] = Timestamp.fromDate(picked);
-              });
-            }
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[300]!),
-              borderRadius: BorderRadius.circular(8),
-              color: Colors.white,
-            ),
-            child: Row(
-              children: [
-                getAdaptiveIcon(iconName: 'calendar_today',defaultIcon:Icons.calendar_today, size: 20, color: Color(0xFF0F4A29)),
-                const SizedBox(width: 8),
-                Text(
-                  editedData['cutting_date'] == null
-                      ? 'Datum auswählen'
-                      : DateFormat('dd.MM.yyyy').format(editedData['cutting_date'].toDate()),
-                  style: TextStyle(
-                    color: editedData['cutting_date'] == null ? Colors.grey[600] : Colors.black,
-                  ),
-                ),
-                const Spacer(),
-                 getAdaptiveIcon(iconName: 'arrow_drop_down',defaultIcon:Icons.arrow_drop_down, color: Colors.grey[600]),
-              ],
-            ),
+        child: ListTile(
+          leading: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today, color: const Color(0xFF0F4A29)),
+          title: Text(
+            cuttingDate == null ? 'Kein Datum ausgewählt' : DateFormat('dd.MM.yyyy').format(cuttingDate),
+            style: TextStyle(color: cuttingDate == null ? Colors.grey[600] : Colors.black87),
           ),
+          subtitle: Text('Einschnittdatum', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+          trailing: getAdaptiveIcon(iconName: 'arrow_drop_down', defaultIcon: Icons.arrow_drop_down, color: Colors.grey[600]),
         ),
-      ],
+      ),
     );
   }
 
-  Widget _buildColorSelection() {
-    final colors = ['ohne', 'rot', 'blau', 'grün', 'gelb'];
+  Widget _buildPurposeSelector() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey[300]!),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white,
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              getAdaptiveIcon(iconName: 'assignment', defaultIcon: Icons.assignment, color: const Color(0xFF0F4A29)),
+              const SizedBox(width: 8),
+              const Text('Verwendungszwecke', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ..._availablePurposes.map((p) => _buildPurposeChip(p)),
+              _buildOtherPurposeChip(),
+            ],
+          ),
+          if (_hasOtherPurpose) ...[
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _otherPurposeController,
+              decoration: const InputDecoration(
+                hintText: 'Andere Verwendung beschreiben...',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (value) => editedData['other_purpose'] = value,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Farbe',
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 12,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey[300]!),
-            borderRadius: BorderRadius.circular(8),
-            color: Colors.white,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: colors.map((color) {
-              final isSelected = editedData['color'] == color;
-              return InkWell(
-                onTap: () {
-                  setState(() {
-                    editedData['color'] = color;
-                  });
-                },
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: _getColorFromString(color).withOpacity(0.2),
-                    border: Border.all(
-                      color: isSelected ? const Color(0xFF0F4A29) : Colors.grey[300]!,
-                      width: isSelected ? 2 : 1,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: _getColorFromString(color),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: isSelected
-                          ?  getAdaptiveIcon(iconName: 'check',defaultIcon:Icons.check, color: Colors.white, size: 16)
-                          : null,
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
+  Widget _buildPurposeChip(String purpose) {
+    bool isSelected = _selectedPurposes.contains(purpose);
+    return FilterChip(
+      label: Text(purpose),
+      selected: isSelected,
+      onSelected: (selected) {
+        setState(() {
+          if (selected) {
+            _selectedPurposes.add(purpose);
+          } else {
+            _selectedPurposes.remove(purpose);
+          }
+          editedData['purposes'] = _selectedPurposes;
+        });
+      },
+      selectedColor: const Color(0xFF0F4A29).withOpacity(0.2),
+      checkmarkColor: const Color(0xFF0F4A29),
+      labelStyle: TextStyle(color: isSelected ? const Color(0xFF0F4A29) : Colors.black87),
+    );
+  }
+
+  Widget _buildOtherPurposeChip() {
+    return FilterChip(
+      label: const Text('andere'),
+      selected: _hasOtherPurpose,
+      onSelected: (selected) => setState(() => _hasOtherPurpose = selected),
+      selectedColor: const Color(0xFF0F4A29).withOpacity(0.2),
+      checkmarkColor: const Color(0xFF0F4A29),
+      labelStyle: TextStyle(color: _hasOtherPurpose ? const Color(0xFF0F4A29) : Colors.black87),
     );
   }
 
   Widget _buildRemarksInput() {
+    return TextFormField(
+      controller: _remarksController,
+      decoration: InputDecoration(
+        labelText: 'Bemerkungen',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        filled: true,
+        fillColor: Colors.white,
+        prefixIcon: getAdaptiveIcon(iconName: 'note_add', defaultIcon: Icons.note_add, color: const Color(0xFF0F4A29)),
+      ),
+      maxLines: 3,
+      onChanged: (value) => editedData['remarks'] = value,
+    );
+  }
+
+  Widget _buildMoonwoodSwitch() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey[300]!),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white,
+      ),
+      child: SwitchListTile(
+        title: const Text('Mondholz', style: TextStyle(fontWeight: FontWeight.w500)),
+        value: editedData['is_moonwood'] ?? false,
+        onChanged: (value) => setState(() => editedData['is_moonwood'] = value),
+        secondary: getAdaptiveIcon(iconName: 'nightlight', defaultIcon: Icons.nightlight, color: const Color(0xFF0F4A29)),
+        activeColor: const Color(0xFF0F4A29),
+      ),
+    );
+  }
+
+  // ==================== WEITERE INFORMATIONEN ====================
+  Widget _buildAdditionalInfoSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Bemerkungen',
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 12,
-          ),
-        ),
+        _buildSectionHeader('Weitere Informationen', Icons.more_horiz, 'more_horiz'),
         const SizedBox(height: 8),
-        TextFormField(
-          initialValue: editedData['remarks'],
-          decoration: InputDecoration(
-            hintText: 'Zusätzliche Informationen eingeben...',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            filled: true,
-            fillColor: Colors.white,
+        Text('Diese Informationen können später ergänzt werden.', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+        const SizedBox(height: 16),
+        _buildSectionContainer(
+          Column(
+            children: [
+              _buildVolumeInput(),
+              const SizedBox(height: 16),
+              _buildOriginInput(),
+              const SizedBox(height: 16),
+              _buildFSCSwitch(),
+            ],
           ),
-          maxLines: 3,
-          onChanged: (value) => editedData['remarks'] = value,
         ),
       ],
     );
   }
 
   Widget _buildVolumeInput() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Volumen',
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 12,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextFormField(
-          initialValue: editedData['volume']?.toString(),
-          decoration: InputDecoration(
-            hintText: 'Volumen in m³',
-            suffixText: 'm³',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
+    return TextFormField(
+      controller: _volumeController,
+      decoration: InputDecoration(
+        labelText: 'Volumen (m³)',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        filled: true,
+        fillColor: Colors.white,
+        prefixIcon: getAdaptiveIcon(iconName: 'straighten', defaultIcon: Icons.straighten, color: const Color(0xFF0F4A29)),
+      ),
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+      onChanged: (value) {
+        editedData['volume'] = double.tryParse(value.replaceAll(',', '.'));
+      },
+    );
+  }
+
+  Widget _buildOriginInput() {
+    return TextFormField(
+      controller: _originController,
+      decoration: InputDecoration(
+        labelText: 'Herkunft / Holzschlag',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        filled: true,
+        fillColor: Colors.white,
+        prefixIcon: getAdaptiveIcon(iconName: 'location_on', defaultIcon: Icons.location_on, color: const Color(0xFF0F4A29)),
+      ),
+      onChanged: (value) => editedData['origin'] = value,
+    );
+  }
+
+  Widget _buildFSCSwitch() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey[300]!),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white,
+      ),
+      child: SwitchListTile(
+        title: const Text('FSC-zertifiziert', style: TextStyle(fontWeight: FontWeight.w500)),
+        value: editedData['is_fsc'] ?? false,
+        onChanged: (value) => setState(() => editedData['is_fsc'] = value),
+        secondary: getAdaptiveIcon(iconName: 'eco', defaultIcon: Icons.eco, color: const Color(0xFF0F4A29)),
+        activeColor: const Color(0xFF0F4A29),
+      ),
+    );
+  }
+
+  Widget _buildDeleteButton() {
+    return Center(
+      child: TextButton.icon(
+        icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete, color: Colors.red),
+        label: const Text('Löschen'),
+        onPressed: _confirmDelete,
+        style: TextButton.styleFrom(foregroundColor: Colors.red),
+      ),
+    );
+  }
+
+  Widget _buildFooter() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, -2))],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.grey[700],
+              side: BorderSide(color: Colors.grey[300]!),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
-            filled: true,
-            fillColor: Colors.white,
-            prefixIcon: getAdaptiveIcon(iconName: 'straighten', defaultIcon:
-              Icons.straighten,
-              color: Color(0xFF0F4A29),
+            child: const Text('Abbrechen'),
+          ),
+          const SizedBox(width: 16),
+          FilledButton.icon(
+            icon: getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save),
+            label: const Text('Speichern'),
+            onPressed: _saveChanges,
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF0F4A29),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
           ),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-          ],
-          validator: (value) {
-            if (value?.isEmpty ?? true) return 'Pflichtfeld';
-            if (double.tryParse(value!.replaceAll(',', '.')) == null) {
-              return 'Ungültige Zahl';
-            }
-            return null;
-          },
-          onChanged: (value) {
-            editedData['volume'] = double.tryParse(value.replaceAll(',', '.'));
-          },
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Color _getColorFromString(String colorName) {
     switch (colorName.toLowerCase()) {
-      case 'rot':
-        return Colors.red;
-      case 'blau':
-        return Colors.blue;
-      case 'grün':
-        return Colors.green;
-      case 'gelb':
-        return Colors.yellow;
-      default:
-        return Colors.grey;
+      case 'rot': return Colors.red[200]!;
+      case 'blau': return Colors.blue[200]!;
+      case 'grün': return Colors.green[200]!;
+      case 'gelb': return Colors.yellow[200]!;
+      default: return Colors.grey[100]!;
     }
   }
+
   Future<void> _confirmDelete() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (BuildContext context) => AlertDialog(
+      builder: (context) => AlertDialog(
         title: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: getAdaptiveIcon(iconName: 'warning', defaultIcon:
-                Icons.warning,
-                color: Colors.red,
-              ),
+              decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+              child: getAdaptiveIcon(iconName: 'warning', defaultIcon: Icons.warning, color: Colors.red),
             ),
             const SizedBox(width: 8),
             const Text('Löschen bestätigen'),
           ],
         ),
-        content: Text(
-          'Möchtest du das Rundholz ${widget.item.internalNumber} wirklich löschen? '
-              'Diese Aktion kann nicht rückgängig gemacht werden.',
-        ),
+        content: Text('Möchtest du das Rundholz ${widget.item.internalNumber} wirklich löschen?\n\nDiese Aktion kann nicht rückgängig gemacht werden.'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Abbrechen'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Löschen'),
           ),
@@ -970,119 +961,59 @@ class RoundwoodEditDialogState extends State<RoundwoodEditDialog> {
 
     if (confirmed == true) {
       try {
-        // Batch für atomare Operation
-        final batch = FirebaseFirestore.instance.batch();
-
-        // Referenz zum Rundholz-Dokument
-        final roundwoodRef = FirebaseFirestore.instance
-            .collection('roundwood')
-            .doc(widget.item.id);
-
-        // Lösche das Dokument
-        batch.delete(roundwoodRef);
-
-        // Führe die Batch-Operation aus
-        await batch.commit();
-
+        await FirebaseFirestore.instance.collection('roundwood').doc(widget.item.id).delete();
         if (!mounted) return;
-
-        // Zeige Erfolgs-Nachricht
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Rundholz wurde gelöscht'),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        // Schließe Dialog und gib Lösch-Info zurück
+        AppToast.show(message: 'Rundholz wurde gelöscht', height: h);
         Navigator.pop(context, {'action': 'delete', 'id': widget.item.id});
-
       } catch (e) {
-        // Fehlerbehandlung
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Löschen: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppToast.show(message: 'Fehler beim Löschen: $e', height: h);
       }
     }
   }
 
   Future<void> _saveChanges() async {
-    if (formKey.currentState?.validate() ?? false) {
+    if (formKey.currentState?.validate() ?? true) {
       try {
-        // Validiere Pflichtfelder
-        if (editedData['wood_type'] == null) {
-          throw 'Bitte wähle eine Holzart aus';
-        }
-        if (editedData['quality'] == null) {
-          throw 'Bitte wähle eine Qualität aus';
-        }
-        if (editedData['volume'] == null || editedData['volume'] <= 0) {
-          throw 'Bitte gib ein gültiges Volumen ein';
-        }
+        // Alle Werte aus Controllern übernehmen
+        editedData['original_number'] = _originalNumberController.text;
+        editedData['plakette_color'] = _plaketteColorController.text;
+        editedData['remarks'] = _remarksController.text;
+        editedData['origin'] = _originController.text;
+        editedData['volume'] = double.tryParse(_volumeController.text.replaceAll(',', '.')) ?? 0.0;
 
-        // Aktualisiere Zeitstempel
+        // Purposes aktualisieren
+        editedData['purposes'] = _selectedPurposes;
+        editedData['other_purpose'] = _hasOtherPurpose ? _otherPurposeController.text : null;
+        editedData['year'] = _selectedYear;
+        editedData['spray_color'] = _selectedSprayColor;
         editedData['timestamp'] = FieldValue.serverTimestamp();
 
-        // Stelle sicher, dass alle Arrays korrekt sind
-        editedData['purpose_codes'] = selectedPurposes;
-        editedData['purpose_names'] = selectedPurposes.map((code) {
-          try {
-            return purposes!
-                .firstWhere((doc) => (doc.data() as Map<String, dynamic>)['code'] == code)
-                .get('name');
-          } catch (e) {
-            return code;
-          }
-        }).toList();
+        // Interne Nummer NICHT ändern (wird nicht im editedData überschrieben)
+        editedData['internal_number'] = widget.item.internalNumber;
 
         // Bereinige null-Werte
         editedData.removeWhere((key, value) => value == null);
 
-        // Firebase Update durchführen
-        final roundwoodRef = FirebaseFirestore.instance
-            .collection('roundwood')
-            .doc(widget.item.id);
-
-        // Batch für atomare Operation
-        final batch = FirebaseFirestore.instance.batch();
-
-        // Update des Rundholz-Dokuments
-        batch.update(roundwoodRef, editedData);
-
-        // Wenn sich die interne Nummer geändert hat, aktualisiere auch general_data
-        if (editedData['internal_number'] != widget.item.internalNumber) {
-          final generalDataRef = FirebaseFirestore.instance
-              .collection('general_data')
-              .doc('roundwood');
-
-          batch.set(generalDataRef, {
-            'last_internal_number': editedData['internal_number'],
-            'last_updated': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-        }
-
-        // Führe alle Änderungen aus
-        await batch.commit();
+        await FirebaseFirestore.instance.collection('roundwood').doc(widget.item.id).update(editedData);
 
         if (!mounted) return;
-        AppToast.show(message: "Änderungen erfolgreich gespeichert", height: h);
-
-
-        Navigator.pop(context, {
-          'action': 'update',
-          'data': editedData,
-        });
-
+        AppToast.show(message: 'Änderungen erfolgreich gespeichert', height: h);
+        Navigator.pop(context, {'action': 'update', 'data': editedData});
       } catch (e) {
-        // Zeige Fehlermeldung
-        AppToast.show(message: "Fehler beim Speichern. Bitte überprüfe deine Eingaben.", height: h);
-
+        AppToast.show(message: 'Fehler beim Speichern: $e', height: h);
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _originalNumberController.dispose();
+    _plaketteColorController.dispose();
+    _remarksController.dispose();
+    _volumeController.dispose();
+    _originController.dispose();
+    _otherPurposeController.dispose();
+    _customYearController.dispose();
+    super.dispose();
   }
 }

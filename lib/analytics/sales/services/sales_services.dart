@@ -31,44 +31,37 @@ class SalesService {
       endDate = filter.endDate;
     }
 
-    // Basis-Query erstellen
-    Query salesQuery = _db.collection('sales_receipts');
+    // Basis-Query: orders statt sales_receipts
+    Query salesQuery = _db.collection('orders');
 
-    // Zeitraum-Filter anwenden
+    // Zeitraum-Filter: orderDate statt metadata.timestamp
     if (startDate != null) {
-      salesQuery = salesQuery.where('metadata.timestamp', isGreaterThanOrEqualTo: startDate);
+      salesQuery = salesQuery.where('orderDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate));
     }
     if (endDate != null) {
-      salesQuery = salesQuery.where('metadata.timestamp', isLessThanOrEqualTo: endDate);
+      salesQuery = salesQuery.where('orderDate', isLessThanOrEqualTo: Timestamp.fromDate(endDate));
     }
 
-    // Kunden-Filter anwenden
+    // Kunden-Filter
     if (filter.selectedCustomers != null && filter.selectedCustomers!.isNotEmpty) {
       salesQuery = salesQuery.where('customer.id', whereIn: filter.selectedCustomers);
     }
 
-
-    // Messe-Filter anwenden
+    // Messe-Filter
     if (filter.selectedFairs != null && filter.selectedFairs!.isNotEmpty) {
       salesQuery = salesQuery.where('fair.id', whereIn: filter.selectedFairs);
     }
 
-
-
     return salesQuery.snapshots().asyncMap((snapshot) async {
-
-
       double totalRevenue = 0;
       Map<String, TopCustomer> customerStats = {};
       Map<String, ProductStats> productStats = {};
       Map<String, double> woodTypeDistribution = {};
       Map<String, double> monthlyRevenue = {};
 
-      // Dokumente filtern und verarbeiten
       for (var doc in snapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
 
-        // Prüfen ob der Verkauf die Filter-Kriterien erfüllt
         if (!_meetsCriteria(data, filter)) continue;
 
         final calculations = data['calculations'] as Map<String, dynamic>?;
@@ -76,9 +69,7 @@ class SalesService {
 
         final total = (calculations['total'] as num?)?.toDouble() ?? 0;
 
-        // Kunden-Informationen
         final customerData = data['customer'] as Map<String, dynamic>?;
-
         if (customerData == null) continue;
 
         final customerId = customerData['id']?.toString();
@@ -99,16 +90,18 @@ class SalesService {
           final productId = itemData['product_id']?.toString();
           final productName = itemData['product_name']?.toString();
           final quantity = itemData['quantity'] as num?;
-          final itemSubtotal = (itemData['subtotal'] as num?)?.toDouble();
+          final pricePerUnit = (itemData['price_per_unit'] as num?)?.toDouble() ?? 0;
           final woodCode = itemData['wood_code']?.toString();
           final qualityCode = itemData['quality_code']?.toString();
           final partCode = itemData['part_code']?.toString();
           final instrumentCode = itemData['instrument_code']?.toString();
 
-          if (productId == null || productName == null ||
-              quantity == null || itemSubtotal == null || woodCode == null|| qualityCode == null|| partCode == null|| instrumentCode == null) {
+          if (productId == null || productName == null || quantity == null) {
             continue;
           }
+
+          // Berechne Subtotal aus quantity * price_per_unit
+          final itemSubtotal = quantity.toDouble() * pricePerUnit;
 
           // Produkt-Filter prüfen
           if (filter.selectedProducts != null && filter.selectedProducts!.isNotEmpty) {
@@ -118,26 +111,25 @@ class SalesService {
 
           // Holzart-Filter prüfen
           if (filter.woodTypes != null && filter.woodTypes!.isNotEmpty) {
-            if (!filter.woodTypes!.contains(woodCode)) continue;
+            if (woodCode == null || !filter.woodTypes!.contains(woodCode)) continue;
             hasMatchingProduct = true;
           }
 
           // Qualitäts-Filter prüfen
           if (filter.qualities != null && filter.qualities!.isNotEmpty) {
-            if (!filter.qualities!.contains(qualityCode)) continue;
+            if (qualityCode == null || !filter.qualities!.contains(qualityCode)) continue;
             hasMatchingProduct = true;
           }
 
-          // Istrument-Filter prüfen
+          // Instrument-Filter prüfen
           if (filter.instruments != null && filter.instruments!.isNotEmpty) {
-            if (!filter.instruments!.contains(instrumentCode)) continue;
+            if (instrumentCode == null || !filter.instruments!.contains(instrumentCode)) continue;
             hasMatchingProduct = true;
           }
-
 
           // Bauteil-Filter prüfen
           if (filter.parts != null && filter.parts!.isNotEmpty) {
-            if (!filter.parts!.contains(partCode)) continue;
+            if (partCode == null || !filter.parts!.contains(partCode)) continue;
             hasMatchingProduct = true;
           }
 
@@ -163,8 +155,10 @@ class SalesService {
             productStats[productId]!.revenue += itemSubtotal;
 
             // Holzart-Verteilung aktualisieren
-            woodTypeDistribution[woodCode] =
-                (woodTypeDistribution[woodCode] ?? 0) + itemSubtotal;
+            if (woodCode != null) {
+              woodTypeDistribution[woodCode] =
+                  (woodTypeDistribution[woodCode] ?? 0) + itemSubtotal;
+            }
           }
         }
 
@@ -190,11 +184,17 @@ class SalesService {
             customerStats[customerId]!.orderCount++;
           }
 
-          // Monatlichen Umsatz aktualisieren
-          final metadata = data['metadata'] as Map<String, dynamic>?;
-          final timestamp = metadata?['timestamp'] as Timestamp?;
-          if (timestamp != null) {
-            final date = timestamp.toDate();
+          // Monatlichen Umsatz aktualisieren - orderDate statt metadata.timestamp
+          final orderDate = data['orderDate'];
+          DateTime? date;
+
+          if (orderDate is Timestamp) {
+            date = orderDate.toDate();
+          } else if (orderDate is String) {
+            date = DateTime.tryParse(orderDate);
+          }
+
+          if (date != null) {
             final monthKey = '${date.year}-${date.month.toString().padLeft(2, '0')}';
             monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] ?? 0) + receiptTotal;
           }
@@ -251,15 +251,15 @@ class SalesService {
   }
 
   bool _meetsCriteria(Map<String, dynamic> data, SalesFilter filter) {
-    // Basis-Kriterien prüfen (z.B. Timestamp, Customer ID etc.)
-    return true; // Implementiere weitere Basis-Kriterien nach Bedarf
+    return true;
   }
 
   bool _hasProductFilters(SalesFilter filter) {
     return (filter.selectedProducts?.isNotEmpty ?? false) ||
         (filter.woodTypes?.isNotEmpty ?? false) ||
         (filter.qualities?.isNotEmpty ?? false) ||
-        (filter.parts?.isNotEmpty ?? false);
+        (filter.parts?.isNotEmpty ?? false) ||
+        (filter.instruments?.isNotEmpty ?? false);
   }
 
   double _calculateTrend(Map<String, double> revenueByMonth) {

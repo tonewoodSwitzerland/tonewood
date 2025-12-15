@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'customer_filter_service.dart';
+import '../customers/customer_filter_service.dart';
 import '../services/icon_helper.dart';
+import 'customer_group/customer_group.dart';
+import 'customer_group/customer_group_service.dart';
 
 class CustomerFilterDialog {
   static void show(
@@ -42,7 +44,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
   final TextEditingController _maxRevenueController = TextEditingController();
   final TextEditingController _minOrderCountController = TextEditingController();
   final TextEditingController _maxOrderCountController = TextEditingController();
-
+  List<CustomerGroup> _availableGroups = [];
   DateTime? _revenueStartDate;
   DateTime? _revenueEndDate;
   bool _isLoadingStats = false;
@@ -51,12 +53,18 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
   void initState() {
     super.initState();
     _filters = Map<String, dynamic>.from(widget.currentFilters);
+
+    _filters['customerGroups'] ??= <String>[];
+    _filters['countries'] ??= <String>[];
+    _filters['languages'] ??= <String>[];
+
     _minRevenueController.text = _filters['minRevenue']?.toString() ?? '';
     _maxRevenueController.text = _filters['maxRevenue']?.toString() ?? '';
     _minOrderCountController.text = _filters['minOrderCount']?.toString() ?? '';
     _maxOrderCountController.text = _filters['maxOrderCount']?.toString() ?? '';
     _revenueStartDate = _filters['revenueStartDate'] as DateTime?;
     _revenueEndDate = _filters['revenueEndDate'] as DateTime?;
+    _loadCustomerGroups();
   }
 
   @override
@@ -66,6 +74,15 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
     _minOrderCountController.dispose();
     _maxOrderCountController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadCustomerGroups() async {
+    final groups = await CustomerGroupService.getAllGroups();
+    if (mounted) {
+      setState(() {
+        _availableGroups = groups;
+      });
+    }
   }
 
   @override
@@ -558,6 +575,79 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                           ],
                         ),
                       ),
+                      const SizedBox(height: 24),
+
+// Kundengruppen Filter
+                      _buildFilterSection(
+                        title: 'Kundengruppen',
+                        icon: Icons.group,
+                        iconName: 'group',
+                        child: _availableGroups.isEmpty
+                            ? Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              getAdaptiveIcon(
+                                iconName: 'info',
+                                defaultIcon: Icons.info_outline,
+                                size: 16,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 8),
+                              const Expanded(
+                                child: Text(
+                                  'Keine Kundengruppen vorhanden',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                            : Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _availableGroups.map((group) {
+                            final isSelected = (_filters['customerGroups'] as List? ?? []).contains(group.id);
+                            return FilterChip(
+                              label: Text(
+                                group.name,
+                                style: TextStyle(
+                                  color: isSelected ? Colors.white : group.color,
+                                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                ),
+                              ),
+                              selected: isSelected,
+                              onSelected: (selected) {
+                                setState(() {
+                                  // Sicherstellen, dass die Liste existiert
+                                  _filters['customerGroups'] ??= <String>[];
+
+                                  if (selected) {
+                                    (_filters['customerGroups'] as List).add(group.id);
+                                  } else {
+                                    (_filters['customerGroups'] as List).remove(group.id);
+                                  }
+                                });
+                              },
+                              backgroundColor: group.color.withOpacity(0.1),
+                              selectedColor: group.color,
+                              checkmarkColor: Colors.white,
+                              side: BorderSide(
+                                color: isSelected ? group.color : group.color.withOpacity(0.5),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+
+
+
+
+
                     ],
                   ),
                 ),

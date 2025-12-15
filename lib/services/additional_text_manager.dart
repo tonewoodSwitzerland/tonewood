@@ -8,10 +8,132 @@ class AdditionalTextsManager {
 
   // Firebase Pfad für die Standardtexte
   static const String DEFAULT_TEXTS_PATH = 'general_data/additional_texts';
+  static const String DEFAULT_SELECTIONS_PATH = 'general_data/additional_texts_defaults';
 
   // Cache für die Standardtexte aus Firebase
   static Map<String, Map<String, Map<String, String>>>? _cachedDefaultTexts;
+  // NEU: Cache für Standard-Aktivierungen
+  static Map<String, bool>? _cachedDefaultSelections;
 
+  // NEU: Fallback Standard-Aktivierungen
+  static const Map<String, bool> FALLBACK_DEFAULT_SELECTIONS = {
+    'legend': true,
+    'fsc': false,
+    'natural_product': true,
+    'bank_info': false,
+    'origin_declaration': false,
+    'cites': false,
+    'free_text': false,
+  };
+
+  // NEU: Lade Standard-Aktivierungen aus Firebase
+  static Future<Map<String, bool>> loadDefaultSelections() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .doc(DEFAULT_SELECTIONS_PATH)
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        _cachedDefaultSelections = {
+          'legend': data['legend'] ?? true,
+          'fsc': data['fsc'] ?? false,
+          'natural_product': data['natural_product'] ?? true,
+          'bank_info': data['bank_info'] ?? false,
+          'origin_declaration': data['origin_declaration'] ?? false,
+          'cites': data['cites'] ?? false,
+          'free_text': data['free_text'] ?? false,
+        };
+        return _cachedDefaultSelections!;
+      } else {
+        // Initialisiere mit Fallback-Werten
+        await _initializeDefaultSelectionsInFirebase();
+        return FALLBACK_DEFAULT_SELECTIONS;
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Standard-Aktivierungen: $e');
+      return FALLBACK_DEFAULT_SELECTIONS;
+    }
+  }
+
+  // NEU: Initialisiere Standard-Aktivierungen in Firebase
+  static Future<void> _initializeDefaultSelectionsInFirebase() async {
+    try {
+      await FirebaseFirestore.instance
+          .doc(DEFAULT_SELECTIONS_PATH)
+          .set({
+        ...FALLBACK_DEFAULT_SELECTIONS,
+        'last_updated': FieldValue.serverTimestamp(),
+      });
+      _cachedDefaultSelections = Map.from(FALLBACK_DEFAULT_SELECTIONS);
+    } catch (e) {
+      print('Fehler beim Initialisieren der Standard-Aktivierungen: $e');
+    }
+  }
+
+  // NEU: Aktualisiere eine Standard-Aktivierung
+  static Future<void> updateDefaultSelection(String textType, bool isActive) async {
+    try {
+      await FirebaseFirestore.instance
+          .doc(DEFAULT_SELECTIONS_PATH)
+          .update({
+        textType: isActive,
+        'last_updated': FieldValue.serverTimestamp(),
+      });
+
+      // Cache aktualisieren
+      _cachedDefaultSelections ??= Map.from(FALLBACK_DEFAULT_SELECTIONS);
+      _cachedDefaultSelections![textType] = isActive;
+    } catch (e) {
+      print('Fehler beim Aktualisieren der Standard-Aktivierung: $e');
+      rethrow;
+    }
+  }
+
+  // NEU: Alle Standard-Aktivierungen auf einmal speichern
+  static Future<void> saveAllDefaultSelections(Map<String, bool> selections) async {
+    try {
+      await FirebaseFirestore.instance
+          .doc(DEFAULT_SELECTIONS_PATH)
+          .set({
+        ...selections,
+        'last_updated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      _cachedDefaultSelections = Map.from(selections);
+    } catch (e) {
+      print('Fehler beim Speichern der Standard-Aktivierungen: $e');
+      rethrow;
+    }
+  }
+
+  // NEU: Hole gecachte Standard-Aktivierungen (synchron)
+  static Map<String, bool> getCachedDefaultSelections() {
+    return _cachedDefaultSelections ?? FALLBACK_DEFAULT_SELECTIONS;
+  }
+
+  // NEU: Stream für Live-Updates der Standard-Aktivierungen
+  static Stream<Map<String, bool>> streamDefaultSelections() {
+    return FirebaseFirestore.instance
+        .doc(DEFAULT_SELECTIONS_PATH)
+        .snapshots()
+        .map((snapshot) {
+      if (snapshot.exists && snapshot.data() != null) {
+        final data = snapshot.data()!;
+        _cachedDefaultSelections = {
+          'legend': data['legend'] ?? true,
+          'fsc': data['fsc'] ?? false,
+          'natural_product': data['natural_product'] ?? true,
+          'bank_info': data['bank_info'] ?? false,
+          'origin_declaration': data['origin_declaration'] ?? false,
+          'cites': data['cites'] ?? false,
+          'free_text': data['free_text'] ?? false,
+        };
+        return _cachedDefaultSelections!;
+      }
+      return FALLBACK_DEFAULT_SELECTIONS;
+    });
+  }
 
   static const Map<String, Map<String, String>> FALLBACK_ORIGIN_DECLARATION_TEXT = {
     'DE': {
@@ -200,7 +322,7 @@ class AdditionalTextsManager {
     }
   }
 
-  // Laden der aktuellen Texte aus Firestore (temporäre Auswahl)
+  // GEÄNDERT: loadAdditionalTexts - verwendet jetzt die Firebase-Defaults
   static Future<Map<String, dynamic>> loadAdditionalTexts() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -215,35 +337,72 @@ class AdditionalTextsManager {
       print('Fehler beim Laden der Zusatztexte: $e');
     }
 
-    // Standardwerte, wenn nichts gefunden wurde
+    // Lade die Standard-Aktivierungen aus Firebase
+    final defaults = await loadDefaultSelections();
+
     return {
       'legend': {
         'type': 'standard',
         'custom_text': '',
-        'selected': true,
+        'selected': defaults['legend'] ?? true,
       },
       'fsc': {
         'type': 'standard',
         'custom_text': '',
-        'selected': false,
+        'selected': defaults['fsc'] ?? false,
       },
       'natural_product': {
         'type': 'standard',
         'custom_text': '',
-        'selected': true,
+        'selected': defaults['natural_product'] ?? true,
       },
       'bank_info': {
         'type': 'standard',
         'custom_text': '',
-        'selected': true,
+        'selected': defaults['bank_info'] ?? false,
+      },
+      'origin_declaration': {
+        'type': 'standard',
+        'custom_text': '',
+        'selected': defaults['origin_declaration'] ?? false,
+      },
+      'cites': {
+        'type': 'standard',
+        'custom_text': '',
+        'selected': defaults['cites'] ?? false,
       },
       'free_text': {
         'type': 'custom',
         'custom_text': '',
-        'selected': false,
+        'selected': defaults['free_text'] ?? false,
       },
     };
   }
+
+  // GEÄNDERT: loadAdditionalTextsFromQuote - verwendet Firebase-Defaults als Fallback
+  static Future<Map<String, dynamic>> loadAdditionalTextsFromQuote(String quoteId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('quotes')
+          .doc(quoteId)
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        final metadata = data['metadata'] as Map<String, dynamic>? ?? {};
+
+        if (metadata.containsKey('additionalTexts')) {
+          return metadata['additionalTexts'] as Map<String, dynamic>;
+        }
+      }
+    } catch (e) {
+      print('Fehler beim Laden der Zusatztexte aus Quote: $e');
+    }
+
+    // Verwende die allgemeine Methode mit Firebase-Defaults
+    return loadAdditionalTexts();
+  }
+
 
   // Speichern der Texte in Firestore
   static Future<void> saveAdditionalTexts(Map<String, dynamic> texts) async {
@@ -347,55 +506,7 @@ class AdditionalTextsManager {
 
   // Füge diese Methoden zur AdditionalTextsManager Klasse hinzu:
 
-// Lade Additional Texts aus einer Quote
-  static Future<Map<String, dynamic>> loadAdditionalTextsFromQuote(String quoteId) async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('quotes')
-          .doc(quoteId)
-          .get();
 
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data()!;
-        final metadata = data['metadata'] as Map<String, dynamic>? ?? {};
-
-        if (metadata.containsKey('additionalTexts')) {
-          return metadata['additionalTexts'] as Map<String, dynamic>;
-        }
-      }
-    } catch (e) {
-      print('Fehler beim Laden der Zusatztexte aus Quote: $e');
-    }
-
-    // Standardwerte, wenn nichts gefunden wurde
-    return {
-      'legend': {
-        'type': 'standard',
-        'custom_text': '',
-        'selected': true,
-      },
-      'fsc': {
-        'type': 'standard',
-        'custom_text': '',
-        'selected': false,
-      },
-      'natural_product': {
-        'type': 'standard',
-        'custom_text': '',
-        'selected': true,
-      },
-      'bank_info': {
-        'type': 'standard',
-        'custom_text': '',
-        'selected': true,
-      },
-      'free_text': {
-        'type': 'custom',
-        'custom_text': '',
-        'selected': false,
-      },
-    };
-  }
 
 // Speichere Additional Texts in einer Quote
   static Future<void> saveAdditionalTextsToQuote(String quoteId, Map<String, dynamic> texts) async {

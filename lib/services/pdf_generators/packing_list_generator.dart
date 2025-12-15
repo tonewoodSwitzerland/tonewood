@@ -609,7 +609,7 @@ class PackingListGenerator extends BasePdfGenerator {
                 unit != "Stk"
                     ? quantity.toStringAsFixed(3)
                     : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
-                style: const pw.TextStyle(fontSize: 6),
+                style: const pw.TextStyle(fontSize: 8),
                 textAlign: pw.TextAlign.right,
               ),
             ),

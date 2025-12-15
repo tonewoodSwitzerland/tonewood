@@ -25,6 +25,9 @@ class ProductionOverview extends StatelessWidget {
       builder: (context, totalsSnapshot) {
         try {
           if (totalsSnapshot.hasError) {
+            print('DEBUG OVERVIEW ERROR: ${totalsSnapshot.error}');
+            print('DEBUG OVERVIEW STACKTRACE: ${totalsSnapshot.stackTrace}');
+
             print(totalsSnapshot.error.toString(),);
             return Center(
               child: Padding(
@@ -84,7 +87,14 @@ class ProductionOverview extends StatelessWidget {
           }
 
           final totals = totalsSnapshot.data!;
-          final quantities = totals['quantities'] as Map<String, int>;
+
+          print('DEBUG OVERVIEW: totals received');
+          print('DEBUG OVERVIEW: quantities type = ${totals['quantities'].runtimeType}');
+          print('DEBUG OVERVIEW: special_wood type = ${totals['special_wood'].runtimeType}');
+
+          final quantities = totals['quantities'] as Map<String, double>;
+          print('DEBUG OVERVIEW: quantities cast successful');
+          ;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -115,7 +125,7 @@ class ProductionOverview extends StatelessWidget {
                 // 4. Spezialholz und Wertübersicht
                 _buildSpecialAndValueSection(
                   context,
-                  totals['special_wood'] as Map<String, int>,
+                  totals['special_wood'] as Map<String, double>,
                   totals['total_value'] as double,
                   totals['batch_count'] as int,
                 ),
@@ -130,7 +140,7 @@ print(e);
     );
   }
 
-  Widget _buildKpiSection(BuildContext context, Map<String, int> quantities) {
+  Widget _buildKpiSection(BuildContext context, Map<String, double> quantities) {
     try {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -224,7 +234,7 @@ print(e);
 
   Widget _buildSpecialAndValueSection(
       BuildContext context,
-      Map<String, int> specialWood,
+      Map<String, double> specialWood,
       double totalValue,
       int batchCount,
       ) {
@@ -247,7 +257,7 @@ print(e);
     }
   }
 
-  Widget _buildQuantityGrid(BuildContext context, Map<String, int> quantities) {
+  Widget _buildQuantityGrid(BuildContext context, Map<String, double> quantities) {
     final units = {
       'Stk': ('inventory', Icons.inventory, Colors.blue),
       'PAL': ('grid_view', Icons.grid_view, Colors.green),
@@ -347,8 +357,7 @@ print(e);
                 DataColumn(label: Text('Wert CHF'), numeric: true),
               ],
               rows: stats.entries.map((entry) {
-                final quantities = entry.value['quantities'] as Map<String, int>;
-
+                final quantities = entry.value['quantities'] as Map<String, double>;
                 return DataRow(cells: [
                   DataCell(Text(entry.value['name'] as String)),
                   DataCell(Text(NumberFormat('#,##0').format(quantities['Stk'] ?? 0))),
@@ -403,8 +412,7 @@ print(e);
                 DataColumn(label: Text('Wert CHF'), numeric: true),
               ],
               rows: stats.entries.map((entry) {
-                final quantities = entry.value['quantities'] as Map<String, int>;
-
+                final quantities = entry.value['quantities'] as Map<String, double>;
                 return DataRow(cells: [
                   DataCell(Text(entry.value['name'] as String)),
                   DataCell(Text(NumberFormat('#,##0').format(quantities['Stk'] ?? 0))),
@@ -459,8 +467,7 @@ print(e);
                 DataColumn(label: Text('Wert CHF'), numeric: true),
               ],
               rows: stats.entries.map((entry) {
-                final quantities = entry.value['quantities'] as Map<String, int>;
-
+                final quantities = entry.value['quantities'] as Map<String, double>;
                 return DataRow(cells: [
                   DataCell(Text(entry.value['name'] as String)),
                   DataCell(Text(NumberFormat('#,##0').format(quantities['Stk'] ?? 0))),
@@ -516,7 +523,7 @@ print(e);
                 DataColumn(label: Text('Wert CHF'), numeric: true),
               ],
               rows: stats.entries.map((entry) {
-                final quantities = entry.value['quantities'] as Map<String, int>;
+                final quantities = entry.value['quantities'] as Map<String, double>;
 
                 return DataRow(cells: [
                   DataCell(Text(entry.value['name'] as String)),
@@ -565,12 +572,14 @@ print(e);
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            _buildSpecialWoodRow('Mondholz', specialWood['moonwood'] as int),
+
+            _buildSpecialWoodRow('Mondholz', (specialWood['moonwood'] as num).toInt()),
             const SizedBox(height: 8),
-            _buildSpecialWoodRow('Haselfichte', specialWood['haselfichte'] as int),
+
+            _buildSpecialWoodRow('Haselfichte', (specialWood['haselfichte'] as num).toInt()),
             const SizedBox(height: 8),
-            _buildSpecialWoodRow('Th. behandelt', specialWood['thermally_treated'] as int),
+
+            _buildSpecialWoodRow('Th. behandelt', (specialWood['thermally_treated'] as num).toInt()),
           ],
         ),
       ),

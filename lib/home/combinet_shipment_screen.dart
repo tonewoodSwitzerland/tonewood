@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/combined_shipment_manager.dart';
 import '../services/icon_helper.dart';
-import '../components/order_model.dart';
+import '../orders/order_model.dart';
 import 'combined_shipment_create_screen.dart';
 
 class CombinedShipmentScreen extends StatefulWidget {
@@ -533,7 +533,7 @@ class _CombinedShipmentScreenState extends State<CombinedShipmentScreen> {
                   _buildStatCard(
                     'Gesamtwert',
                     'CHF ${totalAmount.toStringAsFixed(2)}',
-                    Icons.euro,
+                    Icons.savings,
                     Colors.green,
                   ),
                   _buildStatCard(

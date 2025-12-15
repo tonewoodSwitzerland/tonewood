@@ -234,7 +234,7 @@ class RoundwoodListState extends State<RoundwoodList> {
       builder: (context) => RoundwoodEditDialog(
         item: item,
         isDesktopLayout: widget.isDesktopLayout,
-        readOnly: true,
+
       ),
     );
 

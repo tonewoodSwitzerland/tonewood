@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:tonewood/services/pdf_generators/combined_commercial_invoice_generator.dart';
 import 'package:tonewood/services/pdf_generators/combined_delivery_note_generator.dart';
 import 'package:tonewood/services/pdf_generators/combined_packing_list_generator.dart';
-import '../components/order_model.dart';
+import '../orders/order_model.dart';
 import 'orders_document_manager.dart';
 
 import 'package:firebase_storage/firebase_storage.dart';

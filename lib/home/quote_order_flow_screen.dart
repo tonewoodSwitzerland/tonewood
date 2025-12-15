@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../components/order_model.dart';
-import '../components/order_service.dart';
-import '../components/quote_model.dart';
-import '../components/quote_service.dart';
+import '../orders/order_model.dart';
+import '../orders/order_service.dart';
+import '../quotes/quote_model.dart';
+
+import '../quotes/quote_service.dart';
 import '../services/document_selection_manager.dart';
 import '../services/additional_text_manager.dart';
 import '../services/shipping_costs_manager.dart';
@@ -787,7 +788,7 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
         'items': items,
         'calculations': calculations,
         'metadata': {
-          'taxOption': taxDoc.exists ? (taxDoc.data()?['tax_option'] ?? 0) : 0,
+          'taxOption': taxDoc.exists ? (taxDoc.data()?['tax_option'] ?? 1) : 1,
           'vatRate': taxDoc.exists ? (taxDoc.data()?['vat_rate'] ?? 8.1) : 8.1,
           'currency': currencyDoc.exists ? (currencyDoc.data()?['selected_currency'] ?? 'CHF') : 'CHF',
           'exchangeRates': currencyDoc.exists ? (currencyDoc.data()?['exchange_rates'] ?? {'CHF': 1.0}) : {'CHF': 1.0},

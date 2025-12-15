@@ -6,10 +6,15 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:cross_file/cross_file.dart';
 import '../constants.dart';
-import '../services/customer.dart';
+import 'customer.dart';
+import 'customer_group/customer_group_service.dart';
 
 class CustomerExportService {
   static Future<void> exportCustomersCsv(BuildContext context) async {
+    final allGroups = await CustomerGroupService.getAllGroups();
+    final groupNames = {for (var g in allGroups) g.id: g.name};
+
+
     try {
       // Ladeanzeige
       showDialog(
@@ -67,7 +72,9 @@ class CustomerExportService {
         'Liefer-Land',
         'Liefer-Länderkürzel',
         'Liefer-Telefon',
-        'Liefer-E-Mail'
+        'Liefer-E-Mail',
+        'Kundengruppen',
+
       ];
 
       csvContent.writeln(headers.join(';'));
@@ -105,6 +112,11 @@ class CustomerExportService {
           _escapeCsvField(customer.shippingCountryCode),
           _escapeCsvField(customer.shippingPhone),
           _escapeCsvField(customer.shippingEmail),
+          _escapeCsvField(
+              customer.customerGroupIds
+                  .map((id) => groupNames[id] ?? 'Unbekannt')
+                  .join(', ')
+          ),
         ];
         csvContent.writeln(row.join(';'));
       }

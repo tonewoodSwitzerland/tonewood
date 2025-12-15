@@ -114,7 +114,7 @@ class QuoteGenerator extends BasePdfGenerator {
           'quote': 'QUOTE',
           'currency_note': 'All prices in $currency (Exchange rate: 1 CHF = ${exchangeRates[currency]!.toStringAsFixed(4)} $currency)',
           'validity_note': 'This offer is valid until ${DateFormat('MMMM dd, yyyy', 'en_US').format(validUntil)}. If payment is not received by then, we will cancel the reservation.',
-          'net_amount': 'amount',
+          'net_amount': 'invoice amount',
           'vat': 'VAT',
           'total': 'Total',
           'no_vat_note': 'No VAT will be charged.',
@@ -355,6 +355,105 @@ class QuoteGenerator extends BasePdfGenerator {
       ],
     );
   }
+
+  /// Berechnet optimale Spaltenbreiten basierend auf Inhalt
+  static Map<int, pw.FlexColumnWidth> _calculateOptimalColumnWidths(
+      Map<String, List<Map<String, dynamic>>> groupedItems,
+      String language,
+      bool showDimensions,
+      )
+  {
+    // Zeichenbreiten-Faktor für 8pt Font
+    const double charWidth = 0.18;
+
+    // Startlängen (Header-Texte)
+    int maxProductLen = language == 'EN' ? 7 : 7;   // "Product" / "Produkt"
+    int maxInstrLen = 10;                            // "Instrument"
+    int maxQualLen = language == 'EN' ? 7 : 8;      // "Quality" / "Qualität"
+    int maxFscLen = 4;                               // "FSC®"
+    int maxDimLen = language == 'EN' ? 10 : 5;      // "Dimensions" / "Masse"
+
+    // Durch alle Items iterieren
+    groupedItems.forEach((woodGroup, items) {
+      for (final item in items) {
+        // Produkt (inkl. Notes + Badges)
+        String productText = language == 'EN'
+            ? (item['part_name_en'] ?? item['part_name'] ?? '')
+            : (item['part_name'] ?? '');
+        if (item['notes'] != null && item['notes'].toString().isNotEmpty) {
+          productText += ' (${item['notes']})';
+        }
+        // Badge-Platz einrechnen
+        if (item['is_gratisartikel'] == true) productText += '  GRATIS';
+        if (item['is_online_shop_item'] == true) productText += '  #0000';
+        if (productText.length > maxProductLen) maxProductLen = productText.length;
+
+        // Instrument
+        String instrText = language == 'EN'
+            ? (item['instrument_name_en'] ?? item['instrument_name'] ?? '')
+            : (item['instrument_name'] ?? '');
+        if (instrText.length > maxInstrLen) maxInstrLen = instrText.length;
+
+        // Qualität
+        String qualText = item['quality_name'] ?? '';
+        if (qualText.length > maxQualLen) maxQualLen = qualText.length;
+
+        // FSC
+        String fscText = item['fsc_status'] ?? '';
+        if (fscText.length > maxFscLen) maxFscLen = fscText.length;
+
+        // Masse
+        if (showDimensions) {
+          final l = item['custom_length']?.toString() ?? '';
+          final w = item['custom_width']?.toString() ?? '';
+          final t = item['custom_thickness']?.toString() ?? '';
+          String dimText = '$l×$w×$t';
+          if (dimText.length > maxDimLen) maxDimLen = dimText.length;
+        }
+      }
+    });
+
+    // Breiten berechnen mit Clamp (Min/Max)
+    double productWidth = (maxProductLen * charWidth).clamp(3.0, 5.5);
+    double instrWidth = (maxInstrLen * charWidth).clamp(2.0, 3.5);
+    double qualWidth = (maxQualLen * charWidth).clamp(1.5, 2.2);
+    double fscWidth = (maxFscLen * charWidth).clamp(1.2, 1.8);
+    double dimWidth = (maxDimLen * charWidth).clamp(1.8, 2.8);
+
+    if (showDimensions) {
+      return {
+        0: pw.FlexColumnWidth(productWidth),        // Produkt
+        1: pw.FlexColumnWidth(instrWidth),          // Instr.
+        2: pw.FlexColumnWidth(qualWidth),           // Qual.
+        3: pw.FlexColumnWidth(fscWidth),            // FSC
+        4: const pw.FlexColumnWidth(1.2),           // Urs
+        5: const pw.FlexColumnWidth(1.0),           // °C
+        6: pw.FlexColumnWidth(dimWidth),            // Masse
+        7: const pw.FlexColumnWidth(1.3),           // Anz.
+        8: const pw.FlexColumnWidth(1.2),           // Einh
+        9: const pw.FlexColumnWidth(2.0),           // Preis/E
+        10: const pw.FlexColumnWidth(2.0),          // Gesamt
+        11: const pw.FlexColumnWidth(1.6),          // Rabatt
+        12: const pw.FlexColumnWidth(2.2),          // Netto
+      };
+    } else {
+      return {
+        0: pw.FlexColumnWidth(productWidth),        // Produkt
+        1: pw.FlexColumnWidth(instrWidth),          // Instr.
+        2: pw.FlexColumnWidth(qualWidth),           // Qual.
+        3: pw.FlexColumnWidth(fscWidth),            // FSC
+        4: const pw.FlexColumnWidth(1.2),           // Urs
+        5: const pw.FlexColumnWidth(1.0),           // °C
+        6: const pw.FlexColumnWidth(1.3),           // Anz.
+        7: const pw.FlexColumnWidth(1.2),           // Einh
+        8: const pw.FlexColumnWidth(2.0),           // Preis/E
+        9: const pw.FlexColumnWidth(2.0),           // Gesamt
+        10: const pw.FlexColumnWidth(1.6),          // Rabatt
+        11: const pw.FlexColumnWidth(2.2),          // Netto
+      };
+    }
+  }
+
   // Erstelle Produkttabelle mit Gruppierung
   static pw.Widget _buildProductTable(
       Map<String, List<Map<String, dynamic>>> groupedItems,
@@ -529,6 +628,23 @@ if (unit.toLowerCase() == 'stück') {
                             ),
                           ),
                         ),
+// NEU: Online-Shop Badge mit letzten 4 Ziffern
+                      if (item['is_online_shop_item'] == true && item['online_shop_barcode'] != null)
+                        pw.Container(
+                          margin: const pw.EdgeInsets.only(left: 4),
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                          decoration: pw.BoxDecoration(
+                            color: PdfColors.blueGrey600,
+                            borderRadius: pw.BorderRadius.circular(2),
+                          ),
+                          child: pw.Text(
+                            '#${item['online_shop_barcode'].toString().substring(item['online_shop_barcode'].toString().length - 4)}',
+                            style: const pw.TextStyle(
+                              fontSize: 5,
+                              color: PdfColors.white,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -640,37 +756,11 @@ if (unit.toLowerCase() == 'stück') {
       }
     });
 
-    // NEU: Spaltenbreiten anpassen basierend auf showDimensions
-    final columnWidths = showDimensions ? {
-      0: const pw.FlexColumnWidth(4),      // Produkt
-      1: const pw.FlexColumnWidth(2.0),    // Instr.
-      //2: const pw.FlexColumnWidth(0.0),    // Typ
-      2: const pw.FlexColumnWidth(1.5),    // Qual.
-      3: const pw.FlexColumnWidth(1.5),    // FSC
-      4: const pw.FlexColumnWidth(1.5),    // Urs
-      5: const pw.FlexColumnWidth(1.0),    // °C
-      6: const pw.FlexColumnWidth(2.5),    // Masse
-      7: const pw.FlexColumnWidth(1.2),    // Anz.
-      8: const pw.FlexColumnWidth(1.2),    // Einh
-      9: const pw.FlexColumnWidth(2.0),   // Preis/E
-      10: const pw.FlexColumnWidth(2.0),   // Gesamt
-      11: const pw.FlexColumnWidth(1.5),   // Rabatt
-      12: const pw.FlexColumnWidth(2.0),   // Netto Gesamt
-    } : {
-      0: const pw.FlexColumnWidth(4.5),    // Produkt (mehr Platz ohne Masse)
-      1: const pw.FlexColumnWidth(2.2),    // Instr.
-     // 2: const pw.FlexColumnWidth(2.2),    // Typ
-      2: const pw.FlexColumnWidth(1.8),    // Qual.
-      3: const pw.FlexColumnWidth(1.5),    // FSC
-      4: const pw.FlexColumnWidth(1.5),    // Urs
-      5: const pw.FlexColumnWidth(1.0),    // °C
-      6: const pw.FlexColumnWidth(1.5),    // Anz.
-      7: const pw.FlexColumnWidth(1.2),    // Einh
-      8: const pw.FlexColumnWidth(2.2),    // Preis/E
-      9: const pw.FlexColumnWidth(2.3),   // Gesamt
-      10: const pw.FlexColumnWidth(1.8),   // Rabatt
-      11: const pw.FlexColumnWidth(2.3),   // Netto Gesamt
-    };
+    final columnWidths = _calculateOptimalColumnWidths(
+      groupedItems,
+      language,
+      showDimensions,
+    );
 
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
@@ -1019,7 +1109,7 @@ if (unit.toLowerCase() == 'stück') {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(language == 'EN' ? 'amount' : 'Nettobetrag', style: const pw.TextStyle(fontSize: 9)),
+                  pw.Text(language == 'EN' ? 'invoice amount' : 'Nettobetrag', style: const pw.TextStyle(fontSize: 9)),
                   pw.Text(BasePdfGenerator.formatCurrency(netAmount, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
@@ -1086,7 +1176,7 @@ if (unit.toLowerCase() == 'stück') {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text(
-                    language == 'EN' ? 'amount' : 'Nettobetrag',
+                    language == 'EN' ? 'invoice amount' : 'Nettobetrag',
                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                   ),
                   pw.Text(

@@ -48,9 +48,8 @@ final AuthService _auth = AuthService();
         title:  Row(
           children: [
 
-            GestureDetector(child: Image.asset('images/logo2.png',fit:BoxFit.scaleDown, height: 50,)),
+            GestureDetector(child: Image.asset('images/tonewood_logo_blaetter_transp.png',fit:BoxFit.scaleDown, height: 30,)),
             const SizedBox(width: 20,),
-            //  Text("Liga BP6", style: TextStyle(color:Colors.white, fontFamily: CupertinoIcons.iconFont),),
           ],
         ),
         backgroundColor: basicBackgroundColour,

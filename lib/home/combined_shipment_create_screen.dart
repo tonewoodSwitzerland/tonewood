@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/icon_helper.dart';
-import '../components/order_model.dart';
+import '../orders/order_model.dart';
 import '../services/combined_shipment_manager.dart';
 import 'package:intl/intl.dart';
 

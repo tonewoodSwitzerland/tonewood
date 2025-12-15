@@ -1,11 +1,10 @@
-// lib/screens/analytics/roundwood/widgets/roundwood_filter_dialog.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../../components/filterCategory.dart';
 import '../../../services/icon_helper.dart';
 import '../models/roundwood_models.dart';
-import '../constants/roundwood_constants.dart';
+import '../services/roundwood_service.dart';
 
 class RoundwoodFilterDialog extends StatefulWidget {
   final RoundwoodFilter initialFilter;
@@ -21,30 +20,38 @@ class RoundwoodFilterDialog extends StatefulWidget {
 
 class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
   late RoundwoodFilter tempFilter;
-  final TextEditingController additionalPurposeController = TextEditingController();
+  final RoundwoodService _service = RoundwoodService();
+  List<int> _availableYears = [];
+
+  // Hardcoded Verwendungszwecke (wie im Entry Screen)
+  final List<String> _availablePurposes = ['Gitarre', 'Violine', 'Viola', 'Cello', 'Bass'];
 
   @override
   void initState() {
     super.initState();
     tempFilter = widget.initialFilter;
-    additionalPurposeController.text = tempFilter.additionalPurpose ?? '';
+    _loadAvailableYears();
+  }
+
+  Future<void> _loadAvailableYears() async {
+    final years = await _service.getAvailableYears();
+    if (mounted) {
+      setState(() => _availableYears = years);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         width: MediaQuery.of(context).size.width * 0.9,
         height: MediaQuery.of(context).size.height * 0.8,
         child: Column(
           children: [
             _buildHeader(),
-            if (_hasActiveFilters())
-              _buildActiveFiltersBar(),
+            if (_hasActiveFilters()) _buildActiveFiltersBar(),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
@@ -54,59 +61,69 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            spreadRadius: 1,
-                            blurRadius: 3,
-                          ),
-                        ],
+                        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), spreadRadius: 1, blurRadius: 3)],
                       ),
                       child: Theme(
                         data: ThemeData(dividerColor: Colors.transparent),
                         child: Column(
                           children: [
-                            buildFilterCategory(
-                            icon:  Icons.forest,
-                              iconName: 'forest',
-                              title:  'Holzart',
-                             child:  _buildWoodTypeFilter(),
-                              hasActiveFilters:    tempFilter.woodTypes?.isNotEmpty ?? false,
-                            ),
-                            buildFilterCategory(
-                              icon:  Icons.star,
-                              iconName: 'star',
-                              title:  'Qualität',
-                              child:    _buildQualityFilter(),
-                              hasActiveFilters:    tempFilter.qualities?.isNotEmpty ?? false,
-                            ),
-                            buildFilterCategory(
-                              icon:    Icons.straighten,
-                              iconName: 'straighten',
-                              title:  'Volumen',
-                              child:   _buildVolumeFilter(),
-                              hasActiveFilters:   tempFilter.volumeMin != null || tempFilter.volumeMax != null,
-                            ),
-                            buildFilterCategory(
-                              icon:   Icons.location_on,
-                              iconName: 'location',
-                              title:  'Herkunft',
-                              child:   _buildOriginFilter(),
-                              hasActiveFilters:     tempFilter.origin != null,
-                            ),
+                            // NEU: Jahr Filter
                             buildFilterCategory(
                               icon: Icons.calendar_today,
                               iconName: 'calendar_today',
-                              title: 'Zeitraum',
-                              child:   _buildDateFilter(),
-                              hasActiveFilters:   tempFilter.timeRange != null || tempFilter.startDate != null,
+                              title: 'Jahrgang',
+                              child: _buildYearFilter(),
+                              hasActiveFilters: tempFilter.year != null,
                             ),
                             buildFilterCategory(
-                              icon:  Icons.nightlight,
-                             iconName: 'nightlight',
-                             title:  'Spezielle Filter',
-                              child:    _buildSpecialFilters(),
-                            hasActiveFilters:   tempFilter.isMoonwood ?? false,
+                              icon: Icons.forest,
+                              iconName: 'forest',
+                              title: 'Holzart',
+                              child: _buildWoodTypeFilter(),
+                              hasActiveFilters: tempFilter.woodTypes?.isNotEmpty ?? false,
+                            ),
+                            buildFilterCategory(
+                              icon: Icons.star,
+                              iconName: 'star',
+                              title: 'Qualität',
+                              child: _buildQualityFilter(),
+                              hasActiveFilters: tempFilter.qualities?.isNotEmpty ?? false,
+                            ),
+                            // NEU: Verwendungszweck Filter
+                            buildFilterCategory(
+                              icon: Icons.assignment,
+                              iconName: 'assignment',
+                              title: 'Verwendungszweck',
+                              child: _buildPurposeFilter(),
+                              hasActiveFilters: tempFilter.purposes?.isNotEmpty ?? false,
+                            ),
+                            buildFilterCategory(
+                              icon: Icons.straighten,
+                              iconName: 'straighten',
+                              title: 'Volumen',
+                              child: _buildVolumeFilter(),
+                              hasActiveFilters: tempFilter.volumeMin != null || tempFilter.volumeMax != null,
+                            ),
+                            buildFilterCategory(
+                              icon: Icons.location_on,
+                              iconName: 'location',
+                              title: 'Herkunft',
+                              child: _buildOriginFilter(),
+                              hasActiveFilters: tempFilter.origin != null,
+                            ),
+                            buildFilterCategory(
+                              icon: Icons.date_range,
+                              iconName: 'date_range',
+                              title: 'Zeitraum',
+                              child: _buildDateFilter(),
+                              hasActiveFilters: tempFilter.timeRange != null || tempFilter.startDate != null,
+                            ),
+                            buildFilterCategory(
+                              icon: Icons.eco,
+                              iconName: 'eco',
+                              title: 'Spezielle Filter',
+                              child: _buildSpecialFilters(),
+                              hasActiveFilters: (tempFilter.isMoonwood ?? false) || (tempFilter.isFSC ?? false),
                             ),
                           ],
                         ),
@@ -129,14 +146,7 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 3,
-            offset: const Offset(0, 1),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), spreadRadius: 1, blurRadius: 3, offset: const Offset(0, 1))],
       ),
       child: Row(
         children: [
@@ -148,31 +158,22 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
                   color: const Color(0xFF0F4A29).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child:  getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list, color: Color(0xFF0F4A29)),
+                child: getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list, color: const Color(0xFF0F4A29)),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Filter',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F4A29),
-                ),
-              ),
+              const Text('Filter', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF0F4A29))),
             ],
           ),
           const Spacer(),
           if (_hasActiveFilters())
             TextButton.icon(
-              icon: getAdaptiveIcon(iconName: 'clear_all', defaultIcon: Icons.clear_all,),
+              icon: getAdaptiveIcon(iconName: 'clear_all', defaultIcon: Icons.clear_all),
               label: const Text('Zurücksetzen'),
               onPressed: _resetFilters,
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.red,
-              ),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
             ),
           IconButton(
-            icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
+            icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
             onPressed: () => Navigator.of(context).pop(),
             color: Colors.grey[600],
           ),
@@ -181,72 +182,40 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
     );
   }
 
-  Widget _buildWoodTypeChip(String code) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('wood_types')
-            .doc(code)
-            .snapshots(),
-        builder: (context, snapshot) {
-          final name = snapshot.hasData
-              ? (snapshot.data!.data() as Map<String, dynamic>)['name'] ?? code
-              : code;
-          return Chip(
-            backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-            label: Text('$name ($code)'),
-            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
-            onDeleted: () => _removeWoodType(code),
-          );
-        },
+  Widget _buildActiveFiltersBar() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          // NEU: Jahr Chip
+          if (tempFilter.year != null) _buildFilterChip('Jahr: ${tempFilter.year}', () => _updateFilter(clearYear: true)),
+          if (tempFilter.woodTypes?.isNotEmpty ?? false)
+            ...tempFilter.woodTypes!.map((w) => _buildFilterChip('Holz: $w', () => _removeWoodType(w))),
+          if (tempFilter.qualities?.isNotEmpty ?? false)
+            ...tempFilter.qualities!.map((q) => _buildFilterChip('Qualität: $q', () => _removeQuality(q))),
+          // NEU: Verwendungszweck Chips
+          if (tempFilter.purposes?.isNotEmpty ?? false)
+            ...tempFilter.purposes!.map((p) => _buildFilterChip('Zweck: $p', () => _removePurpose(p))),
+          if (tempFilter.origin != null) _buildFilterChip('Herkunft: ${tempFilter.origin}', () => _updateFilter(clearOrigin: true)),
+          if (tempFilter.volumeMin != null || tempFilter.volumeMax != null) _buildVolumeChip(),
+          if (tempFilter.timeRange != null || tempFilter.startDate != null) _buildTimeRangeChip(),
+          if (tempFilter.isMoonwood ?? false) _buildFilterChip('Nur Mondholz', () => _updateFilter(clearMoonwood: true)),
+          // NEU: FSC Chip
+          if (tempFilter.isFSC ?? false) _buildFilterChip('Nur FSC', () => _updateFilter(clearFSC: true)),
+        ],
       ),
     );
   }
 
-  Widget _buildQualityChip(String code) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('qualities')
-            .doc(code)
-            .snapshots(),
-        builder: (context, snapshot) {
-          final name = snapshot.hasData
-              ? (snapshot.data!.data() as Map<String, dynamic>)['name'] ?? code
-              : code;
-          return Chip(
-            backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-            label: Text('$name ($code)'),
-            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
-            onDeleted: () => _removeQuality(code),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildOriginChip() {
+  Widget _buildFilterChip(String label, VoidCallback onDelete) {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Chip(
         backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-        label: Text('Herkunft: ${tempFilter.origin}'),
-        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
-        onDeleted: () => setState(() {
-          tempFilter = RoundwoodFilter(
-            woodTypes: tempFilter.woodTypes,
-            qualities: tempFilter.qualities,
-            origin: null,
-            volumeMin: tempFilter.volumeMin,
-            volumeMax: tempFilter.volumeMax,
-            isMoonwood: tempFilter.isMoonwood,
-            timeRange: tempFilter.timeRange,
-            startDate: tempFilter.startDate,
-            endDate: tempFilter.endDate,
-          );
-        }),
+        label: Text(label),
+        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 18),
+        onDeleted: onDelete,
       ),
     );
   }
@@ -260,156 +229,23 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
     } else if (tempFilter.volumeMax != null) {
       volumeText = '<${tempFilter.volumeMax} m³';
     }
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Chip(
-        backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-        label: Text('Volumen: $volumeText'),
-        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
-        onDeleted: () => setState(() {
-          tempFilter = RoundwoodFilter(
-            woodTypes: tempFilter.woodTypes,
-            qualities: tempFilter.qualities,
-            origin: tempFilter.origin,
-            volumeMin: null,
-            volumeMax: null,
-            isMoonwood: tempFilter.isMoonwood,
-            timeRange: tempFilter.timeRange,
-            startDate: tempFilter.startDate,
-            endDate: tempFilter.endDate,
-          );
-        }),
-      ),
-    );
+    return _buildFilterChip('Volumen: $volumeText', () => _updateFilter(clearVolume: true));
   }
 
   Widget _buildTimeRangeChip() {
     String timeText = '';
     if (tempFilter.timeRange != null) {
       switch (tempFilter.timeRange) {
-        case 'week':
-          timeText = 'Woche';
-          break;
-        case 'month':
-          timeText = 'Monat';
-          break;
-        case 'quarter':
-          timeText = 'Quartal';
-          break;
-        case 'year':
-          timeText = 'Jahr';
-          break;
+        case 'week': timeText = 'Woche'; break;
+        case 'month': timeText = 'Monat'; break;
+        case 'quarter': timeText = 'Quartal'; break;
+        case 'year': timeText = 'Jahr'; break;
       }
     } else if (tempFilter.startDate != null && tempFilter.endDate != null) {
       timeText = '${DateFormat('dd.MM.yy').format(tempFilter.startDate!)} - ${DateFormat('dd.MM.yy').format(tempFilter.endDate!)}';
     }
-
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Chip(
-        backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-        label: Text('Zeitraum: $timeText'),
-        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
-        onDeleted: () => setState(() {
-          tempFilter = RoundwoodFilter(
-            woodTypes: tempFilter.woodTypes,
-            qualities: tempFilter.qualities,
-            origin: tempFilter.origin,
-            volumeMin: tempFilter.volumeMin,
-            volumeMax: tempFilter.volumeMax,
-            isMoonwood: tempFilter.isMoonwood,
-            timeRange: null,
-            startDate: null,
-            endDate: null,
-          );
-        }),
-      ),
-    );
+    return _buildFilterChip('Zeitraum: $timeText', () => _updateFilter(clearDates: true));
   }
-
-  Widget _buildMoonwoodChip() {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Chip(
-        backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-        label: const Text('Nur Mondholz'),
-        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,size: 18),
-        onDeleted: () => setState(() {
-          tempFilter = RoundwoodFilter(
-            woodTypes: tempFilter.woodTypes,
-            qualities: tempFilter.qualities,
-            origin: tempFilter.origin,
-            volumeMin: tempFilter.volumeMin,
-            volumeMax: tempFilter.volumeMax,
-            isMoonwood: false,
-            timeRange: tempFilter.timeRange,
-            startDate: tempFilter.startDate,
-            endDate: tempFilter.endDate,
-          );
-        }),
-      ),
-    );
-  }
-
-  void _removeWoodType(String code) {
-    setState(() {
-      tempFilter = RoundwoodFilter(
-        woodTypes: tempFilter.woodTypes?.where((w) => w != code).toList(),
-        qualities: tempFilter.qualities,
-        origin: tempFilter.origin,
-        volumeMin: tempFilter.volumeMin,
-        volumeMax: tempFilter.volumeMax,
-        isMoonwood: tempFilter.isMoonwood,
-        timeRange: tempFilter.timeRange,
-        startDate: tempFilter.startDate,
-        endDate: tempFilter.endDate,
-      );
-    });
-  }
-
-  void _removeQuality(String code) {
-    setState(() {
-      tempFilter = RoundwoodFilter(
-        woodTypes: tempFilter.woodTypes,
-        qualities: tempFilter.qualities?.where((q) => q != code).toList(),
-        origin: tempFilter.origin,
-        volumeMin: tempFilter.volumeMin,
-        volumeMax: tempFilter.volumeMax,
-        isMoonwood: tempFilter.isMoonwood,
-        timeRange: tempFilter.timeRange,
-        startDate: tempFilter.startDate,
-        endDate: tempFilter.endDate,
-      );
-    });
-  }
-  Widget _buildActiveFiltersBar() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          if (tempFilter.woodTypes?.isNotEmpty ?? false)
-            ...tempFilter.woodTypes!.map(_buildWoodTypeChip),
-          if (tempFilter.qualities?.isNotEmpty ?? false)
-            ...tempFilter.qualities!.map(_buildQualityChip),
-          if (tempFilter.origin != null)
-            _buildOriginChip(),
-          if (tempFilter.volumeMin != null || tempFilter.volumeMax != null)
-            _buildVolumeChip(),
-          if (tempFilter.timeRange != null)
-            _buildTimeRangeChip(),
-          if (tempFilter.isMoonwood ?? false)
-            _buildMoonwoodChip(),
-        ],
-      ),
-    );
-  }
-
-
-
-
-
 
   Widget _buildFooter() {
     return Container(
@@ -417,34 +253,20 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 3,
-            offset: const Offset(0, -1),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), spreadRadius: 1, blurRadius: 3, offset: const Offset(0, -1))],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           OutlinedButton(
             onPressed: () => Navigator.of(context).pop(),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.grey[700],
-              side: BorderSide(color: Colors.grey[300]!),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.grey[700], side: BorderSide(color: Colors.grey[300]!)),
             child: const Text('Abbrechen'),
           ),
           const SizedBox(width: 12),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(tempFilter),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF0F4A29),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0F4A29)),
             child: const Text('Anwenden'),
           ),
         ],
@@ -452,55 +274,43 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
     );
   }
 
-  // Helper methods
-  void _resetFilters() {
-    setState(() {
-      tempFilter = RoundwoodFilter();
-    });
+  // NEU: Jahr Filter
+  Widget _buildYearFilter() {
+    if (_availableYears.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _availableYears.map((year) {
+        final isSelected = tempFilter.year == year;
+        return FilterChip(
+          label: Text('$year'),
+          selected: isSelected,
+          onSelected: (selected) {
+            setState(() {
+              tempFilter = tempFilter.copyWith(year: selected ? year : null, clearYear: !selected);
+            });
+          },
+          selectedColor: const Color(0xFF0F4A29).withOpacity(0.2),
+          checkmarkColor: const Color(0xFF0F4A29),
+        );
+      }).toList(),
+    );
   }
-
-  bool _hasActiveFilters() {
-    return (tempFilter.woodTypes?.isNotEmpty ?? false) ||
-        (tempFilter.qualities?.isNotEmpty ?? false) ||
-        tempFilter.origin != null ||
-        tempFilter.volumeMin != null ||
-        tempFilter.volumeMax != null ||
-        (tempFilter.isMoonwood == true) ||  // statt ?? false
-        tempFilter.timeRange != null ||
-        tempFilter.startDate != null ||
-        tempFilter.endDate != null;
-  }
-
-
 
   Widget _buildWoodTypeFilter() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('wood_types')
-          .orderBy('name')
-          .snapshots(),
+      stream: FirebaseFirestore.instance.collection('wood_types').orderBy('name').snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const CircularProgressIndicator();
-
-        return _buildMultiSelectDropdown(
-          label: 'Holzart auswählen',
+        return _buildMultiSelectList(
           options: snapshot.data!.docs,
           selectedValues: tempFilter.woodTypes ?? [],
           onChanged: (newSelection) {
             setState(() {
-              tempFilter = RoundwoodFilter(
-                woodTypes: newSelection,
-                qualities: tempFilter.qualities,
-                purposeCodes: tempFilter.purposeCodes,
-                additionalPurpose: tempFilter.additionalPurpose,
-                origin: tempFilter.origin,
-                volumeMin: tempFilter.volumeMin,
-                volumeMax: tempFilter.volumeMax,
-                isMoonwood: tempFilter.isMoonwood,
-                startDate: tempFilter.startDate,
-                endDate: tempFilter.endDate,
-                timeRange: tempFilter.timeRange,
-              );
+              tempFilter = tempFilter.copyWith(woodTypes: newSelection.isEmpty ? null : newSelection, clearWoodTypes: newSelection.isEmpty);
             });
           },
         );
@@ -510,32 +320,15 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
 
   Widget _buildQualityFilter() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('qualities')
-          .orderBy('name')
-          .snapshots(),
+      stream: FirebaseFirestore.instance.collection('qualities').orderBy('name').snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const CircularProgressIndicator();
-
-        return _buildMultiSelectDropdown(
-          label: 'Qualität auswählen',
+        return _buildMultiSelectList(
           options: snapshot.data!.docs,
           selectedValues: tempFilter.qualities ?? [],
           onChanged: (newSelection) {
             setState(() {
-              tempFilter = RoundwoodFilter(
-                woodTypes: tempFilter.woodTypes,
-                qualities: newSelection,
-                purposeCodes: tempFilter.purposeCodes,
-                additionalPurpose: tempFilter.additionalPurpose,
-                origin: tempFilter.origin,
-                volumeMin: tempFilter.volumeMin,
-                volumeMax: tempFilter.volumeMax,
-                isMoonwood: tempFilter.isMoonwood,
-                startDate: tempFilter.startDate,
-                endDate: tempFilter.endDate,
-                timeRange: tempFilter.timeRange,
-              );
+              tempFilter = tempFilter.copyWith(qualities: newSelection.isEmpty ? null : newSelection, clearQualities: newSelection.isEmpty);
             });
           },
         );
@@ -543,56 +336,67 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
     );
   }
 
-  Widget _buildMultiSelectDropdown({
-    required String label,
+  // NEU: Verwendungszweck Filter
+  Widget _buildPurposeFilter() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _availablePurposes.map((purpose) {
+        final isSelected = tempFilter.purposes?.contains(purpose) ?? false;
+        return FilterChip(
+          label: Text(purpose),
+          selected: isSelected,
+          onSelected: (selected) {
+            setState(() {
+              final currentPurposes = List<String>.from(tempFilter.purposes ?? []);
+              if (selected) {
+                currentPurposes.add(purpose);
+              } else {
+                currentPurposes.remove(purpose);
+              }
+              tempFilter = tempFilter.copyWith(
+                purposes: currentPurposes.isEmpty ? null : currentPurposes,
+                clearPurposes: currentPurposes.isEmpty,
+              );
+            });
+          },
+          selectedColor: const Color(0xFF0F4A29).withOpacity(0.2),
+          checkmarkColor: const Color(0xFF0F4A29),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildMultiSelectList({
     required List<DocumentSnapshot> options,
     required List<String> selectedValues,
     required Function(List<String>) onChanged,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey[300]!),
-        borderRadius: BorderRadius.circular(8),
-        color: Colors.white,
-      ),
-      child: ExpansionTile(
-        title: Text(
-          selectedValues.isEmpty ? label : '${selectedValues.length} ausgewählt',
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 14,
-          ),
-        ),
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            constraints: const BoxConstraints(maxHeight: 250),
-            child: ListView(
-              shrinkWrap: true,
-              children: options.map((option) {
-                final data = option.data() as Map<String, dynamic>;
-                final isSelected = selectedValues.contains(option.id);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: options.map((option) {
+        final data = option.data() as Map<String, dynamic>;
+        final code = data['code'] as String? ?? option.id;
+        final name = data['name'] as String? ?? code;
+        final isSelected = selectedValues.contains(code);
 
-                return CheckboxListTile(
-                  title: Text(data['name'] as String),
-                  value: isSelected,
-                  onChanged: (bool? checked) {
-                    if (checked == true) {
-                      onChanged([...selectedValues, option.id]);
-                    } else {
-                      onChanged(
-                        selectedValues.where((id) => id != option.id).toList(),
-                      );
-                    }
-                  },
-                  activeColor: const Color(0xFF0F4A29),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
+        return FilterChip(
+          label: Text(name),
+          selected: isSelected,
+          onSelected: (selected) {
+            final newSelection = List<String>.from(selectedValues);
+            if (selected) {
+              newSelection.add(code);
+            } else {
+              newSelection.remove(code);
+            }
+            onChanged(newSelection);
+          },
+          selectedColor: const Color(0xFF0F4A29).withOpacity(0.2),
+          checkmarkColor: const Color(0xFF0F4A29),
+        );
+      }).toList(),
     );
   }
 
@@ -604,26 +408,12 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
             initialValue: tempFilter.volumeMin?.toString(),
             decoration: InputDecoration(
               labelText: 'Minimum (m³)',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
             ),
             keyboardType: TextInputType.number,
             onChanged: (value) {
               setState(() {
-                tempFilter = RoundwoodFilter(
-                  woodTypes: tempFilter.woodTypes,
-                  qualities: tempFilter.qualities,
-                  purposeCodes: tempFilter.purposeCodes,
-                  additionalPurpose: tempFilter.additionalPurpose,
-                  origin: tempFilter.origin,
-                  volumeMin: double.tryParse(value),
-                  volumeMax: tempFilter.volumeMax,
-                  isMoonwood: tempFilter.isMoonwood,
-                  startDate: tempFilter.startDate,
-                  endDate: tempFilter.endDate,
-                  timeRange: tempFilter.timeRange,
-                );
+                tempFilter = tempFilter.copyWith(volumeMin: double.tryParse(value));
               });
             },
           ),
@@ -634,26 +424,12 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
             initialValue: tempFilter.volumeMax?.toString(),
             decoration: InputDecoration(
               labelText: 'Maximum (m³)',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
             ),
             keyboardType: TextInputType.number,
             onChanged: (value) {
               setState(() {
-                tempFilter = RoundwoodFilter(
-                  woodTypes: tempFilter.woodTypes,
-                  qualities: tempFilter.qualities,
-                  purposeCodes: tempFilter.purposeCodes,
-                  additionalPurpose: tempFilter.additionalPurpose,
-                  origin: tempFilter.origin,
-                  volumeMin: tempFilter.volumeMin,
-                  volumeMax: double.tryParse(value),
-                  isMoonwood: tempFilter.isMoonwood,
-                  startDate: tempFilter.startDate,
-                  endDate: tempFilter.endDate,
-                  timeRange: tempFilter.timeRange,
-                );
+                tempFilter = tempFilter.copyWith(volumeMax: double.tryParse(value));
               });
             },
           ),
@@ -667,25 +443,11 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
       initialValue: tempFilter.origin,
       decoration: InputDecoration(
         hintText: 'z.B. Schweiz',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       ),
       onChanged: (value) {
         setState(() {
-          tempFilter = RoundwoodFilter(
-            woodTypes: tempFilter.woodTypes,
-            qualities: tempFilter.qualities,
-            purposeCodes: tempFilter.purposeCodes,
-            additionalPurpose: tempFilter.additionalPurpose,
-            origin: value.isEmpty ? null : value,
-            volumeMin: tempFilter.volumeMin,
-            volumeMax: tempFilter.volumeMax,
-            isMoonwood: tempFilter.isMoonwood,
-            startDate: tempFilter.startDate,
-            endDate: tempFilter.endDate,
-            timeRange: tempFilter.timeRange,
-          );
+          tempFilter = tempFilter.copyWith(origin: value.isEmpty ? null : value, clearOrigin: value.isEmpty);
         });
       },
     );
@@ -693,228 +455,174 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
 
   Widget _buildDateFilter() {
     return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         Wrap(
-        spacing: 8,
-        children: [
-    FilterChip(
-    label: const Text('Woche'),
-    selected: tempFilter.timeRange == 'week',
-    onSelected: (selected) {
-    setState(() {
-    tempFilter = RoundwoodFilter(
-    woodTypes: tempFilter.woodTypes,
-    qualities: tempFilter.qualities,
-    purposeCodes: tempFilter.purposeCodes,
-    additionalPurpose: tempFilter.additionalPurpose,
-    origin: tempFilter.origin,
-    volumeMin: tempFilter.volumeMin,
-    volumeMax: tempFilter.volumeMax,
-    isMoonwood: tempFilter.isMoonwood,
-    timeRange: selected ? 'week' : null,
-    startDate: null,
-    endDate: null,
-    );
-    });
-    },
-    ),
-    FilterChip(
-    label: const Text('Monat'),
-    selected: tempFilter.timeRange == 'month',
-    onSelected: (selected) {
-    setState(() {
-    tempFilter = RoundwoodFilter(
-    woodTypes: tempFilter.woodTypes,
-    qualities: tempFilter.qualities,
-    purposeCodes: tempFilter.purposeCodes,
-    additionalPurpose: tempFilter.additionalPurpose,
-    origin: tempFilter.origin,
-    volumeMin: tempFilter.volumeMin,
-    volumeMax: tempFilter.volumeMax,
-    isMoonwood: tempFilter.isMoonwood,
-    timeRange: selected ? 'month' : null,
-    startDate: null,
-    endDate: null,
-    );
-    });
-    },
-    ),
-    FilterChip(
-    label: const Text('Quartal'),
-    selected: tempFilter.timeRange == 'quarter',
-    onSelected: (selected) {
-    setState(() {
-    tempFilter = RoundwoodFilter(
-    woodTypes: tempFilter.woodTypes,
-    qualities: tempFilter.qualities,
-    purposeCodes: tempFilter.purposeCodes,
-    additionalPurpose: tempFilter.additionalPurpose,
-    origin: tempFilter.origin,
-    volumeMin: tempFilter.volumeMin,
-    volumeMax: tempFilter.volumeMax,
-      isMoonwood: tempFilter.isMoonwood,
-      timeRange: selected ? 'quarter' : null,
-      startDate: null,
-      endDate: null,
-    );
-    });
-    },
-    ),
-          FilterChip(
-            label: const Text('Jahr'),
-            selected: tempFilter.timeRange == 'year',
-            onSelected: (selected) {
-              setState(() {
-                tempFilter = RoundwoodFilter(
-                  woodTypes: tempFilter.woodTypes,
-                  qualities: tempFilter.qualities,
-                  purposeCodes: tempFilter.purposeCodes,
-                  additionalPurpose: tempFilter.additionalPurpose,
-                  origin: tempFilter.origin,
-                  volumeMin: tempFilter.volumeMin,
-                  volumeMax: tempFilter.volumeMax,
-                  isMoonwood: tempFilter.isMoonwood,
-                  timeRange: selected ? 'year' : null,
-                  startDate: null,
-                  endDate: null,
-                );
-              });
-            },
-          ),
-        ],
+          spacing: 8,
+          children: [
+            _buildTimeRangeFilterChip('Woche', 'week'),
+            _buildTimeRangeFilterChip('Monat', 'month'),
+            _buildTimeRangeFilterChip('Quartal', 'quarter'),
+            _buildTimeRangeFilterChip('Jahr', 'year'),
+          ],
         ),
-          const SizedBox(height: 16),
-          Text(
-            'Oder Zeitraum wählen:',
-            style: TextStyle(
-              color: Colors.grey[600],
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  decoration: InputDecoration(
-                    labelText: 'Von',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    suffixIcon: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
-                  ),
-                  readOnly: true,
-                  controller: TextEditingController(
-                    text: tempFilter.startDate != null
-                        ? DateFormat('dd.MM.yyyy').format(tempFilter.startDate!)
-                        : '',
-                  ),
-                  onTap: () async {
-                    final date = await showDatePicker(
-                      context: context,
-                      initialDate: tempFilter.startDate ?? DateTime.now(),
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime.now(),
-                    );
-                    if (date != null) {
-                      setState(() {
-                        tempFilter = RoundwoodFilter(
-                          woodTypes: tempFilter.woodTypes,
-                          qualities: tempFilter.qualities,
-                          purposeCodes: tempFilter.purposeCodes,
-                          additionalPurpose: tempFilter.additionalPurpose,
-                          origin: tempFilter.origin,
-                          volumeMin: tempFilter.volumeMin,
-                          volumeMax: tempFilter.volumeMax,
-                          isMoonwood: tempFilter.isMoonwood,
-                          startDate: date,
-                          endDate: tempFilter.endDate,
-                          timeRange: null,
-                        );
-                      });
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: TextFormField(
-                  decoration: InputDecoration(
-                    labelText: 'Bis',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    suffixIcon: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
-                  ),
-                  readOnly: true,
-                  controller: TextEditingController(
-                    text: tempFilter.endDate != null
-                        ? DateFormat('dd.MM.yyyy').format(tempFilter.endDate!)
-                        : '',
-                  ),
-                  onTap: () async {
-                    final date = await showDatePicker(
-                      context: context,
-                      initialDate: tempFilter.endDate ?? DateTime.now(),
-                      firstDate: tempFilter.startDate ?? DateTime(2000),
-                      lastDate: DateTime.now(),
-                    );
-                    if (date != null) {
-                      setState(() {
-                        tempFilter = RoundwoodFilter(
-                          woodTypes: tempFilter.woodTypes,
-                          qualities: tempFilter.qualities,
-                          purposeCodes: tempFilter.purposeCodes,
-                          additionalPurpose: tempFilter.additionalPurpose,
-                          origin: tempFilter.origin,
-                          volumeMin: tempFilter.volumeMin,
-                          volumeMax: tempFilter.volumeMax,
-                          isMoonwood: tempFilter.isMoonwood,
-                          startDate: tempFilter.startDate,
-                          endDate: date,
-                          timeRange: null,
-                        );
-                      });
-                    }
-                  },
-                ),
-              ),
-            ],
-          ),
-        ],
+        const SizedBox(height: 16),
+        Text('Oder Zeitraum wählen:', style: TextStyle(color: Colors.grey[600], fontSize: 14)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(child: _buildDatePickerField('Von', tempFilter.startDate, (date) {
+              setState(() {
+                tempFilter = tempFilter.copyWith(startDate: date, timeRange: null);
+              });
+            })),
+            const SizedBox(width: 16),
+            Expanded(child: _buildDatePickerField('Bis', tempFilter.endDate, (date) {
+              setState(() {
+                tempFilter = tempFilter.copyWith(endDate: date, timeRange: null);
+              });
+            })),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimeRangeFilterChip(String label, String value) {
+    return FilterChip(
+      label: Text(label),
+      selected: tempFilter.timeRange == value,
+      onSelected: (selected) {
+        setState(() {
+          tempFilter = tempFilter.copyWith(
+            timeRange: selected ? value : null,
+            clearDates: true,
+          );
+        });
+      },
+      selectedColor: const Color(0xFF0F4A29).withOpacity(0.2),
+      checkmarkColor: const Color(0xFF0F4A29),
+    );
+  }
+
+  Widget _buildDatePickerField(String label, DateTime? value, Function(DateTime) onSelected) {
+    return TextFormField(
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        suffixIcon: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
+      ),
+      readOnly: true,
+      controller: TextEditingController(text: value != null ? DateFormat('dd.MM.yyyy').format(value) : ''),
+      onTap: () async {
+        final date = await showDatePicker(
+          context: context,
+          initialDate: value ?? DateTime.now(),
+          firstDate: DateTime(2000),
+          lastDate: DateTime.now(),
+        );
+        if (date != null) onSelected(date);
+      },
     );
   }
 
   Widget _buildSpecialFilters() {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey[300]!),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: SwitchListTile(
-        title: const Text('Nur Mondholz'),
-        value: tempFilter.isMoonwood ?? false,
-        onChanged: (value) {
-          setState(() {
-            tempFilter = RoundwoodFilter(
-              woodTypes: tempFilter.woodTypes,
-              qualities: tempFilter.qualities,
-              purposeCodes: tempFilter.purposeCodes,
-              additionalPurpose: tempFilter.additionalPurpose,
-              origin: tempFilter.origin,
-              volumeMin: tempFilter.volumeMin,
-              volumeMax: tempFilter.volumeMax,
-              isMoonwood: value,
-              startDate: tempFilter.startDate,
-              endDate: tempFilter.endDate,
-              timeRange: tempFilter.timeRange,
-            );
-          });
-        },
-      ),
+    return Column(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey[300]!),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SwitchListTile(
+            title: const Text('Nur Mondholz'),
+            secondary: getAdaptiveIcon(iconName: 'nightlight', defaultIcon: Icons.nightlight, color: const Color(0xFF0F4A29)),
+            value: tempFilter.isMoonwood ?? false,
+            onChanged: (value) {
+              setState(() {
+                tempFilter = tempFilter.copyWith(isMoonwood: value ? true : null, clearMoonwood: !value);
+              });
+            },
+            activeColor: const Color(0xFF0F4A29),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // NEU: FSC Filter
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey[300]!),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SwitchListTile(
+            title: const Text('Nur FSC-zertifiziert'),
+            secondary: getAdaptiveIcon(iconName: 'eco', defaultIcon: Icons.eco, color: Colors.green),
+            value: tempFilter.isFSC ?? false,
+            onChanged: (value) {
+              setState(() {
+                tempFilter = tempFilter.copyWith(isFSC: value ? true : null, clearFSC: !value);
+              });
+            },
+            activeColor: const Color(0xFF0F4A29),
+          ),
+        ),
+      ],
     );
   }
 
+  void _resetFilters() {
+    setState(() {
+      tempFilter = RoundwoodFilter();
+    });
+  }
 
+  bool _hasActiveFilters() {
+    return tempFilter.toMap().isNotEmpty;
+  }
+
+  void _updateFilter({
+    bool clearYear = false,
+    bool clearWoodTypes = false,
+    bool clearQualities = false,
+    bool clearPurposes = false,
+    bool clearOrigin = false,
+    bool clearVolume = false,
+    bool clearMoonwood = false,
+    bool clearFSC = false,
+    bool clearDates = false,
+  }) {
+    setState(() {
+      tempFilter = tempFilter.copyWith(
+        clearYear: clearYear,
+        clearWoodTypes: clearWoodTypes,
+        clearQualities: clearQualities,
+        clearPurposes: clearPurposes,
+        clearOrigin: clearOrigin,
+        clearVolume: clearVolume,
+        clearMoonwood: clearMoonwood,
+        clearFSC: clearFSC,
+        clearDates: clearDates,
+      );
+    });
+  }
+
+  void _removeWoodType(String code) {
+    final newList = tempFilter.woodTypes?.where((w) => w != code).toList();
+    setState(() {
+      tempFilter = tempFilter.copyWith(woodTypes: newList?.isEmpty == true ? null : newList, clearWoodTypes: newList?.isEmpty == true);
+    });
+  }
+
+  void _removeQuality(String code) {
+    final newList = tempFilter.qualities?.where((q) => q != code).toList();
+    setState(() {
+      tempFilter = tempFilter.copyWith(qualities: newList?.isEmpty == true ? null : newList, clearQualities: newList?.isEmpty == true);
+    });
+  }
+
+  void _removePurpose(String purpose) {
+    final newList = tempFilter.purposes?.where((p) => p != purpose).toList();
+    setState(() {
+      tempFilter = tempFilter.copyWith(purposes: newList?.isEmpty == true ? null : newList, clearPurposes: newList?.isEmpty == true);
+    });
+  }
 }

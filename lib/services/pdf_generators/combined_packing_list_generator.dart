@@ -4,7 +4,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'base_pdf_generator.dart';
-import '../../components/order_model.dart';
+import '../../orders/order_model.dart';
 
 class CombinedPackingListGenerator {
   static Future<Uint8List> generatePdf({

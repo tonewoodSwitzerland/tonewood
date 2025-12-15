@@ -5,8 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import '../services/customer.dart';
-import 'icon_helper.dart';
+import 'customer.dart';
+import '../services/icon_helper.dart';
 
 class CustomerImportService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;

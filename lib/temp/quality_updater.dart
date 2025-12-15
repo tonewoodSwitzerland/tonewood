@@ -7,21 +7,25 @@ class QualityUpdater {
     try {
       // Mapping für die Quality Updates
       final Map<String, Map<String, String>> qualityUpdates = {
-        '21': {
+        '20': {
           'quality_name': 'I thermo',
           'quality_name_en': 'I thermo',
         },
-        '22': {
+        '21': {
           'quality_name': 'II thermo',
           'quality_name_en': 'II thermo',
         },
-        '23': {
+        '22': {
           'quality_name': 'III thermo',
           'quality_name_en': 'III thermo',
         },
-        '24': {
+        '23': {
           'quality_name': 'IV thermo',
           'quality_name_en': 'IV thermo',
+        },
+        '24': {
+          'quality_name': 'B',
+          'quality_name_en': 'B',
         },
       };
 

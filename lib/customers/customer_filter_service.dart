@@ -22,6 +22,7 @@ class CustomerFilterService {
       'hasEoriNumber': null,
       'countries': <String>[],
       'languages': <String>[],
+      'customerGroups': <String>[],
     };
   }
 
@@ -229,6 +230,17 @@ class CustomerFilterService {
       }).toList();
     }
 
+    final customerGroups = List<String>.from(filters['customerGroups'] ?? []);
+    if (customerGroups.isNotEmpty) {
+      filteredCustomers = filteredCustomers.where((customer) {
+        final customerGroupIds = List<String>.from(customer['customerGroupIds'] ?? []);
+        // Prüfen ob mindestens eine der ausgewählten Gruppen enthalten ist
+        return customerGroups.any((groupId) => customerGroupIds.contains(groupId));
+      }).toList();
+    }
+
+
+
     // Revenue und Order Count Filter
     // Diese müssen async berechnet werden
     if (filters['minRevenue'] != null ||
@@ -278,7 +290,8 @@ class CustomerFilterService {
         filters['hasVatNumber'] != null ||
         filters['hasEoriNumber'] != null ||
         (filters['countries'] as List?)?.isNotEmpty == true ||
-        (filters['languages'] as List?)?.isNotEmpty == true;
+        (filters['languages'] as List?)?.isNotEmpty == true ||
+        (filters['customerGroups'] as List?)?.isNotEmpty == true;
   }
 
   // Helper: Erstelle Filter-Zusammenfassung für Anzeige
@@ -324,6 +337,13 @@ class CustomerFilterService {
     if (languageCount > 0) {
       parts.add('$languageCount Sprachen');
     }
+
+    // NEU: Kundengruppen
+    final customerGroupCount = (filters['customerGroups'] as List?)?.length ?? 0;
+    if (customerGroupCount > 0) {
+      parts.add('$customerGroupCount ${customerGroupCount == 1 ? 'Kundengruppe' : 'Kundengruppen'}');
+    }
+
 
     return parts.join(', ');
   }

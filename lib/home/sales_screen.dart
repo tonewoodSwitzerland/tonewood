@@ -11,6 +11,7 @@ import 'package:tonewood/home/warehouse_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../customers/customer.dart';
 import '../services/swiss_rounding.dart'; // Pfad anpassen je nach Projektstruktur
 
 import 'package:path_provider/path_provider.dart';
@@ -29,7 +30,7 @@ import '../analytics/sales/export_documents_integration.dart';
 import '../analytics/sales/export_module.dart';
 import '../constants.dart';
 import '../services/cost_center.dart';
-import '../services/customer.dart';
+
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -50,7 +51,7 @@ import 'package:csv/csv.dart';
 import '../services/icon_helper.dart';
 import 'barcode_scanner.dart';
 import 'currency_converter_sheet.dart';
-import 'customer_selection.dart';
+import '../customers/customer_selection.dart';
 import '../services/shipping_costs_manager.dart';
 
 enum TaxOption {
@@ -79,18 +80,12 @@ class SalesScreenState extends State<SalesScreen> {
   final ValueNotifier<bool> _documentSelectionCompleteNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _additionalTextsSelectedNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _shippingCostsConfiguredNotifier = ValueNotifier<bool>(false);
-
-  // Sprache für Dokumente
   final ValueNotifier<String> _documentLanguageNotifier = ValueNotifier<String>('DE');
-
   final ValueNotifier<double> _vatRateNotifier = ValueNotifier<double>(8.1);
-// In der SalesScreenState Klasse, bei den anderen State-Variablen:
+
   bool _isDetailExpanded = false;
-
-
   String? _editingQuoteId;
   String? _editingQuoteNumber;
-
   final ValueNotifier<Fair?> _selectedFairNotifier = ValueNotifier<Fair?>(null);
 bool isLoading = false;
 final TextEditingController barcodeController = TextEditingController();
@@ -100,7 +95,7 @@ final TextEditingController customerSearchController = TextEditingController();
 final ValueNotifier<bool> _isLoading = ValueNotifier<bool>(true);
 CostCenter? selectedCostCenter;
 Map<String, dynamic>? selectedProduct;
-// Füge diese Variablen zur SalesScreenState-Klasse hinzu
+
   bool sendPdfToCustomer = true;
   bool sendCsvToCustomer = false;
   bool sendPdfToOffice = true;
@@ -111,7 +106,6 @@ Stream<QuerySnapshot> get _basketStream => FirebaseFirestore.instance
     .orderBy('timestamp', descending: true)
     .snapshots();
 
-// Füge diese Variablen zur SalesScreenState-Klasse hinzu
   final ValueNotifier<String> _currencyNotifier = ValueNotifier<String>('CHF');
   final ValueNotifier<Map<String, double>> _exchangeRatesNotifier = ValueNotifier<Map<String, double>>({
     'CHF': 1.0,
@@ -119,10 +113,8 @@ Stream<QuerySnapshot> get _basketStream => FirebaseFirestore.instance
     'USD': 1.08,
   });
 
-// Diese Getter machen den Code kürzer
   String get _selectedCurrency => _currencyNotifier.value;
   Map<String, double> get _exchangeRates => _exchangeRatesNotifier.value;
-
 
   @override
   void initState() {
@@ -307,20 +299,6 @@ return Scaffold(
 );
 }
 
-// Stream für die Büro-Email
-  Stream<String> get _officeEmailStream => FirebaseFirestore.instance
-      .collection('general_data')
-      .doc('office')
-      .snapshots()
-      .map((snapshot) => snapshot.data()?['email'] as String? ?? 'keine Email hinterlegt');
-
-  Stream<Map<String, dynamic>> get _officeSettingsStream => FirebaseFirestore.instance
-      .collection('general_data')
-      .doc('office')
-      .snapshots()
-      .map((snapshot) => snapshot.data() ?? {});
-
-// Neue Methode ohne setState
   Future<void> _clearAllDataWithoutUIUpdate() async {
     try {
       final batch = FirebaseFirestore.instance.batch();
@@ -846,7 +824,7 @@ return Scaffold(
       }
     }
   }
-  // In sales_screen.dart, nach _saveTemporaryTax():
+
   Future<void> _saveDocumentLanguage() async {
     try {
       await FirebaseFirestore.instance
@@ -861,7 +839,6 @@ return Scaffold(
     }
   }
 
-// Nach _loadTemporaryTax():
   Future<void> _loadDocumentLanguage() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -878,7 +855,7 @@ return Scaffold(
       print('Fehler beim Laden der Dokumentensprache: $e');
     }
   }
-  // Nach den anderen Load-Methoden hinzufügen:
+
   Future<void> _loadTemporaryTax() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -983,13 +960,12 @@ return Scaffold(
       _itemDiscounts = loadedDiscounts;
     });
   }
-// Füge diese Methode zur SalesScreenState-Klasse hinzu
+
   Future<void> _checkAdditionalTexts() async {
     final hasTexts = await AdditionalTextsManager.hasTextsSelected();
     _additionalTextsSelectedNotifier.value = hasTexts;
   }
 
-// Füge diese Methode zur SalesScreenState-Klasse hinzu
   void _showAdditionalTextsDialog() {
     showAdditionalTextsBottomSheet(
       context,
@@ -997,7 +973,6 @@ return Scaffold(
     );
   }
 
-// Füge diese Methode zur SalesScreenState-Klasse hinzu
   Future<void> _checkDocumentSelection() async {
     final selection = await DocumentSelectionManager.loadDocumentSelection();
     final hasSelection = selection.values.any((selected) => selected == true);
@@ -1015,7 +990,7 @@ return Scaffold(
       print('Fehler beim Prüfen der Versandkosten: $e');
     }
   }
-// Lade die Sprache aus dem temporären Kunden beim Start
+
   Future<void> _loadCustomerLanguage() async {
     try {
       final tempCustomerDoc = await FirebaseFirestore.instance
@@ -1035,205 +1010,12 @@ return Scaffold(
       print('Fehler beim Laden der Kundensprache: $e');
     }
   }
-// Füge diese Methode zur SalesScreenState-Klasse hinzu
+
   void _showDocumentTypeSelection() {
     showDocumentSelectionBottomSheet(
       context,
       selectionCompleteNotifier: _documentSelectionCompleteNotifier,
       documentLanguageNotifier: _documentLanguageNotifier,
-    );
-  }
-  // Füge diese Methode zur SalesScreenState-Klasse hinzu
-  void _showEmailConfigDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => Dialog(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: 600,
-              maxHeight: MediaQuery.of(context).size.height * 0.7,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Scaffold(
-                resizeToAvoidBottomInset: false,
-                body: StreamBuilder<Map<String, dynamic>>(
-                  stream: _officeSettingsStream,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasData) {
-                      final settings = snapshot.data!;
-                      sendPdfToCustomer = settings['sendPdfToCustomer'] ?? true;
-                      sendCsvToCustomer = settings['sendCsvToCustomer'] ?? false;
-                      sendPdfToOffice = settings['sendPdfToOffice'] ?? true;
-                      sendCsvToOffice = settings['sendCsvToOffice'] ?? true;
-                    }
-
-                    return Column(
-                      children: [
-                        // Header - Fixed at top
-                        Row(
-                          children: [
-                         getAdaptiveIcon(iconName: 'mail', defaultIcon: Icons.mail),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Email',
-                              style: Theme.of(context).textTheme.headlineSmall,
-                            ),
-                            const Spacer(),
-                            IconButton(
-                              onPressed: () => Navigator.pop(context),
-                              icon:    getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Scrollable content
-                        Expanded(
-                          child: SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Kundenbereich
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Email an Kunden',
-                                        style: Theme.of(context).textTheme.titleMedium,
-                                      ),
-                                      const SizedBox(height: 8),
-                                      StreamBuilder<Customer?>(
-                                        stream: _temporaryCustomerStream,
-                                        builder: (context, snapshot) {
-                                          final customer = snapshot.data;
-                                          return Text(
-                                            customer?.email ?? 'Kein Kunde ausgewählt',
-                                            style: TextStyle(
-                                              color: customer == null
-                                                  ? Theme.of(context).colorScheme.error
-                                                  : Theme.of(context).colorScheme.onSurface,
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                      const SizedBox(height: 16),
-                                      CheckboxListTile(
-                                        title: const Text('PDF anhängen', style: TextStyle(fontSize: 14,)),
-                                        value: sendPdfToCustomer,
-                                        onChanged: (value) async {
-                                          setState(() => sendPdfToCustomer = value ?? false);
-                                          await _saveOfficeSettings({
-                                            'sendPdfToCustomer': value,
-                                          });
-                                        },
-                                      ),
-                                      CheckboxListTile(
-                                        title: const Text('CSV anhängen', style: TextStyle(fontSize: 14,)),
-                                        value: sendCsvToCustomer,
-                                        onChanged: (value) async {
-                                          setState(() => sendCsvToCustomer = value ?? false);
-                                          await _saveOfficeSettings({
-                                            'sendCsvToCustomer': value,
-                                          });
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                // Bürobereich
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Email ans Büro',
-                                        style: Theme.of(context).textTheme.titleMedium,
-                                      ),
-                                      const SizedBox(height: 8),
-                                      StreamBuilder<String>(
-                                        stream: _officeEmailStream,
-                                        builder: (context, snapshot) {
-                                          return Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(snapshot.data ?? 'Lädt...'),
-                                              ),
-                                              IconButton(
-                                                icon: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit,),
-                                                onPressed: () => _showEditOfficeEmailDialog(context),
-                                                tooltip: 'Büro-Email bearbeiten',
-                                              ),
-                                            ],
-                                          );
-                                        },
-                                      ),
-                                      const SizedBox(height: 16),
-                                      CheckboxListTile(
-                                        title: const Text('PDF anhängen', style: TextStyle(fontSize: 14,)),
-                                        value: sendPdfToOffice,
-                                        onChanged: (value) async {
-                                          setState(() => sendPdfToOffice = value ?? false);
-                                          await _saveOfficeSettings({
-                                            'sendPdfToOffice': value,
-                                          });
-                                        },
-                                      ),
-                                      CheckboxListTile(
-                                        title: const Text('CSV anhängen', style: TextStyle(fontSize: 14,)),
-                                        value: sendCsvToOffice,
-                                        onChanged: (value) async {
-                                          setState(() => sendCsvToOffice = value ?? false);
-                                          await _saveOfficeSettings({
-                                            'sendCsvToOffice': value,
-                                          });
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        // Footer - Fixed at bottom
-                        SafeArea(
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 24.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('Schließen'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -1380,7 +1162,7 @@ return Scaffold(
       }
     }
   }
-// Methode zum Anzeigen des Steueroptionen-Dialogs
+
   void _showTaxOptionsDialog() {
     TaxOption selectedOption = _taxOptionNotifier.value;
     double selectedVatRate = _vatRate;
@@ -1658,25 +1440,12 @@ return Scaffold(
     );
   }
 
-// Hilfsmethode für die Vorschau
-  String _getPreviewText(TaxOption option, double vatRate) {
-    switch (option) {
-      case TaxOption.standard:
-        return 'Es wird ein MwSt-Satz von ${vatRate.toStringAsFixed(1)}% berechnet und separat ausgewiesen.';
-      case TaxOption.noTax:
-        return 'Es wird keine Mehrwertsteuer berechnet oder ausgewiesen.';
-      case TaxOption.totalOnly:
-        return 'Der Gesamtbetrag wird als "inkl. MwSt" angezeigt, ohne separate Steuerausweisung.';
-    }
-  }
-
-
   Map<String, bool> _roundingSettings = {
     'CHF': true,  // Standard
     'EUR': false,
     'USD': false,
   };
-  // Diese Methode lädt die Währungseinstellungen aus Firebase
+
   Future<void> _loadCurrencySettings() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -1722,7 +1491,6 @@ return Scaffold(
     }
   }
 
-// Diese Methode speichert die Währungseinstellungen in Firebase
   Future<void> _saveCurrencySettings() async {
     try {
       await FirebaseFirestore.instance
@@ -1751,23 +1519,6 @@ return Scaffold(
     }
   }
 
-
-  Future<void> _saveTemporaryDiscounts() async {
-    try {
-      // Nur den Gesamtrabatt speichern
-      await FirebaseFirestore.instance
-          .collection('temporary_discounts')
-          .doc('total_discount')
-          .set({
-        'percentage': _totalDiscount.percentage,
-        'absolute': _totalDiscount.absolute,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      print('Fehler beim Speichern des Gesamtrabatts: $e');
-    }
-  }
-// Hilfsmethode zur Formatierung von Preisen
   String _formatPrice(double amount) {
     // Konvertiere von CHF in die ausgewählte Währung
     double convertedAmount = amount;
@@ -1783,7 +1534,6 @@ return Scaffold(
     ).format(convertedAmount);
   }
 
-// Die Methode ersetzen
   void _showCurrencyConverterDialog() {
     CurrencyConverterSheet.show(
       context,
@@ -1792,253 +1542,6 @@ return Scaffold(
       onSave: _saveCurrencySettings,
     );
   }
-
-
-
-
-  Future<void> _saveOfficeSettings(Map<String, dynamic> updates) async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('general_data')
-          .doc('office')
-          .set(updates, SetOptions(merge: true));
-    } catch (e) {
-      print('Fehler beim Speichern der Einstellungen: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Speichern: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-
-  void _showEditOfficeEmailDialog(BuildContext context) {
-    final emailController = TextEditingController();
-
-    // Aktuelle Email laden
-    FirebaseFirestore.instance
-        .collection('general_data')
-        .doc('office')
-        .get()
-        .then((doc) {
-      if (doc.exists) {
-        emailController.text = doc.data()?['email'] ?? '';
-      }
-    });
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Büro-Email bearbeiten'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: emailController,
-              decoration: const InputDecoration(
-                labelText: 'Email-Adresse',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.emailAddress,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Bitte Email-Adresse eingeben';
-                }
-                if (!value.contains('@')) {
-                  return 'Bitte gültige Email-Adresse eingeben';
-                }
-                return null;
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Abbrechen'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (emailController.text.isNotEmpty && emailController.text.contains('@')) {
-                try {
-                  await FirebaseFirestore.instance
-                      .collection('general_data')
-                      .doc('office')
-                      .set({
-                    'email': emailController.text.trim(),
-                    'last_modified': FieldValue.serverTimestamp(),
-                  }, SetOptions(merge: true));
-
-                  if (mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Email-Adresse wurde aktualisiert'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                  }
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Fehler beim Speichern: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text('Speichern'),
-          ),
-        ],
-      ),
-    );
-  }
-// Füge diese Methode zur SalesScreenState-Klasse hinzu
-
-  // In deiner sales_screen.dart
-
-  Future<void> _sendConfiguredEmails(
-      String receiptId,
-      Uint8List pdfBytes,
-      Uint8List? csvBytes,
-      Map<String, dynamic> receiptData,
-      ) async {
-    try {
-      final functions = FirebaseFunctions.instanceFor(region: 'europe-west1');
-      final callable = functions.httpsCallable('sendEmail');
-
-      final customer = Customer.fromMap(
-        receiptData['customer'] as Map<String, dynamic>,
-        '',
-      );
-
-      // Hole die Office-Einstellungen
-      final officeDoc = await FirebaseFirestore.instance
-          .collection('general_data')
-          .doc('office')
-          .get();
-
-      final officeSettings = officeDoc.data() ?? {};
-
-      print('Office Settings: $officeSettings'); // Debug
-
-      // Email an Kunden
-      if ((officeSettings['sendPdfToCustomer'] == true ||
-          officeSettings['sendCsvToCustomer'] == true) &&
-          customer.email.isNotEmpty) {
-        try {
-          print('Preparing customer email attachments...'); // Debug
-
-          final attachments = <Map<String, String>>[];
-
-          if (officeSettings['sendPdfToCustomer'] == true && pdfBytes != null) {
-            print('Adding PDF for customer (${pdfBytes.length} bytes)'); // Debug
-            attachments.add({
-              'filename': 'Lieferschein_$receiptId.pdf',
-              'content': base64Encode(pdfBytes),
-              'encoding': 'base64',
-            });
-          }
-
-          if (officeSettings['sendCsvToCustomer'] == true && csvBytes != null) {
-            print('Adding CSV for customer (${csvBytes.length} bytes)'); // Debug
-            attachments.add({
-              'filename': 'Bestellung_$receiptId.csv',
-              'content': base64Encode(csvBytes),
-              'encoding': 'base64',
-            });
-          }
-
-          print('Sending customer email with ${attachments.length} attachments...'); // Debug
-
-          final result = await callable.call({
-            'to': customer.email,
-            'subject': 'Ihre Bestellung bei Tonewood Switzerland',
-            'html': '''
-            <p>Sehr geehrte Damen und Herren,</p>
-            <p>vielen Dank für Ihren Einkauf bei Tonewood Switzerland.</p>
-            <p>Im Anhang finden Sie die gewünschten Dokumente zu Ihrer Bestellung.</p>
-            <p>Mit freundlichen Grüßen<br>Ihr Tonewood Switzerland Team</p>
-          ''',
-            'attachments': attachments,
-          });
-
-          print('Customer email result: ${result.data}'); // Debug
-        } catch (e) {
-          print('Error sending customer email: $e');
-          rethrow;
-        }
-      }
-
-      // Email ans Büro
-      final officeEmail = officeDoc.data()?['email'];
-      if (officeEmail != null &&
-          (officeSettings['sendPdfToOffice'] == true ||
-              officeSettings['sendCsvToOffice'] == true)) {
-        try {
-          print('Preparing office email attachments...'); // Debug
-
-          final attachments = <Map<String, String>>[];
-
-          if (officeSettings['sendPdfToOffice'] == true && pdfBytes != null) {
-            print('Adding PDF for office (${pdfBytes.length} bytes)'); // Debug
-            attachments.add({
-              'filename': 'Lieferschein_$receiptId.pdf',
-              'content': base64Encode(pdfBytes),
-              'encoding': 'base64',
-            });
-          }
-
-          if (officeSettings['sendCsvToOffice'] == true && csvBytes != null) {
-            print('Adding CSV for office (${csvBytes.length} bytes)'); // Debug
-            attachments.add({
-              'filename': 'Bestellung_$receiptId.csv',
-              'content': base64Encode(csvBytes),
-              'encoding': 'base64',
-            });
-          }
-
-          print('Sending office email with ${attachments.length} attachments...'); // Debug
-
-          final result = await callable.call({
-            'to': officeEmail,
-            'subject': 'Neue Bestellung: ${customer.company}',
-            'html': '''
-            <h2>Neue Bestellung eingegangen</h2>
-            <p><strong>Kunde:</strong> ${customer.company}<br>
-            <strong>Kontakt:</strong> ${customer.fullName}<br>
-            <strong>Adresse:</strong> ${customer.fullAddress}<br>
-            <strong>Email:</strong> ${customer.email}</p>
-            <p>Die Dokumente finden Sie im Anhang.</p>
-            <p>Mit freundlichen Grüßen<br>Ihr Verkaufssystem</p>
-          ''',
-            'attachments': attachments,
-          });
-
-          print('Office email result: ${result.data}'); // Debug
-        } catch (e) {
-          print('Error sending office email: $e');
-          rethrow;
-        }
-      }
-    } catch (e) {
-      print('Error in _sendConfiguredEmails: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Email-Versand: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
 
   Stream<Fair?> get _temporaryFairStream => FirebaseFirestore.instance
       .collection('temporary_fair')
@@ -2052,7 +1555,6 @@ return Scaffold(
     );
   });
 
-// Methode zum Speichern der temporären Messe
   Future<void> _saveTemporaryFair(Fair fair) async {
     try {
       // Lösche vorherige temporäre Messe
@@ -2080,7 +1582,6 @@ return Scaffold(
     }
   }
 
-// Methode zum Löschen der temporären Messe
   Future<void> _clearTemporaryFair() async {
     try {
       final tempDocs = await FirebaseFirestore.instance
@@ -2340,7 +1841,7 @@ return Scaffold(
       ),
     );
   }
-  // Stream für die temporäre Kostenstelle
+
   Stream<CostCenter?> get _temporaryCostCenterStream => FirebaseFirestore.instance
       .collection('temporary_cost_center')
       .limit(1)
@@ -2519,55 +2020,7 @@ return Scaffold(
     }
   }
 
-  // Future<void> _checkAndHandleOnlineShopItem(String barcode) async {
-  //   try {
-  //     // Check if it's an online shop item by looking in the onlineshop collection
-  //     final onlineShopDocs = await FirebaseFirestore.instance
-  //         .collection('onlineshop')
-  //         .where('short_barcode', isEqualTo: barcode)
-  //         .where('sold', isEqualTo: false)
-  //         .limit(1)
-  //         .get();
-  //
-  //     if (onlineShopDocs.docs.isNotEmpty) {
-  //       // It's an online shop item
-  //       final onlineShopDoc = onlineShopDocs.docs.first;
-  //       final onlineShopBarcode = onlineShopDoc.id; // The document ID is the full barcode
-  //
-  //       // Get the product from inventory
-  //       final doc = await FirebaseFirestore.instance
-  //           .collection('inventory')
-  //           .doc(barcode)
-  //           .get();
-  //
-  //       if (doc.exists) {
-  //         // Add to cart with quantity 1 and mark as shop item
-  //         await _addToTemporaryBasket(barcode, doc.data()!, 1, onlineShopBarcode);
-  //
-  //         ScaffoldMessenger.of(context).showSnackBar(
-  //           const SnackBar(
-  //             content: Text('Online-Shop Artikel wurde zum Warenkorb hinzugefügt'),
-  //             backgroundColor: Colors.green,
-  //           ),
-  //         );
-  //       }
-  //     } else {
-  //       // Regular inventory product
-  //       _fetchProductAndShowQuantityDialog(barcode);
-  //     }
-  //   } catch (e) {
-  //     print('Error in _checkAndHandleOnlineShopItem: $e');
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       SnackBar(
-  //         content: Text('Fehler: $e'),
-  //         backgroundColor: Colors.red,
-  //       ),
-  //     );
-  //   }
-  // }
 
-
-  // Methode zum Speichern der temporären Kostenstelle
   Future<void> _saveTemporaryCostCenter(CostCenter costCenter) async {
     try {
       // Lösche vorherige temporäre Kostenstelle
@@ -2595,7 +2048,6 @@ return Scaffold(
     }
   }
 
-  // Methode zum Anzeigen des Kostenstellen-Dialogs
   void _showCostCenterSelection() {
     final searchController = TextEditingController();
 
@@ -2937,39 +2389,6 @@ return Scaffold(
     );
   }
 
-
-  Future<String> _getNextReceiptNumber() async {
-    try {
-      // Transaktion um Race Conditions zu vermeiden
-      DocumentReference counterRef = FirebaseFirestore.instance
-          .collection('general_data')
-          .doc('counters');
-
-      return await FirebaseFirestore.instance.runTransaction<String>((transaction) async {
-        DocumentSnapshot counterDoc = await transaction.get(counterRef);
-
-        int currentNumber;
-        if (!counterDoc.exists || !(counterDoc.data() as Map<String, dynamic>).containsKey('lastReceiptNumber')) {
-          currentNumber = 1;
-        } else {
-          currentNumber = (counterDoc.data() as Map<String, dynamic>)['lastReceiptNumber'] + 1;
-        }
-
-        transaction.set(counterRef, {
-          'lastReceiptNumber': currentNumber,
-          'lastUpdated': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-
-        return currentNumber.toString().padLeft(6, '0');
-      });
-    } catch (e) {
-      print('Error getting next receipt number: $e');
-      rethrow;
-    }
-  }
-
-
-// Desktop Layout
   Widget _buildDesktopLayout() {
     final bool hasSelectedProduct = selectedProduct != null;
 
@@ -3379,7 +2798,6 @@ return Scaffold(
     );
   }
 
-// Mobile Layout
   Widget _buildMobileLayout() {
     return Column(
       children: [
@@ -3485,7 +2903,6 @@ return Scaffold(
     );
   }
 
-
   void _showCustomerSelection() async {
     // Zeige das Customer Selection Sheet an und warte auf das Ergebnis
     final selectedCustomer = await CustomerSelectionSheet.show(context);
@@ -3509,12 +2926,6 @@ return Scaffold(
     }
   }
 
-
-
-
-
-
-  // Stream für den temporären Kunden
   Stream<Customer?> get _temporaryCustomerStream => FirebaseFirestore.instance
       .collection('temporary_customer')
       .limit(1)
@@ -3527,7 +2938,6 @@ return Scaffold(
     );
   });
 
-  // Methode zum Speichern des temporären Kunden
   Future<void> _saveTemporaryCustomer(Customer customer) async {
     try {
       // Lösche vorherige temporäre Kunden
@@ -3767,8 +3177,6 @@ return Scaffold(
     );
   }
 
-
-// Erweiterte Warenkorb-Anzeige
   Widget _buildCartList() {
     return StreamBuilder<QuerySnapshot>(
       stream: _basketStream,
@@ -4991,7 +4399,7 @@ return Scaffold(
       },
     );
   }
-// Hilfsmethoden
+
   Future<double> _getAvailableQuantity(String shortBarcode) async {
     try {
       // Aktuellen Bestand aus inventory collection abrufen
@@ -5104,6 +4512,13 @@ return Scaffold(
     // NEU: Controller für Volumen - mit Standard-Volumen initialisieren falls leer
     final volumeController = TextEditingController();
     final densityController = TextEditingController();
+
+    final notesController= TextEditingController(
+        text: itemData['notes'] ?? ''
+    );
+
+
+
     // Variable um zu verfolgen ob Standardwerte gesetzt wurden
     bool standardValuesLoaded = false;
 
@@ -5309,7 +4724,7 @@ return Scaffold(
             fillColor: Theme.of(context).colorScheme.surface,
             prefixIcon: Padding(
               padding: const EdgeInsets.all(8.0),
-              child: getAdaptiveIcon(iconName: 'euro', defaultIcon: Icons.euro),
+              child: getAdaptiveIcon(iconName: 'money_bag', defaultIcon: Icons.savings),
             ),
             ),
             keyboardType: TextInputType.numberWithOptions(decimal: true),
@@ -5510,7 +4925,10 @@ return Scaffold(
 
 
 
-            
+
+
+
+
             // NEU: Thermobehandlung
               Text(
                 'Thermobehandlung',
@@ -5578,8 +4996,43 @@ return Scaffold(
                   ],
                 ),
               ],
-            
-            
+
+
+              const SizedBox(height: 24),
+
+
+              // Hinweise-Abschnitt
+              Text(
+                'Hinweise',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              TextFormField(
+                controller: notesController,
+                decoration: InputDecoration(
+                  labelText: 'Spezielle Hinweise (optional)',
+                  hintText: 'z.B. besondere Qualitätsmerkmale, Lagerort, etc.',
+                  border: const OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Theme.of(context).colorScheme.surface,
+                  prefixIcon: getAdaptiveIcon(
+                    iconName: 'note',
+                    defaultIcon: Icons.note_alt,
+                  ),
+                ),
+                maxLines: 3,
+                minLines: 2,
+              ),
+              const SizedBox(height: 24),
+
+
+
+
             
             
             const SizedBox(height: 24),
@@ -6152,9 +5605,10 @@ return Scaffold(
             updateData['thermal_treatment_temperature'] = FieldValue.delete();
             }
 
-                                  // NEU: FSC-Status speichern
+                                  // NEU: FSC-Status und notes Sppeichern speichern
                                   if (!isService) {
                                     updateData['fsc_status'] = selectedFscStatus;
+                                    updateData['notes'] =notesController.text.trim();
                                   }
 
             
@@ -6247,8 +5701,7 @@ return Scaffold(
       return 'Fehler beim Laden';
     }
   }
-// NEU: Hilfsmethode zum Laden des Standard-Volumens für einen bestimmten Artikel
-// NEU: Hilfsmethode zum Laden des Standard-Volumens für einen bestimmten Artikel
+
   Future<Map<String, dynamic>?> _getStandardVolumeForItem(Map<String, dynamic> itemData) async {
     try {
       final instrumentCode = itemData['instrument_code'] as String?;
@@ -6305,8 +5758,6 @@ return Scaffold(
     }
   }
 
-// Erweiterte _addToTemporaryBasket Methode in sales_screen.dart
-
   Future<void> _addToTemporaryBasket(String shortBarcode, Map<String, dynamic> productData, num quantity, String? onlineShopBarcode) async {
     print("quan:$quantity");
     await FirebaseFirestore.instance
@@ -6354,20 +5805,29 @@ return Scaffold(
         'custom_width': productData['custom_width'],
       if (productData.containsKey('custom_thickness') && productData['custom_thickness'] != null)
         'custom_thickness': productData['custom_thickness'],
-      // NEU: Volumen hinzufügen
+      // Volumen und Dichte hinzufügen
       if (productData.containsKey('volume_per_unit') && productData['volume_per_unit'] != null)
         'volume_per_unit': productData['volume_per_unit'],
       if (productData.containsKey('density') && productData['density'] != null)
         'density': productData['density'],
 
-
       // FSC-Status hinzufügen
       if (productData.containsKey('fsc_status') && productData['fsc_status'] != null)
         'fsc_status': productData['fsc_status'],
+
+      // 🟢 NEU: Thermobehandlung-Status hinzufügen
+      if (productData.containsKey('has_thermal_treatment'))
+        'has_thermal_treatment': productData['has_thermal_treatment'],
+
+      // 🟢 NEU: Behandlungstemperatur hinzufügen
+      if (productData.containsKey('treatment_temperature') && productData['treatment_temperature'] != null)
+        'thermal_treatment_temperature': productData['treatment_temperature'],
+
+      // 🟢 NEU: Zolltarifnummer hinzufügen
+      if (productData.containsKey('custom_tariff_number') && productData['custom_tariff_number'] != null)
+        'custom_tariff_number': productData['custom_tariff_number'],
     });
   }
-
-// Ersetze die bestehende _removeFromBasket Methode in sales_screen.dart:
 
   Future<void> _removeFromBasket(String basketItemId) async {
     // Hole die Artikeldaten für die Anzeige
@@ -6381,6 +5841,7 @@ return Scaffold(
     final itemData = itemDoc.data()!;
     final isService = itemData['is_service'] == true;
     final isManual = itemData['is_manual_product'] == true;
+    final productId = itemData['product_id'] as String?; // Wichtig für Packliste
 
     showDialog(
       context: context,
@@ -6537,87 +5998,22 @@ return Scaffold(
               Navigator.pop(context);
 
               try {
-                // NEU: Batch für atomare Operation
-                final batch = FirebaseFirestore.instance.batch();
-
                 // 1. Lösche aus temporary_basket
-                batch.delete(
-                    FirebaseFirestore.instance
-                        .collection('temporary_basket')
-                        .doc(basketItemId)
-                );
+                await FirebaseFirestore.instance
+                    .collection('temporary_basket')
+                    .doc(basketItemId)
+                    .delete();
 
-                // 2. NEU: Lösche alle Packlisten-Zuordnungen für diesen Artikel
-                final packingListAssignments = await FirebaseFirestore.instance
-                    .collection('temporary_packing_lists')
-                    .where('basket_item_id', isEqualTo: basketItemId)
-                    .get();
-
-                for (final doc in packingListAssignments.docs) {
-                  batch.delete(doc.reference);
+                // 2. Entferne aus Packliste (falls vorhanden)
+                if (productId != null) {
+                  await _removeItemFromPackingList(productId);
                 }
 
-                // 3. Führe alle Löschungen aus
-                await batch.commit();
-
-                // Entferne aus lokalem State
+                // 3. Entferne aus lokalem State
                 setState(() {
                   _itemDiscounts.remove(basketItemId);
                 });
 
-                // Zeige Bestätigung
-                // ScaffoldMessenger.of(context).showSnackBar(
-                //   SnackBar(
-                //     content: Text(
-                //         packingListAssignments.docs.isNotEmpty
-                //             ? 'Artikel wurde entfernt (inkl. ${packingListAssignments.docs.length} Packlisten-Zuordnung${packingListAssignments.docs.length > 1 ? "en" : ""})'
-                //             : 'Artikel wurde entfernt'
-                //     ),
-                //     backgroundColor: Colors.orange,
-                //     action: SnackBarAction(
-                //       label: 'Rückgängig',
-                //       textColor: Colors.white,
-                //       onPressed: () async {
-                //         try {
-                //           final restorationBatch = FirebaseFirestore.instance.batch();
-                //
-                //           // 1. Artikel wiederherstellen
-                //           restorationBatch.set(
-                //               FirebaseFirestore.instance
-                //                   .collection('temporary_basket')
-                //                   .doc(basketItemId),
-                //               itemData
-                //           );
-                //
-                //           // 2. Packlisten-Zuordnungen wiederherstellen
-                //           for (final packingDoc in packingListAssignments.docs) {
-                //             restorationBatch.set(
-                //                 packingDoc.reference,
-                //                 packingDoc.data()
-                //             );
-                //           }
-                //
-                //           await restorationBatch.commit();
-                //
-                //           ScaffoldMessenger.of(context).showSnackBar(
-                //             const SnackBar(
-                //               content: Text('Artikel wurde wiederhergestellt'),
-                //               backgroundColor: Colors.green,
-                //               duration: Duration(seconds: 2),
-                //             ),
-                //           );
-                //         } catch (e) {
-                //           ScaffoldMessenger.of(context).showSnackBar(
-                //             SnackBar(
-                //               content: Text('Fehler beim Wiederherstellen: $e'),
-                //               backgroundColor: Colors.red,
-                //             ),
-                //           );
-                //         }
-                //       },
-                //     ),
-                //   ),
-                // );
               } catch (e) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -6638,8 +6034,45 @@ return Scaffold(
       ),
     );
   }
-  // Ergänzung für _showQuantityDialog in sales_screen.dart
-// Hilfsmethode zum Abrufen der Dichte aus der Holzart
+
+  Future<void> _removeItemFromPackingList(String productId) async {
+    try {
+      final docRef = FirebaseFirestore.instance
+          .collection('temporary_document_settings')
+          .doc('packing_list_settings');
+
+      final doc = await docRef.get();
+      if (!doc.exists) return;
+
+      final data = doc.data()!;
+      final packages = List<Map<String, dynamic>>.from(data['packages'] ?? []);
+
+      bool changed = false;
+
+      // Durchlaufe alle Pakete und entferne Items mit der productId
+      for (int i = 0; i < packages.length; i++) {
+        final items = List<Map<String, dynamic>>.from(packages[i]['items'] ?? []);
+        final originalLength = items.length;
+
+        // Filtere Items mit dieser product_id heraus
+        items.removeWhere((item) => item['product_id'] == productId);
+
+        if (items.length != originalLength) {
+          packages[i]['items'] = items;
+          changed = true;
+        }
+      }
+
+      // Nur speichern wenn sich etwas geändert hat
+      if (changed) {
+        await docRef.update({'packages': packages});
+        print('Artikel $productId aus Packliste entfernt');
+      }
+    } catch (e) {
+      print('Fehler beim Entfernen aus Packliste: $e');
+    }
+  }
+
   Future<double?> _getDensityForProduct(Map<String, dynamic> productData) async {
     try {
       final woodCode = productData['wood_code'] as String?;
@@ -6660,18 +6093,30 @@ return Scaffold(
     }
     return null;
   }
-  void _showQuantityDialog(String barcode, Map<String, dynamic> productData) {
+  void _showQuantityDialog(String barcode, Map<String, dynamic> productData,{bool isOnlineShopItem = false}) {
     quantityController.clear();
-
+    // NEU: Bei Online-Shop-Items Menge auf 1 setzen
+    if (isOnlineShopItem) {
+      quantityController.text = '1';
+    }
     print(productData);
     // Controller für die Maße
     final lengthController = TextEditingController();
     final widthController = TextEditingController();
     final thicknessController = TextEditingController();
+
+    final temperatureController = TextEditingController();
     final notesController = TextEditingController();
     final volumeController = TextEditingController();
     final densityController = TextEditingController();
 
+    final qualityName = productData['quality_name'] as String?;
+
+    bool hasThermalTreatment = false;
+
+    if (qualityName != null && qualityName.toLowerCase().contains('thermo')) {
+      hasThermalTreatment = true;
+    }
     // FSC-Status Variable
     String selectedFscStatus = '-'; // Standard
     if (productData['wood_name']?.toString().toLowerCase() == 'fichte') {
@@ -6761,28 +6206,70 @@ return Scaffold(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  // Online-Shop Badge
+                                  if (isOnlineShopItem) ...[
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          getAdaptiveIcon(
+                                            iconName: 'storefront',
+                                            defaultIcon: Icons.storefront,
+                                            size: 14,
+                                            color: Colors.blue,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          const Text(
+                                            'Online-Shop Artikel (Einzelstück)',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.blue,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                   Text('Produkt:', style: TextStyle(fontWeight: FontWeight.bold)),
                                   const SizedBox(height: 4),
                                   Text('${productData['instrument_name'] ?? 'N/A'} - ${productData['part_name'] ?? 'N/A'}'),
                                   Text('${productData['wood_name'] ?? 'N/A'} - ${productData['quality_name'] ?? 'N/A'}'),
                                   const SizedBox(height: 8),
-                                  FutureBuilder<double>(
-                                    future: _getAvailableQuantity(barcode),
-                                    builder: (context, snapshot) {
-                                      if (snapshot.hasData) {
-                                        return Text(
-                                          'Verfügbar: ${productData['unit']?.toLowerCase() == 'stück'
-                                              ? snapshot.data!.toStringAsFixed(0)
-                                              : snapshot.data!.toStringAsFixed(3)} ${productData['unit'] ?? 'Stück'}',
-                                          style: TextStyle(
-                                            color: snapshot.data! > 0 ? Colors.green : Colors.red,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        );
-                                      }
-                                      return const CircularProgressIndicator();
-                                    },
-                                  ),
+                                  // Bei Online-Shop-Items feste Anzeige, sonst Bestandsabfrage
+                                  if (isOnlineShopItem)
+                                    Text(
+                                      'Menge: 1 Stück (fixiert)',
+                                      style: TextStyle(
+                                        color: Colors.blue,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    )
+                                  else
+                                    FutureBuilder<double>(
+                                      future: _getAvailableQuantity(barcode),
+                                      builder: (context, snapshot) {
+                                        if (snapshot.hasData) {
+                                          return Text(
+                                            'Verfügbar: ${productData['unit']?.toLowerCase() == 'stück'
+                                                ? snapshot.data!.toStringAsFixed(0)
+                                                : snapshot.data!.toStringAsFixed(3)} ${productData['unit'] ?? 'Stück'}',
+                                            style: TextStyle(
+                                              color: snapshot.data! > 0 ? Colors.green : Colors.red,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          );
+                                        }
+                                        return const CircularProgressIndicator();
+                                      },
+                                    ),
                                   // In der Produktinfo Container, nach der Verfügbarkeitsanzeige:
                                   const SizedBox(height: 8),
                                   Divider(color: Colors.grey.shade300),
@@ -6797,8 +6284,12 @@ return Scaffold(
                                       ValueListenableBuilder<String>(
                                         valueListenable: _currencyNotifier,
                                         builder: (context, currency, child) {
+                                          // Bei Online-Shop-Items den Shop-Preis verwenden
+                                          final price = isOnlineShopItem
+                                              ? (productData['online_shop_price'] as num?)?.toDouble() ?? (productData['price_CHF'] as num).toDouble()
+                                              : (productData['price_CHF'] as num).toDouble();
                                           return Text(
-                                            _formatPrice((productData['price_CHF'] as num).toDouble()),
+                                            _formatPrice(price),
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 16,
@@ -6812,7 +6303,6 @@ return Scaffold(
                                 ],
                               ),
                             ),
-
                             const SizedBox(height: 24),
 
                             // Menge
@@ -6824,9 +6314,56 @@ return Scaffold(
                                 color: Theme.of(context).colorScheme.primary,
                               ),
                             ),
-                            const SizedBox(height: 8),
+                             const SizedBox(height: 8),
+                            // // NEU: Info-Banner für Online-Shop-Items
+                            // if (isOnlineShopItem) ...[
+                            //   Container(
+                            //     padding: const EdgeInsets.all(12),
+                            //     margin: const EdgeInsets.only(bottom: 12),
+                            //     decoration: BoxDecoration(
+                            //       color: Colors.blue.withOpacity(0.1),
+                            //       borderRadius: BorderRadius.circular(8),
+                            //       border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                            //     ),
+                            //     child: Row(
+                            //       children: [
+                            //         getAdaptiveIcon(
+                            //           iconName: 'storefront',
+                            //           defaultIcon: Icons.storefront,
+                            //           color: Colors.blue,
+                            //         ),
+                            //         const SizedBox(width: 8),
+                            //         Expanded(
+                            //           child: Column(
+                            //             crossAxisAlignment: CrossAxisAlignment.start,
+                            //             children: const [
+                            //               Text(
+                            //                 'Online-Shop Artikel',
+                            //                 style: TextStyle(
+                            //                   fontWeight: FontWeight.bold,
+                            //                   color: Colors.blue,
+                            //                 ),
+                            //               ),
+                            //               Text(
+                            //                 'Einzelstück - Menge ist auf 1 fixiert',
+                            //                 style: TextStyle(
+                            //                   fontSize: 12,
+                            //                   color: Colors.blue,
+                            //                 ),
+                            //               ),
+                            //             ],
+                            //           ),
+                            //         ),
+                            //       ],
+                            //     ),
+                            //   ),
+                            // ],
+
+
                             TextFormField(
                               controller: quantityController,
+                              enabled: !isOnlineShopItem, // NEU: Deaktiviert für Online-Shop-Items
+
                               decoration: InputDecoration(
                                 labelText: 'Menge',
                                 border: const OutlineInputBorder(),
@@ -6891,6 +6428,81 @@ return Scaffold(
                             ),
 // Nach dem Gratisartikel-Abschnitt hinzufügen:
                             const SizedBox(height: 24),
+
+
+                            // NEU: Thermobehandlung
+                            Text(
+                              'Thermobehandlung',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+
+                            Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: CheckboxListTile(
+                                title: const Text('Thermobehandelt'),
+                                subtitle: const Text('Artikel wurde thermisch behandelt'),
+                                value: hasThermalTreatment,
+                                onChanged: (value) {
+                                  setState(() { // NEU: setDialogState statt setState
+                                    hasThermalTreatment = value ?? false;
+                                    if (!hasThermalTreatment) {
+                                      temperatureController.clear();
+                                    }
+                                  });
+                                },
+                                secondary: getAdaptiveIcon(
+                                  iconName: 'whatshot',
+                                  defaultIcon: Icons.whatshot,
+                                  color: hasThermalTreatment
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Colors.grey,
+                                ),
+                              ),
+                            ),
+
+                            // Temperatur-Eingabe (nur wenn Thermobehandlung aktiviert)
+                            if (hasThermalTreatment) ...[
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: temperatureController,
+                                decoration: InputDecoration(
+                                  labelText: 'Temperatur (°C)',
+                                  border: const OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: Theme.of(context).colorScheme.surface,
+                                  prefixIcon: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: getAdaptiveIcon(
+                                      iconName: 'thermostat',
+                                      defaultIcon: Icons.thermostat,
+                                    ),
+                                  ),
+                                  suffixText: '°C',
+                                  helperText: 'Behandlungstemperatur (z.B. 180, 200, 212)',
+                                ),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  LengthLimitingTextInputFormatter(3),
+                                ],
+                              ),
+                            ],
+
+
+                            const SizedBox(height: 24),
+
+
+
 
 // Hinweise-Abschnitt
                             Text(
@@ -7464,9 +7076,11 @@ return Scaffold(
                                     } else {
                                       quantity = int.tryParse(normalizedInput) ?? 0;
                                     }
+
                                     final availableQuantity = await _getAvailableQuantity(barcode);
 
-                                    if (quantity <= availableQuantity) {
+                                    // Bei Online-Shop-Items keine Bestandsprüfung nötig (ist immer 1)
+                                    if (isOnlineShopItem || quantity <= availableQuantity) {
                                       // Erweitere productData um die Maße und FSC
                                       final updatedProductData = Map<String, dynamic>.from(productData);
 
@@ -7490,11 +7104,19 @@ return Scaffold(
                                         updatedProductData['density'] = double.tryParse(densityController.text.replaceAll(',', '.')) ?? 0.0;
                                       }
 
-
                                       // Füge FSC-Status hinzu
                                       updatedProductData['fsc_status'] = selectedFscStatus;
 
-                                      // NEU: Erweitere productData um die Gratisartikel-Info
+                                      // Speichern des Thermobehandlungs-Status
+                                      updatedProductData['has_thermal_treatment'] = hasThermalTreatment;
+
+                                      // Speichern der Temperatur, wenn Thermobehandlung aktiv
+                                      if (hasThermalTreatment && temperatureController.text.isNotEmpty) {
+                                        updatedProductData['treatment_temperature'] =
+                                            int.tryParse(temperatureController.text) ?? null;
+                                      }
+
+                                      // Erweitere productData um die Gratisartikel-Info
                                       if (isGratisartikel) {
                                         updatedProductData['is_gratisartikel'] = true;
 
@@ -7510,12 +7132,45 @@ return Scaffold(
 
                                         updatedProductData['proforma_value'] = proformaValue;
                                       }
+
                                       if (notesController.text.trim().isNotEmpty) {
                                         updatedProductData['notes'] = notesController.text.trim();
                                       }
 
-                                      await _addToTemporaryBasket(barcode, updatedProductData, quantity, null);
+                                      // Online-Shop-spezifische Felder hinzufügen
+                                      if (isOnlineShopItem) {
+                                        updatedProductData['is_online_shop_item'] = true;
+                                        updatedProductData['online_shop_barcode'] = productData['online_shop_barcode'];
+                                        // Den Online-Shop-Preis als price_CHF überschreiben
+                                        updatedProductData['price_CHF'] = productData['online_shop_price'] ?? productData['price_CHF'];
+                                      }
+
+                                      await _addToTemporaryBasket(
+                                        barcode,
+                                        updatedProductData,
+                                        isOnlineShopItem ? 1 : quantity,
+                                        isOnlineShopItem ? productData['online_shop_barcode'] : null,
+                                      );
+
+                                      // Online-Shop-Item als "im Warenkorb" markieren
+                                      if (isOnlineShopItem && productData['online_shop_barcode'] != null) {
+                                        await FirebaseFirestore.instance
+                                            .collection('onlineshop')
+                                            .doc(productData['online_shop_barcode'])
+                                            .update({'in_cart': true});
+                                      }
+
                                       Navigator.pop(context);
+
+                                      // Erfolgsmeldung für Online-Shop-Items
+                                      if (isOnlineShopItem) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Online-Shop Artikel wurde zum Warenkorb hinzugefügt'),
+                                            backgroundColor: Colors.green,
+                                          ),
+                                        );
+                                      }
                                     } else {
                                       AppToast.show(message: "Nicht genügend Bestand verfügbar", height: h);
                                     }
@@ -7543,7 +7198,6 @@ return Scaffold(
     );
   }
 
-// Neue Hilfsmethode zum Abrufen der Standardmaße
   Future<Map<String, dynamic>?> _getStandardMeasurements(Map<String, dynamic> productData) async {
     try {
       // Erstelle die Artikelnummer aus Instrument- und Bauteil-Code
@@ -7586,45 +7240,36 @@ return Scaffold(
       // Prüfe zuerst, ob es ein Online-Shop-Item ist
       final onlineShopDocs = await FirebaseFirestore.instance
           .collection('onlineshop')
-          .where('barcode', isEqualTo: barcode)  // Changed from short_barcode to barcode
-          .where('sold', isEqualTo: false) // Nur nicht verkaufte
+          .where('barcode', isEqualTo: barcode)
+          .where('sold', isEqualTo: false)
           .limit(1)
           .get();
 
       if (onlineShopDocs.docs.isNotEmpty) {
         final onlineShopDoc = onlineShopDocs.docs.first;
-        final onlineShopBarcode = onlineShopDoc.id; // Der Dokument-ID ist der vollständige Barcode
+        final onlineShopBarcode = onlineShopDoc.id;
         final onlineShopData = onlineShopDoc.data();
 
-        // Es ist ein Online-Shop-Item, füge es direkt mit Menge 1 hinzu
+        // Hole die Produktdaten aus dem Inventory
         final doc = await FirebaseFirestore.instance
             .collection('inventory')
-            .doc(onlineShopData['short_barcode']) // Fixed: use onlineShopData instead of onlineShopDocs
+            .doc(onlineShopData['short_barcode'])
             .get();
 
         if (doc.exists) {
-          // Hier das Online-Shop-Barcode übergeben
-          await _addToTemporaryBasket(
-              onlineShopData['short_barcode'], // Use the short barcode for inventory reference
-              doc.data()!,
-              1,
-              onlineShopBarcode
+          final productData = Map<String, dynamic>.from(doc.data()!);
+
+          // Markiere als Online-Shop-Item und übergib den vollen Barcode
+          productData['is_online_shop_item'] = true;
+          productData['online_shop_barcode'] = onlineShopBarcode;
+          productData['online_shop_price'] = onlineShopData['price_CHF'];
+
+          // Zeige den normalen Dialog - aber mit vorausgefüllter Menge 1
+          _showQuantityDialog(
+            onlineShopData['short_barcode'],
+            productData,
+            isOnlineShopItem: true,
           );
-
-          // Online-Shop-Item als "im Warenkorb" markieren
-          await FirebaseFirestore.instance
-              .collection('onlineshop')
-              .doc(onlineShopBarcode)
-              .update({'in_cart': true});
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Online-Shop Artikel wurde zum Warenkorb hinzugefügt'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
         }
         return;
       }
@@ -7731,717 +7376,12 @@ backgroundColor: Colors.red,
     );
   }
 
-
   DateTime getDateTimeFromTimestamp(dynamic timestamp) {
     if (timestamp == null) return DateTime.now();
     if (timestamp is Timestamp) return timestamp.toDate();
     if (timestamp is DateTime) return timestamp;
     if (timestamp is String) return DateTime.parse(timestamp);
     return DateTime.now();
-  }
-
-// CSV-Generierung
-  Future<Uint8List> _generateCsv(String receiptId) async {
-    final receiptDoc = await FirebaseFirestore.instance
-        .collection('sales_receipts')
-        .doc(receiptId)
-        .get();
-
-    final data = receiptDoc.data()!;
-    final receiptNumber = data['receiptNumber'] as String;
-    final items = data['items'] as List<dynamic>;
-    final calculations = data['calculations'] as Map<String, dynamic>;
-    final timestamp = getDateTimeFromTimestamp(data['metadata']['timestamp']);
-
-    // Kopfzeile mit Beleg-Info
-    final List<List<dynamic>> csvData = [
-      [
-        'Lieferschein Nr.:', 'LS-$receiptNumber',
-        'Datum:', DateFormat('dd.MM.yyyy').format(timestamp),
-      ],
-      [], // Leerzeile
-      [
-        // Header für Artikel
-        'Artikelnummer',
-        'Artikelbezeichnung',
-        'Qualität',
-        'Menge',
-        'Einheit',
-        'Einzelpreis',
-        'Positionsrabatt %',
-        'Positionsrabatt CHF',
-        'Positionssumme',
-        'Zwischensumme',
-        'Positionsrabatte',
-        'Gesamtrabatt %',
-        'Gesamtrabatt CHF',
-        'Nettobetrag',
-        'MwSt %',
-        'MwSt CHF',
-        'Gesamtbetrag'
-      ]
-    ];
-
-    // Artikel-Daten
-    for (final item in items) {
-      csvData.add([
-        item['product_id'] ?? '',
-        item['product_name'] ?? '',
-        item['quality_name'] ?? '',
-        item['quantity'] ?? 0,
-        item['unit'] ?? '',
-        item['price_per_unit'] ?? 0,
-        (item['discount'] as Map<String, dynamic>?)?['percentage'] ?? 0,
-        item['discount_amount'] ?? 0,
-        item['total'] ?? 0,
-        // Summen nur in der ersten Zeile
-        if (items.indexOf(item) == 0) ...[
-          calculations['subtotal'] ?? 0,
-          calculations['item_discounts'] ?? 0,
-          (calculations['total_discount'] as Map<String, dynamic>?)?['percentage'] ?? 0,
-          calculations['total_discount_amount'] ?? 0,
-          calculations['net_amount'] ?? 0,
-          calculations['vat_rate'] ?? 0,
-          calculations['vat_amount'] ?? 0,
-          calculations['total'] ?? 0,
-        ] else ...[
-          '', '', '', '', '', '', '', '', // Leere Zellen für die Summen
-        ],
-      ]);
-    }
-
-    // Formatierung als CSV mit deutschem Excel-Format
-    final csvString = const ListToCsvConverter().convert(
-      csvData,
-      fieldDelimiter: ';',
-      textDelimiter: '"',
-      textEndDelimiter: '"',
-    );
-
-    // BOM für Excel + CSV Daten
-    final bytes = [0xEF, 0xBB, 0xBF, ...utf8.encode(csvString)];
-    return Uint8List.fromList(bytes);
-  }
-
-
-// Optional: Hilfsmethode für die Analyse der Messeverkäufe
-  Future<Map<String, dynamic>> analyzeFairSales(String fairId) async {
-    final sales = await FirebaseFirestore.instance
-        .collection('sales_receipts')
-        .where('metadata.fairId', isEqualTo: fairId)
-        .get();
-
-    double totalRevenue = 0;
-    double totalVat = 0;
-    Map<String, double> productsSold = {};
-    Set<String> uniqueCustomers = {};
-
-    for (final sale in sales.docs) {
-      final data = sale.data();
-      final calculations = data['calculations'] as Map<String, dynamic>;
-      final items = data['items'] as List<dynamic>;
-
-      totalRevenue += calculations['total'] as double;
-      totalVat += calculations['vat_amount'] as double;
-      uniqueCustomers.add(data['customer']['id'] as String);
-
-      for (final item in items) {
-        final productId = item['product_id'] as String;
-        final quantity = item['quantity'] as double;
-        productsSold[productId] = (productsSold[productId] ?? 0) + quantity;
-      }
-    }
-
-    return {
-      'totalRevenue': totalRevenue,
-      'totalVat': totalVat,
-      'totalSales': sales.docs.length,
-      'uniqueCustomers': uniqueCustomers.length,
-      'productsSold': productsSold,
-    };
-  }
-
-
-  // Future<Uint8List> _generatePdf(String receiptId) async {
-  //   final pdf = pw.Document();
-  //   final receiptDoc = await FirebaseFirestore.instance
-  //       .collection('sales_receipts')
-  //       .doc(receiptId)
-  //       .get();
-  //
-  //   final receiptData = receiptDoc.data()!;
-  //   final customerData = receiptData['customer'] as Map<String, dynamic>;
-  //   final items = (receiptData['items'] as List).cast<Map<String, dynamic>>();
-  //
-  //   // Lade das Firmenlogo
-  //   final logoImage = await rootBundle.load('images/logo.png');
-  //   final logo = pw.MemoryImage(logoImage.buffer.asUint8List());
-  //
-  //   pdf.addPage(
-  //     pw.Page(
-  //       build: (pw.Context context) {
-  //         return pw.Column(
-  //           crossAxisAlignment: pw.CrossAxisAlignment.start,
-  //           children: [
-  //             // Header mit Logo und Firmeninformationen
-  //             pw.Row(
-  //               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-  //               children: [
-  //                 pw.Column(
-  //                   crossAxisAlignment: pw.CrossAxisAlignment.start,
-  //                   children: [
-  //                     pw.Text(
-  //                       'Lieferschein',
-  //                       style: pw.TextStyle(
-  //                         fontSize: 24,
-  //                         fontWeight: pw.FontWeight.bold,
-  //                       ),
-  //                     ),
-  //                     pw.SizedBox(height: 4),
-  //                     pw.Text(
-  //                       'Nummer: $receiptId',
-  //                       style: const pw.TextStyle(fontSize: 12),
-  //                     ),
-  //                     pw.Text(
-  //                       'Datum: ${DateFormat('dd.MM.yyyy').format(DateTime.now())}',
-  //                       style: const pw.TextStyle(fontSize: 12),
-  //                     ),
-  //                   ],
-  //                 ),
-  //                 pw.Image(logo, width: 150),
-  //               ],
-  //             ),
-  //             pw.SizedBox(height: 40),
-  //
-  //             // Kundenadresse
-  //             pw.Container(
-  //               padding: const pw.EdgeInsets.all(10),
-  //               decoration: pw.BoxDecoration(
-  //                 border: pw.Border.all(color: PdfColors.grey300),
-  //               ),
-  //               child: pw.Column(
-  //                 crossAxisAlignment: pw.CrossAxisAlignment.start,
-  //                 children: [
-  //                   pw.Text(
-  //                     customerData['company'],
-  //                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-  //                   ),
-  //                   pw.Text(customerData['fullName']),
-  //                   pw.Text(customerData['address']),
-  //                 ],
-  //               ),
-  //             ),
-  //             pw.SizedBox(height: 20),
-  //
-  //             // Artikel-Tabelle
-  //             pw.Table(
-  //               border: pw.TableBorder.all(color: PdfColors.grey300),
-  //               columnWidths: {
-  //                 0: const pw.FlexColumnWidth(4), // Produkt
-  //                 1: const pw.FlexColumnWidth(1), // Menge
-  //                 2: const pw.FlexColumnWidth(1), // Einheit
-  //                 3: const pw.FlexColumnWidth(2), // Preis/Einheit
-  //                 4: const pw.FlexColumnWidth(2), // Gesamt
-  //               },
-  //               children: [
-  //                 // Header
-  //                 pw.TableRow(
-  //                   decoration: pw.BoxDecoration(
-  //                     color: PdfColors.grey200,
-  //                   ),
-  //                   children: [
-  //                     pw.Padding(
-  //                       padding: const pw.EdgeInsets.all(5),
-  //                       child: pw.Text(
-  //                         'Produkt',
-  //                         style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-  //                       ),
-  //                     ),
-  //                     pw.Padding(
-  //                       padding: const pw.EdgeInsets.all(5),
-  //                       child: pw.Text(
-  //                         'Menge',
-  //                         style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-  //                       ),
-  //                     ),
-  //                     pw.Padding(
-  //                       padding: const pw.EdgeInsets.all(5),
-  //                       child: pw.Text(
-  //                         'Einheit',
-  //                         style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-  //                       ),
-  //                     ),
-  //                     pw.Padding(
-  //                       padding: const pw.EdgeInsets.all(5),
-  //                       child: pw.Text(
-  //                         'Preis/Einheit',
-  //                         style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-  //                         textAlign: pw.TextAlign.right,
-  //                       ),
-  //                     ),
-  //                     pw.Padding(
-  //                       padding: const pw.EdgeInsets.all(5),
-  //                       child: pw.Text(
-  //                         'Gesamt',
-  //                         style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-  //                         textAlign: pw.TextAlign.right,
-  //                       ),
-  //                     ),
-  //                   ],
-  //                 ),
-  //                 // Artikel
-  //                 ...items.map((item) => pw.TableRow(
-  //                   children: [
-  //                     pw.Padding(
-  //                       padding: const pw.EdgeInsets.all(5),
-  //                       child: pw.Column(
-  //                         crossAxisAlignment: pw.CrossAxisAlignment.start,
-  //                         children: [
-  //                           pw.Text(item['product_name']),
-  //                           pw.SizedBox(height: 2),
-  //                           pw.Text(
-  //                             '${item['instrument_name']} - ${item['part_name']} - ${item['wood_name']} - ${item['quality_name']}',
-  //                             style: const pw.TextStyle(
-  //                               fontSize: 10,
-  //                               color: PdfColors.grey700,
-  //                             ),
-  //                           ),
-  //                         ],
-  //                       ),
-  //                     ),
-  //                     pw.Padding(
-  //                       padding: const pw.EdgeInsets.all(5),
-  //                       child: pw.Text(item['quantity'].toString()),
-  //                     ),
-  //                     pw.Padding(
-  //                       padding: const pw.EdgeInsets.all(5),
-  //                       child: pw.Text(item['unit']),
-  //                     ),
-  //                     pw.Padding(
-  //                       padding: const pw.EdgeInsets.all(5),
-  //                       child: pw.Text(
-  //                         '${item['price_per_unit'].toStringAsFixed(2)} CHF',
-  //                         textAlign: pw.TextAlign.right,
-  //                       ),
-  //                     ),
-  //                     pw.Padding(
-  //                       padding: const pw.EdgeInsets.all(5),
-  //                       child: pw.Text(
-  //                         '${item['total_price'].toStringAsFixed(2)} CHF',
-  //                         textAlign: pw.TextAlign.right,
-  //                       ),
-  //                     ),
-  //                   ],
-  //                 )),
-  //               ],
-  //             ),
-  //             pw.SizedBox(height: 20),
-  //
-  //             // Gesamtsumme
-  //             pw.Container(
-  //               alignment: pw.Alignment.centerRight,
-  //               child: pw.Column(
-  //                 crossAxisAlignment: pw.CrossAxisAlignment.end,
-  //                 children: [
-  //                   pw.Text(
-  //                     'Gesamtbetrag: ${receiptData['total_amount'].toStringAsFixed(2)} CHF',
-  //                     style: pw.TextStyle(
-  //                       fontSize: 16,
-  //                       fontWeight: pw.FontWeight.bold,
-  //                     ),
-  //                   ),
-  //                 ],
-  //               ),
-  //             ),
-  //
-  //             // Footer
-  //             pw.Positioned(
-  //               bottom: 30,
-  //               child: pw.Container(
-  //                 alignment: pw.Alignment.center,
-  //                 width: 500,
-  //                 child: pw.Text(
-  //                   'Vielen Dank für Ihren Einkauf!',
-  //                   style: const pw.TextStyle(
-  //                     color: PdfColors.grey700,
-  //                     fontSize: 12,
-  //                   ),
-  //                 ),
-  //               ),
-  //             ),
-  //           ],
-  //         );
-  //       },
-  //     ),
-  //   );
-  //
-  //   return pdf.save();
-  // }
-// 2. Erweiterte PDF-Generierung
-
-  Future<Map<String, String>> _getReceiptAdditionalTexts(String receiptId) async {
-    try {
-      final receiptDoc = await FirebaseFirestore.instance
-          .collection('sales_receipts')
-          .doc(receiptId)
-          .get();
-
-      if (!receiptDoc.exists) return {};
-
-      final data = receiptDoc.data();
-      if (data == null || !data.containsKey('additional_texts')) return {};
-
-      final texts = data['additional_texts'] as Map<String, dynamic>;
-
-      final result = <String, String>{};
-
-      // Legende
-      if (texts['legend']?['selected'] == true) {
-        final legendSettings = texts['legend'] as Map<String, dynamic>;
-        result['legend'] = AdditionalTextsManager.getTextContent(legendSettings, 'legend');
-      }
-
-      // FSC
-      if (texts['fsc']?['selected'] == true) {
-        final fscSettings = texts['fsc'] as Map<String, dynamic>;
-        result['fsc'] = AdditionalTextsManager.getTextContent(fscSettings, 'fsc');
-      }
-
-      // Naturprodukt
-      if (texts['natural_product']?['selected'] == true) {
-        final naturalProductSettings = texts['natural_product'] as Map<String, dynamic>;
-        result['natural_product'] = AdditionalTextsManager.getTextContent(naturalProductSettings, 'natural_product');
-      }
-
-      // Bankverbindung
-      if (texts['bank_info']?['selected'] == true) {
-        final bankInfoSettings = texts['bank_info'] as Map<String, dynamic>;
-        result['bank_info'] = AdditionalTextsManager.getTextContent(bankInfoSettings, 'bank_info');
-      }
-
-      return result;
-    } catch (e) {
-      print('Fehler beim Laden der Zusatztexte für den Beleg: $e');
-      return {};
-    }
-  }
-
-
-
-
-  pw.Widget _buildTotalRowWithCurrency(
-      String label,
-      num amount,
-      String currency,
-      double exchangeRate, {
-        bool isDiscount = false,
-        bool isBold = false,
-        double fontSize = 10,
-      }) {
-    // Umrechnung von CHF zur Zielwährung
-    final convertedAmount = amount * exchangeRate;
-
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 2),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(
-            label,
-            style: pw.TextStyle(
-              fontSize: fontSize,
-              fontWeight: isBold ? pw.FontWeight.bold : null,
-              color: PdfColors.blueGrey800,
-            ),
-          ),
-          pw.Text(
-            isDiscount
-                ? '-${convertedAmount.toStringAsFixed(2)} $currency'
-                : '${convertedAmount.toStringAsFixed(2)} $currency',
-            style: pw.TextStyle(
-              fontSize: fontSize,
-              fontWeight: isBold ? pw.FontWeight.bold : null,
-              color: isDiscount ? PdfColors.red : PdfColors.blueGrey800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-// Neue Hilfsmethode für Gesamtbeträge
-  pw.Widget _buildTotalRow(
-      String label,
-      num amount, {
-        bool isDiscount = false,
-        bool isBold = false,
-        double fontSize = 10,
-      }) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 2),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Text(
-            label,
-            style: pw.TextStyle(
-              fontSize: fontSize,
-              fontWeight: isBold ? pw.FontWeight.bold : null,
-              color: PdfColors.blueGrey800,
-            ),
-          ),
-          pw.Text(
-            isDiscount
-                ? '-${amount.toStringAsFixed(2)} CHF'
-                : '${amount.toStringAsFixed(2)} CHF',
-            style: pw.TextStyle(
-              fontSize: fontSize,
-              fontWeight: isBold ? pw.FontWeight.bold : null,
-              color: isDiscount ? PdfColors.red : PdfColors.blueGrey800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-// Hilfsmethoden für einheitliche Zellen-Formatierung
-  pw.Widget _buildHeaderCell(String text,double fontSize, {pw.TextAlign align = pw.TextAlign.left}) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.all(8),
-      child: pw.Text(
-        text,
-        style: pw.TextStyle(
-  fontSize:fontSize,
-          fontWeight: pw.FontWeight.bold,
-          color: PdfColors.blueGrey800,
-        ),
-        textAlign: align,
-      ),
-    );
-  }
-
-  pw.Widget _buildContentCell(pw.Widget content) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.all(8),
-      child: content,
-    );
-  }
-
-
-
-
-  Future<void> _sendReceiptEmail(
-      String receiptId,
-      Uint8List pdfBytes,
-      String recipientEmail,
-      ) async {
-    try {
-      // Hole die PDF-URL aus dem Storage
-      final receiptDoc = await FirebaseFirestore.instance
-          .collection('sales_receipts')
-          .doc(receiptId)
-          .get();
-
-      final pdfUrl = receiptDoc.data()?['pdf_url'];
-
-      if (pdfUrl != null) {
-        final emailContent = '''
-Sehr geehrte Damen und Herren,
-
-vielen Dank für Ihren Einkauf. Im Anhang finden Sie Ihren Lieferschein.
-
-Mit freundlichen Grüßen
-Ihr Team''';
-
-        // Formatiere die URI-Komponenten separat
-        final subject = Uri.encodeComponent('Ihr Lieferschein Nr. $receiptId');
-        final body = Uri.encodeComponent('$emailContent\n\nLieferschein: $pdfUrl');
-
-        // Baue die mailto-URI
-        final emailUrl = 'mailto:$recipientEmail?subject=$subject&body=$body';
-        final uri = Uri.parse(emailUrl);
-
-        // Debug-Ausgabe
-        print('Versuche E-Mail-Client zu öffnen mit URI: $uri');
-
-        // Prüfe ob die URI geöffnet werden kann
-        if (await canLaunchUrl(uri)) {
-          // Versuche die URI zu öffnen
-          final launched = await launchUrl(
-            uri,
-            mode: LaunchMode.externalApplication,
-          );
-
-          if (launched) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('E-Mail-Client wurde geöffnet'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            }
-          } else {
-            throw 'E-Mail-Client konnte nicht gestartet werden';
-          }
-        } else {
-          // Alternative Methode versuchen
-          final altUri = Uri(
-            scheme: 'mailto',
-            path: recipientEmail,
-            queryParameters: {
-              'subject': 'Ihr Lieferschein Nr. $receiptId',
-              'body': '$emailContent\n\nLieferschein: $pdfUrl',
-            },
-          );
-
-          print('Versuche alternative URI: $altUri');
-
-          if (await canLaunchUrl(altUri)) {
-            final launched = await launchUrl(
-              altUri,
-              mode: LaunchMode.externalApplication,
-            );
-
-            if (!launched) {
-              throw 'Alternative Methode fehlgeschlagen';
-            }
-          } else {
-            throw 'Kein E-Mail-Client verfügbar';
-          }
-        }
-      } else {
-        throw 'PDF-URL nicht gefunden';
-      }
-    } catch (e) {
-      print('Fehler beim E-Mail-Versand: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Öffnen des E-Mail-Clients: $e'),
-            backgroundColor: Colors.red,
-            action: SnackBarAction(
-              label: 'Details',
-              textColor: Colors.white,
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Fehlerdetails'),
-                    content: SingleChildScrollView(
-                      child: Text('$e'),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Schließen'),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-      }
-    }
-  }
-
-
-  // Replace the existing _shareReceipt method with this one
-  Future<void> _shareReceipt(String receiptId, Uint8List pdfBytes) async {
-    try {
-      if (kIsWeb) {
-        // For web, use the DownloadHelper class (which should handle web downloads)
-        final fileName = 'Lieferschein_$receiptId.pdf';
-        await DownloadHelper.downloadFile(pdfBytes, fileName);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('PDF wird heruntergeladen...'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } else {
-        // For mobile, use the Share.shareXFiles method
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/Lieferschein_$receiptId.pdf');
-        await tempFile.writeAsBytes(pdfBytes);
-
-        await Share.shareXFiles(
-          [XFile(tempFile.path)],
-          subject: 'Lieferschein',
-        );
-
-        // Optional: Lösche die temporäre Datei nach einer Weile
-        Future.delayed(const Duration(minutes: 5), () async {
-          if (await tempFile.exists()) {
-            await tempFile.delete();
-          }
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Teilen: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-// Replace the existing _shareCsv method with this one
-  Future<void> _shareCsv(String receiptId, Uint8List? csvBytes) async {
-    try {
-      if (csvBytes == null) {
-        throw Exception('CSV-Daten sind nicht verfügbar');
-      }
-
-      if (kIsWeb) {
-        // For web, use the DownloadHelper class
-        final fileName = 'Bestellung_$receiptId.csv';
-        await DownloadHelper.downloadFile(csvBytes, fileName);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('CSV wird heruntergeladen...'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } else {
-        // For mobile, use the Share.shareXFiles method
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/Bestellung_$receiptId.csv');
-        await tempFile.writeAsBytes(csvBytes);
-
-        await Share.shareXFiles(
-          [XFile(tempFile.path)],
-          subject: 'Bestellung CSV',
-        );
-
-        // Optional: Lösche die temporäre Datei nach einer Weile
-        Future.delayed(const Duration(minutes: 5), () async {
-          if (await tempFile.exists()) {
-            await tempFile.delete();
-          }
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Teilen der CSV: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 
   Future<String> saveReceiptLocally(Uint8List pdfBytes, String receiptId) async {
@@ -8523,8 +7463,6 @@ Widget _buildSelectedProductInfo() {
   );
 }
 
-
-// Neue Methode zum Speichern des Gesamtrabatts
   Future<void> _saveTemporaryTotalDiscount() async {
     try {
       await FirebaseFirestore.instance
@@ -8540,7 +7478,6 @@ Widget _buildSelectedProductInfo() {
     }
   }
 
-// Neue Methode zum Laden des Gesamtrabatts
   Future<void> _loadTemporaryTotalDiscount() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -8570,15 +7507,10 @@ Widget _buildSelectedProductInfo() {
     }
   }
 
-
-// Neue Zustandsvariablen für die Klasse
   double get _vatRate => _vatRateNotifier.value;
   Discount _totalDiscount = const Discount();
   Map<String, Discount> _itemDiscounts = {};
 
-// Methode zum Anpassen des Rabatts für einen Artikel
-  // Methode zum Anpassen des Rabatts für einen Artikel
-// Methode zum Anpassen des Rabatts für einen Artikel
   void _showItemDiscountDialog(String itemId, double originalAmount) {
     final percentageController = TextEditingController(
         text: _itemDiscounts[itemId]?.percentage.toString() ?? '0.0'
@@ -8822,18 +7754,6 @@ Widget _buildSelectedProductInfo() {
     );
   }
 
-  Stream<double> _calculateItemDiscount(
-      double amount,
-      double percentage,
-      double absolute,
-      ) {
-    return Stream.value(
-        (amount * (percentage / 100)) + absolute
-    );
-  }
-
-// Methode für den Gesamtrabatt
-  // Methode für den Gesamtrabatt
   void _showTotalDiscountDialog() {
     bool distributeToItems = false; // Neue Variable am Anfang der Methode
     // Konvertiere den absoluten Wert von CHF in die aktuelle Währung für die Anzeige
@@ -9502,12 +8422,6 @@ Widget _buildSelectedProductInfo() {
       ),
     );
   }
-
-
-
-
-
-
 
 @override
 void dispose() {

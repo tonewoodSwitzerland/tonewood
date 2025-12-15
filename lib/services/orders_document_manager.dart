@@ -12,7 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:tonewood/services/swiss_rounding.dart';
 import 'dart:typed_data';
 import '../services/icon_helper.dart';
-import '../components/order_model.dart';
+import '../orders/order_model.dart';
 import 'countries.dart';
 import 'order_document_preview_manager.dart';
 import 'pdf_generators/invoice_generator.dart';
@@ -131,13 +131,19 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
     _loadExistingSettings();
   }
   @override
+  @override
   void dispose() {
-    // Dispose all package controllers
+    // Dispose all package controllers mit Try-Catch
     packageControllers.forEach((key, controllers) {
       controllers.forEach((_, controller) {
-        controller.dispose();
+        try {
+          controller.dispose();
+        } catch (e) {
+          // Controller war bereits disposed - ignorieren
+        }
       });
     });
+    packageControllers.clear();
     super.dispose();
   }
   Future<void> _loadExistingSettings() async {
@@ -194,6 +200,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
             'commercial_invoice_date': data['commercial_invoice_date'] != null
                 ? (data['commercial_invoice_date'] as Timestamp).toDate()
                 : null,
+            'use_as_delivery_date': data['use_as_delivery_date'] ?? true, // NEU
             'origin_declaration': data['origin_declaration'] ?? false,
             'cites': data['cites'] ?? false,
             'export_reason': data['export_reason'] ?? false,
@@ -526,7 +533,8 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
 
       // Füge alle verfügbaren Items hinzu
       for (final item in orderItems) {
-        final totalQuantity = item['quantity'] as double? ?? 0;
+        // KORRIGIERT: num statt double casten
+        final totalQuantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
 
         // Entferne das Item aus allen anderen Paketen
         for (final package in packages) {
@@ -542,8 +550,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
           'product_id': item['product_id'],
           'product_name': item['product_name'],
           'product_name_en': item['product_name_en'],
-          'quantity': totalQuantity.toDouble(), // totalQuantity ist bereits double
-          // Konvertiere ALLE numerischen Werte zu double
+          'quantity': totalQuantity,
           'weight_per_unit': (item['weight'] as num?)?.toDouble() ?? 0.0,
           'volume_per_unit': (item['volume_per_unit'] as num?)?.toDouble() ?? 0.0,
           'density': (item['density'] as num?)?.toDouble() ?? 0.0,
@@ -558,7 +565,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
           'part_code': item['part_code'] ?? '',
           'part_name': item['part_name'] ?? '',
           'quality_code': item['quality_code'] ?? '',
-          'quality_name': item['quality_name'] ?? ''
+          'quality_name': item['quality_name'] ?? '',
         });
       }
     });
@@ -906,6 +913,39 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
   Future<void> _showDeliveryNoteSettings() async {
     DateTime? deliveryDate = _settings['delivery_note']['delivery_date'];
     DateTime? paymentDate = _settings['delivery_note']['payment_date'];
+    // NEU: Wenn kein Lieferdatum gesetzt, lade aus Handelsrechnung-Einstellungen
+    if (deliveryDate == null) {
+      final commercialInvoiceSettings = _settings['commercial_invoice'];
+      if (commercialInvoiceSettings != null && commercialInvoiceSettings['commercial_invoice_date'] != null) {
+        final timestamp = commercialInvoiceSettings['commercial_invoice_date'];
+        if (timestamp is DateTime) {
+          deliveryDate = timestamp;
+        } else if (timestamp is Timestamp) {
+          deliveryDate = timestamp.toDate();
+        }
+      }
+
+      // Falls nicht in _settings, versuche aus Firebase zu laden
+      if (deliveryDate == null) {
+        try {
+          final taraSettingsDoc = await FirebaseFirestore.instance
+              .collection('orders')
+              .doc(widget.order.id)
+              .collection('settings')
+              .doc('tara_settings')
+              .get();
+
+          if (taraSettingsDoc.exists) {
+            final data = taraSettingsDoc.data()!;
+            if (data['commercial_invoice_date'] != null) {
+              deliveryDate = (data['commercial_invoice_date'] as Timestamp).toDate();
+            }
+          }
+        } catch (e) {
+          print('Fehler beim Laden des Handelsrechnungsdatums: $e');
+        }
+      }
+    }
 
     await showModalBottomSheet<void>(
       context: context,
@@ -1164,12 +1204,16 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
     }
 
     DateTime? commercialInvoiceDate;
+
+    bool useAsDeliveryDate = true; // NEU: Standardmäßig aktiviert
     if (settings['commercial_invoice_date'] != null) {
       commercialInvoiceDate = settings['commercial_invoice_date'] is Timestamp
           ? (settings['commercial_invoice_date'] as Timestamp).toDate()
           : settings['commercial_invoice_date'] as DateTime?;
     }
 
+// NEU: Lade useAsDeliveryDate Einstellung
+    useAsDeliveryDate = settings['use_as_delivery_date'] ?? true;
 
     String selectedCurrency = widget.order.metadata['currency'] ?? 'CHF';
     if (settings['currency'] != null) {
@@ -1482,8 +1526,32 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           ),
                         ),
 
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 8),
 
+// NEU: Checkbox für Übernahme als Lieferdatum
+                        CheckboxListTile(
+                          title: const Text('Als Lieferdatum übernehmen'),
+                          subtitle: const Text(
+                            'wird im Lieferschein als Lieferdatum verwendet',
+                            style: TextStyle(fontSize: 11),
+                          ),
+                          value: useAsDeliveryDate,
+                          onChanged: (value) {
+                            setModalState(() {
+                              useAsDeliveryDate = value ?? true;
+                            });
+                          },
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          secondary: getAdaptiveIcon(
+                            iconName: 'local_shipping',
+                            defaultIcon: Icons.local_shipping,
+                            size: 20,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
 
 
 // Währungsauswahl
@@ -2125,6 +2193,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                     'commercial_invoice_date': commercialInvoiceDate != null
                                         ? Timestamp.fromDate(commercialInvoiceDate!)
                                         : null,
+                                    'use_as_delivery_date': useAsDeliveryDate,  // <-- FEHLT!
                                     'commercial_invoice_currency': selectedCurrency,
                                     'commercial_invoice_origin_declaration': settings['origin_declaration'],
                                     'commercial_invoice_cites': settings['cites'],
@@ -2143,7 +2212,26 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                     'commercial_invoice_signature': settings['signature'],
                                     'commercial_invoice_selected_signature': settings['selected_signature'],
                                     'timestamp': FieldValue.serverTimestamp(),
-                                  });
+                                  }
+                                  );
+
+                                  // NEU: Wenn Checkbox aktiv, speichere auch in delivery_settings
+                                  if (useAsDeliveryDate && commercialInvoiceDate != null) {
+                                    await FirebaseFirestore.instance
+                                        .collection('orders')
+                                        .doc(widget.order.id)
+                                        .collection('settings')
+                                        .doc('delivery_settings')
+                                        .set({
+                                      'delivery_date': Timestamp.fromDate(commercialInvoiceDate!),
+                                      'timestamp': FieldValue.serverTimestamp(),
+                                    }, SetOptions(merge: true));
+
+                                    // Update auch den lokalen State
+                                    _settings['delivery_note']['delivery_date'] = commercialInvoiceDate;
+                                  }
+
+
                                   setState(() {
                                     _settings['commercial_invoice'] = settings;
                                   });
@@ -2970,6 +3058,8 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
     return totalAssigned;
   }
 
+
+
   Widget _buildOrderPackageCard(
       BuildContext context,
       Map<String, dynamic> package,
@@ -2990,7 +3080,7 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
     final weightController = controllers['weight']!;
     final customNameController = controllers['custom_name']!;
 
-    // NEU: Controller für Bruttogewicht
+    // Controller für Bruttogewicht
     if (!controllers.containsKey('gross_weight')) {
       controllers['gross_weight'] = TextEditingController(
         text: package['gross_weight']?.toString() ?? '',
@@ -2998,103 +3088,47 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
     }
     final grossWeightController = controllers['gross_weight']!;
 
-    // NEU: Berechne Nettogewicht (Summe aller Produkte im Paket)
-    // NEU: Berechne Nettogewicht (Summe aller Produkte im Paket)
+    // Berechne Nettogewicht (Summe aller Produkte im Paket)
     double calculateNetWeight() {
-      print('=== START calculateNetWeight für Package ===');
       double netWeight = 0.0;
       final packageItems = package['items'] as List<dynamic>? ?? [];
-      print('Anzahl Items im Package: ${packageItems.length}');
 
-      for (int i = 0; i < packageItems.length; i++) {
-        final item = packageItems[i];
-        print('\n--- Item ${i + 1} ---');
-        print('VOLLSTÄNDIGES ITEM-OBJEKT:');
-        print('Type: ${item.runtimeType}');
-
-        // Alle Keys und Values ausgeben
-        if (item is Map) {
-          item.forEach((key, value) {
-            print('  $key: $value (Type: ${value.runtimeType})');
-          });
-        } else {
-          print('  Item ist kein Map! Type: ${item.runtimeType}');
-          print('  Inhalt: $item');
-        }
-
-        // Extrahiere Werte mit Debug-Ausgaben
+      for (final item in packageItems) {
         final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
         final unit = item['unit'] ?? 'Stk';
 
-        print('\nEXTRAHIERTE WERTE:');
-        print('Artikel: ${item['product_name'] ?? 'Kein Name'}');
-        print('Menge: $quantity $unit');
-
         if (unit.toLowerCase() == 'kg') {
-          // Bei kg-Einheit ist quantity bereits das Gewicht
-          print('Einheit ist kg - quantity ist direkt das Gewicht');
-          print('Gewicht für dieses Item: $quantity kg');
           netWeight += quantity;
         } else {
-          print('Einheit ist nicht kg - berechne Gewicht aus Volumen');
-
-          // Volumen berechnen
           double volumePerPiece = 0.0;
-
-          // Priorisierung für Volumenberechnung
           final volumeField = (item['volume_per_unit'] as num?)?.toDouble() ?? 0.0;
-          print('volume_per_unit: $volumeField (Type: ${volumeField?.runtimeType})');
 
-          if (volumeField != null && (volumeField as num) > 0) {
-            volumePerPiece = (volumeField as num).toDouble();
-            print('Verwende volume_per_unit: $volumePerPiece m³');
+          if (volumeField > 0) {
+            volumePerPiece = volumeField;
           } else {
-            print('volume_per_unit nicht vorhanden oder 0, prüfe custom dimensions');
             final length = (item['custom_length'] as num?)?.toDouble() ?? 0.0;
             final width = (item['custom_width'] as num?)?.toDouble() ?? 0.0;
             final thickness = (item['custom_thickness'] as num?)?.toDouble() ?? 0.0;
 
-            print('Custom dimensions - L: $length mm, B: $width mm, D: $thickness mm');
-
             if (length > 0 && width > 0 && thickness > 0) {
               volumePerPiece = (length / 1000) * (width / 1000) * (thickness / 1000);
-              print('Berechnetes Volumen pro Stück: $volumePerPiece m³');
-            } else {
-              print('WARNUNG: Keine gültigen Dimensionen gefunden!');
             }
           }
 
-          // Gewicht aus Volumen und Dichte
-          final woodCode = item['wood_code'] as String? ?? '';
-          print('Holzcode: $woodCode');
-
-          // WICHTIG: Dichte-Berechnung mit Debug
-          final densityRaw = item['density'];
-          print('density raw value: $densityRaw (Type: ${densityRaw?.runtimeType})');
-
           final density = (item['density'] as num?)?.toDouble() ?? 0.0;
-          print('density nach Konvertierung: $density kg/m³');
-
-          if (density == 0.0 && densityRaw == null) {
-            print('WARNUNG: Verwende Standard-Dichte 0.0 kg/m³, da kein density-Wert vorhanden!');
-          }
-
           final weightPerPiece = volumePerPiece * density;
-          print('Gewicht pro Stück: $weightPerPiece kg (Volumen: $volumePerPiece m³ × Dichte: $density kg/m³)');
-
-          final totalItemWeight = weightPerPiece * quantity;
-          print('Gesamtgewicht für dieses Item: $totalItemWeight kg ($quantity Stück × $weightPerPiece kg/Stück)');
-
-          netWeight += totalItemWeight;
-          print('Zwischensumme Nettogewicht: $netWeight kg');
+          netWeight += weightPerPiece * quantity;
         }
       }
 
-      print('\n=== ENDE calculateNetWeight ===');
-      print('FINALES NETTOGEWICHT: $netWeight kg');
-      print('================================\n');
-
       return netWeight;
+    }
+
+    // Berechne Bruttogewicht
+    double calculateGrossWeight() {
+      final netWeight = calculateNetWeight();
+      final tareWeight = (package['tare_weight'] as num?)?.toDouble() ?? 0.0;
+      return netWeight + tareWeight;
     }
 
     return Card(
@@ -3127,7 +3161,7 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                         packages.removeAt(index);
                       });
                     },
-                    icon:  getAdaptiveIcon(iconName: 'delete',defaultIcon:Icons.delete, color: Colors.red[400]),
+                    icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete, color: Colors.red[400]),
                     iconSize: 20,
                   ),
               ],
@@ -3155,9 +3189,9 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                       decoration: InputDecoration(
                         labelText: 'Verpackungsvorlage',
                         hintText: 'Bitte auswählen',
-                        prefixIcon:  Padding(
+                        prefixIcon: Padding(
                           padding: const EdgeInsets.all(8.0),
-                          child: getAdaptiveIcon(iconName: 'inventory',defaultIcon:Icons.inventory),
+                          child: getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory),
                         ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
@@ -3181,6 +3215,9 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                       onChanged: (value) {
                         setModalState(() {
                           package['standard_package_id'] = value;
+                          package['manual_gross_weight_mode'] = false;
+                          package['gross_weight'] = null;
+                          grossWeightController.clear();
 
                           if (value != null && value != 'custom') {
                             final selectedPackage = standardPackages.firstWhere(
@@ -3227,8 +3264,9 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                           ),
                           child: Row(
                             children: [
-                              getAdaptiveIcon(iconName: 'info', defaultIcon:
-                                Icons.info,
+                              getAdaptiveIcon(
+                                iconName: 'info',
+                                defaultIcon: Icons.info,
                                 size: 16,
                                 color: Theme.of(context).colorScheme.primary,
                               ),
@@ -3262,7 +3300,7 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                   hintText: 'z.B. Spezialverpackung',
                   prefixIcon: Padding(
                     padding: const EdgeInsets.all(8.0),
-                    child: getAdaptiveIcon(iconName: 'edit',defaultIcon:Icons.edit),
+                    child: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit),
                   ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -3338,8 +3376,9 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
 
             const SizedBox(height: 12),
 
+            // Tara-Gewicht
             TextFormField(
-              controller: controllers['weight']!,
+              controller: weightController,
               decoration: InputDecoration(
                 labelText: 'Verpackungsgewicht / Tara (kg)',
                 border: OutlineInputBorder(
@@ -3358,95 +3397,17 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
               onChanged: (value) {
                 setModalState(() {
                   package['tare_weight'] = double.tryParse(value.replaceAll(',', '.')) ?? 0.0;
-                });
-              },
-            ),
-
-            const SizedBox(height: 12),
-
-            // NEU: Bruttogewicht mit automatischer Tara-Berechnung
-            TextFormField(
-              controller: grossWeightController,
-              decoration: InputDecoration(
-                labelText: 'Bruttogewicht (gemessen) (kg)',
-                helperText: 'Leer lassen für automatische Berechnung',
-                prefixIcon:  Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: getAdaptiveIcon(iconName: 'scale',defaultIcon:Icons.scale),
-                ),
-                suffixIcon: grossWeightController.text.isNotEmpty
-                    ? IconButton(
-                  icon:  getAdaptiveIcon(iconName: 'clear',defaultIcon:Icons.clear),
-                  onPressed: () {
-                    setModalState(() {
-                      grossWeightController.clear();
-                      package['gross_weight'] = null;
-                      // Setze Tara auf Standardwert zurück
-                      if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom') {
-                        final selectedPackage = FirebaseFirestore.instance
-                            .collection('standardized_packages')
-                            .doc(selectedStandardPackageId);
-                        selectedPackage.get().then((doc) {
-                          if (doc.exists) {
-                            final data = doc.data() as Map<String, dynamic>;
-                            package['tare_weight'] = data['weight'] ?? 0.0;
-                            weightController.text = package['tare_weight'].toString();
-                          }
-                        });
-                      }
-                    });
-                  },
-                )
-                    : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                isDense: true,
-              ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              onChanged: (value) {
-                setModalState(() {
-                  final grossWeight = double.tryParse(value);
-
-                  if (value.isEmpty || grossWeight == null) {
-                    // Feld wurde geleert - zurück zum Standardgewicht
+                  // Reset manuelles Bruttogewicht wenn Tara geändert wird (außer im manuellen Modus)
+                  if (package['manual_gross_weight_mode'] != true) {
                     package['gross_weight'] = null;
-
-                    // Setze Tara auf Standardwert zurück
-                    if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom') {
-                      // Lade Standardgewicht aus der Datenbank
-                      FirebaseFirestore.instance
-                          .collection('standardized_packages')
-                          .doc(selectedStandardPackageId)
-                          .get()
-                          .then((doc) {
-                        if (doc.exists) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          setModalState(() {
-                            package['tare_weight'] = data['weight'] ?? 0.0;
-                            weightController.text = package['tare_weight'].toString();
-                          });
-                        }
-                      });
-                    } else {
-                      // Bei custom bleibt das manuell eingegebene Tara-Gewicht
-                      // Keine Änderung nötig
-                    }
-                  } else if (grossWeight > 0) {
-                    // Bruttogewicht eingegeben, berechne Tara neu
-                    package['gross_weight'] = grossWeight;
-                    final netWeight = calculateNetWeight();
-                    final calculatedTara = grossWeight - netWeight;
-                    package['tare_weight'] = calculatedTara > 0 ? calculatedTara : 0.0;
-                    weightController.text = package['tare_weight'].toStringAsFixed(2);
                   }
                 });
               },
             ),
 
-            // NEU: Info-Box mit Gewichtsübersicht
+            // Integrierte Gewichtsübersicht mit optionalem Bruttogewicht-Input
             if (package['items'].isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -3456,32 +3417,184 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Nettogewicht
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Nettogewicht (Produkte):', style: TextStyle(fontSize: 12)),
+                        const Text('Nettogewicht (Produkte):', style: TextStyle(fontSize: 12)),
                         Text('${calculateNetWeight().toStringAsFixed(2)} kg',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                       ],
                     ),
                     const SizedBox(height: 4),
+
+                    // Tara
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Tara (Verpackung):', style: TextStyle(fontSize: 12)),
-                        Text('${package['tare_weight'].toStringAsFixed(2)} kg',
-                            style: TextStyle(fontSize: 12)),
+                        const Text('+ Tara (Verpackung):', style: TextStyle(fontSize: 12)),
+                        Text('${(package['tare_weight'] as num?)?.toStringAsFixed(2) ?? '0.00'} kg',
+                            style: const TextStyle(fontSize: 12)),
                       ],
                     ),
-                    const Divider(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Bruttogewicht:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                        Text('${(calculateNetWeight() + (package['tare_weight'] ?? 0.0)).toStringAsFixed(2)} kg',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+
+                    const Divider(height: 12),
+
+                    // Bruttogewicht - entweder berechnet oder mit Eingabefeld
+                    if (package['manual_gross_weight_mode'] == true) ...[
+                      // Manueller Modus: Eingabefeld
+                      Row(
+                        children: [
+                          const Text('= Bruttogewicht:',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text('gemessen',
+                                style: TextStyle(fontSize: 9, color: Colors.orange[700])),
+                          ),
+                          const Spacer(),
+                          // Zurück zu automatisch
+                          IconButton(
+                            onPressed: () {
+                              setModalState(() {
+                                package['manual_gross_weight_mode'] = false;
+                                package['gross_weight'] = null;
+                                grossWeightController.clear();
+                                // Tara zurücksetzen wenn Standardpaket
+                                if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom') {
+                                  FirebaseFirestore.instance
+                                      .collection('standardized_packages')
+                                      .doc(selectedStandardPackageId)
+                                      .get()
+                                      .then((doc) {
+                                    if (doc.exists) {
+                                      final data = doc.data() as Map<String, dynamic>;
+                                      setModalState(() {
+                                        package['tare_weight'] = data['weight'] ?? 0.0;
+                                        weightController.text = package['tare_weight'].toString();
+                                      });
+                                    }
+                                  });
+                                }
+                              });
+                            },
+                            icon: getAdaptiveIcon(
+                              iconName: 'autorenew',
+                              defaultIcon: Icons.autorenew,
+                              size: 18,
+                            ),
+                            tooltip: 'Zurück zu automatischer Berechnung',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 40,
+                        child: TextFormField(
+                          controller: grossWeightController,
+                          decoration: InputDecoration(
+                            hintText: 'Gewogenes Bruttogewicht eingeben',
+                            suffixText: 'kg',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            isDense: true,
+                          ),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: [
+                            TextInputFormatter.withFunction((oldValue, newValue) {
+                              return newValue.copyWith(
+                                text: newValue.text.replaceAll(',', '.'),
+                              );
+                            }),
+                          ],
+                          onChanged: (value) {
+                            final grossWeight = double.tryParse(value.replaceAll(',', '.'));
+                            if (grossWeight != null && grossWeight > 0) {
+                              setModalState(() {
+                                package['gross_weight'] = grossWeight;
+                                // Tara = Brutto - Netto
+                                final netWeight = calculateNetWeight();
+                                final calculatedTara = grossWeight - netWeight;
+                                package['tare_weight'] = calculatedTara > 0 ? calculatedTara : 0.0;
+                                weightController.text = package['tare_weight'].toStringAsFixed(2);
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                      if (package['gross_weight'] != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Tara wurde auf ${(package['tare_weight'] as num?)?.toStringAsFixed(2) ?? '0.00'} kg angepasst',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontStyle: FontStyle.italic,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ],
-                    ),
+                    ] else ...[
+                      // Automatischer Modus: Nur Anzeige + Button zum Wechseln
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Text('= Bruttogewicht:',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text('berechnet',
+                                    style: TextStyle(fontSize: 9, color: Colors.green[700])),
+                              ),
+                            ],
+                          ),
+                          Row(
+                            children: [
+                              Text(
+                                '${calculateGrossWeight().toStringAsFixed(2)} kg',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(width: 8),
+                              // Button zum Wechseln in manuellen Modus
+                              IconButton(
+                                onPressed: () {
+                                  setModalState(() {
+                                    package['manual_gross_weight_mode'] = true;
+                                    // Setze aktuellen berechneten Wert als Startwert
+                                    final currentGross = calculateGrossWeight();
+                                    grossWeightController.text = currentGross.toStringAsFixed(2);
+                                  });
+                                },
+                                icon: getAdaptiveIcon(
+                                  iconName: 'scale',
+                                  defaultIcon: Icons.scale,
+                                  size: 18,
+                                ),
+                                tooltip: 'Gewogenes Bruttogewicht eingeben',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -3524,7 +3637,7 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                           setModalState(() {
                             package['items'].remove(assignedItem);
                             // Wenn Bruttogewicht manuell gesetzt war, Tara neu berechnen
-                            if (package['gross_weight'] != null) {
+                            if (package['manual_gross_weight_mode'] == true && package['gross_weight'] != null) {
                               final netWeight = calculateNetWeight();
                               final grossWeight = package['gross_weight'] as double;
                               package['tare_weight'] = grossWeight - netWeight;
@@ -3532,7 +3645,7 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                             }
                           });
                         },
-                        icon:  getAdaptiveIcon(iconName: 'remove',defaultIcon:Icons.remove, color: Colors.red[400]),
+                        icon: getAdaptiveIcon(iconName: 'remove', defaultIcon: Icons.remove, color: Colors.red[400]),
                         iconSize: 16,
                       ),
                     ],
@@ -3551,7 +3664,7 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                 packages,
                 setModalState,
               ),
-              icon:  getAdaptiveIcon(iconName: 'add', defaultIcon:Icons.add, size: 16),
+              icon: getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add, size: 16),
               label: const Text('Produkt hinzufügen'),
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -3573,7 +3686,10 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Produkt hinzufügen'),
+        title: Padding(
+          padding: const EdgeInsets.fromLTRB(0, 24,0,0),
+          child: const Text('Produkt hinzufügen'),
+        ),
         content: SizedBox(
           width: double.maxFinite,
           child: ListView.builder(

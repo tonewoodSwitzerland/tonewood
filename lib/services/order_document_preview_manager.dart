@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:tonewood/services/swiss_rounding.dart';
-import '../components/order_model.dart';
+import '../orders/order_model.dart';
 import 'pdf_generators/quote_generator.dart';
 import 'pdf_generators/invoice_generator.dart';
 import 'pdf_generators/commercial_invoice_generator.dart';

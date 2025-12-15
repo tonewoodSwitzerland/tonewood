@@ -5,8 +5,8 @@ class Customer {
   final String firstName;
   final String lastName;
 
-  final String? addressSupplement; // Zusatz
-  final String? districtPOBox; // Bezirk/Postfach etc
+  final String? addressSupplement;
+  final String? districtPOBox;
 
   final String street;
   final String houseNumber;
@@ -14,19 +14,18 @@ class Customer {
   final String city;
   final String? province;
   final String country;
-  final String? countryCode; // GEÄNDERT: Nullable machen
+  final String? countryCode;
   final String email;
 
-  // Neue Felder - alle nullable machen
   final String? phone1;
   final String? phone2;
   final String? vatNumber;
   final String? eoriNumber;
-  final String language; // "DE" oder "EN" - bleibt required
+  final String language;
   final bool wantsChristmasCard;
-  final String? notes; // Nullable
+  final String? notes;
 
-  // Abweichende Lieferadresse - alle nullable machen
+  // Abweichende Lieferadresse
   final bool hasDifferentShippingAddress;
   final String? shippingCompany;
   final String? shippingFirstName;
@@ -40,18 +39,19 @@ class Customer {
   final String? shippingCountryCode;
   final String? shippingPhone;
   final String? shippingEmail;
-// NEU: Flags für Dokumentenanzeige
+
   final bool showVatOnDocuments;
   final bool showEoriOnDocuments;
-  final bool showCustomFieldOnDocuments;  // NEU: Auch für custom Feld
+  final bool showCustomFieldOnDocuments;
 
-  // NEU: Zusätzliche Felder für Lieferschein
   final String? customFieldTitle;
   final String? customFieldValue;
 
-// NEU: Zusätzliche Adresszeilen
   final List<String> additionalAddressLines;
   final List<String> shippingAdditionalAddressLines;
+
+  // NEU: Kundengruppen
+  final List<String> customerGroupIds;
 
   Customer({
     required this.id,
@@ -65,21 +65,17 @@ class Customer {
     required this.houseNumber,
     required this.zipCode,
     required this.city,
-    this.province, // NEU
+    this.province,
     required this.country,
-    this.countryCode, // GEÄNDERT: Kein Standardwert mehr
+    this.countryCode,
     required this.email,
-
-    // Neue Felder - alle optional mit Standardwerten
     this.phone1,
     this.phone2,
     this.vatNumber,
     this.eoriNumber,
-    this.language = 'DE', // Standardsprache Deutsch
-    this.wantsChristmasCard = true, // Standardmäßig Weihnachtsbrief senden
+    this.language = 'DE',
+    this.wantsChristmasCard = true,
     this.notes,
-
-    // Abweichende Lieferadresse - alle optional
     this.hasDifferentShippingAddress = false,
     this.shippingCompany,
     this.shippingFirstName,
@@ -88,7 +84,7 @@ class Customer {
     this.shippingHouseNumber,
     this.shippingZipCode,
     this.shippingCity,
-    this.shippingProvince, // NEU
+    this.shippingProvince,
     this.shippingCountry,
     this.shippingCountryCode,
     this.shippingPhone,
@@ -98,9 +94,10 @@ class Customer {
     this.showEoriOnDocuments = false,
     this.customFieldTitle,
     this.customFieldValue,
-    // NEU: Zusätzliche Adresszeilen
     this.additionalAddressLines = const [],
     this.shippingAdditionalAddressLines = const [],
+    // NEU: Kundengruppen
+    this.customerGroupIds = const [],
   });
 
   factory Customer.fromMap(Map<String, dynamic> map, String id) {
@@ -114,14 +111,12 @@ class Customer {
       houseNumber: map['houseNumber'] ?? '',
       zipCode: map['zipCode'] ?? '',
       city: map['city'] ?? '',
-      province: map['province'], // NEU
+      province: map['province'],
       country: map['country'] ?? '',
       countryCode: map['countryCode'] ?? _getCountryCode(map['country'] ?? ''),
       email: map['email'] ?? '',
       addressSupplement: map['addressSupplement'],
       districtPOBox: map['districtPOBox'],
-
-      // Neue Felder mit robusten Null-Checks
       phone1: map['phone1'],
       phone2: map['phone2'],
       vatNumber: map['vatNumber'],
@@ -129,8 +124,6 @@ class Customer {
       language: map['language'] ?? 'DE',
       wantsChristmasCard: map['wantsChristmasCard'] ?? true,
       notes: map['notes'],
-
-      // Abweichende Lieferadresse mit robusten Null-Checks
       hasDifferentShippingAddress: map['hasDifferentShippingAddress'] ?? false,
       shippingCompany: map['shippingCompany'],
       shippingFirstName: map['shippingFirstName'],
@@ -139,7 +132,7 @@ class Customer {
       shippingHouseNumber: map['shippingHouseNumber'],
       shippingZipCode: map['shippingZipCode'],
       shippingCity: map['shippingCity'],
-      shippingProvince: map['shippingProvince'], // NEU
+      shippingProvince: map['shippingProvince'],
       shippingCountry: map['shippingCountry'],
       shippingCountryCode: map['shippingCountryCode'] ?? _getCountryCode(map['shippingCountry'] ?? ''),
       shippingPhone: map['shippingPhone'],
@@ -149,14 +142,16 @@ class Customer {
       showEoriOnDocuments: map['showEoriOnDocuments'] ?? false,
       customFieldTitle: map['customFieldTitle'],
       customFieldValue: map['customFieldValue'],
-      // NEU: Zusätzliche Adresszeilen
       additionalAddressLines: map['additionalAddressLines'] != null
           ? List<String>.from(map['additionalAddressLines'])
           : [],
       shippingAdditionalAddressLines: map['shippingAdditionalAddressLines'] != null
           ? List<String>.from(map['shippingAdditionalAddressLines'])
           : [],
-
+      // NEU: Kundengruppen
+      customerGroupIds: map['customerGroupIds'] != null
+          ? List<String>.from(map['customerGroupIds'])
+          : [],
     );
   }
 
@@ -171,15 +166,12 @@ class Customer {
       'houseNumber': houseNumber,
       'zipCode': zipCode,
       'city': city,
-      'province': province, // NEU
+      'province': province,
       'country': country,
       'countryCode': countryCode ?? _getCountryCode(country),
       'email': email,
-
       'addressSupplement': addressSupplement,
       'districtPOBox': districtPOBox,
-
-      // Neue Felder
       'phone1': phone1,
       'phone2': phone2,
       'vatNumber': vatNumber,
@@ -187,8 +179,6 @@ class Customer {
       'language': language,
       'wantsChristmasCard': wantsChristmasCard,
       'notes': notes,
-
-      // Abweichende Lieferadresse
       'hasDifferentShippingAddress': hasDifferentShippingAddress,
       'shippingCompany': shippingCompany,
       'shippingFirstName': shippingFirstName,
@@ -207,14 +197,13 @@ class Customer {
       'showEoriOnDocuments': showEoriOnDocuments,
       'customFieldTitle': customFieldTitle,
       'customFieldValue': customFieldValue,
-
-      // NEU: Zusätzliche Adresszeilen
       'additionalAddressLines': additionalAddressLines,
       'shippingAdditionalAddressLines': shippingAdditionalAddressLines,
+      // NEU: Kundengruppen
+      'customerGroupIds': customerGroupIds,
     };
   }
 
-  // Getter für vollständigen Namen
   String get fullName => '$firstName $lastName'.trim();
 
   String get fullAddress {
@@ -222,38 +211,35 @@ class Customer {
       '$street $houseNumber'.trim(),
       ...additionalAddressLines.where((line) => line.isNotEmpty),
       '$zipCode $city'.trim(),
-      if (province?.isNotEmpty == true) province!, // KORRIGIERT
+      if (province?.isNotEmpty == true) province!,
       country,
     ].where((part) => part.isNotEmpty);
-
     return parts.join(', ');
   }
+
   String get fullShippingAddress {
     if (!hasDifferentShippingAddress) return fullAddress;
-
     final parts = [
       '${shippingStreet ?? ''} ${shippingHouseNumber ?? ''}'.trim(),
       ...shippingAdditionalAddressLines.where((line) => line.isNotEmpty),
       '${shippingZipCode ?? ''} ${shippingCity ?? ''}'.trim(),
-      if (shippingProvince?.isNotEmpty == true) shippingProvince!, // KORRIGIERT
+      if (shippingProvince?.isNotEmpty == true) shippingProvince!,
       shippingCountry ?? '',
     ].where((part) => part.isNotEmpty);
-
     return parts.join(', ');
   }
-  // Getter für den Lieferempfänger
+
   String get shippingRecipientName {
     if (!hasDifferentShippingAddress) return fullName;
-
     final name = '${shippingFirstName ?? ''} ${shippingLastName ?? ''}'.trim();
     return name.isNotEmpty ? name : fullName;
   }
 
-  // Hilfsmethode für das Länderkürzel
+  // NEU: Hat Kundengruppen?
+  bool get hasCustomerGroups => customerGroupIds.isNotEmpty;
+
   static String _getCountryCode(String country) {
     if (country.isEmpty) return '';
-
-    // Map von Ländernamen zu ISO-Codes
     final Map<String, String> countryCodes = {
       'Deutschland': 'DE',
       'Deutschland (Festland)': 'DE',
@@ -299,24 +285,16 @@ class Customer {
       'Kanada': 'CA',
       'Canada': 'CA',
       'Japan': 'JP',
-      // Weitere Länder können hier hinzugefügt werden
     };
-
-    // Normalisiere Ländername für die Suche (Kleinbuchstaben)
     final normalizedCountry = country.trim().toLowerCase();
-
-    // Versuche, den Code zu finden
     for (final entry in countryCodes.entries) {
       if (normalizedCountry == entry.key.toLowerCase()) {
         return entry.value;
       }
     }
-
-    // Wenn kein Treffer gefunden wurde, gebe einen leeren String zurück
     return '';
   }
 
-  // Erstelle eine Kopie dieser Customer-Instanz mit aktualisierten Werten
   Customer copyWith({
     String? id,
     String? name,
@@ -329,7 +307,7 @@ class Customer {
     String? houseNumber,
     String? zipCode,
     String? city,
-    String? province, // NEU
+    String? province,
     String? country,
     String? countryCode,
     String? email,
@@ -348,14 +326,15 @@ class Customer {
     String? shippingHouseNumber,
     String? shippingZipCode,
     String? shippingCity,
-    String? shippingProvince, // NEU
+    String? shippingProvince,
     String? shippingCountry,
     String? shippingCountryCode,
     String? shippingPhone,
     String? shippingEmail,
-    // NEU: Zusätzliche Adresszeilen
     List<String>? additionalAddressLines,
     List<String>? shippingAdditionalAddressLines,
+    // NEU: Kundengruppen
+    List<String>? customerGroupIds,
   }) {
     return Customer(
       id: id ?? this.id,
@@ -369,7 +348,7 @@ class Customer {
       houseNumber: houseNumber ?? this.houseNumber,
       zipCode: zipCode ?? this.zipCode,
       city: city ?? this.city,
-      province: province ?? this.province, // NEU
+      province: province ?? this.province,
       country: country ?? this.country,
       countryCode: countryCode ?? this.countryCode,
       email: email ?? this.email,
@@ -388,14 +367,15 @@ class Customer {
       shippingHouseNumber: shippingHouseNumber ?? this.shippingHouseNumber,
       shippingZipCode: shippingZipCode ?? this.shippingZipCode,
       shippingCity: shippingCity ?? this.shippingCity,
-      shippingProvince: shippingProvince ?? this.shippingProvince, // NEU
+      shippingProvince: shippingProvince ?? this.shippingProvince,
       shippingCountry: shippingCountry ?? this.shippingCountry,
       shippingCountryCode: shippingCountryCode ?? this.shippingCountryCode,
       shippingPhone: shippingPhone ?? this.shippingPhone,
       shippingEmail: shippingEmail ?? this.shippingEmail,
       additionalAddressLines: additionalAddressLines ?? this.additionalAddressLines,
       shippingAdditionalAddressLines: shippingAdditionalAddressLines ?? this.shippingAdditionalAddressLines,
-
+      // NEU: Kundengruppen
+      customerGroupIds: customerGroupIds ?? this.customerGroupIds,
     );
   }
 }

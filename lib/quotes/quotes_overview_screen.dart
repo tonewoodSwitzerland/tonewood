@@ -7,9 +7,10 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:tonewood/home/sales_screen.dart';
+import 'package:tonewood/quotes/quote_details_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../components/order_service.dart';
-import '../components/quote_model.dart';
+import '../orders/order_service.dart';
+import 'quote_model.dart';
 // Oben bei den Imports ergänzen:
 import '../constants.dart';
 import '../services/additional_text_manager.dart';
@@ -85,7 +86,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
   String _searchQuery = '';
   QuoteViewStatus? _filterStatus;
   String _rejectionReason = '';
-
+  bool _hasUnsearchedChanges = false;
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -176,41 +177,60 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
           // Suchleiste
           Container(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: TextField(
-              controller: _searchController,
-              style: const TextStyle(fontSize: 14),
-              decoration: InputDecoration(
-                hintText: 'Suche nach Kunde, Angebotsnummer...',
-                hintStyle: const TextStyle(fontSize: 14),
-                prefixIcon: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                  icon:  getAdaptiveIcon(
-                      iconName: 'clear',
-                      defaultIcon:Icons.clear, size: 20),
+            child:  StatefulBuilder(
+        builder: (context, setSearchState) {
+      return TextField(
+        controller: _searchController,
+        style: const TextStyle(fontSize: 14),
+        decoration: InputDecoration(
+          hintText: 'Suche nach Kunde, Angebotsnummer...',
+          hintStyle: const TextStyle(fontSize: 14),
+          prefixIcon: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_searchController.text.isNotEmpty)
+                IconButton(
+                  icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear, size: 20),
                   onPressed: () {
+                    _searchController.clear();
+                    setSearchState(() {}); // Nur Suchfeld updaten
                     setState(() {
-                     _searchController.clear();
-
                       _searchQuery = '';
                     });
                   },
-                )
-                    : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
                 ),
-                filled: true,
-                fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              IconButton(
+                icon: getAdaptiveIcon(
+                  iconName: 'search',
+                  defaultIcon: Icons.search,
+                  color: _searchController.text.toLowerCase() != _searchQuery
+                      ? Colors.orange
+                      : Theme.of(context).colorScheme.primary,
+                ),
+                onPressed: () {
+                  FocusScope.of(context).unfocus();
+                  setState(() {
+                    _searchQuery = _searchController.text.toLowerCase();
+                  });
+                },
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value.toLowerCase();
-                });
-              },
-            ),
+            ],
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+        onChanged: (value) {
+          setSearchState(() {}); // Nur Suchfeld-UI updaten, nicht die ganze Liste
+        },
+      );
+    },
+    ),
           ),
 
           // Kompakte Statistik-Karten
@@ -237,12 +257,20 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                 final quotes = snapshot.data!.docs
                     .map((doc) => Quote.fromFirestore(doc))
                     .where((quote) {
-                  // Suchfilter
+                  // Suchfilter - NUR wenn _searchQuery gesetzt ist (nach Button-Klick)
                   if (_searchQuery.isNotEmpty) {
-                    final searchLower = _searchQuery.toLowerCase();
+                    final searchLower = _searchQuery; // Bereits lowercase
+                    final company = quote.customer['company']?.toString().toLowerCase() ?? '';
+                    final fullName = quote.customer['fullName']?.toString().toLowerCase() ?? '';
+                    final firstName = quote.customer['firstName']?.toString().toLowerCase() ?? '';
+                    final lastName = quote.customer['lastName']?.toString().toLowerCase() ?? '';
+
                     return quote.quoteNumber.toLowerCase().contains(searchLower) ||
-                        quote.customer['company'].toString().toLowerCase().contains(searchLower) ||
-                        quote.customer['fullName'].toString().toLowerCase().contains(searchLower);
+                        company.contains(searchLower) ||
+                        fullName.contains(searchLower) ||
+                        firstName.contains(searchLower) ||
+                        lastName.contains(searchLower) ||
+                        '$firstName $lastName'.contains(searchLower);
                   }
                   return true;
                 })
@@ -592,7 +620,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                       icon: Icons.content_copy,
                       iconName:'content_copy',
                       onPressed: () =>  _copyQuoteToNewQuote(quote),
-                      tooltip: 'Beauftragen',
+                      tooltip: 'Kopieren',
                       color: goldenColour,
                     ),
                     const SizedBox(width: 4),
@@ -715,472 +743,16 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
   }
 
   void _showQuoteDetails(Quote quote) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.85,
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            // Drag Handle
-            Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-
-            // Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: Row(
-                children: [
-                  getAdaptiveIcon(iconName: 'description', defaultIcon: Icons.description),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Angebot ${quote.quoteNumber}',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-
-            const Divider(),
-
-            // Content
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // NEU: Stornierungshinweis wenn zutreffend
-                    if (quote.isOrderCancelled && quote.status == QuoteStatus.accepted) ...[
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        margin: const EdgeInsets.only(bottom: 20),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Colors.red.withOpacity(0.3),
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            getAdaptiveIcon(
-                              iconName: 'warning',
-                              defaultIcon: Icons.warning,
-                              color: Colors.red[700],
-                              size: 24,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Auftrag nachträglich storniert',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.red[700],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Der aus diesem Angebot erstellte Auftrag ${quote.orderId?.substring(2) ?? ''} wurde storniert.',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.red[700],
-                                    ),
-                                  ),
-                                  if (quote.orderCancelledAt != null) ...[
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Storniert am: ${DateFormat('dd.MM.yyyy HH:mm').format(quote.orderCancelledAt!)}',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.red[600],
-                                        fontStyle: FontStyle.italic,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    // Angebotsinformationen
-                    _buildInfoSection('Angebotsinformationen', [
-                      _buildInfoRow('Angebotsnummer:', quote.quoteNumber),
-                      _buildInfoRow('Datum:', DateFormat('dd.MM.yyyy HH:mm').format(quote.createdAt)),
-                      _buildInfoRow('Status:', _getViewStatus(quote).displayName),
-                      _buildInfoRow('Gültig bis:', DateFormat('dd.MM.yyyy').format(quote.validUntil)),
-                    ]),
-
-                    const SizedBox(height: 20),
-
-                    // Kundeninformationen
-                    _buildInfoSection('Kunde', [
-                      _buildInfoRow('Firma:', quote.customer['company'] ?? '-'),
-                      _buildInfoRow('Name:', quote.customer['fullName'] ?? '-'),
-                      _buildInfoRow('E-Mail:', quote.customer['email'] ?? '-'),
-                      _buildInfoRow('Adresse:', '${quote.customer['street']} ${quote.customer['houseNumber']}, ${quote.customer['zipCode']} ${quote.customer['city']}'),
-                    ]),
-                    const SizedBox(height: 20),
-
-                    // NEU: Angebot kopieren Button
-                    Container(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () => _copyQuoteToNewQuote(quote),
-                        icon: getAdaptiveIcon(
-                          iconName: 'content_copy',
-                          defaultIcon: Icons.content_copy,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        label: const Text('Angebot kopieren und neues erstellen'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          side: BorderSide(
-                            color: Theme.of(context).colorScheme.primary,
-                            width: 2,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-// NEU: Angebot bearbeiten Button (nur bei offenen Angeboten)
-                    if (_getViewStatus(quote) == QuoteViewStatus.open) ...[
-                      Container(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () => _editQuote(quote),
-                          icon: getAdaptiveIcon(
-                            iconName: 'edit',
-                            defaultIcon: Icons.edit,
-                            color: Colors.white,
-                          ),
-                          label: const Text('Angebot bearbeiten'),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            backgroundColor: goldenColour,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                    ],
-                    const SizedBox(height: 20),
-
-
-                    Text(
-                      'Artikel',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ...quote.items.map((item) {
-                      final quantity = (item['quantity'] as num? ?? 0).toDouble();
-                      final pricePerUnit = (item['price_per_unit'] as num?)?.toDouble() ?? 0.0;
-                      final total = item['total'] ?? (quantity * pricePerUnit);
-                      final hasDiscount = (item['discount_amount'] ?? 0) > 0;
-                      final isGratisartikel = item['is_gratisartikel'] == true;
-                      final proformaValue = (item['proforma_value'] as num?)?.toDouble();
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surface,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () {}, // Optional: für spätere Funktionalität
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // Produktname und Artikelnummer
-                                    Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                item['is_service'] == true
-                                                    ? (item['name']?.toString() ?? 'Unbenannte Dienstleistung')
-                                                    : (item['product_name']?.toString() ?? 'Unbekanntes Produkt'),
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 15,
-                                                ),
-                                              ),
-                                              if (item['product_id'] != null) ...[
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  'Art.-Nr. ${item['product_id']}',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                                                  ),
-                                                ),
-                                              ],
-                                            ],
-                                          ),
-                                        ),
-                                        // Gesamtpreis prominent rechts
-
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: isGratisartikel
-                                                ? Colors.green.withOpacity(0.1)
-                                                : Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.end,
-                                            children: [
-                                              Text(
-                                                isGratisartikel
-                                                    ? 'GRATIS'
-                                                    : '${quote.metadata['currency']} ${_convertPrice((quote.calculations['total'] as num).toDouble(), quote).toStringAsFixed(2)}',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
-                                                  color: isGratisartikel
-                                                      ? Colors.green[700]
-                                                      : Theme.of(context).colorScheme.primary,
-                                                ),
-                                              ),
-                                              if (isGratisartikel && proformaValue != null)
-                                                Text(
-                                                  'Pro-forma: ${quote.metadata['currency']} ${_convertPrice(proformaValue, quote).toStringAsFixed(2)}',
-                                                  style: TextStyle(
-                                                    fontSize: 10,
-                                                    color: Colors.green[600],
-                                                    fontStyle: FontStyle.italic,
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-
-                                    const SizedBox(height: 12),
-
-                                    // Details in einer Zeile
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          // Menge
-                                          Expanded(
-                                            child: Row(
-                                              children: [
-                                                getAdaptiveIcon(
-                                                  iconName: 'inventory',
-                                                  defaultIcon: Icons.inventory,
-                                                  size: 16,
-                                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                                                ),
-
-
-                                                const SizedBox(width: 6),
-                                                Text(
-                                                  '$quantity ${item['unit'] ?? 'Stk'}',
-                                                  style: const TextStyle(fontSize: 13),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-
-                                          // Vertikaler Trenner
-                                          Container(
-                                            height: 20,
-                                            width: 1,
-                                            color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-                                          ),
-
-                                          // Einzelpreis
-                                          Expanded(
-                                            child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                getAdaptiveIcon(
-                                                  iconName: 'attach_money',
-                                                  defaultIcon:
-                                                  Icons.attach_money,
-                                                  size: 16,
-                                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                                                ),
-                                                const SizedBox(width: 6),
-                                                Text(
-                                                  isGratisartikel
-                                                      ? 'GRATIS'
-                                                      : '${quote.metadata['currency']} ${_convertPrice(pricePerUnit, quote).toStringAsFixed(2)}',
-                                                  style: TextStyle(
-                                                    fontSize: 13,
-                                                    color: isGratisartikel ? Colors.green[700] : null,
-                                                    fontWeight: isGratisartikel ? FontWeight.w500 : null,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-
-                                          // Rabatt (falls vorhanden)
-                                          if (hasDiscount) ...[
-                                            Container(
-                                              height: 20,
-                                              width: 1,
-                                              color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-                                            ),
-                                            Expanded(
-                                              child: Row(
-                                                mainAxisAlignment: MainAxisAlignment.end,
-                                                children: [
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.green.withOpacity(0.1),
-                                                      borderRadius: BorderRadius.circular(4),
-                                                    ),
-                                                    child: Row(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: [
-                                                        getAdaptiveIcon(
-                                                          iconName: 'discount',
-                                                          defaultIcon:
-                                                          Icons.discount,
-                                                          size: 14,
-                                                          color: Colors.green[700],
-                                                        ),
-                                                        const SizedBox(width: 4),
-                                                        Text(
-                                                          '-${(item['discount_amount'] ?? 0).toStringAsFixed(2)}',
-                                                          style: TextStyle(
-                                                            fontSize: 12,
-                                                            color: Colors.green[700],
-                                                            fontWeight: FontWeight.w500,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-
-                                    // Zusätzliche Details (falls vorhanden)
-                                    if (item['custom_length'] != null || item['custom_width'] != null || item['custom_thickness'] != null) ...[
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          getAdaptiveIcon(
-                                            iconName: 'straighten',
-                                            defaultIcon:
-                                            Icons.straighten,
-                                            size: 14,
-                                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            'Maße: ${item['custom_length'] ?? '-'} × ${item['custom_width'] ?? '-'} × ${item['custom_thickness'] ?? '-'} mm',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-
-                    // const SizedBox(height: 20),
-                    //
-                    // // Berechnungen
-                    // _buildInfoSection('Berechnungen', [
-                    //   _buildInfoRow('Zwischensumme:', 'CHF ${(quote.calculations['subtotal'] ?? 0).toStringAsFixed(2)}'),
-                    //   if ((quote.calculations['item_discounts'] ?? 0) > 0)
-                    //     _buildInfoRow('Positionsrabatte:', 'CHF -${(quote.calculations['item_discounts'] ?? 0).toStringAsFixed(2)}'),
-                    //   if ((quote.calculations['total_discount_amount'] ?? 0) > 0)
-                    //     _buildInfoRow('Gesamtrabatt:', 'CHF -${(quote.calculations['total_discount_amount'] ?? 0).toStringAsFixed(2)}'),
-                    //   _buildInfoRow('Nettobetrag:', 'CHF ${(quote.calculations['net_amount'] ?? 0).toStringAsFixed(2)}'),
-                    //   _buildInfoRow('MwSt:', 'CHF ${(quote.calculations['vat_amount'] ?? 0).toStringAsFixed(2)}'),
-                    //   _buildInfoRow('Gesamtbetrag:', 'CHF ${(quote.calculations['total'] ?? 0).toStringAsFixed(2)}', isTotal: true),
-                    // ]),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+    QuoteDetailsSheet.show(
+      context,
+      quote: quote,
+      onConvertToOrder: _convertToOrder,
+      onReject: _rejectQuote,
+      onEdit: _editQuote,
+      onCopy: _copyQuoteToNewQuote,
+      onViewPdf: _viewQuotePdf,
+      onShare: _shareQuote,
+      onShowHistory: _showQuoteHistory,
     );
   }
 

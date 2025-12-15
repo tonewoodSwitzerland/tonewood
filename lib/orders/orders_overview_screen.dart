@@ -8,9 +8,11 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../components/order_filter_favorites_sheet.dart';
-import '../components/order_filter_service.dart';
-import '../components/order_model.dart';
+
+import 'order_details_sheet.dart';
+import 'order_filter_favorites_sheet.dart';
+import 'order_filter_service.dart';
+import 'order_model.dart';
 import '../services/icon_helper.dart';
 import '../services/orders_document_manager.dart';
 import '../services/order_document_preview_manager.dart';
@@ -112,40 +114,60 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
         children: [
           Container(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: TextField(
-              controller: _searchController,
-              style: const TextStyle(fontSize: 14),
-              decoration: InputDecoration(
-                hintText: 'Suche nach Kunde, Auftragsnummer...',
-                hintStyle: const TextStyle(fontSize: 14),
-                prefixIcon: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                  icon: getAdaptiveIcon(
-                      iconName: 'clear',
-                      defaultIcon: Icons.clear, size: 20),
-                  onPressed: () {
-                    setState(() {
-                      _searchController.clear();
-                      _activeFilters['searchText'] = '';
-                    });
-                    OrderFilterService.saveFilters(_activeFilters);
+            child: StatefulBuilder(
+              builder: (context, setSearchState) {
+                return TextField(
+                  controller: _searchController,
+                  style: const TextStyle(fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Suche nach Kunde, Auftragsnummer...',
+                    hintStyle: const TextStyle(fontSize: 14),
+                    prefixIcon: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_searchController.text.isNotEmpty)
+                          IconButton(
+                            icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear, size: 20),
+                            onPressed: () {
+                              _searchController.clear();
+                              setSearchState(() {});
+                              setState(() {
+                                _activeFilters['searchText'] = '';
+                              });
+                              OrderFilterService.saveFilters(_activeFilters);
+                            },
+                          ),
+                        IconButton(
+                          icon: getAdaptiveIcon(
+                            iconName: 'search',
+                            defaultIcon: Icons.search,
+                            color: _searchController.text.toLowerCase() != (_activeFilters['searchText'] ?? '').toString().toLowerCase()
+                                ? Colors.orange
+                                : Theme.of(context).colorScheme.primary,
+                          ),
+                          onPressed: () {
+                            FocusScope.of(context).unfocus();
+                            setState(() {
+                              _activeFilters['searchText'] = _searchController.text;
+                            });
+                            OrderFilterService.saveFilters(_activeFilters);
+                          },
+                        ),
+                      ],
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                  onChanged: (value) {
+                    setSearchState(() {});
                   },
-                )
-                    : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              ),
-              onChanged: (value) {
-                setState(() {
-                  _activeFilters['searchText'] = value;
-                });
-                OrderFilterService.saveFilters(_activeFilters);
+                );
               },
             ),
           ),
@@ -370,8 +392,8 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                 child: _buildCompactStatCard(
                   'Unbezahlt',
                   unpaidOrders.toString(),
-                  Icons.euro,
-                  'euro',
+                  Icons.savings,
+                  'money_bag',
                   OrderColors.paymentPending,
                 ),
               ),
@@ -897,9 +919,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
         getAdaptiveIcon(
-        iconName: 'euro',
+        iconName: 'money_bag',
         defaultIcon:
-          Icons.euro, size: 10, color: color),
+          Icons.savings, size: 10, color: color),
           const SizedBox(width: 2),
           Text(
             status.displayName,
@@ -940,415 +962,18 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
   }
 
   void _showOrderDetails(OrderX order) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.85,
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('orders')
-              .doc(order.id)
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            final currentOrder = OrderX.fromFirestore(snapshot.data!);
-
-            return Column(
-              children: [
-                // Drag Handle
-                Container(
-                  margin: const EdgeInsets.only(top: 12, bottom: 8),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-
-                // Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  child: Row(
-                    children: [
-                      getAdaptiveIcon(iconName: 'shopping_bag', defaultIcon: Icons.shopping_bag),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Auftrag ${currentOrder.orderNumber}',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const Divider(),
-
-                // Content
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Auftragsinformationen
-                        _buildInfoSection('Auftragsinformationen', [
-                          _buildInfoRow('Auftragsnummer:', currentOrder.orderNumber),
-                          _buildInfoRow('Datum:', DateFormat('dd.MM.yyyy HH:mm').format(currentOrder.orderDate)),
-                          _buildInfoRow('Status:', currentOrder.status.displayName),
-                          _buildInfoRow('Zahlungsstatus:', currentOrder.paymentStatus.displayName),
-                        ]),
-
-                        const SizedBox(height: 20),
-
-                        // Kundeninformationen
-                        _buildInfoSection('Kunde', [
-                          _buildInfoRow('Firma:', currentOrder.customer['company'] ?? '-'),
-                          _buildInfoRow('Name:', currentOrder.customer['fullName'] ?? '-'),
-                          _buildInfoRow('E-Mail:', currentOrder.customer['email'] ?? '-'),
-                          _buildInfoRow('Adresse:', '${currentOrder.customer['street']} ${currentOrder.customer['houseNumber']}, ${currentOrder.customer['zipCode']} ${currentOrder.customer['city']}'),
-                        ]),
-
-                        const SizedBox(height: 20),
-
-                        // Artikel
-                        Text(
-                          'Artikel',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        ...currentOrder.items.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          final item = entry.value;
-                          final quantity = item['quantity'] as num? ?? 0;
-
-
-                          final hasDiscount = (item['discount_amount'] as num? ?? 0) > 0;
-
-                          // NEU: Gratisartikel-Logik
-                          final isGratisartikel = item['is_gratisartikel'] == true;
-                          final proformaValue = (item['proforma_value'] as num?)?.toDouble();
-
-// Dann erst den Preis berechnen
-                          final customPriceValue = item['custom_price_per_unit'];
-                          final pricePerUnit = isGratisartikel
-                              ? 0.0
-                              : customPriceValue != null
-                              ? (customPriceValue as num).toDouble()
-                              : (item['price_per_unit'] as num? ?? 0).toDouble();
-
-                          final total = item['total'] as num? ?? (quantity * pricePerUnit);
-
-
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surface,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-                                width: 1,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.04),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: () => _showEditItemMeasurementsDialog(context, currentOrder, item, index),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        // Produktname und Artikelnummer
-                                        Row(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    item['is_service'] == true
-                                                        ? (item['name']?.toString() ?? 'Unbenannte Dienstleistung')
-                                                        : (item['product_name']?.toString() ?? 'Unbekanntes Produkt'),
-                                                    style: const TextStyle(
-                                                      fontWeight: FontWeight.w600,
-                                                      fontSize: 15,
-                                                    ),
-                                                  ),
-                                                  if (item['product_id'] != null) ...[
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      'Art.-Nr. ${item['product_id']}',
-                                                      style: TextStyle(
-                                                        fontSize: 12,
-                                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ],
-                                              ),
-                                            ),
-                                            // Gesamtpreis prominent rechts
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                              decoration: BoxDecoration(
-                                                // GEÄNDERT: Hintergrundfarbe abhängig von Gratisartikel
-                                                color: isGratisartikel
-                                                    ? Colors.green.withOpacity(0.1)
-                                                    : Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
-                                                borderRadius: BorderRadius.circular(8),
-                                              ),
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.end,
-                                                children: [
-                                                  Text(
-                                                    // GEÄNDERT: Text abhängig von Gratisartikel
-                                                    isGratisartikel
-                                                        ? 'GRATIS'
-                                                        : '${currentOrder.metadata?['currency'] ?? 'CHF'} ${_convertPrice(total.toDouble(), currentOrder).toStringAsFixed(2)}',
-                                                    style: TextStyle(
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 16,
-                                                      color: isGratisartikel
-                                                          ? Colors.green[700]
-                                                          : Theme.of(context).colorScheme.primary,
-                                                    ),
-                                                  ),
-                                                  // NEU: Pro-forma Wert anzeigen wenn Gratisartikel
-                                                  if (isGratisartikel && proformaValue != null)
-                                                    Text(
-                                                      'Pro-forma: ${currentOrder.metadata?['currency'] ?? 'CHF'} ${_convertPrice(proformaValue, currentOrder).toStringAsFixed(2)}',
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        color: Colors.green[600],
-                                                        fontStyle: FontStyle.italic,
-                                                      ),
-                                                    ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-
-                                        const SizedBox(height: 12),
-
-                                        // Details in einer Zeile
-                                        Container(
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(
-                                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              // Menge
-                                              Expanded(
-                                                child: Row(
-                                                  children: [
-                                                    getAdaptiveIcon(
-                                                      iconName: 'inventory',
-                                                      defaultIcon: Icons.inventory,
-                                                      size: 16,
-                                                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                                                    ),
-                                                    const SizedBox(width: 6),
-                                                    Text(
-                                                      '$quantity ${item['unit'] ?? 'Stk'}',
-                                                      style: const TextStyle(fontSize: 13),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-
-                                              // Vertikaler Trenner
-                                              Container(
-                                                height: 20,
-                                                width: 1,
-                                                color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-                                              ),
-
-                                              // Einzelpreis
-                                              Expanded(
-                                                child: Row(
-                                                  mainAxisAlignment: MainAxisAlignment.center,
-                                                  children: [
-                                                    getAdaptiveIcon(
-                                                      iconName: 'attach_money',
-                                                      defaultIcon: Icons.attach_money,
-                                                      size: 16,
-                                                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                                                    ),
-                                                    const SizedBox(width: 6),
-                                                    Text(
-                                                      // GEÄNDERT: Text abhängig von Gratisartikel
-                                                      isGratisartikel
-                                                          ? 'GRATIS'
-                                                          : '${currentOrder.metadata?['currency'] ?? 'CHF'} ${_convertPrice(pricePerUnit.toDouble(), currentOrder).toStringAsFixed(2)}',
-                                                      style: TextStyle(
-                                                        fontSize: 13,
-                                                        color: isGratisartikel ? Colors.green[700] : null,
-                                                        fontWeight: isGratisartikel ? FontWeight.w500 : null,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-
-                                              // Rabatt (falls vorhanden)
-                                              if (hasDiscount) ...[
-                                                Container(
-                                                  height: 20,
-                                                  width: 1,
-                                                  color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
-                                                ),
-                                                Expanded(
-                                                  child: Row(
-                                                    mainAxisAlignment: MainAxisAlignment.end,
-                                                    children: [
-                                                      Container(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                                        decoration: BoxDecoration(
-                                                          color: Colors.green.withOpacity(0.1),
-                                                          borderRadius: BorderRadius.circular(4),
-                                                        ),
-                                                        child: Row(
-                                                          mainAxisSize: MainAxisSize.min,
-                                                          children: [
-                                                            getAdaptiveIcon(
-                                                              iconName: 'discount',
-                                                              defaultIcon: Icons.discount,
-                                                              size: 14,
-                                                              color: Colors.green[700],
-                                                            ),
-                                                            const SizedBox(width: 4),
-                                                            Text(
-                                                              '-${(item['discount_amount'] as num? ?? 0).toStringAsFixed(2)}',
-                                                              style: TextStyle(
-                                                                fontSize: 12,
-                                                                color: Colors.green[700],
-                                                                fontWeight: FontWeight.w500,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ],
-                                            ],
-                                          ),
-                                        ),
-
-                                        // Zusätzliche Details (falls vorhanden)
-                                        if ((item['custom_length'] != null && item['custom_length'] > 0) ||
-                                            (item['custom_width'] != null && item['custom_width'] > 0) ||
-                                            (item['custom_thickness'] != null && item['custom_thickness'] > 0)) ...[
-                                          const SizedBox(height: 8),
-                                          Row(
-                                            children: [
-                                              getAdaptiveIcon(
-                                                iconName: 'straighten',
-                                                defaultIcon: Icons.straighten,
-                                                size: 14,
-                                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                                              ),
-                                              const SizedBox(width: 6),
-                                              Text(
-                                                'Maße: ${item['custom_length']?.toString() ?? '0'} × ${item['custom_width']?.toString() ?? '0'} × ${item['custom_thickness']?.toString() ?? '0'} mm',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-
-                                        // Manuelle Produkte Hinweis
-                                        if (item['is_manual_product'] == true) ...[
-                                          const SizedBox(height: 8),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: Colors.blue.withOpacity(0.1),
-                                              borderRadius: BorderRadius.circular(4),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                getAdaptiveIcon(
-                                                  iconName: 'edit_note',
-                                                  defaultIcon: Icons.edit_note,
-                                                  size: 14,
-                                                  color: Colors.blue[700],
-                                                ),
-                                                const SizedBox(width: 4),
-                                                Text(
-                                                  'Manuelles Produkt',
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    color: Colors.blue[700],
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-
-
-
-
-
-
-
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
+    OrderDetailsSheet.show(
+      context,
+      order: order,
+      onStatusChange: _showQuickStatusMenu,
+      onViewDocuments: _viewOrderDocuments,
+      onShowHistory: _showOrderHistory,
+      onShare: _shareOrder,
+      onCancel: _releaseOrder,
+      onEditItemMeasurements: (order, item, index) {
+        _showEditItemMeasurementsDialog(context, order, item, index);
+      },
+      onVeranlagung: _showVeranlagungsverfuegungDialog,
     );
   }
 
@@ -1956,8 +1581,8 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                         contentPadding: const EdgeInsets.symmetric(horizontal: 20),
                         dense: true,
                         leading: getAdaptiveIcon(
-                            iconName: 'euro',
-                            defaultIcon:Icons.euro,
+                            iconName: 'money_bag',
+                            defaultIcon:Icons.savings,
                             size: 16,
                             color: isOrderCancelled
                                 ? Theme.of(context).colorScheme.onSurface.withOpacity(0.4)

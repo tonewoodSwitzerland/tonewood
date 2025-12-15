@@ -25,10 +25,7 @@ class RoundwoodListItem extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: theme.colorScheme.outlineVariant,
-          width: 1,
-        ),
+        side: BorderSide(color: theme.colorScheme.outlineVariant, width: 1),
       ),
       child: InkWell(
         onTap: onTap,
@@ -58,9 +55,7 @@ class RoundwoodListItem extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 16),
-        Expanded(
-          child: _buildMetadataSection(theme),
-        ),
+        Expanded(child: _buildMetadataSection(theme)),
         const SizedBox(width: 16),
         _buildTrailingSection(theme),
       ],
@@ -116,18 +111,46 @@ class RoundwoodListItem extends StatelessWidget {
       children: [
         Text(
           item.woodName,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
+          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(width: 8),
+        // NEU: Jahrgang Badge
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceVariant,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            '${item.year}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
         if (item.isMoonwood) ...[
           const SizedBox(width: 8),
           Tooltip(
             message: 'Mondholz',
-            child: getAdaptiveIcon(iconName: 'nightlight', defaultIcon:
-              Icons.nightlight,
+            child: getAdaptiveIcon(
+              iconName: 'nightlight',
+              defaultIcon: Icons.nightlight,
               size: 16,
               color: theme.colorScheme.primary,
+            ),
+          ),
+        ],
+        // NEU: FSC Badge
+        if (item.isFSC) ...[
+          const SizedBox(width: 8),
+          Tooltip(
+            message: 'FSC-zertifiziert',
+            child: getAdaptiveIcon(
+              iconName: 'eco',
+              defaultIcon: Icons.eco,
+              size: 16,
+              color: Colors.green,
             ),
           ),
         ],
@@ -140,6 +163,7 @@ class RoundwoodListItem extends StatelessWidget {
       spacing: 8,
       runSpacing: 8,
       children: [
+        // Qualität
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
@@ -149,8 +173,9 @@ class RoundwoodListItem extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              getAdaptiveIcon(iconName:'star', defaultIcon:
-                Icons.star,
+              getAdaptiveIcon(
+                iconName: 'star',
+                defaultIcon: Icons.star,
                 size: 12,
                 color: RoundwoodColors.getQualityColor(item.qualityName, 0),
               ),
@@ -165,7 +190,22 @@ class RoundwoodListItem extends StatelessWidget {
             ],
           ),
         ),
-        if (item.origin != null)
+        // NEU: Spray-Farbe (wenn vorhanden)
+        if (item.sprayColor != null && item.sprayColor!.isNotEmpty && item.sprayColor != 'ohne')
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: _getSprayColorDisplay(item.sprayColor!).withOpacity(0.3),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: _getSprayColorDisplay(item.sprayColor!), width: 1),
+            ),
+            child: Text(
+              item.sprayColor!,
+              style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
+            ),
+          ),
+        // Herkunft
+        if (item.origin != null && item.origin!.isNotEmpty)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
@@ -175,8 +215,9 @@ class RoundwoodListItem extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                getAdaptiveIcon(iconName: 'location_on', defaultIcon:
-                  Icons.location_on,
+                getAdaptiveIcon(
+                  iconName: 'location_on',
+                  defaultIcon: Icons.location_on,
                   size: 12,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -198,21 +239,25 @@ class RoundwoodListItem extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (item.purpose != null) ...[
+        // NEU: Verwendungszwecke (vereinfacht)
+        if (item.purposes.isNotEmpty || (item.otherPurpose?.isNotEmpty ?? false)) ...[
           Row(
             children: [
-              getAdaptiveIcon(iconName: 'info', defaultIcon:
-                Icons.info,
+              getAdaptiveIcon(
+                iconName: 'assignment',
+                defaultIcon: Icons.assignment,
                 size: 12,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
-                  item.purpose!,
+                  item.purposesDisplay,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -222,8 +267,9 @@ class RoundwoodListItem extends StatelessWidget {
           const SizedBox(height: 4),
           Row(
             children: [
-              getAdaptiveIcon(iconName:'notes', defaultIcon:
-                Icons.notes,
+              getAdaptiveIcon(
+                iconName: 'notes',
+                defaultIcon: Icons.notes,
                 size: 12,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -266,5 +312,21 @@ class RoundwoodListItem extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  // NEU: Farbe für Spray-Anzeige
+  Color _getSprayColorDisplay(String colorName) {
+    switch (colorName.toLowerCase()) {
+      case 'rot':
+        return Colors.red;
+      case 'blau':
+        return Colors.blue;
+      case 'grün':
+        return Colors.green;
+      case 'gelb':
+        return Colors.amber;
+      default:
+        return Colors.grey;
+    }
   }
 }

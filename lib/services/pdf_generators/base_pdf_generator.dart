@@ -529,7 +529,8 @@ abstract class BasePdfGenerator {
 
                       final shippingCountry = Countries.getCountryByName(shippingCountryName);
                       return pw.Text(
-                        shippingCountry?.getNameForLanguage(language) ?? shippingCountryName,
+
+                        shippingCountry?.getNameForLanguage(language).toUpperCase() ?? shippingCountryName.toUpperCase(),
                         style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                       );
                     }(),

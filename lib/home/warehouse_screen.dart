@@ -429,7 +429,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         .map((snapshot) => snapshot.docs.isNotEmpty);
   }
 
-  Future<void> _addToTemporaryBasket(Map<String, dynamic> productData, double quantity) async {
+  Future<void> _addToTemporaryBasket(
+      Map<String, dynamic> productData,
+      double quantity, {
+        bool isOnlineShopItem = false,
+        String? onlineShopBarcode,
+      }) async {
     // Lade die Standardmaße, Volumen UND Parts aus der Datenbank
     final measurements = await _getStandardMeasurementsAndVolume(productData);
     final density = await _getDensityForProduct(productData);
@@ -457,6 +462,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       'product_name_en': productData['product_name_en'] ?? '',
     };
 
+    // Online-Shop spezifische Felder
+    if (isOnlineShopItem && onlineShopBarcode != null) {
+      basketData['is_online_shop_item'] = true;
+      basketData['online_shop_barcode'] = onlineShopBarcode;
+    }
+
     // Füge Standardmaße hinzu, wenn vorhanden
     if (measurements != null) {
       if (measurements['length'] != null) {
@@ -471,7 +482,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       if (measurements['volume'] != null) {
         basketData['volume_per_unit'] = measurements['volume'];
       }
-      // NEU: Parts hinzufügen
+      // Parts hinzufügen
       if (measurements['parts'] != null) {
         basketData['parts'] = measurements['parts'];
       }
@@ -490,7 +501,19 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     await FirebaseFirestore.instance
         .collection('temporary_basket')
         .add(basketData);
+
+    // Bei Online-Shop Items: Markiere als "im Warenkorb"
+    if (isOnlineShopItem && onlineShopBarcode != null) {
+      await FirebaseFirestore.instance
+          .collection('onlineshop')
+          .doc(onlineShopBarcode)
+          .update({
+        'in_cart': true,
+        'cart_timestamp': FieldValue.serverTimestamp(),
+      });
+    }
   }
+
 // Füge diese Methode zur WarehouseScreenState Klasse hinzu
 // Diese Methode zur WarehouseScreenState Klasse hinzufügen
   Stream<double> _getReservedQuantityStream(String shortBarcode) {
@@ -625,56 +648,10 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       widget.onBarcodeSelected!(data['barcode']);
       return;
     }
-    // Nur für Shopping-Modus und als Dialog aufgerufen
     if (widget.mode == 'shopping' && widget.isDialog && widget.onBarcodeSelected != null) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Online-Shop Artikel'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                data['product_name'] ?? 'Unbekanntes Produkt',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text('${data['quality_name'] ?? 'N/A'}'),
-              const SizedBox(height: 16),
-              const Text(
-                'Möchten Sie diesen Online-Shop Artikel zum Warenkorb hinzufügen?',
-                style: TextStyle(
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Abbrechen'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                widget.onBarcodeSelected!(data['barcode']);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0F4A29),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('In den Warenkorb'),
-            ),
-          ],
-        ),
-      );
+      widget.onBarcodeSelected!(data['barcode']);
       return;
     }
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2372,6 +2349,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
 // Aktualisieren Sie die _buildProductList() Methode:
   Widget _buildProductList() {
+    print("test999");
     return StreamBuilder<QuerySnapshot>(
       stream: _productStream,
       builder: (context, snapshot) {
@@ -2470,11 +2448,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                       },
                     ),
                     FilterChip(
-                      avatar: Icon(
-                        Icons.discount,
-                        size: 18,
-                        color: _shopFilter == 'discounted' ? Colors.orange : null,
-                      ),
+                      avatar:
+                      getAdaptiveIcon(iconName: 'discount',defaultIcon:Icons.discount, size: 18, color:  _shopFilter == 'discounted' ? Colors.orange : null,),
+
                       label: const Text('Rabattiert'),
                       selected: _shopFilter == 'discounted',
                       selectedColor: Colors.orange.withOpacity(0.2),
@@ -2523,6 +2499,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                     child: InkWell(
                       borderRadius: BorderRadius.circular(12),
                       onTap: () {
+                        print("testXXX");
+                        print("test:$_isOnlineShopView");
                         if (_isOnlineShopView) {
                           _showOnlineShopDetails(data);
                         } else {
@@ -2549,81 +2527,89 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                         ),
                                       ),
                                       const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                            decoration: BoxDecoration(
-                                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: Text(
-                                              data['quality_name']?.toString() ?? '-',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                      SingleChildScrollView( // 👈 NEU: Fängt den Overflow auf
+                                        scrollDirection: Axis.horizontal,
+                                        child: Row(
+                                          children: [
+                                            // 1. Qualität
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                data['quality_name']?.toString() ?? '-',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                            decoration: BoxDecoration(
-                                              color: (data['discounted'] == true ? Colors.orange : Colors.green).shade50,
-                                              borderRadius: BorderRadius.circular(6),
-                                              border: Border.all(
-                                                color: (data['discounted'] == true ? Colors.orange : Colors.green).shade200,
-                                                width: 1,
+                                            const SizedBox(width: 8),
+
+                                            // 2. Preis
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: (data['discounted'] == true ? Colors.orange : Colors.green).shade50,
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: (data['discounted'] == true ? Colors.orange : Colors.green).shade200,
+                                                  width: 1,
+                                                ),
                                               ),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                if (data['discounted'] == true) ...[
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (data['discounted'] == true) ...[
+                                                    Text(
+                                                      data['original_price_CHF']?.toString() ?? '',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight: FontWeight.w500,
+                                                        color: Colors.grey.shade600,
+                                                        decoration: TextDecoration.lineThrough,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                  ],
                                                   Text(
-                                                    data['original_price_CHF']?.toString() ?? '',
+                                                    data['price_CHF']?.toString() ?? '0.00',
                                                     style: TextStyle(
-                                                      fontSize: 11,
-                                                      fontWeight: FontWeight.w500,
-                                                      color: Colors.grey.shade600,
-                                                      decoration: TextDecoration.lineThrough,
+                                                      fontSize: 13,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: (data['discounted'] == true ? Colors.orange : Colors.green).shade800,
                                                     ),
                                                   ),
                                                   const SizedBox(width: 4),
+                                                  Text(
+                                                    'CHF',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: (data['discounted'] == true ? Colors.orange : Colors.green).shade600,
+                                                    ),
+                                                  ),
                                                 ],
-                                                Text(
-                                                  data['price_CHF']?.toString() ?? '0.00',
-                                                  style: TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: (data['discounted'] == true ? Colors.orange : Colors.green).shade800,
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 4),
-                                                Text(
-                                                  'CHF',
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: (data['discounted'] == true ? Colors.orange : Colors.green).shade600,
-                                                  ),
-                                                ),
-                                              ],
+                                              ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            _isOnlineShopView
-                                                ? data['barcode']?.toString() ?? ''
-                                                : data['short_barcode']?.toString() ?? '',
-                                            style: TextStyle(
-                                              color: Colors.grey[600],
-                                              fontSize: 12,
+                                            const SizedBox(width: 8),
+
+                                            // 3. Barcode
+                                            Text(
+                                              _isOnlineShopView
+                                                  ? data['barcode']?.toString() ?? ''
+                                                  : data['short_barcode']?.toString() ?? '',
+                                              style: TextStyle(
+                                                color: Colors.grey[600],
+                                                fontSize: 12,
+                                              ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
+                                          ],
+                                        ),
+                                      )
                                     ],
                                   ),
                                 ),
@@ -3984,6 +3970,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
 // Neue Hilfsmethode für Online-Shop Status
   Widget _buildOnlineShopStatus(Map<String, dynamic> data) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktopLayout = screenWidth > ResponsiveBreakpoints.tablet;
     final bool isSold = data['sold'] == true;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -4009,7 +3997,9 @@ getAdaptiveIcon(
 
           const SizedBox(width: 6),
           Text(
-            isSold ? 'Verkauft' : 'Verfügbar',
+            isSold
+                ? (isDesktopLayout ? 'Verkauft' : 'Verk.')
+                : (isDesktopLayout ? 'Verfügbar' : 'Verf.'),
             style: TextStyle(
               color: isSold ? Colors.red : Colors.green,
               fontWeight: FontWeight.bold,

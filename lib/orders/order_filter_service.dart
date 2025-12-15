@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import '../components/order_model.dart';
+import 'order_model.dart';
 import '../services/icon_helper.dart';
 
 class OrderFilterService {
@@ -118,13 +118,22 @@ class OrderFilterService {
       final searchTerms = searchText.split(' ').where((term) => term.isNotEmpty).toList();
 
       filteredOrders = filteredOrders.where((order) {
+        final company = order.customer['company']?.toString().toLowerCase() ?? '';
+        final fullName = order.customer['fullName']?.toString().toLowerCase() ?? '';
+        final firstName = order.customer['firstName']?.toString().toLowerCase() ?? '';
+        final lastName = order.customer['lastName']?.toString().toLowerCase() ?? '';
+        final email = order.customer['email']?.toString().toLowerCase() ?? '';
+
         final searchableContent = [
-          order.orderNumber,
-          order.customer['company'] ?? '',
-          order.customer['fullName'] ?? '',
-          order.customer['email'] ?? '',
-          order.quoteNumber ?? '',
-        ].join(' ').toLowerCase();
+          order.orderNumber.toLowerCase(),
+          company,
+          fullName,
+          firstName,
+          lastName,
+          '$firstName $lastName',
+          email,
+          order.quoteNumber?.toLowerCase() ?? '',
+        ].join(' ');
 
         return searchTerms.every((term) => searchableContent.contains(term));
       }).toList();
@@ -358,8 +367,8 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                                 }
                               });
                             },
-                            avatar:  getAdaptiveIcon(iconName: 'euro', defaultIcon:
-                              Icons.euro,
+                            avatar:  getAdaptiveIcon(iconName: 'money_bag', defaultIcon:
+                              Icons.savings,
                               size: 16,
                               color: _getPaymentStatusColor(status),
                             ),

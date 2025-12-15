@@ -292,7 +292,7 @@ class ServiceSelectionSheet {
                                           return ValueListenableBuilder<Map<String, double>>(
                                             valueListenable: exchangeRatesNotifier,
                                             builder: (context, rates, child) {
-                                              final priceInCHF = (data['price_CHF'] ?? 0.0) as double;
+                                              final priceInCHF = ((data['price_CHF'] ?? 0.0) as num).toDouble();
                                               final displayPrice = currency != 'CHF'
                                                   ? priceInCHF * rates[currency]!
                                                   : priceInCHF;

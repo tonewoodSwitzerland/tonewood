@@ -1,8 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:tonewood/components/quote_model.dart';
+import 'package:tonewood/quotes/quote_model.dart';
+import '../components/movement_model.dart';
 import '../services/pdf_generators/quote_generator.dart';
-import 'movement_model.dart';
+
 import 'dart:typed_data';
 
 class QuoteService {

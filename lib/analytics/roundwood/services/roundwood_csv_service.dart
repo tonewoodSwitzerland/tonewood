@@ -6,37 +6,47 @@ import '../models/roundwood_models.dart';
 
 class RoundwoodCsvService {
   static Future<Uint8List> generateCsv(List<RoundwoodItem> items) async {
-    // Erstelle die CSV-Daten mit allen relevanten Feldern
+    // Sortiere nach interner Nummer
+    items.sort((a, b) => a.internalNumber.compareTo(b.internalNumber));
+
     List<List<dynamic>> csvData = [
-      // Header
+      // Header - AKTUALISIERT mit neuen Feldern
       [
         'Nr.',
+        'Jahrgang', // NEU
         'Orig. Nr.',
         'Holzart',
         'Qualität',
         'Vol (m³)',
-        'Farbe',
-        'Schlagdatum',
+        'Spray-Farbe', // UMBENANNT
+        'Plakette-Farbe', // NEU
+        'Einschnittdatum',
         'Herkunft',
-        'Zweck',
+        'Verwendungszwecke', // VEREINFACHT
+        'Andere Verwendung', // NEU
         'Mondholz',
+        'FSC', // NEU
         'Bemerkungen',
         'Erfassungsdatum',
       ],
       // Daten
       ...items.map((item) => [
         item.internalNumber,
+        item.year, // NEU
         item.originalNumber ?? '',
         item.woodName,
         item.qualityName,
         item.volume.toStringAsFixed(2),
-        item.color ?? '',
+        item.sprayColor ?? '', // UMBENANNT
+        item.plaketteColor ?? '', // NEU
         item.cuttingDate != null
             ? DateFormat('dd.MM.yy').format(item.cuttingDate!)
             : '',
         item.origin ?? '',
-        item.purpose ?? '',
+        item.purposes.join(', '), // VEREINFACHT: direkte Liste
+        item.otherPurpose ?? '', // NEU
         item.isMoonwood ? 'Ja' : 'Nein',
+        item.isFSC ? 'Ja' : 'Nein', // NEU
         item.remarks ?? '',
         DateFormat('dd.MM.yy').format(item.timestamp),
       ]),
@@ -44,7 +54,7 @@ class RoundwoodCsvService {
 
     // Konvertiere in CSV-String
     final csvString = const ListToCsvConverter(
-      fieldDelimiter: ';',  // Semikolon für bessere Excel-Kompatibilität
+      fieldDelimiter: ';', // Semikolon für bessere Excel-Kompatibilität
       textDelimiter: '"',
       textEndDelimiter: '"',
     ).convert(csvData);

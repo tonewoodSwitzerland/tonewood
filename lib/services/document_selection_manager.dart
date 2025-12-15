@@ -365,6 +365,8 @@ class DocumentSelectionManager {
         'commercial_invoice_selected_signature': taraSettings['commercial_invoice_selected_signature'],
         'commercial_invoice_date': taraSettings['commercial_invoice_date'],
         'commercial_invoice_currency': taraSettings['commercial_invoice_currency'],
+        'use_commercial_date_as_delivery_date': taraSettings['use_commercial_date_as_delivery_date'] ?? true, // NEU
+
       };
 
     } catch (e) {
@@ -647,6 +649,20 @@ class DocumentSelectionManager {
       // Lade Lieferschein-Einstellungen
       final deliveryNoteSettings = await loadDeliveryNoteSettings();
 
+      // NEU: Lade Tara-Settings für das Handelsrechnungsdatum
+      final taraSettings = await loadTaraSettings();
+
+      // NEU: Bestimme das Lieferdatum
+      DateTime? effectiveDeliveryDate = deliveryNoteSettings['delivery_date'];
+
+      // Wenn die Option aktiviert ist und ein Handelsrechnungsdatum existiert
+      if (taraSettings['use_commercial_date_as_delivery_date'] == true &&
+          taraSettings['commercial_invoice_date'] != null) {
+        final timestamp = taraSettings['commercial_invoice_date'];
+        if (timestamp is Timestamp) {
+          effectiveDeliveryDate = timestamp.toDate();
+        }
+      }
       final basketItems = data['basketItems'] as List<Map<String, dynamic>>;
 
       // Konvertiere Basket-Items für PDF
@@ -679,7 +695,7 @@ class DocumentSelectionManager {
         exchangeRates: exchangeRates,
         language: documentLanguage,
         deliveryNoteNumber: 'PREVIEW',
-        deliveryDate: deliveryNoteSettings['delivery_date'],
+         deliveryDate: effectiveDeliveryDate, // NEU: Verwende das effektive Datum
         paymentDate: deliveryNoteSettings['payment_date'],
       );
 
@@ -1583,13 +1599,12 @@ Widget _buildPackageCard(
   // Sichere Controller-Referenz
   final packageId = package['id'] as String;
   if (!packageControllers.containsKey(packageId)) {
-    // Falls Controller fehlen, erstelle sie
     packageControllers[packageId] = {
       'length': TextEditingController(text: package['length']?.toString() ?? '0.0'),
       'width': TextEditingController(text: package['width']?.toString() ?? '0.0'),
       'height': TextEditingController(text: package['height']?.toString() ?? '0.0'),
       'weight': TextEditingController(
-          text: (package['tare_weight'] as num).toStringAsFixed(2)  // HIER ändern
+          text: (package['tare_weight'] as num?)?.toStringAsFixed(2) ?? '0.00'
       ),
       'custom_name': TextEditingController(text: package['packaging_type'] ?? ''),
       'gross_weight': TextEditingController(text: package['gross_weight']?.toString() ?? ''),
@@ -1597,8 +1612,10 @@ Widget _buildPackageCard(
   }
 
   final controllers = packageControllers[packageId]!;
+  final grossWeightController = controllers['gross_weight']!;
+  final weightController = controllers['weight']!;
 
-  // NEU: Berechne Nettogewicht (gleiche Funktion wie vorher)
+  // Berechne Nettogewicht
   double calculateNetWeight() {
     double netWeight = 0.0;
     final packageItems = package['items'] as List<dynamic>? ?? [];
@@ -1634,8 +1651,15 @@ Widget _buildPackageCard(
     return netWeight;
   }
 
+  // NEU: Berechne Bruttogewicht
+  double calculateGrossWeight() {
+    final netWeight = calculateNetWeight();
+    final tareWeight = (package['tare_weight'] as num?)?.toDouble() ?? 0.0;
+    return netWeight + tareWeight;
+  }
+
   return Card(
-    key: ValueKey(packageId), // Wichtig: Eindeutiger Key
+    key: ValueKey(packageId),
     margin: const EdgeInsets.only(bottom: 16),
     child: Padding(
       padding: const EdgeInsets.all(16),
@@ -1646,7 +1670,7 @@ Widget _buildPackageCard(
           Row(
             children: [
               Text(
-                'Paket ${index + 1}', // Verwende index statt package['name']
+                'Paket ${index + 1}',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -1658,7 +1682,6 @@ Widget _buildPackageCard(
                   onPressed: () {
                     setModalState(() {
                       packages.removeAt(index);
-                      // Controller werden beim Dialog-Schließen disposed
                     });
                   },
                   icon: getAdaptiveIcon(
@@ -1673,7 +1696,7 @@ Widget _buildPackageCard(
 
           const SizedBox(height: 12),
 
-          // Dropdown für Standardpakete (gleich wie vorher)
+          // Dropdown für Standardpakete
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('standardized_packages')
@@ -1722,6 +1745,9 @@ Widget _buildPackageCard(
                     onChanged: (value) {
                       setModalState(() {
                         package['standard_package_id'] = value;
+                        package['manual_gross_weight_mode'] = false;
+                        package['gross_weight'] = null;
+                        grossWeightController.clear();
 
                         if (value != null && value != 'custom') {
                           final selectedPackage = standardPackages.firstWhere(
@@ -1904,97 +1930,19 @@ Widget _buildPackageCard(
             onChanged: (value) {
               setModalState(() {
                 package['tare_weight'] = double.tryParse(value.replaceAll(',', '.')) ?? 0.0;
-              });
-            },
-          ),
-
-          const SizedBox(height: 12),
-
-          // Bruttogewicht
-          TextFormField(
-            controller: controllers['gross_weight']!,
-            decoration: InputDecoration(
-              labelText: 'Bruttogewicht (gemessen) (kg)',
-              helperText: 'Leer lassen für automatische Berechnung',
-              prefixIcon: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: getAdaptiveIcon(
-                  iconName: 'scale',
-                  defaultIcon: Icons.scale,
-                ),
-              ),
-              suffixIcon: controllers['gross_weight']!.text.isNotEmpty
-                  ? IconButton(
-                icon: getAdaptiveIcon(
-                  iconName: 'clear',
-                  defaultIcon: Icons.clear,
-                ),
-                onPressed: () {
-                  setModalState(() {
-                    controllers['gross_weight']!.clear();
-                    package['gross_weight'] = null;
-
-                    if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom') {
-                      FirebaseFirestore.instance
-                          .collection('standardized_packages')
-                          .doc(selectedStandardPackageId)
-                          .get()
-                          .then((doc) {
-                        if (doc.exists) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          setModalState(() {
-                            package['tare_weight'] = data['weight'] ?? 0.0;
-                            controllers['weight']!.text = package['tare_weight'].toString();
-                          });
-                        }
-                      });
-                    }
-                  });
-                },
-              )
-                  : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              isDense: true,
-            ),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            onChanged: (value) {
-              setModalState(() {
-                final grossWeight = double.tryParse(value);
-
-                if (value.isEmpty || grossWeight == null) {
+                // Reset manuelles Bruttogewicht wenn Tara geändert wird
+                if (package['manual_gross_weight_mode'] != true) {
                   package['gross_weight'] = null;
-
-                  if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom') {
-                    FirebaseFirestore.instance
-                        .collection('standardized_packages')
-                        .doc(selectedStandardPackageId)
-                        .get()
-                        .then((doc) {
-                      if (doc.exists) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        setModalState(() {
-                          package['tare_weight'] = data['weight'] ?? 0.0;
-                          controllers['weight']!.text = package['tare_weight'].toString();
-                        });
-                      }
-                    });
-                  }
-                } else if (grossWeight > 0) {
-                  package['gross_weight'] = grossWeight;
-                  final netWeight = calculateNetWeight();
-                  final calculatedTara = grossWeight - netWeight;
-                  package['tare_weight'] = calculatedTara > 0 ? calculatedTara : 0.0;
-                  controllers['weight']!.text = package['tare_weight'].toStringAsFixed(2);
                 }
               });
             },
           ),
 
-          // Gewichtsübersicht (gleich wie vorher)
+          // ENTFERNT: Altes Bruttogewicht-Eingabefeld
+
+          // NEU: Integrierte Gewichtsübersicht mit optionalem Bruttogewicht-Input
           if (package['items'].isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -2004,6 +1952,7 @@ Widget _buildPackageCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Nettogewicht
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -2013,23 +1962,174 @@ Widget _buildPackageCard(
                     ],
                   ),
                   const SizedBox(height: 4),
+
+                  // Tara
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Tara (Verpackung):', style: TextStyle(fontSize: 12)),
-                      Text('${package['tare_weight'].toStringAsFixed(2)} kg',
+                      const Text('+ Tara (Verpackung):', style: TextStyle(fontSize: 12)),
+                      Text('${(package['tare_weight'] as num?)?.toStringAsFixed(2) ?? '0.00'} kg',
                           style: const TextStyle(fontSize: 12)),
                     ],
                   ),
-                  const Divider(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Bruttogewicht:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      Text('${(calculateNetWeight() + (package['tare_weight'] ?? 0.0)).toStringAsFixed(2)} kg',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+
+                  const Divider(height: 12),
+
+                  // Bruttogewicht - entweder berechnet oder mit Eingabefeld
+                  if (package['manual_gross_weight_mode'] == true) ...[
+                    // Manueller Modus: Eingabefeld
+                    Row(
+                      children: [
+                        const Text('= Bruttogewicht:',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text('gemessen',
+                              style: TextStyle(fontSize: 9, color: Colors.orange[700])),
+                        ),
+                        const Spacer(),
+                        // Zurück zu automatisch
+                        IconButton(
+                          onPressed: () {
+                            setModalState(() {
+                              package['manual_gross_weight_mode'] = false;
+                              package['gross_weight'] = null;
+                              grossWeightController.clear();
+                              // Tara zurücksetzen wenn Standardpaket
+                              if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom') {
+                                FirebaseFirestore.instance
+                                    .collection('standardized_packages')
+                                    .doc(selectedStandardPackageId)
+                                    .get()
+                                    .then((doc) {
+                                  if (doc.exists) {
+                                    final data = doc.data() as Map<String, dynamic>;
+                                    setModalState(() {
+                                      package['tare_weight'] = data['weight'] ?? 0.0;
+                                      weightController.text = package['tare_weight'].toString();
+                                    });
+                                  }
+                                });
+                              }
+                            });
+                          },
+                          icon: getAdaptiveIcon(
+                            iconName: 'autorenew',
+                            defaultIcon: Icons.autorenew,
+                            size: 18,
+                          ),
+                          tooltip: 'Zurück zu automatischer Berechnung',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 40,
+                      child: TextFormField(
+                        controller: grossWeightController,
+                        decoration: InputDecoration(
+                          hintText: 'Gewogenes Bruttogewicht eingeben',
+                          suffixText: 'kg',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          isDense: true,
+                        ),
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          TextInputFormatter.withFunction((oldValue, newValue) {
+                            return newValue.copyWith(
+                              text: newValue.text.replaceAll(',', '.'),
+                            );
+                          }),
+                        ],
+                        onChanged: (value) {
+                          final grossWeight = double.tryParse(value.replaceAll(',', '.'));
+                          if (grossWeight != null && grossWeight > 0) {
+                            setModalState(() {
+                              package['gross_weight'] = grossWeight;
+                              // Tara = Brutto - Netto
+                              final netWeight = calculateNetWeight();
+                              final calculatedTara = grossWeight - netWeight;
+                              package['tare_weight'] = calculatedTara > 0 ? calculatedTara : 0.0;
+                              weightController.text = package['tare_weight'].toStringAsFixed(2);
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                    if (package['gross_weight'] != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Tara wurde auf ${(package['tare_weight'] as num?)?.toStringAsFixed(2) ?? '0.00'} kg angepasst',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ],
-                  ),
+                  ] else ...[
+                    // Automatischer Modus: Nur Anzeige + Button zum Wechseln
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Text('= Bruttogewicht:',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text('berechnet',
+                                  style: TextStyle(fontSize: 9, color: Colors.green[700])),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Text(
+                              '${calculateGrossWeight().toStringAsFixed(2)} kg',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(width: 8),
+                            // Button zum Wechseln in manuellen Modus
+                            IconButton(
+                              onPressed: () {
+                                setModalState(() {
+                                  package['manual_gross_weight_mode'] = true;
+                                  // Setze aktuellen berechneten Wert als Startwert
+                                  final currentGross = calculateGrossWeight();
+                                  grossWeightController.text = currentGross.toStringAsFixed(2);
+                                });
+                              },
+                              icon: getAdaptiveIcon(
+                                iconName: 'scale',
+                                defaultIcon: Icons.scale,
+                                size: 18,
+                              ),
+                              tooltip: 'Gewogenes Bruttogewicht eingeben',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -2071,11 +2171,12 @@ Widget _buildPackageCard(
                       onPressed: () {
                         setModalState(() {
                           package['items'].remove(assignedItem);
-                          if (package['gross_weight'] != null) {
+                          // Wenn Bruttogewicht manuell gesetzt war, Tara neu berechnen
+                          if (package['manual_gross_weight_mode'] == true && package['gross_weight'] != null) {
                             final netWeight = calculateNetWeight();
                             final grossWeight = package['gross_weight'] as double;
                             package['tare_weight'] = grossWeight - netWeight;
-                            controllers['weight']!.text = package['tare_weight'].toStringAsFixed(2);
+                            weightController.text = package['tare_weight'].toStringAsFixed(2);
                           }
                         });
                       },
@@ -2118,7 +2219,6 @@ Widget _buildPackageCard(
     ),
   );
 }
-
 void _showAddProductDialog(
     BuildContext dialogContext,
     Map<String, dynamic> package,
@@ -3493,7 +3593,16 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
     final existingSettings = await DocumentSelectionManager.loadDeliveryNoteSettings();
     selectedDeliveryDate = existingSettings['delivery_date'];
     selectedPaymentDate = existingSettings['payment_date'];
-
+    // NEU: Lade Tara-Settings für Handelsrechnungsdatum
+    if (selectedDeliveryDate == null) {
+      final taraSettings = await DocumentSelectionManager.loadTaraSettings();
+      if (taraSettings['commercial_invoice_date'] != null) {
+        final timestamp = taraSettings['commercial_invoice_date'];
+        if (timestamp is Timestamp) {
+          selectedDeliveryDate = timestamp.toDate();
+        }
+      }
+    }
     // Debug
     print('Lade bestehende Einstellungen: $existingSettings');
 
@@ -3782,6 +3891,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
     double packagingWeight = 0.0;
     bool valuesFromPackingList = false;
     DateTime? commercialInvoiceDate;
+    bool useAsDeliveryDate = true; // NEU: Standardmäßig aktiviert
     // Commercial Invoice Standardsätze
     bool originDeclaration = false;
     bool cites = false;
@@ -3821,12 +3931,14 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       packagingWeight = (existingSettings['packaging_weight'] ?? 0.0).toDouble();
 
       // Laden Sie die Einstellung mit den anderen
+
       if (existingSettings['commercial_invoice_date'] != null) {
         final timestamp = existingSettings['commercial_invoice_date'];
         if (timestamp is Timestamp) {
           commercialInvoiceDate = timestamp.toDate();
         }
       }
+      useAsDeliveryDate = existingSettings['use_commercial_date_as_delivery_date'] ?? true; // NEU
 
     }
 
@@ -4187,7 +4299,28 @@ print(existingSettings);
                               ),
                             ),
                           ),
-
+// NEU: Checkbox für Übernahme als Lieferdatum
+                          CheckboxListTile(
+                            title: const Text('Als Lieferdatum übernehmen'),
+                            subtitle: const Text(
+                              'wird im Lieferschein als Lieferdatum verwendet',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                            value: useAsDeliveryDate,
+                            onChanged: (value) {
+                              setDialogState(() {
+                                useAsDeliveryDate = value ?? true;
+                              });
+                            },
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                            secondary: getAdaptiveIcon(
+                              iconName: 'local_shipping',
+                              defaultIcon: Icons.local_shipping,
+                              size: 20,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
                           const SizedBox(height: 24),
                           const SizedBox(height: 16),
 
@@ -4948,6 +5081,7 @@ print(existingSettings);
 
                                   ? Timestamp.fromDate(commercialInvoiceDate!)
                                   : null,
+                              'use_commercial_date_as_delivery_date': useAsDeliveryDate,
                             });
 
                             if (dialogContext.mounted) {
@@ -5001,7 +5135,8 @@ print(existingSettings);
 
       // Füge alle verfügbaren Items hinzu
       for (final item in items) {
-        final totalQuantity = item['quantity'] as double;
+        // ROBUST: Konvertiere num (int oder double) sicher zu double
+        final totalQuantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
 
         // Entferne das Item aus allen anderen Paketen
         for (final package in packages) {
@@ -5016,26 +5151,22 @@ print(existingSettings);
         targetPackage['items'].add({
           'product_id': item['product_id'],
           'product_name': item['product_name'],
-          'product_name_en': item['product_name_en'] ?? '',
+          'product_name_en': item['product_name_en'],
           'quantity': totalQuantity,
-
-          // Maße korrekt übernehmen
-          'custom_length': item['custom_length'] ?? 0.0,
-          'custom_width': item['custom_width'] ?? 0.0,
-          'custom_thickness': item['custom_thickness'] ?? 0.0,
-          'density': item['density'] ?? 0.0,
-          'volume_per_unit': item['volume_per_unit'] ?? 0.0,
-
-          // Weitere wichtige Felder
+          // ROBUST: Alle numerischen Werte sicher konvertieren
+          'weight_per_unit': (item['weight'] as num?)?.toDouble() ?? 0.0,
+          'volume_per_unit': (item['volume_per_unit'] as num?)?.toDouble() ?? 0.0,
+          'density': (item['density'] as num?)?.toDouble() ?? 0.0,
+          'custom_length': (item['custom_length'] as num?)?.toDouble() ?? 0.0,
+          'custom_width': (item['custom_width'] as num?)?.toDouble() ?? 0.0,
+          'custom_thickness': (item['custom_thickness'] as num?)?.toDouble() ?? 0.0,
           'wood_code': item['wood_code'] ?? '',
           'wood_name': item['wood_name'] ?? '',
           'unit': item['unit'] ?? 'Stk',
           'instrument_code': item['instrument_code'] ?? '',
           'instrument_name': item['instrument_name'] ?? '',
-          'instrument_name_en': item['instrument_name_en'] ?? '',
           'part_code': item['part_code'] ?? '',
           'part_name': item['part_name'] ?? '',
-          'part_name_en': item['part_name_en'] ?? '',
           'quality_code': item['quality_code'] ?? '',
           'quality_name': item['quality_name'] ?? '',
         });

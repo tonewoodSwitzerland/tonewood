@@ -9,37 +9,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:tonewood/general_data_screen/general_data_screen.dart';
 import 'package:tonewood/home/printer_screen.dart';
-import 'package:tonewood/home/quotes_overview_screen.dart';
-import 'package:tonewood/home/standardized_packages_screen.dart';
-import 'package:tonewood/home/standardized_product_management_screen.dart';
-import '../components/admin_form.dart';
 import '../components/circular_avatar_shadowed.dart';
-import '../components/custom_dialog_box_crew.dart';
-import '../components/feedback_list.dart';
 import '../constants.dart';
-import '../services/admin_additional_text_manager.dart';
-import '../services/customer_export_service.dart';
-import '../services/customer_import_service.dart';
-import '../services/feedback_functions.dart';
 import '../home/settings_form.dart';
 import '../home/warehouse_screen.dart';
 import '../home/product_management_screen.dart';
 import '../home/sales_screen.dart';
 import '../services/icon_helper.dart';
-import '../temp/quality_updater.dart';
+import '../user_management/app_drawer.dart';
+import '../user_management/permission_service.dart';
+import '../user_management/user_management_screen.dart';
 import 'analytics_screen2.dart';
-import 'combinet_shipment_screen.dart';
-import 'customer_management_screen.dart';
-import 'customer_selection.dart';
-import 'orders_overview_screen.dart';
-
-
-import 'package:package_info_plus/package_info_plus.dart';
-
-
-
-
-
 
 class StartScreen extends StatefulWidget {
   static String id = 'start_screen';
@@ -50,6 +30,8 @@ class StartScreen extends StatefulWidget {
 }
 
 class StartScreenState extends State<StartScreen> {
+  final _permissions = PermissionService(); // NEU
+  int _userGroup = 1; // NEU - speichert aktuelle userGroup
   final _auth3 = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   late Future<User> getCurrUserFuture;
@@ -65,6 +47,7 @@ class StartScreenState extends State<StartScreen> {
     getCurrUserFuture = getCurrUser();
     _setOrientation();
     initPackageInfo();
+    _permissions.initialize();
   }
   Future<void> initPackageInfo() async {
     final info = await PackageInfo.fromPlatform();
@@ -91,60 +74,51 @@ class StartScreenState extends State<StartScreen> {
   }
 
   List<Widget> _getScreens() {
-    final screens = [
-    //  if (PlatformInfo.isMobilePlatform)
-     //   ScannerScreen(key: UniqueKey()),
-      WarehouseScreen(key: UniqueKey()),
-      ProductManagementScreen(key: UniqueKey()),
-      SalesScreen(key: UniqueKey()),
-    //  GeneralDataScreen(key: UniqueKey()),
-     PrinterScreen(key: UniqueKey()),
-     // SalesHistoryScreen(key: UniqueKey()),
-      AnalyticsScreen(key: UniqueKey()),
-    // StockEntryScreen(key: UniqueKey()),
+    return [
+      if (_permissions.hasAccess(_userGroup, 'nav_warehouse'))
+        WarehouseScreen(key: UniqueKey()),
+      if (_permissions.hasAccess(_userGroup, 'nav_product'))
+        ProductManagementScreen(key: UniqueKey()),
+      if (_permissions.hasAccess(_userGroup, 'nav_sales'))
+        SalesScreen(key: UniqueKey()),
+      if (_permissions.hasAccess(_userGroup, 'nav_barcodes'))
+        PrinterScreen(key: UniqueKey()),
+      if (_permissions.hasAccess(_userGroup, 'nav_analytics'))
+        AnalyticsScreen(key: UniqueKey()),
     ];
-    return screens;
   }
+
 
   List<BottomNavigationBarItem> _getNavigationItems() {
     return [
-      BottomNavigationBarItem(icon: getAdaptiveIcon(iconName: 'warehouse', defaultIcon: Icons.warehouse,) ,  label: "Lager",),
-      BottomNavigationBarItem(icon: getAdaptiveIcon(iconName: 'precision_manufacturing', defaultIcon: Icons.precision_manufacturing,), label: "Produkt",),
-      BottomNavigationBarItem(icon: getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart,), label: "Verkauf",),
-      BottomNavigationBarItem(icon: getAdaptiveIcon(iconName: 'print', defaultIcon: Icons.print, color: Colors.black87,), label: "Barcodes",),
-      BottomNavigationBarItem(icon: getAdaptiveIcon(iconName: 'analytics', defaultIcon: Icons.analytics, color: Colors.black87,), label: "Analyse",),
+      if (_permissions.hasAccess(_userGroup, 'nav_warehouse'))
+        BottomNavigationBarItem(
+          icon: getAdaptiveIcon(iconName: 'warehouse', defaultIcon: Icons.warehouse),
+          label: "Lager",
+        ),
+      if (_permissions.hasAccess(_userGroup, 'nav_product'))
+        BottomNavigationBarItem(
+          icon: getAdaptiveIcon(iconName: 'precision_manufacturing', defaultIcon: Icons.precision_manufacturing),
+          label: "Produkt",
+        ),
+      if (_permissions.hasAccess(_userGroup, 'nav_sales'))
+        BottomNavigationBarItem(
+          icon: getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart),
+          label: "Verkauf",
+        ),
+      if (_permissions.hasAccess(_userGroup, 'nav_barcodes'))
+        BottomNavigationBarItem(
+          icon: getAdaptiveIcon(iconName: 'print', defaultIcon: Icons.print, color: Colors.black87),
+          label: "Barcodes",
+        ),
+      if (_permissions.hasAccess(_userGroup, 'nav_analytics'))
+        BottomNavigationBarItem(
+          icon: getAdaptiveIcon(iconName: 'analytics', defaultIcon: Icons.analytics, color: Colors.black87),
+          label: "Analyse",
+        ),
     ];
   }
 
-  Widget _buildBottomNavigation() {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: _db.collection('users').doc(user.uid).snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        return Container(
-          decoration: BoxDecoration(
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(red: 0, green: 0, blue: 0, alpha: 0.1),
-                blurRadius: 4,
-                offset: const Offset(0, -1),
-              ),
-            ],
-          ),
-          child: BottomNavigationBar(
-
-            type: BottomNavigationBarType.fixed,
-            onTap: _onTappedBar,
-            currentIndex: _currentIndex,
-            items: _getNavigationItems(),
-          ),
-        );
-      },
-    );
-  }
 
 
   @override
@@ -165,16 +139,6 @@ class StartScreenState extends State<StartScreen> {
     );
   }
 
-  Widget _buildMainScaffold() {
-    return Scaffold(
-      key: _scaffoldKey, // Hier den GlobalKey hinzufügen
-      resizeToAvoidBottomInset: false,
-      appBar: _buildAppBar(),
-      drawer: _buildDrawer(context),
-      body: _getScreens()[_currentIndex],
-      bottomNavigationBar: _buildBottomNavigation(),
-    );
-  }
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
@@ -195,6 +159,128 @@ class StartScreenState extends State<StartScreen> {
     );
   }
 
+  Widget _buildBottomNavigation() {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _db.collection('users').doc(user.uid).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const SizedBox.shrink();
+        }
+
+        final userData = snapshot.data!.data() as Map<String, dynamic>?;
+        final userGroup = userData?['userGroup'] as int? ?? 1;
+
+        // Hier direkt die Items mit dem aktuellen userGroup erstellen
+        final items = <BottomNavigationBarItem>[];
+
+        if (_permissions.hasAccess(userGroup, 'nav_warehouse')) {
+          items.add(BottomNavigationBarItem(
+            icon: getAdaptiveIcon(iconName: 'warehouse', defaultIcon: Icons.warehouse),
+            label: "Lager",
+          ));
+        }
+        if (_permissions.hasAccess(userGroup, 'nav_product')) {
+          items.add(BottomNavigationBarItem(
+            icon: getAdaptiveIcon(iconName: 'precision_manufacturing', defaultIcon: Icons.precision_manufacturing),
+            label: "Produkt",
+          ));
+        }
+        if (_permissions.hasAccess(userGroup, 'nav_sales')) {
+          items.add(BottomNavigationBarItem(
+            icon: getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart),
+            label: "Verkauf",
+          ));
+        }
+        if (_permissions.hasAccess(userGroup, 'nav_barcodes')) {
+          items.add(BottomNavigationBarItem(
+            icon: getAdaptiveIcon(iconName: 'print', defaultIcon: Icons.print, color: Colors.black87),
+            label: "Barcodes",
+          ));
+        }
+        if (_permissions.hasAccess(userGroup, 'nav_analytics')) {
+          items.add(BottomNavigationBarItem(
+            icon: getAdaptiveIcon(iconName: 'analytics', defaultIcon: Icons.analytics, color: Colors.black87),
+            label: "Analyse",
+          ));
+        }
+
+        if (items.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        // Index korrigieren falls nötig
+        final safeIndex = _currentIndex.clamp(0, items.length - 1);
+
+        return Container(
+          decoration: BoxDecoration(
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(red: 0, green: 0, blue: 0, alpha: 0.1),
+                blurRadius: 4,
+                offset: const Offset(0, -1),
+              ),
+            ],
+          ),
+          child: BottomNavigationBar(
+            type: BottomNavigationBarType.fixed,
+            onTap: _onTappedBar,
+            currentIndex: safeIndex,
+            items: items,
+          ),
+        );
+      },
+    );
+  }
+
+// Und _buildMainScaffold() anpassen - Body auch mit StreamBuilder:
+
+  Widget _buildMainScaffold() {
+    return Scaffold(
+      key: _scaffoldKey,
+      resizeToAvoidBottomInset: false,
+      appBar: _buildAppBar(),
+      drawer: const AppDrawer(),
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: _db.collection('users').doc(user.uid).snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final userData = snapshot.data!.data() as Map<String, dynamic>?;
+          final userGroup = userData?['userGroup'] as int? ?? 1;
+
+          // Screens mit aktuellem userGroup erstellen
+          final screens = <Widget>[];
+          if (_permissions.hasAccess(userGroup, 'nav_warehouse')) {
+            screens.add(WarehouseScreen(key: UniqueKey()));
+          }
+          if (_permissions.hasAccess(userGroup, 'nav_product')) {
+            screens.add(ProductManagementScreen(key: UniqueKey()));
+          }
+          if (_permissions.hasAccess(userGroup, 'nav_sales')) {
+            screens.add(SalesScreen(key: UniqueKey()));
+          }
+          if (_permissions.hasAccess(userGroup, 'nav_barcodes')) {
+            screens.add(PrinterScreen(key: UniqueKey()));
+          }
+          if (_permissions.hasAccess(userGroup, 'nav_analytics')) {
+            screens.add(AnalyticsScreen(key: UniqueKey()));
+          }
+
+          if (screens.isEmpty) {
+            return const Center(child: Text('Keine Berechtigung'));
+          }
+
+          final safeIndex = _currentIndex.clamp(0, screens.length - 1);
+          return screens[safeIndex];
+        },
+      ),
+      bottomNavigationBar: _buildBottomNavigation(),
+    );
+  }
+
+// 6. _buildAppBarContent() - AppBar Buttons anpassen:
   Widget _buildAppBarContent() {
     return StreamBuilder<DocumentSnapshot>(
       stream: _db.collection('users').doc(user.uid).snapshots(),
@@ -206,50 +292,64 @@ class StartScreenState extends State<StartScreen> {
         final userData = snapshot.data!;
         final photoPic = userData['photoUrl'] as String;
         name = userData['name'] as String;
+        _userGroup = userData['userGroup'] as int? ?? 1;
 
         return SizedBox(
           width: double.infinity,
-          height: kToolbarHeight - 4, // Feste Höhe für den Inhalt, etwas kleiner als die Toolbar
+          height: kToolbarHeight - 4,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-             // _buildFeedbackButton(),
               _buildLogo(),
-
-              // Gruppiere die letzten beiden Elemente in einer eigenen Row ohne Abstand
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(
-                    width: 48, // Feste Breite für den IconButton
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: getAdaptiveIcon(
-                        iconName: 'settings',
-                        defaultIcon: Icons.settings,
+                  // Benutzerverwaltung - nur für Admin+
+                  if (_permissions.hasAccess(_userGroup, 'appbar_usermgmt'))
+                    SizedBox(
+                      width: 48,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: getAdaptiveIcon(
+                          iconName: 'manage_accounts',
+                          defaultIcon: Icons.manage_accounts,
+                        ),
+                        tooltip: 'Benutzerverwaltung',
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => UserManagementScreen(
+                                currentUserGroup: _userGroup,
+                              ),
+                            ),
+                          );
+                        },
                       ),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => GeneralDataScreen(key: UniqueKey()),
-                          ),
-                        );
-                      },
                     ),
-
-                  ),
-
-                  // ElevatedButton(
-                  //   onPressed: () async {
-                  //     final updater = QualityUpdater();
-                  //     await updater.updateQualities();
-                  //   },
-                  //   child: Text('Qualities updaten'),
-                  // ),
-
+                  // Einstellungen - dynamisch
+                  if (_permissions.hasAccess(_userGroup, 'appbar_settings'))
+                    SizedBox(
+                      width: 48,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: getAdaptiveIcon(
+                          iconName: 'settings',
+                          defaultIcon: Icons.settings,
+                        ),
+                        tooltip: 'Einstellungen',
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => GeneralDataScreen(key: UniqueKey()),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
                   SizedBox(
-                    width: 60, // Feste Breite für das Avatar-Widget
+                    width: 60,
                     child: _buildProfileAvatar(photoPic),
                   ),
                 ],
@@ -260,6 +360,7 @@ class StartScreenState extends State<StartScreen> {
       },
     );
   }
+
 
 
 
@@ -316,6 +417,9 @@ class StartScreenState extends State<StartScreen> {
 
 
   Future<void> _onTappedBar(int index) async {
+    final screens = _getScreens();
+    if (index >= screens.length) return;
+
     User? user = _auth3.currentUser;
     setState(() {
       if (user?.providerData.isEmpty ?? true) {
@@ -328,323 +432,14 @@ class StartScreenState extends State<StartScreen> {
     });
   }
 
-  void _showFeedbackDialog() async {
-    BetterFeedback.of(context).show((feedback) async {
-      WidgetsFlutterBinding.ensureInitialized();
-      PackageInfo packageInfo = await PackageInfo.fromPlatform();
-
-      await alertFeedbackFunction2(
-        name,
-        user.uid,
-        feedback,
-        packageInfo.packageName,
-        packageInfo.version,
-        packageInfo.buildNumber,
-      );
-
-      AppToast.show(message: "feedbackSent".tr, height: AppSizes.h);
-    });
-  }
-
-  void _adminPanel(String userId) {
-    if (userId == "0Twdd2EtJGcymHCA31GY6moAmU33") {
-      showModalBottomSheet(
-        isScrollControlled: true,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(25.0)),
-        ),
-        context: context,
-        builder: (context) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: const AdminForm(),
-        ),
-      );
-    }
-  }
 
 
   void _showSettingsPanel2() {
-    showDialog(
-      useRootNavigator: false,
-      context: context,
-      builder: (BuildContext dialogContext) => CustomDialogBoxCrew(
-        key: UniqueKey(),
-        title: "Profil",
-        descriptions: SettingsForm(
-          kIsWebTemp: false,
-          dialogContextBox: dialogContext,
-          contextApp: context,
-        ),
-      ),
-    );
+    SettingsForm.show(context);
   }
 
-  Widget _buildDrawer(BuildContext context) {
-    return Drawer(
-      child: Column(
-        children: [
-          // Logo und Header-Bereich
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.only(top: 50, bottom: 20),
-            color: Theme.of(context).primaryColor,
-            child: Column(
-              children: [
-                Container(
-                  width: 100,
-                  height: 100,
-                  padding: const EdgeInsets.all(15), // Padding innerhalb des Containers
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                    color: Colors.white, // Hintergrundfarbe
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      image: DecorationImage(
-                        image: AssetImage('images/logo3.png'),
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 16),
-                const Text(
-                  'Tonewood Switzerland',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Admin-Bereich',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Menüpunkte
-          // Menüpunkte
-          ListTile(
-            leading:
-            getAdaptiveIcon(iconName: 'people', defaultIcon: Icons.people),
-            title: const Text('Kundenverwaltung'),
-            onTap: () {
-              // Schließe das Drawer-Menü
-              Navigator.pop(context);
-
-              // Öffne die Kundenverwaltung im Vollbild-Modus
-              CustomerSelectionSheet.showCustomerManagementScreen(context);
-            },
-          ),
-
-          const Divider(),
-
-          ListTile(
-            leading: getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory),
-            title: const Text('Standardprodukte'),
-            onTap: () {
-              // Schließe das Drawer-Menü
-              Navigator.pop(context);
-
-              // Öffne die Standardproduktverwaltung
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const StandardizedProductManagementScreen(),
-                ),
-              );
-            },
-          ),
-
-          const Divider(),
-
-          ListTile(
-            leading: getAdaptiveIcon(iconName: 'inventory', defaultIcon: Icons.inventory),
-            title: const Text('Standardpakete'),
-            subtitle: const Text('Verpackungsarten verwalten'),
-            onTap: () {
-
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const StandardizedPackagesScreen(),
-                ),
-              );
-            },
-          ),
 
 
 
-// Nach der Divider nach Standardprodukte
-          const Divider(),
-
-          ListTile(
-            leading: getAdaptiveIcon(iconName: 'request_quote', defaultIcon: Icons.request_quote),
-            title: const Text('Angebote'),
-            subtitle: FutureBuilder<QuerySnapshot>(
-              future: FirebaseFirestore.instance
-                  .collection('quotes')
-                  .where('status', whereNotIn: ['accepted'])
-                  .get(),
-              builder: (context, snapshot) {
-                final count = snapshot.data?.docs.length ?? 0;
-                return Text('$count offene Angebote');
-              },
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const QuotesOverviewScreen(),
-                ),
-              );
-            },
-          ),
-
-          ListTile(
-            leading: getAdaptiveIcon(iconName: 'shopping_bag', defaultIcon: Icons.shopping_bag),
-            title: const Text('Aufträge'),
-            subtitle: FutureBuilder<QuerySnapshot>(
-              future: FirebaseFirestore.instance
-                  .collection('orders')
-                  .where('status', whereNotIn: ['delivered', 'cancelled'])
-                  .get(),
-              builder: (context, snapshot) {
-                final count = snapshot.data?.docs.length ?? 0;
-                return Text('$count aktive Aufträge');
-              },
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const OrdersOverviewScreen(),
-                ),
-              );
-            },
-          ),
-          // // Nach dem Aufträge ListTile:
-          // ListTile(
-          //   leading: getAdaptiveIcon(iconName: 'local_shipping', defaultIcon: Icons.local_shipping),
-          //   title: const Text('Sammellieferungen'),
-          //   subtitle: const Text('Mehrere Aufträge gemeinsam versenden'),
-          //   trailing: Container(
-          //     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          //     decoration: BoxDecoration(
-          //       color: Colors.blue.withOpacity(0.1),
-          //       borderRadius: BorderRadius.circular(12),
-          //     ),
-          //     child: const Text(
-          //       'NEU',
-          //       style: TextStyle(
-          //         fontSize: 10,
-          //         fontWeight: FontWeight.bold,
-          //         color: Colors.blue,
-          //       ),
-          //     ),
-          //   ),
-          //   onTap: () {
-          //     Navigator.pop(context);
-          //     Navigator.push(
-          //       context,
-          //       MaterialPageRoute(
-          //         builder: (context) => const CombinedShipmentScreen(),
-          //       ),
-          //     );
-          //   },
-          // ),
-          // const Divider(),
-          //
-          // ListTile(
-          //   leading: getAdaptiveIcon(iconName: 'download', defaultIcon: Icons.download),
-          //   title: const Text('Kundendatenbank exportieren'),
-          //   subtitle: const Text('Als CSV-Datei herunterladen'),
-          //   onTap: () {
-          //     // Schließe das Drawer-Menü
-          //     Navigator.pop(context);
-          //
-          //     // Export starten
-          //     CustomerExportService.exportCustomersCsv(context);
-          //   },
-          // ),
-
-          // const Divider(),
-          // ListTile(
-          //   leading: getAdaptiveIcon(iconName: 'upload', defaultIcon: Icons.upload),
-          //   title: const Text('Kundendatenbank importieren'),
-          //   subtitle: const Text('Aus CSV-Datei'),
-          //   onTap: () {
-          //     // Schließe das Drawer-Menü
-          //     Navigator.pop(context);
-          //
-          //     // Import-Dialog öffnen
-          //     CustomerImportService.showImportDialog(context);
-          //   },
-          // ),
-
-          const Divider(),
-
-          ListTile(
-            leading: getAdaptiveIcon(iconName: 'text_fields', defaultIcon: Icons.text_fields),
-            title: const Text('Standardtexte'),
-
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const AdminTextsEditor(),
-                ),
-              );
-            },
-          ),
-          const Divider(),
-
-
-
-          // Footer mit Version und Copyright
-          const Spacer(),
-          const Divider(),
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 32),
-            width: double.infinity,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-
-                Text(
-                  'Version: ${packageInfo?.version ?? ""}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '© ${DateTime.now().year} Tonewood Switzerland',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 

@@ -96,6 +96,7 @@ abstract class BaseDeliveryNotePdfGenerator {
     String? invoiceNumber,
     String? quoteNumber,
     required String language,
+    double addressEmailSpacing = 6.0,
   }) {
     // A4 Breite = 210mm, Page-Margin = 20mm auf jeder Seite
     // Nutzbarer Bereich = 170mm
@@ -181,7 +182,8 @@ abstract class BaseDeliveryNotePdfGenerator {
             top: (30 + addressFieldHeight + 0) * PdfPageFormat.mm,
             child: pw.Container(
               width: addressFieldWidth * PdfPageFormat.mm,
-              child: _buildContactInfo(customerData, language),
+              child: _buildContactInfo(customerData, language, spacing: addressEmailSpacing),  // NEU
+
             ),
           ),
         ],
@@ -329,7 +331,11 @@ abstract class BaseDeliveryNotePdfGenerator {
   }
 
   /// Kontaktdaten (Email, Telefon) - UNTER dem Adressfeld
-  static pw.Widget _buildContactInfo(Map<String, dynamic> customerData, String language) {
+  static pw.Widget _buildContactInfo(
+      Map<String, dynamic> customerData,
+      String language,
+      {double spacing = 6.0}  // NEU: Parameter für Abstand
+      ) {
     final bool hasDifferentShippingAddress = customerData['hasDifferentShippingAddress'] == true;
 
     final String? email = hasDifferentShippingAddress
@@ -342,6 +348,9 @@ abstract class BaseDeliveryNotePdfGenerator {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
+        // NEU: Dynamischer Abstand vor den Kontaktdaten
+        pw.SizedBox(height: spacing),
+
         if (email != null && email.isNotEmpty)
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -386,7 +395,6 @@ abstract class BaseDeliveryNotePdfGenerator {
       ],
     );
   }
-
   /// Kombinierte Methode für Header + Adresse (für einfache Verwendung)
   static pw.Widget buildWindowAddress(Map<String, dynamic> customerData, String language) {
     return pw.Column(
