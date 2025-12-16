@@ -6,15 +6,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:tonewood/home/production_screen.dart';
 import 'package:tonewood/analytics/roundwood/roundwood_entry_screen.dart';
 import 'package:tonewood/home/warehouse_screen.dart';
+import 'package:tonewood/production/roundwood_selection_dialog.dart';
 import '../analytics/roundwood/models/roundwood_models.dart';
 import '../analytics/roundwood/roundwood_list.dart';
 import '../analytics/roundwood/services/roundwood_service.dart';
 import '../constants.dart';
 import '../services/icon_helper.dart';
-import 'add_product_screen.dart';
+import '../home/add_product_screen.dart';
 import 'package:intl/intl.dart';
 
-import 'barcode_scanner.dart';
+import '../home/barcode_scanner.dart';
 enum BarcodeType {
   sales,
   production,
@@ -361,16 +362,21 @@ print("sB:$searchBarcode");
     }
   }
 
-  void _saveStockEntry(String productId, Map<String, dynamic> productData, int quantity) async {
+  void _saveStockEntry(
+      String productId,
+      Map<String, dynamic> productData,
+      int quantity, {
+        String? roundwoodId,
+        Map<String, dynamic>? roundwoodData,
+      }) async {
     try {
-      final batch = FirebaseFirestore.instance.batch();
+      final firestore = FirebaseFirestore.instance;
+      final batch = firestore.batch();
       final parts = productId.split('.');
-      final shortBarcode = '${parts[0]}.${parts[1]}'; // z.B. 1718.2022 aus 1718.2022.1011
+      final shortBarcode = '${parts[0]}.${parts[1]}';
 
-      // 1. Update production collection
-      final productionRef = FirebaseFirestore.instance.collection('production').doc(productId);
-
-      // Update Hauptprodukt
+      // 1. Update production collection (Hauptprodukt)
+      final productionRef = firestore.collection('production').doc(productId);
       batch.update(productionRef, {
         'quantity': FieldValue.increment(quantity),
         'last_stock_entry': FieldValue.serverTimestamp(),
@@ -378,16 +384,14 @@ print("sB:$searchBarcode");
       });
 
       // 2. Update inventory collection
-      final inventoryRef = FirebaseFirestore.instance.collection('inventory').doc(shortBarcode);
-
+      final inventoryRef = firestore.collection('inventory').doc(shortBarcode);
       batch.set(inventoryRef, {
         'quantity': FieldValue.increment(quantity),
         'last_stock_entry': FieldValue.serverTimestamp(),
         'last_stock_change': quantity,
-
       }, SetOptions(merge: true));
 
-      // 2. Get next batch number
+      // 3. Get next batch number
       final batchesSnapshot = await productionRef
           .collection('batch')
           .orderBy('batch_number', descending: true)
@@ -399,23 +403,65 @@ print("sB:$searchBarcode");
         nextBatchNumber = (batchesSnapshot.docs.first.data()['batch_number'] as int) + 1;
       }
 
-      // 3. Create new batch entry
+      // 4. Create batch entry in subcollection (für Abwärtskompatibilität)
       final batchRef = productionRef
           .collection('batch')
           .doc(nextBatchNumber.toString().padLeft(4, '0'));
 
-      batch.set(batchRef, {
+      final batchData = {
         'batch_number': nextBatchNumber,
         'quantity': quantity,
         'stock_entry_date': DateTime.now(),
+        // NEU: Stamm-Referenz
+        'roundwood_id': roundwoodId,
+        'roundwood_internal_number': roundwoodData?['internal_number'],
+        'roundwood_year': roundwoodData?['year'],
+      };
+      batch.set(batchRef, batchData);
 
-      });
+      // 5. NEU: Create batch in flat collection (production_batches)
+      final price = (productData['price_CHF'] as num?)?.toDouble() ?? 0.0;
+      final value = quantity * price;
 
-      // 4. Add stock entry for history
-      final entryRef = FirebaseFirestore.instance
-          .collection('stock_entries')
-          .doc();
+      final flatBatchRef = firestore.collection('production_batches').doc();
+      final flatBatchData = {
+        // Referenzen
+        'product_id': productId,
+        'batch_number': nextBatchNumber,
+        'roundwood_id': roundwoodId,
+        'roundwood_internal_number': roundwoodData?['internal_number'],
+        'roundwood_year': roundwoodData?['year'],
 
+        // Zeitdaten
+        'stock_entry_date': FieldValue.serverTimestamp(),
+        'year': productData['year'] ?? DateTime.now().year,
+
+        // Mengen
+        'quantity': quantity,
+        'value': value,
+        'unit': productData['unit'] ?? 'Stk',
+        'price_CHF': price,
+
+        // Produkt-Details (denormalisiert)
+        'instrument_code': productData['instrument_code'],
+        'instrument_name': productData['instrument_name'],
+        'part_code': productData['part_code'],
+        'part_name': productData['part_name'],
+        'wood_code': productData['wood_code'],
+        'wood_name': productData['wood_name'],
+        'quality_code': productData['quality_code'],
+        'quality_name': productData['quality_name'],
+
+        // Spezial-Flags
+        'moonwood': productData['moonwood'] ?? false,
+        'haselfichte': productData['haselfichte'] ?? false,
+        'thermally_treated': productData['thermally_treated'] ?? false,
+        'FSC_100': productData['FSC_100'] ?? false,
+      };
+      batch.set(flatBatchRef, flatBatchData);
+
+      // 6. Add stock entry for history
+      final entryRef = firestore.collection('stock_entries').doc();
       batch.set(entryRef, {
         'product_id': productId,
         'batch_number': nextBatchNumber,
@@ -428,534 +474,42 @@ print("sB:$searchBarcode");
         'part_name': productData['part_name'],
         'wood_name': productData['wood_name'],
         'quality_name': productData['quality_name'],
+        // NEU: Stamm-Referenz auch hier
+        'roundwood_id': roundwoodId,
+        'roundwood_internal_number': roundwoodData?['internal_number'],
       });
 
       // Commit all changes
       await batch.commit();
 
       if (!mounted) return;
-      Navigator.pop(context);
-      AppToast.show(
-          message: 'Wareneingang von $quantity ${productData['unit'] ?? 'Stück'} gebucht',
-          height: h
-      );
+
+      // Erfolgsmeldung mit Stamm-Info
+      String message = 'Wareneingang von $quantity ${productData['unit'] ?? 'Stück'} gebucht';
+      if (roundwoodData != null) {
+        message += ' (Stamm ${roundwoodData['internal_number']}/${roundwoodData['year']})';
+      }
+
+      AppToast.show(message: message, height: h);
 
     } catch (e) {
       print('Error saving stock entry: $e');
       if (!mounted) return;
-      AppToast.show(
-          message: 'Fehler beim Speichern: $e',
-          height: h
-      );
+      AppToast.show(message: 'Fehler beim Speichern: $e', height: h);
     }
   }
-// Neue erweiterte Methode für die Quantity Dialog mit Bearbeitungsmöglichkeit
   void _showQuantityDialog(String productId, Map<String, dynamic> productData) {
-    quantityController.clear();
-
-    // State für den Edit-Modus
-    bool isEditMode = false;
-
-    // Controller für die editierbaren Felder
-    final thermallyTreatedController = ValueNotifier<bool>(productData['thermally_treated'] ?? false);
-    final haselfichteController = ValueNotifier<bool>(productData['haselfichte'] ?? false);
-    final moonwoodController = ValueNotifier<bool>(productData['moonwood'] ?? false);
-    final fsc100Controller = ValueNotifier<bool>(productData['FSC_100'] ?? false);
-    final yearController = TextEditingController(text: productData['year']?.toString() ?? '');
-
-    showModalBottomSheet(
+    showRoundwoodSelection(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-              ),
-              child: Container(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.85,
-                ),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
-                  ),
-                ),
-                child: SafeArea(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Drag Handle
-                      Container(
-                        margin: const EdgeInsets.only(top: 36),
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-
-                      // Header mit Edit-Toggle
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                        decoration: BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(
-                              color: Colors.grey[200]!,
-                              width: 1,
-                            ),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            getAdaptiveIcon(
-                              iconName: 'inventory',
-                              defaultIcon: Icons.inventory,
-                              color: const Color(0xFF0F4A29),
-                              size: 28,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    isEditMode ? 'Produkt ändern' : 'Wareneingang buchen',
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF0F4A29),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    productId,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            // Edit-Toggle Button
-                            IconButton(
-                              icon: getAdaptiveIcon(
-                                iconName: isEditMode ? 'save' : 'edit',
-                                defaultIcon: isEditMode ? Icons.save : Icons.edit,
-                                color: isEditMode ? Colors.orange : Colors.grey[600],
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  isEditMode = !isEditMode;
-                                });
-                              },
-                            ),
-                            IconButton(
-                              icon: getAdaptiveIcon(
-                                iconName: 'close',
-                                defaultIcon: Icons.close,
-                                color: Colors.grey[600],
-                              ),
-                              onPressed: () => Navigator.pop(context),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // Content
-                      Flexible(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(24.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Warnung bei Edit-Modus
-                              if (isEditMode)
-                                Container(
-                                  margin: const EdgeInsets.only(bottom: 16),
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: Colors.orange[50],
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: Colors.orange[300]!,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      getAdaptiveIcon(iconName: 'warning', defaultIcon:
-                                        Icons.warning,
-                                        color: Colors.orange[700],
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'Achtung: Produktänderung',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.orange[900],
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              'Beim Ändern der Eigenschaften wird eine neue Produktions-ID generiert. Die alte ID wird gelöscht und alle Chargen werden übertragen.',
-                                              style: TextStyle(
-                                                color: Colors.orange[800],
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-
-                              // Produkt Info Card
-                              Container(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      const Color(0xFF0F4A29).withOpacity(0.05),
-                                      const Color(0xFF0F4A29).withOpacity(0.02),
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: const Color(0xFF0F4A29).withOpacity(0.2),
-                                  ),
-                                ),
-                                child: Column(
-                                  children: [
-                                    // Produktname Header
-                                    Container(
-                                      padding: const EdgeInsets.all(16),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF0F4A29).withOpacity(0.1),
-                                        borderRadius: const BorderRadius.only(
-                                          topLeft: Radius.circular(15),
-                                          topRight: Radius.circular(15),
-                                        ),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          getAdaptiveIcon(
-                                            iconName: 'package',
-                                            defaultIcon: Icons.inventory,
-                                            color: const Color(0xFF0F4A29),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Text(
-                                              productData['product_name'] ?? 'N/A',
-                                              style: const TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.bold,
-                                                color: Color(0xFF0F4A29),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-
-                                    // Produkt Details
-                                    Padding(
-                                      padding: const EdgeInsets.all(16),
-                                      child: Column(
-                                        children: [
-                                          _buildDetailRow(
-                                            icon: getAdaptiveIcon(
-                                              iconName: 'category',
-                                              defaultIcon: Icons.category,
-                                              color: Colors.grey[600],
-                                              size: 20,
-                                            ),
-                                            label: 'Qualität',
-                                            value: productData['quality_name'] ?? 'N/A',
-                                          ),
-                                          const SizedBox(height: 12),
-                                          _buildDetailRow(
-                                            icon: getAdaptiveIcon(
-                                              iconName: 'money_bag',
-                                              defaultIcon: Icons.savings,
-                                              color: Colors.grey[600],
-                                              size: 20,
-                                            ),
-                                            label: 'Preis',
-                                            value: '${productData['price_CHF'] ?? 0} CHF',
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              const SizedBox(height: 24),
-
-                              // Grundinformationen
-                              _buildExpansionSection(
-                                title: 'Grundinformationen',
-                                icon: getAdaptiveIcon(
-                                  iconName: 'info',
-                                  defaultIcon: Icons.info,
-                                  color: const Color(0xFF0F4A29),
-                                ),
-                                children: [
-                                  _buildInfoItem('Instrument', '${productData['instrument_name']} (${productData['instrument_code']})'),
-                                  _buildInfoItem('Bauteil', '${productData['part_name']} (${productData['part_code']})'),
-                                  _buildInfoItem('Holzart', '${productData['wood_name']} (${productData['wood_code']})'),
-                                  _buildInfoItem('Qualität', '${productData['quality_name']} (${productData['quality_code']})'),
-                                  if (isEditMode)
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 6),
-                                      child: Row(
-                                        crossAxisAlignment: CrossAxisAlignment.center,
-                                        children: [
-                                          SizedBox(
-                                            width: 100,
-                                            child: Text(
-                                              'Jahrgang:',
-                                              style: TextStyle(
-                                                color: Colors.grey[600],
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                          ),
-                                          Expanded(
-                                            child: TextFormField(
-                                              controller: yearController,
-                                              decoration: InputDecoration(
-                                                isDense: true,
-                                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                                border: OutlineInputBorder(
-                                                  borderRadius: BorderRadius.circular(8),
-                                                ),
-                                                filled: true,
-                                                fillColor: Colors.white,
-                                              ),
-                                              keyboardType: TextInputType.number,
-                                              inputFormatters: [
-                                                FilteringTextInputFormatter.digitsOnly,
-                                                LengthLimitingTextInputFormatter(4),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    )
-                                  else
-                                    _buildInfoItem('Jahrgang', '${productData['year']}'),
-                                ],
-                              ),
-
-                              const SizedBox(height: 12),
-
-                              // Eigenschaften - editierbar im Edit-Modus
-                              _buildExpansionSection(
-                                title: 'Eigenschaften',
-                                icon: getAdaptiveIcon(
-                                  iconName: 'tune',
-                                  defaultIcon: Icons.tune,
-                                  color: const Color(0xFF0F4A29),
-                                ),
-                                children: [
-                                  if (isEditMode) ...[
-                                    _buildEditablePropertyRow('Thermobehandelt', thermallyTreatedController),
-                                    _buildEditablePropertyRow('Haselfichte', haselfichteController),
-                                    _buildEditablePropertyRow('Mondholz', moonwoodController),
-                                    _buildEditablePropertyRow('FSC 100%', fsc100Controller),
-                                  ] else ...[
-                                    _buildPropertyRow('Thermobehandelt', productData['thermally_treated'] ?? false),
-                                    _buildPropertyRow('Haselfichte', productData['haselfichte'] ?? false),
-                                    _buildPropertyRow('Mondholz', productData['moonwood'] ?? false),
-                                    _buildPropertyRow('FSC 100%', productData['FSC_100'] ?? false),
-                                  ],
-                                ],
-                              ),
-
-                              const SizedBox(height: 24),
-
-                              // Mengen-Eingabe (nur wenn nicht im Edit-Modus)
-                              if (!isEditMode)
-                                Container(
-                                  padding: const EdgeInsets.all(20),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[50],
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: Colors.grey[300]!,
-                                    ),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          getAdaptiveIcon(
-                                            iconName: 'add_box',
-                                            defaultIcon: Icons.add_box,
-                                            color: const Color(0xFF0F4A29),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          const Text(
-                                            'Zugangsmenge',
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 16),
-                                      TextFormField(
-                                        controller: quantityController,
-                                        decoration: InputDecoration(
-                                          hintText: 'Positive Zahl eingeben',
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          filled: true,
-                                          fillColor: Colors.white,
-                                          prefixIcon: getAdaptiveIcon(
-                                            iconName: 'inventory',
-                                            defaultIcon: Icons.inventory,
-                                            color: Colors.grey[600],
-                                          ),
-                                          suffixText: productData['unit'] ?? 'Stück',
-                                          suffixStyle: TextStyle(
-                                            color: Colors.grey[600],
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        keyboardType: TextInputType.number,
-                                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                                        autofocus: true,
-                                        style: const TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      // Action Buttons
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          border: Border(
-                            top: BorderSide(
-                              color: Colors.grey[200]!,
-                              width: 1,
-                            ),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, -5),
-                            ),
-                          ],
-                        ),
-                        child: SafeArea(
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
-                                    side: BorderSide(
-                                      color: Colors.grey[400]!,
-                                      width: 1.5,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'Abbrechen',
-                                    style: TextStyle(fontSize: 16),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: () async {
-                                    if (isEditMode) {
-                                      // Zeige Bestätigungsdialog
-                                      _showProductChangeConfirmation(
-                                        productId,
-                                        productData,
-                                        thermallyTreatedController.value,
-                                        haselfichteController.value,
-                                        moonwoodController.value,
-                                        fsc100Controller.value,
-                                        yearController.text,
-                                      );
-                                    } else if (quantityController.text.isNotEmpty) {
-                                      final quantity = int.parse(quantityController.text);
-                                      _saveStockEntry(productId, productData, quantity);
-                                    }
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: isEditMode ? Colors.orange : const Color(0xFF0F4A29),
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    elevation: 0,
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      getAdaptiveIcon(
-                                        iconName: isEditMode ? 'warning' : 'save',
-                                        defaultIcon: isEditMode ? Icons.warning : Icons.save,
-                                        color: Colors.white,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                      'Speichern',
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
+      productId: productId,
+      productData: productData,
+      onConfirm: (quantity, roundwoodId, roundwoodData) {
+        _saveStockEntry(
+          productId,
+          productData,
+          quantity,
+          roundwoodId: roundwoodId,
+          roundwoodData: roundwoodData,
         );
       },
     );

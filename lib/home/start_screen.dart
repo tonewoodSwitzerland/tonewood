@@ -13,8 +13,9 @@ import '../components/circular_avatar_shadowed.dart';
 import '../constants.dart';
 import '../home/settings_form.dart';
 import '../home/warehouse_screen.dart';
-import '../home/product_management_screen.dart';
+import '../production/product_management_screen.dart';
 import '../home/sales_screen.dart';
+import '../production/production_batch_migration.dart';
 import '../services/icon_helper.dart';
 import '../user_management/app_drawer.dart';
 import '../user_management/permission_service.dart';
@@ -348,6 +349,17 @@ class StartScreenState extends State<StartScreen> {
                         },
                       ),
                     ),
+                  // Im _buildYearSelector() oder als Action-Button
+                  IconButton(
+                    icon: getAdaptiveIcon(iconName: 'sync', defaultIcon: Icons.sync),
+                    tooltip: 'Migration starten',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const MigrationScreen()),
+                      );
+                    },
+                  ),
                   SizedBox(
                     width: 60,
                     child: _buildProfileAvatar(photoPic),

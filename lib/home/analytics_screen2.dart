@@ -3,6 +3,7 @@ import 'package:tonewood/analytics/production/production_screen.dart';
 import 'package:tonewood/analytics/sales/sales_screen.dart';
 import '../analytics/roundwood/roundwood_screen.dart';
 import '../constants.dart';
+import '../production/production_screen_analytics_new.dart';
 import '../services/icon_helper.dart';
 
 class AnalyticsScreen extends StatefulWidget {
@@ -60,7 +61,7 @@ class AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProvi
         children: [
           RoundwoodScreen(isDesktopLayout: isDesktopLayout),
           SalesScreenAnalytics(isDesktopLayout: isDesktopLayout),
-          ProductionScreen(isDesktopLayout: isDesktopLayout),
+          ProductionAnalyticsScreen(isDesktopLayout: isDesktopLayout)
         ],
       ),
     );
