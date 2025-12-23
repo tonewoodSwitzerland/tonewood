@@ -80,8 +80,8 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
                              hasActiveFilters:  tempFilter.timeRange != null || tempFilter.startDate != null,
                             ),
                             buildFilterCategory(
-                              icon:  Icons.attach_money,
-                              iconName: 'attach_money',
+                              icon:  Icons.savings,
+                              iconName: 'money_bag',
                               title:     'Betrag',
                               child:   _buildAmountFilter(),
                               hasActiveFilters:   tempFilter.minAmount != null || tempFilter.maxAmount != null,

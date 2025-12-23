@@ -508,8 +508,8 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                         prefixIcon: Padding(
                           padding: const EdgeInsets.all(8.0),
                           child: getAdaptiveIcon(
-                            iconName: 'attach_money',
-                            defaultIcon: Icons.attach_money,
+                            iconName: 'money_bag',
+                            defaultIcon: Icons.savings,
                           ),
                         ),
                       ),

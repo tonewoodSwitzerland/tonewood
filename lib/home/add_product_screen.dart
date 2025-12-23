@@ -816,8 +816,8 @@ class AddProductScreenState extends State<AddProductScreen> {
                 filled: true,
                 fillColor: Colors.grey[50],
                 prefixIcon: getAdaptiveIcon(
-                  iconName: 'attach_money',
-                  defaultIcon: Icons.attach_money,
+                  iconName: 'money_bag',
+                  defaultIcon: Icons.savings,
                   color: Colors.grey[600],
                 ),
               ),

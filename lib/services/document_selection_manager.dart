@@ -1619,7 +1619,7 @@ Widget _buildPackageCard(
   double calculateNetWeight() {
     double netWeight = 0.0;
     final packageItems = package['items'] as List<dynamic>? ?? [];
-
+print(packageItems);
     for (final item in packageItems) {
       final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
       final unit = item['unit'] ?? 'Stk';
@@ -1629,17 +1629,24 @@ Widget _buildPackageCard(
       } else {
         double volumePerPiece = 0.0;
         final volumePerUnit = item['volume_per_unit'];
-        final density = (item['density'] as num?)?.toDouble() ?? 0.0;
-
+        final density = (item['custom_density'] as num?)?.toDouble()
+            ?? (item['density'] as num?)?.toDouble()
+            ?? 0.0;
         if (volumePerUnit != null && (volumePerUnit as num) > 0) {
           volumePerPiece = (volumePerUnit as num).toDouble();
         } else {
           final length = (item['custom_length'] as num?)?.toDouble() ?? 0.0;
           final width = (item['custom_width'] as num?)?.toDouble() ?? 0.0;
           final thickness = (item['custom_thickness'] as num?)?.toDouble() ?? 0.0;
-
+print("yippiyeayeah");
+          print("density$density");
+          print("l:$length");
+          print("w:$width");
+          print("t:$thickness");
           if (length > 0 && width > 0 && thickness > 0) {
             volumePerPiece = (length / 1000) * (width / 1000) * (thickness / 1000);
+        print(" volumePerPiece:$volumePerPiece");
+
           }
         }
 
@@ -2057,11 +2064,12 @@ Widget _buildPackageCard(
                           if (grossWeight != null && grossWeight > 0) {
                             setModalState(() {
                               package['gross_weight'] = grossWeight;
-                              // Tara = Brutto - Netto
+                              // Tara = Brutto - Netto (auf 3 Nachkommastellen begrenzt)
                               final netWeight = calculateNetWeight();
                               final calculatedTara = grossWeight - netWeight;
-                              package['tare_weight'] = calculatedTara > 0 ? calculatedTara : 0.0;
-                              weightController.text = package['tare_weight'].toStringAsFixed(2);
+                              final roundedTara = double.parse((calculatedTara > 0 ? calculatedTara : 0.0).toStringAsFixed(3));
+                              package['tare_weight'] = roundedTara;
+                              weightController.text = roundedTara.toStringAsFixed(2);
                             });
                           }
                         },
@@ -2354,6 +2362,7 @@ void _showQuantityDialog(
                   'custom_width': item['custom_width'] ?? 0.0,
                   'custom_thickness': item['custom_thickness'] ?? 0.0,
                   'density': item['density'] ?? 0.0,
+                  'custom_density': item['custom_density'], // NEU: kann null sein
                   'volume_per_unit': item['volume_per_unit'] ?? 0.0,
 
 
@@ -4302,14 +4311,28 @@ print(existingSettings);
 // NEU: Checkbox für Übernahme als Lieferdatum
                           CheckboxListTile(
                             title: const Text('Als Lieferdatum übernehmen'),
-                            subtitle: const Text(
-                              'wird im Lieferschein als Lieferdatum verwendet',
-                              style: TextStyle(fontSize: 11),
+                            subtitle: Text(
+                              useAsDeliveryDate && commercialInvoiceDate != null
+                                  ? 'Lieferdatum: ${DateFormat('dd.MM.yyyy').format(commercialInvoiceDate!)}'
+                                  : 'wird im Lieferschein als Lieferdatum verwendet',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: useAsDeliveryDate && commercialInvoiceDate != null
+                                    ? Colors.green[700]
+                                    : null,
+                                fontWeight: useAsDeliveryDate && commercialInvoiceDate != null
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                              ),
                             ),
                             value: useAsDeliveryDate,
                             onChanged: (value) {
                               setDialogState(() {
                                 useAsDeliveryDate = value ?? true;
+                                // Wenn aktiviert und Handelsrechnungsdatum gesetzt, aktualisiere auch selectedDeliveryDate
+                                if (useAsDeliveryDate && commercialInvoiceDate != null && deliveryDate) {
+                                  selectedDeliveryDate = commercialInvoiceDate;
+                                }
                               });
                             },
                             dense: true,
@@ -4318,11 +4341,48 @@ print(existingSettings);
                               iconName: 'local_shipping',
                               defaultIcon: Icons.local_shipping,
                               size: 20,
-                              color: Theme.of(context).colorScheme.primary,
+                              color: useAsDeliveryDate && commercialInvoiceDate != null
+                                  ? Colors.green[700]
+                                  : Theme.of(context).colorScheme.primary,
                             ),
                           ),
+
+// NEU: Hinweis wenn Datum gesetzt und Checkbox aktiv
+                          if (useAsDeliveryDate && commercialInvoiceDate != null)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 16, bottom: 8),
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    getAdaptiveIcon(
+                                      iconName: 'check_circle',
+                                      defaultIcon: Icons.check_circle,
+                                      size: 16,
+                                      color: Colors.green[700],
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Das Lieferdatum im Lieferschein wird auf ${DateFormat('dd.MM.yyyy').format(commercialInvoiceDate!)} gesetzt',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.green[700],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
                           const SizedBox(height: 24),
-                          const SizedBox(height: 16),
+
 
 // Währungsauswahl
                           Text(
@@ -4408,6 +4468,7 @@ print(existingSettings);
                           const SizedBox(height: 16),
 // Alle auswählen / Alle abwählen
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               TextButton.icon(
                                 onPressed: () {
@@ -4424,8 +4485,8 @@ print(existingSettings);
                                   });
                                 },
                                 icon: getAdaptiveIcon(
-                                  iconName: 'check_box',
-                                  defaultIcon: Icons.check_box,
+                                  iconName: 'select_all',
+                                  defaultIcon: Icons.select_all,
                                   size: 20,
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
@@ -4449,8 +4510,8 @@ print(existingSettings);
                                   });
                                 },
                                 icon: getAdaptiveIcon(
-                                  iconName: 'check_box_outline_blank',
-                                  defaultIcon: Icons.check_box_outline_blank,
+                                  iconName: 'deselect',
+                                  defaultIcon: Icons.deselect,
                                   size: 20,
                                   color: Theme.of(context).colorScheme.outline,
                                 ),
@@ -4838,50 +4899,107 @@ print(existingSettings);
                           ],
 
                           // Lieferdatum - mit Datumspicker und Format-Toggle
+                          // Lieferdatum - Automatisch von oben übernommen wenn useAsDeliveryDate aktiv
                           CheckboxListTile(
-                            title: const Text('Lieferdatum'),
-                            subtitle: selectedDeliveryDate != null
-                                ? Text(deliveryDateMonthOnly
-                                ? '${['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][selectedDeliveryDate!.month - 1]} ${selectedDeliveryDate!.year}'
-                                : '${selectedDeliveryDate!.day}.${selectedDeliveryDate!.month}.${selectedDeliveryDate!.year}')
-                                : const Text('Datum auswählen'),
+                            title: const Text('Lieferdatum auf Handelsrechnung'),
+                            subtitle: Text(
+                              deliveryDate
+                                  ? (useAsDeliveryDate && commercialInvoiceDate != null
+                                  ? (deliveryDateMonthOnly
+                                  ? '${['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][commercialInvoiceDate!.month - 1]} ${commercialInvoiceDate!.year}'
+                                  : DateFormat('dd.MM.yyyy').format(commercialInvoiceDate!))
+                                  : (selectedDeliveryDate != null
+                                  ? (deliveryDateMonthOnly
+                                  ? '${['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][selectedDeliveryDate!.month - 1]} ${selectedDeliveryDate!.year}'
+                                  : DateFormat('dd.MM.yyyy').format(selectedDeliveryDate!))
+                                  : 'Datum auswählen'))
+                                  : 'Lieferdatum auf der Handelsrechnung anzeigen',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: deliveryDate && (useAsDeliveryDate && commercialInvoiceDate != null || selectedDeliveryDate != null)
+                                    ? Colors.green[700]
+                                    : null,
+                              ),
+                            ),
                             value: deliveryDate,
                             onChanged: (value) {
                               setDialogState(() {
                                 deliveryDate = value ?? false;
-                                if (!deliveryDate) selectedDeliveryDate = null;
+                                if (!deliveryDate) {
+                                  selectedDeliveryDate = null;
+                                } else if (useAsDeliveryDate && commercialInvoiceDate != null) {
+                                  // Übernimm automatisch das Handelsrechnungsdatum
+                                  selectedDeliveryDate = commercialInvoiceDate;
+                                }
                               });
                             },
                           ),
                           if (deliveryDate) ...[
-                            Padding(
-                              padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      onPressed: () async {
-                                        final date = await showDatePicker(
-                                          context: dialogContext,
-                                          initialDate: selectedDeliveryDate ?? DateTime.now(),
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2030),
-                                        );
-                                        if (date != null) {
-                                          setDialogState(() {
-                                            selectedDeliveryDate = date;
-                                          });
-                                        }
-                                      },
-                                      icon:getAdaptiveIcon(iconName: 'calendar_today', defaultIcon:Icons.calendar_today),
-                                      label: Text(selectedDeliveryDate != null
-                                          ? '${selectedDeliveryDate!.day}.${selectedDeliveryDate!.month}.${selectedDeliveryDate!.year}'
-                                          : 'Datum auswählen'),
-                                    ),
+                            // Info wenn Datum von oben übernommen wird
+                            if (useAsDeliveryDate && commercialInvoiceDate != null)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: Colors.green.withOpacity(0.3)),
                                   ),
-                                ],
+                                  child: Row(
+                                    children: [
+                                      getAdaptiveIcon(
+                                        iconName: 'link',
+                                        defaultIcon: Icons.link,
+                                        size: 16,
+                                        color: Colors.green[700],
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Wird automatisch vom Handelsrechnungsdatum übernommen',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.green[700],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            else ...[
+                              // Manueller Datepicker nur wenn NICHT von oben übernommen
+                              Padding(
+                                padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: () async {
+                                          final date = await showDatePicker(
+                                            context: dialogContext,
+                                            initialDate: selectedDeliveryDate ?? DateTime.now(),
+                                            firstDate: DateTime(2020),
+                                            lastDate: DateTime(2030),
+                                          );
+                                          if (date != null) {
+                                            setDialogState(() {
+                                              selectedDeliveryDate = date;
+                                            });
+                                          }
+                                        },
+                                        icon: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
+                                        label: Text(selectedDeliveryDate != null
+                                            ? DateFormat('dd.MM.yyyy').format(selectedDeliveryDate!)
+                                            : 'Datum auswählen'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
+                            ],
+                            // Format-Toggle immer anzeigen
                             Padding(
                               padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
                               child: Row(
@@ -4912,7 +5030,6 @@ print(existingSettings);
                               ),
                             ),
                           ],
-
                           // Transporteur - mit Freitext
                           CheckboxListTile(
                             title: const Text('Transporteur'),
@@ -4945,13 +5062,19 @@ print(existingSettings);
                             ),
 
                           // Signatur
+                          // Signatur - mit automatischer Vorauswahl
                           CheckboxListTile(
                             title: const Text('Signatur'),
                             value: signature,
                             onChanged: (value) {
                               setDialogState(() {
                                 signature = value ?? false;
-                                if (!signature) selectedSignature = null;
+                                if (signature) {
+                                  // Automatische Vorauswahl wenn aktiviert
+                                  selectedSignature ??= 'x4i6s1FMleIE0bdg0Ujv';
+                                } else {
+                                  selectedSignature = null;
+                                }
                               });
                             },
                           ),
@@ -5157,6 +5280,7 @@ print(existingSettings);
           'weight_per_unit': (item['weight'] as num?)?.toDouble() ?? 0.0,
           'volume_per_unit': (item['volume_per_unit'] as num?)?.toDouble() ?? 0.0,
           'density': (item['density'] as num?)?.toDouble() ?? 0.0,
+          'custom_density': (item['custom_density'] as num?)?.toDouble(),
           'custom_length': (item['custom_length'] as num?)?.toDouble() ?? 0.0,
           'custom_width': (item['custom_width'] as num?)?.toDouble() ?? 0.0,
           'custom_thickness': (item['custom_thickness'] as num?)?.toDouble() ?? 0.0,
@@ -5175,17 +5299,17 @@ print(existingSettings);
   }
   Future<void> showPackingListSettingsDialog() async {
     // Lade bestehende Packlisten-Einstellungen
+    // Lade bestehende Packlisten-Einstellungen
     final existingSettings = await DocumentSelectionManager.loadPackingListSettings();
     List<Map<String, dynamic>> packages = List<Map<String, dynamic>>.from(existingSettings['packages'] ?? []);
 
-    // NEU: Map für TextEditingController
+// NEU: Map für TextEditingController
     final Map<String, Map<String, TextEditingController>> packageControllers = {};
 
-    // Lade die Produkte aus temporary_basket (wie bei den anderen Dokumenten)
+// Lade die Produkte aus temporary_basket (wie bei den anderen Dokumenten)
     final basketSnapshot = await FirebaseFirestore.instance
         .collection('temporary_basket')
         .get();
-
 
 // WICHTIG: Stelle sicher, dass ALLE Felder kopiert werden
     List<Map<String, dynamic>> items = basketSnapshot.docs.map((doc) {
@@ -5196,7 +5320,7 @@ print(existingSettings);
       print('  custom_thickness: ${data['custom_thickness']}');
       print('  density: ${data['density']}');
       return {
-        ...data,  // Das kopiert ALLE Felder aus dem Dokument
+        ...data,
         'doc_id': doc.id,
       };
     }).toList();
@@ -5209,8 +5333,52 @@ print(existingSettings);
     for (final item in items) {
       print('${item['product_name']}: ${item['custom_length']}×${item['custom_width']}×${item['custom_thickness']}');
     }
-    // Falls noch keine Pakete existieren, erstelle Paket 1
-    // Falls noch keine Pakete existieren, erstelle Paket 1
+
+// NEU: Aktualisiere die Maße in bestehenden Paketen mit aktuellen Werten aus dem Basket
+    for (final package in packages) {
+      final packageItems = package['items'] as List<dynamic>? ?? [];
+      for (int i = 0; i < packageItems.length; i++) {
+        final assignedItem = packageItems[i] as Map<String, dynamic>;
+        final productId = assignedItem['product_id'];
+
+        // Finde das aktuelle Item im Basket
+        final currentItem = items.firstWhere(
+              (item) => item['product_id'] == productId,
+          orElse: () => <String, dynamic>{},
+        );
+
+        if (currentItem.isNotEmpty) {
+          // Aktualisiere die Maße mit den aktuellen Werten
+          packageItems[i] = {
+            ...assignedItem,
+            'custom_length': (currentItem['custom_length'] as num?)?.toDouble() ?? 0.0,
+            'custom_width': (currentItem['custom_width'] as num?)?.toDouble() ?? 0.0,
+            'custom_thickness': (currentItem['custom_thickness'] as num?)?.toDouble() ?? 0.0,
+            'density': (currentItem['density'] as num?)?.toDouble() ?? 0.0,
+            'custom_density': (currentItem['custom_density'] as num?)?.toDouble(),
+            'volume_per_unit': (currentItem['volume_per_unit'] as num?)?.toDouble() ?? 0.0,
+            'weight_per_unit': (currentItem['weight'] as num?)?.toDouble() ?? 0.0,
+            'product_name': currentItem['product_name'] ?? assignedItem['product_name'],
+            'product_name_en': currentItem['product_name_en'] ?? assignedItem['product_name_en'],
+            'wood_code': currentItem['wood_code'] ?? assignedItem['wood_code'],
+            'wood_name': currentItem['wood_name'] ?? assignedItem['wood_name'],
+            'unit': currentItem['unit'] ?? assignedItem['unit'],
+            'instrument_code': currentItem['instrument_code'] ?? assignedItem['instrument_code'],
+            'instrument_name': currentItem['instrument_name'] ?? assignedItem['instrument_name'],
+            'instrument_name_en': currentItem['instrument_name_en'] ?? assignedItem['instrument_name_en'],
+            'part_code': currentItem['part_code'] ?? assignedItem['part_code'],
+            'part_name': currentItem['part_name'] ?? assignedItem['part_name'],
+            'part_name_en': currentItem['part_name_en'] ?? assignedItem['part_name_en'],
+            'quality_code': currentItem['quality_code'] ?? assignedItem['quality_code'],
+            'quality_name': currentItem['quality_name'] ?? assignedItem['quality_name'],
+          };
+
+          print('Aktualisiert: ${currentItem['product_name']} - ${currentItem['custom_length']}×${currentItem['custom_width']}×${currentItem['custom_thickness']}');
+        }
+      }
+    }
+
+// Falls noch keine Pakete existieren, erstelle Paket 1
     if (packages.isEmpty) {
       final firstPackageId = DateTime.now().millisecondsSinceEpoch.toString(); // NEU: Eindeutige ID
       packages.add({

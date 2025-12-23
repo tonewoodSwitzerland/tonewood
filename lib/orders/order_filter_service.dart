@@ -382,8 +382,8 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                     // Auftragssumme
                     _buildFilterSection(
                       title: 'Auftragssumme (CHF)',
-                      icon: Icons.attach_money,
-                      iconName: 'attach_money',
+                      icon: Icons.savings,
+                      iconName: 'money_bag',
                       child: Row(
                         children: [
                           Expanded(

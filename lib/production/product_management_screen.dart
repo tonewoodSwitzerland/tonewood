@@ -7,6 +7,8 @@ import 'package:tonewood/home/production_screen.dart';
 import 'package:tonewood/analytics/roundwood/roundwood_entry_screen.dart';
 import 'package:tonewood/home/warehouse_screen.dart';
 import 'package:tonewood/production/roundwood_selection_dialog.dart';
+import 'package:tonewood/production/stamm_auswahl_sheet.dart';
+import 'package:tonewood/production/stamm_buchung_sheet.dart';
 import '../analytics/roundwood/models/roundwood_models.dart';
 import '../analytics/roundwood/roundwood_list.dart';
 import '../analytics/roundwood/services/roundwood_service.dart';
@@ -16,6 +18,7 @@ import '../home/add_product_screen.dart';
 import 'package:intl/intl.dart';
 
 import '../home/barcode_scanner.dart';
+import 'barcode_input_dialog.dart';
 enum BarcodeType {
   sales,
   production,
@@ -27,7 +30,16 @@ class ProductManagementScreen extends StatefulWidget {
   ProductManagementScreenState createState() => ProductManagementScreenState();
 }
 
-class ProductManagementScreenState extends State<ProductManagementScreen> {
+class ProductManagementScreenState extends State<ProductManagementScreen>
+    with SingleTickerProviderStateMixin {  // ← Mixin hinzufügen
+  late TabController _verwaltungTabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _verwaltungTabController = TabController(length: 2, vsync: this);
+  }
+
   final TextEditingController quantityController = TextEditingController();
   final TextEditingController barcodeController = TextEditingController();
 
@@ -39,56 +51,16 @@ class ProductManagementScreenState extends State<ProductManagementScreen> {
   BarcodeType selectedBarcodeType = BarcodeType.sales;
 
 
-
-  void _showEditBarcodeInputDialog() {
-    barcodeController.clear();
-    showDialog(
+  void _showEditBarcodeInputDialog() async {
+    final barcode = await showBarcodeInputDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Preis / Bestand bearbeiten'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: barcodeController,
-                decoration: const InputDecoration(
-                  labelText: 'Barcode',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                autofocus: true,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  TextButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _scanBarcodeForEdit();
-                    },
-                    icon:  getAdaptiveIcon(iconName: 'qr_code_scanner', defaultIcon:Icons.qr_code_scanner),
-                    label: const Text('Scanner nutzen'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      if (barcodeController.text.isNotEmpty) {
-                        Navigator.pop(context);
-                        _searchProductAndEdit(barcodeController.text);
-                      }
-                    },
-                    child: const Text('Weiter'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
+      type: BarcodeInputType.sales,  // Nur 8 Ziffern: IIPP.HHQQ
     );
-  }
 
+    if (barcode != null && barcode.isNotEmpty) {
+      _searchProductAndEdit(barcode);
+    }
+  }
   Future<void> _scanBarcodeForEdit() async {
     try {
       final String? barcodeResult = await Navigator.push<String>(
@@ -177,60 +149,16 @@ print("sB:$searchBarcode");
     }
   }
 
-  void _showBarcodeInputDialog() {
-    barcodeController.clear();
-    showDialog(
+  void _showBarcodeInputDialog() async {
+    final barcode = await showBarcodeInputDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Artikelnummer eingeben'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: barcodeController,
-                decoration: const InputDecoration(
-                  labelText: 'Artikelnummer',
-                  border: OutlineInputBorder(),
-                  helperText: '(z.B. 1819.2024.1100.14)',
-                ),
-                keyboardType: TextInputType.text,
-                autofocus: true,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  TextButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _scanBarcode();
-                    },
-                    icon:  getAdaptiveIcon(iconName: 'qr_code_scanner', defaultIcon:Icons.qr_code_scanner),
-                    label: const Text('Scanner nutzen'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      if (barcodeController.text.isNotEmpty) {
-                        if (!_isValidProductionBarcode(barcodeController.text)) {
-                          Navigator.pop(context); // Dialog schließen
-                          return; // Die Fehlermeldung wird bereits in _isValidProductionBarcode angezeigt
-                        }
-                        Navigator.pop(context);
-                        _checkProductAndShowQuantity(barcodeController.text);
-                      }
-                    },
-                    child: const Text('Weiter'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
+      type: BarcodeInputType.production,
     );
-  }
 
+    if (barcode != null && barcode.isNotEmpty) {
+      _checkProductAndShowQuantity(barcode);
+    }
+  }
   Future<void> _scanBarcode() async {
     try {
       final String? barcodeResult = await Navigator.push<String>(
@@ -1107,7 +1035,7 @@ print("sB:$searchBarcode");
 
 
 
-  
+
   String selectedAction = ''; // Speichert die aktuelle Aktion (Wareneingang, Bearbeiten, etc.)
 
   @override
@@ -1151,6 +1079,27 @@ print("sB:$searchBarcode");
       );
     }
   }
+  void _showStammAuswahlDialog() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return StammAuswahlSheet(
+          onStammSelected: (stammId, stammData) {
+            Navigator.pop(context); // Auswahl-Dialog schließen
+            // Buchungs-Sheet öffnen
+            showStammBuchungSheet(
+              context: context,
+              stammId: stammId,
+              stammData: stammData,
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildDesktopLayout() {
     return Row(
       children: [
@@ -1179,43 +1128,50 @@ print("sB:$searchBarcode");
                 ),
               ),
               Expanded(
-                child: ListView(
+                child:
+                ListView(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
                   children: [
+                    // === PRODUKTION BUCHEN ===
+                    _buildMenuSection('Produktion buchen'),
                     _buildActionButton(
-                      icon: Icons.precision_manufacturing,
-                      iconName: 'precision_manufacturing',
-                      title: 'Produktionseingang buchen',
-                      subtitle: 'Neue Produktion dem Bestand hinzufügen',
-                      onTap: () => setState(() => selectedAction = 'wareneingang'),
-                      isSelected: selectedAction == 'wareneingang',
+                      icon: Icons.qr_code,
+                      iconName: 'qr_code',
+                      title: 'Direkt buchen',
+                      subtitle: 'Produkt über Barcode finden',
+                      onTap: () => setState(() => selectedAction = 'direkt_buchen'),
+                      isSelected: selectedAction == 'direkt_buchen',
                     ),
                     _buildActionButton(
-                      iconName: 'edit',
-                      icon: Icons.edit,
-                      title: 'Preis / Bestand bearbeiten',
-                      subtitle: 'Produktdaten ändern',
-                      onTap: () => setState(() => selectedAction = 'bearbeiten'),
-                      isSelected: selectedAction == 'bearbeiten',
+                      icon: Icons.account_tree,
+                      iconName: 'account_tree',
+                      title: 'Über Stamm buchen',
+                      subtitle: 'Erst Stamm wählen, dann Produkte',
+                      onTap: () => setState(() => selectedAction = 'ueber_stamm'),
+                      isSelected: selectedAction == 'ueber_stamm',
                     ),
-                _buildActionButton(
-                  iconName: 'add',
-                  icon: Icons.add,
-                  title: 'Neues Produkt',
-                  subtitle: 'Produkt erstellen',
-                  onTap: () => _navigateToNewProduct(context),
-                  isSelected: selectedAction == 'neu',
-                ),
+                    const Divider(height: 32, indent: 16, endIndent: 16),
+                    // === VERWALTUNG ===
+                    _buildMenuSection('Verwaltung'),
                     _buildActionButton(
-                      iconName: 'forest',
+                      icon: Icons.inventory_2,
+                      iconName: 'inventory_2',
+                      title: 'Produkte',
+                      subtitle: 'Bearbeiten & Neu anlegen',
+                      onTap: () => setState(() => selectedAction = 'produkte'),
+                      isSelected: selectedAction == 'produkte',
+                    ),
+                    _buildActionButton(
                       icon: Icons.forest,
+                      iconName: 'forest',
                       title: 'Rundholz',
-                      subtitle: 'Rundholz verwalten',
+                      subtitle: 'Stämme verwalten',
                       onTap: () => setState(() => selectedAction = 'rundholz'),
                       isSelected: selectedAction == 'rundholz',
                     ),
                   ],
                 ),
+
               ),
             ],
           ),
@@ -1227,7 +1183,20 @@ print("sB:$searchBarcode");
       ],
     );
   }
-
+  Widget _buildMenuSection(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey[500],
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
   Widget _buildActionButton({
     required IconData icon,
     required String title,
@@ -1285,31 +1254,113 @@ print("sB:$searchBarcode");
       ),
     );
   }
+  Widget _buildUeberStammPanel() {
+    return Padding(
+      padding: const EdgeInsets.all(32.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Über Stamm buchen', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: const Color(0xFF0F4A29))),
+          const SizedBox(height: 24),
+          Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  getAdaptiveIcon(iconName: 'account_tree', defaultIcon: Icons.account_tree, size: 64, color: const Color(0xFF0F4A29)),
+                  const SizedBox(height: 24),
+                  Text('Stamm-basierte Buchung', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Wähle zuerst einen Stamm aus.\nDie Attribute (Holzart, Mondholz, FSC, Jahr) werden automatisch übernommen.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 32),
+                  ElevatedButton.icon(
+                    onPressed: _showStammAuswahlDialog,  // ← Hier
 
+                    icon: getAdaptiveIcon(iconName: 'forest', defaultIcon: Icons.forest, color: Colors.white),
+                    label: const Text('Stamm auswählen'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F4A29),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProduktePanel() {
+    return Padding(
+      padding: const EdgeInsets.all(32.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Produkte verwalten', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: const Color(0xFF0F4A29))),
+          const SizedBox(height: 24),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth > 600;
+              return Row(
+                children: [
+                  Expanded(
+                    child: _buildOptionButton(
+                      icon: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit, color: Colors.white),
+                      label: 'Bearbeiten',
+                      onPressed: () => setState(() => selectedAction = 'bearbeiten'),
+                      isWideScreen: isWide,
+                      color: const Color(0xFF0F4A29),
+                    ),
+                  ),
+                  SizedBox(width: isWide ? 48 : 24),
+                  Expanded(
+                    child: _buildOptionButton(
+                      icon: getAdaptiveIcon(iconName: 'add_circle', defaultIcon: Icons.add_circle, color: Colors.white),
+                      label: 'Neu anlegen',
+                      onPressed: () => setState(() => selectedAction = 'neu'),
+                      isWideScreen: isWide,
+                      color: const Color(0xFF0F4A29).withOpacity(0.8),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
   Widget _buildRightPanel() {
     switch (selectedAction) {
       case 'neu':
-        return AddProductScreen(
-          isProduction: true,
-          editMode: false,
-          onSave: () {
-            setState(() {
-              selectedAction = '';
-            });
-          },
-        );
-      case 'wareneingang':
+        return AddProductScreen(isProduction: true, editMode: false, onSave: () => setState(() => selectedAction = ''));
+      case 'direkt_buchen':
+      case 'wareneingang':  // Fallback für alte Auswahl
         return _buildWareneingangPanel();
+      case 'ueber_stamm':
+        return _buildUeberStammPanel();  // NEU
       case 'bearbeiten':
         return _buildBearbeitenPanel();
+      case 'produkte':
+        return _buildProduktePanel();  // NEU
       case 'rundholz':
         return _buildRundholzManagementPanel();
       default:
-        return const Center(
-          child: Text('Bitte wähle eine Aktion aus'),
-        );
+        return const Center(child: Text('Bitte wähle eine Aktion aus'));
     }
   }
+
   Widget _buildWareneingangPanel() {
     return Padding(
       padding: const EdgeInsets.all(32.0),
@@ -1388,12 +1439,12 @@ print("sB:$searchBarcode");
                           SizedBox(width: isWideScreen ? 48 : 24),
                           _buildOptionButton(
                             icon: getAdaptiveIcon(
-                              iconName: 'keyboard',
-                              defaultIcon: Icons.keyboard,
+                              iconName: 'dialpad',  // Passendes Icon für Numpad
+                              defaultIcon: Icons.dialpad,
                               color: Colors.white,
                             ),
                             label: 'Barcode eingeben',
-                            onPressed: _showBarcodeInputDialog,
+                            onPressed: _showBarcodeInputDialog,  // Nutzt jetzt den neuen Dialog
                             isWideScreen: isWideScreen,
                             color: const Color(0xFF0F4A29).withOpacity(0.8),
                           ),
@@ -2266,212 +2317,6 @@ print("sB:$searchBarcode");
       },
     );
   }
-
-  Widget _buildMobileLayout() {
-    return Scaffold(
-        backgroundColor: Colors.grey[50],
-        body: SafeArea(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-
-              // // Header bleibt unverändert
-              // Container(
-              //   padding: const EdgeInsets.all(24),
-              //   decoration: BoxDecoration(
-              //     color: Colors.white,
-              //     boxShadow: [
-              //       BoxShadow(
-              //         color: Colors.black.withOpacity(0.05),
-              //         blurRadius: 10,
-              //         offset: const Offset(0, 2),
-              //       ),
-              //     ],
-              //   ),
-              //   child: Row(
-              //     children: [
-              //       getAdaptiveIcon(
-              //         iconName: 'inventory',
-              //         defaultIcon: Icons.inventory,
-              //         color: const Color(0xFF0F4A29),
-              //         size: 32,
-              //       ),
-              //       const SizedBox(width: 16),
-              //       Column(
-              //         crossAxisAlignment: CrossAxisAlignment.center,
-              //         children: [
-              //           const Text(
-              //             'Produktverwaltung',
-              //             style: TextStyle(
-              //               fontSize: 24,
-              //               fontWeight: FontWeight.bold,
-              //               color: Color(0xFF0F4A29),
-              //             ),
-              //           ),
-              //         ],
-              //       ),
-              //     ],
-              //   ),
-              // ),
-
-              // Content
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      // Produktion Card - bleibt wie sie war
-                      _buildMobileActionCard(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.grey[100]!,
-                            Colors.grey[200]!,
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderColor: const Color(0xFF0F4A29).withOpacity(0.3),
-                        contentColor: const Color(0xFF0F4A29),
-                        icon: getAdaptiveIcon(
-                          iconName: 'precision_manufacturing',
-                          defaultIcon: Icons.precision_manufacturing,
-                          color: const Color(0xFF0F4A29),
-                          size: 36,
-                        ),
-                        title: 'Produktion',
-                        subtitle: 'Produktion buchen / ändern',
-                        actions: [
-                          _buildActionChip(
-                            icon: Icons.search,
-                            iconName: 'search',
-                            label: 'Suchen',
-                            onTap: _showProductionDialog,
-                            width:100,  // Feste Breite
-                          ),
-                          _buildActionChip(
-                            icon: Icons.qr_code_scanner,
-                            iconName: 'qr_code_scanner',
-                            label: 'Scanner',
-                            onTap: _scanBarcode,
-                            width:100,  // Feste Breite
-                          ),
-                          _buildActionChip(
-                            icon: Icons.keyboard,
-                            iconName: 'keyboard',
-                            label: 'Eingabe',
-                            onTap: _showBarcodeInputDialog,
-                            width:100,  // Feste Breite
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Produkt Card - gleiche Farben wie Produktion
-                      _buildMobileActionCard(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.grey[100]!,
-                            Colors.grey[200]!,
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderColor: const Color(0xFF0F4A29).withOpacity(0.3),
-                        contentColor: const Color(0xFF0F4A29),
-                        icon: getAdaptiveIcon(
-                          iconName: 'inventory_2',
-                          defaultIcon: Icons.inventory_2,
-                          color: const Color(0xFF0F4A29),
-                          size: 36,
-                        ),
-                        title: 'Produkt',
-                        subtitle: 'Preis / Bestand bearbeiten',
-                        actions: [
-                          _buildActionChip(
-                            icon: Icons.edit,
-                            iconName: 'edit',
-                            label: 'Bearbeiten',
-                            onTap: _showEditBarcodeInputDialog,
-                            width:100,  // Feste Breite
-                          ),
-                          _buildActionChip(
-                            icon: Icons.add,
-                            iconName: 'add',
-                            label: 'Neu',
-
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => AddProductScreen(
-                                    editMode: false,
-                                    isProduction: true,
-                                  ),
-                                ),
-                              );
-                            },
-                            width:100,  // Feste Breite
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Rundholz Card - gleiche Farben wie die anderen
-                      _buildMobileActionCard(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.grey[100]!,
-                            Colors.grey[200]!,
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderColor: const Color(0xFF0F4A29).withOpacity(0.3),
-                        contentColor: const Color(0xFF0F4A29),
-                        icon: getAdaptiveIcon(
-                          iconName: 'forest',
-                          defaultIcon: Icons.forest,
-                          color: const Color(0xFF0F4A29),
-                          size: 36,
-                        ),
-                        title: 'Rundholz',
-                        subtitle: 'Rundholz verwalten',
-                        actions: [
-                          _buildActionChip(
-                            icon: Icons.add,
-                            iconName: 'add',
-                            label: 'Neu',
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const RoundwoodEntryScreen(),
-                                ),
-                              );
-                            },
-                            width:100,  // Feste Breite
-                          ),
-                          _buildActionChip(
-                            icon: Icons.edit,
-                            iconName: 'edit',
-                            label: 'Bearbeiten',
-                            onTap: _showRoundwoodListDialog,
-                            width:100,  // Feste Breite
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ));
-    }
-
-// Hilfsmethode für große Action Cards
   Widget _buildMobileActionCard({
     required Gradient gradient,
     required Widget icon,
@@ -2481,6 +2326,7 @@ print("sB:$searchBarcode");
     VoidCallback? onTap,
     Color? borderColor,
     Color contentColor = Colors.white,
+    Widget? customContent,  // ← NEU
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -2528,25 +2374,18 @@ print("sB:$searchBarcode");
                               color: contentColor,
                             ),
                           ),
-                          // const SizedBox(height: 4),
-                          // Text(
-                          //   subtitle,
-                          //   style: TextStyle(
-                          //     fontSize: 14,
-                          //     color: contentColor.withOpacity(0.7),
-                          //   ),
-                          // ),
                         ],
                       ),
                     ),
                   ],
                 ),
-                if (actions != null && actions.isNotEmpty) ...[
+                // ═══ Custom Content ODER Actions ═══
+                if (customContent != null) ...[
+                  const SizedBox(height: 16),
+                  customContent,
+                ] else if (actions != null && actions.isNotEmpty) ...[
                   const SizedBox(height: 20),
-                  Container(
-                    height: 1,
-                    color: contentColor.withOpacity(0.2),
-                  ),
+                  Container(height: 1, color: contentColor.withOpacity(0.2)),
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -2555,6 +2394,225 @@ print("sB:$searchBarcode");
                 ],
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVerwaltungTabCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF0F4A29).withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Tab Header
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.grey[50],
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: TabBar(
+              controller: _verwaltungTabController,
+              labelColor: const Color(0xFF0F4A29),
+              unselectedLabelColor: Colors.grey[600],
+              indicatorColor: const Color(0xFF0F4A29),
+              indicatorWeight: 3,
+              tabs: [
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      getAdaptiveIcon(iconName: 'inventory_2', defaultIcon: Icons.inventory_2, size: 18),
+                      const SizedBox(width: 8),
+                      const Text('Produkte'),
+                    ],
+                  ),
+                ),
+                Tab(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      getAdaptiveIcon(iconName: 'forest', defaultIcon: Icons.forest, size: 18),
+                      const SizedBox(width: 8),
+                      const Text('Rundholz'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Tab Content
+          AnimatedBuilder(
+            animation: _verwaltungTabController,
+            builder: (context, _) {
+              return IndexedStack(
+                index: _verwaltungTabController.index,
+                children: [
+                  // === TAB 1: Produkte ===
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _buildActionChip(
+                            icon: Icons.edit,
+                            iconName: 'edit',
+                            label: 'Bearbeiten',
+                            onTap: _showEditBarcodeInputDialog,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildActionChip(
+                            icon: Icons.add_circle,
+                            iconName: 'add_circle',
+                            label: 'Neu anlegen',
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => AddProductScreen(editMode: false, isProduction: true)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // === TAB 2: Rundholz ===
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _buildActionChip(
+                            icon: Icons.add_circle,
+                            iconName: 'add_circle',
+                            label: 'Neuer Stamm',
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const RoundwoodEntryScreen()),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildActionChip(
+                            icon: Icons.edit,
+                            iconName: 'edit',
+                            label: 'Bearbeiten',
+                            onTap: _showRoundwoodListDialog,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileLayout() {
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              // ═══════════════════════════════════════════════════════════
+              // PRODUKTION BUCHEN - 2x2 Grid
+              // ═══════════════════════════════════════════════════════════
+              _buildMobileActionCard(
+                gradient: LinearGradient(
+                  colors: [Colors.grey[100]!, Colors.grey[200]!],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderColor: const Color(0xFF0F4A29).withOpacity(0.3),
+                contentColor: const Color(0xFF0F4A29),
+                icon: getAdaptiveIcon(
+                  iconName: 'precision_manufacturing',
+                  defaultIcon: Icons.precision_manufacturing,
+                  color: const Color(0xFF0F4A29),
+                  size: 36,
+                ),
+                title: 'Produktion buchen',
+                subtitle: 'Direkt oder über Stamm',
+                actions: [], // Keine Actions hier, wir bauen custom content
+                customContent: Column(
+                  children: [
+                    // Erste Zeile
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildActionChip(
+                            icon: Icons.search,
+                            iconName: 'search',
+                            label: 'Suchen',
+                            onTap: _showProductionDialog,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildActionChip(
+                            icon: Icons.qr_code_scanner,
+                            iconName: 'qr_code_scanner',
+                            label: 'Scannen',
+                            onTap: _scanBarcode,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Zweite Zeile
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildActionChip(
+                            icon: Icons.dialpad,
+                            iconName: 'dialpad',
+                            label: 'Eingabe',
+                            onTap: _showBarcodeInputDialog,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildActionChip(
+                            icon: Icons.account_tree,
+                            iconName: 'account_tree',
+                            label: 'Über Stamm',
+                            onTap: _showStammAuswahlDialog,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // ═══════════════════════════════════════════════════════════
+              // VERWALTUNG - TabView
+              // ═══════════════════════════════════════════════════════════
+              _buildVerwaltungTabCard(),
+            ],
           ),
         ),
       ),
@@ -2573,7 +2631,7 @@ print("sB:$searchBarcode");
     final color = chipColor ?? const Color(0xFF0F4A29);
 
     return SizedBox(
-      width: width ?? 80, // Feste Breite für einheitliches Layout
+      width: width,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
@@ -2673,6 +2731,7 @@ print("sB:$searchBarcode");
   void dispose() {
     quantityController.dispose();
     barcodeController.dispose();
+    _verwaltungTabController.dispose();
     super.dispose();
   }
 }

@@ -4463,6 +4463,7 @@ return Scaffold(
     }
   }
   void _showPriceEditDialog(String basketItemId, Map<String, dynamic> itemData) {
+    bool densityLoaded = false;  // NEU
 
     String selectedFscStatus = itemData['fsc_status'] as String? ?? '-';
     // Sicheres Konvertieren von int oder double nach double
@@ -4511,14 +4512,25 @@ return Scaffold(
     bool hasThermalTreatment = itemData['has_thermal_treatment'] ?? false;
     // NEU: Controller für Volumen - mit Standard-Volumen initialisieren falls leer
     final volumeController = TextEditingController();
-    final densityController = TextEditingController();
-
+    final densityController = TextEditingController(
+        text: itemData['custom_density']?.toString() ?? ''
+    );
     final notesController= TextEditingController(
         text: itemData['notes'] ?? ''
     );
 
 
+    void calculateVolume() {
+      final length = double.tryParse(lengthController.text.replaceAll(',', '.')) ?? 0;
+      final width = double.tryParse(widthController.text.replaceAll(',', '.')) ?? 0;
+      final thickness = double.tryParse(thicknessController.text.replaceAll(',', '.')) ?? 0;
 
+      if (length > 0 && width > 0 && thickness > 0) {
+        // mm → m: durch 1000 teilen, dann L × B × D
+        final volume = (length / 1000) * (width / 1000) * (thickness / 1000);
+        volumeController.text = volume.toStringAsFixed(7);
+      }
+    }
     // Variable um zu verfolgen ob Standardwerte gesetzt wurden
     bool standardValuesLoaded = false;
 
@@ -5166,6 +5178,10 @@ return Scaffold(
                                           inputFormatters: [
                                             FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
                                           ],
+                                          onChanged: (_) {
+                                            calculateVolume();
+                                            setDialogState(() {});
+                                          },
                                         ),
                                       ),
                                       const SizedBox(width: 12),
@@ -5186,6 +5202,10 @@ return Scaffold(
                                           inputFormatters: [
                                             FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
                                           ],
+                                          onChanged: (_) {
+                                            calculateVolume();
+                                            setDialogState(() {});
+                                          },
                                         ),
                                       ),
                                     ],
@@ -5207,6 +5227,10 @@ return Scaffold(
                                     inputFormatters: [
                                       FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
                                     ],
+                                    onChanged: (_) {
+                                      calculateVolume();
+                                      setDialogState(() {});
+                                    },
                                   ),
             
                                   // Volumen-Feld mit Standard-Volumen
@@ -5230,16 +5254,28 @@ return Scaffold(
                                     inputFormatters: [
                                       FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,7}')),
                                     ],
+
                                   ),
                                   const SizedBox(height: 12),
                                   FutureBuilder<double?>(
                                     future: _getDensityForProduct(itemData),
                                     builder: (context, densitySnapshot) {
-                                      // Setze Dichte-Wert wenn verfügbar
-                                      if (densitySnapshot.hasData && densitySnapshot.data != null && densityController.text.isEmpty) {
+                                      // NUR setzen wenn: Daten da, noch nicht geladen, UND kein custom_density existiert
+                                      if (densitySnapshot.hasData &&
+                                          densitySnapshot.data != null &&
+                                          !densityLoaded &&
+                                          itemData['custom_density'] == null) {  // <-- NEU: prüfen ob custom_density existiert
                                         WidgetsBinding.instance.addPostFrameCallback((_) {
-                                          densityController.text = densitySnapshot.data!.toStringAsFixed(0);
+                                          if (!densityLoaded) {  // Doppelcheck
+                                            densityController.text = densitySnapshot.data!.toStringAsFixed(0);
+                                            densityLoaded = true;
+                                          }
                                         });
+                                      }
+
+                                      // Falls custom_density existiert, Flag auch setzen
+                                      if (itemData['custom_density'] != null) {
+                                        densityLoaded = true;
                                       }
 
                                       return Column(
@@ -5268,7 +5304,7 @@ return Scaffold(
                                               FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,0}')),
                                             ],
                                             onChanged: (value) {
-                                              setState(() {}); // Trigger rebuild für Gewichtsberechnung
+                                              setDialogState(() {});
                                             },
                                           ),
 
@@ -5469,9 +5505,13 @@ return Scaffold(
                                       updateData['has_thermal_treatment'] = false;
                                       updateData['thermal_treatment_temperature'] = FieldValue.delete();
                                       updateData['custom_tariff_number'] = FieldValue.delete();
+
+
+
+
+
                                     }
             
-                                    // Bei Dienstleistungen: Beschreibung aus Originaldaten wiederherstellen
                                     // Bei Dienstleistungen: Beschreibung aus Originaldaten wiederherstellen
                                     if (isService) {
                                       // Hole die Original-Dienstleistungsdaten aus Firebase
@@ -5592,8 +5632,17 @@ return Scaffold(
                                     updateData['custom_tariff_number'] = FieldValue.delete();
                                   }
 
+                                  // NEU: Dichte speichern
+                                  if (densityController.text.isNotEmpty) {
+                                    final density = double.tryParse(densityController.text.replaceAll(',', '.'));
+                                    if (density != null && density > 0) {
+                                      updateData['custom_density'] = density;
+                                    }
+                                  } else {
+                                    updateData['custom_density'] = FieldValue.delete();
+                                  }
             }
-            
+
             
             updateData['has_thermal_treatment'] = hasThermalTreatment;
             if (hasThermalTreatment && temperatureController.text.isNotEmpty) {

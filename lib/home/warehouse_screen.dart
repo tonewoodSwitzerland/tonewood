@@ -841,8 +841,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                           if (!data['sold'])
                             _buildDetailSection(
                               title: 'Preis',
-                              iconName: 'attach_money',
-                              icon: Icons.attach_money,
+                              iconName: 'money_bag',
+                              icon: Icons.savings,
                               content: StatefulBuilder(
                                 builder: (context, setInnerState) {
                                   final currentPrice = (data['price_CHF'] as num?)?.toInt() ?? 0;

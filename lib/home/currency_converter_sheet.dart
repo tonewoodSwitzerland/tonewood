@@ -571,8 +571,8 @@ class CurrencyConverterSheet {
                                     Row(
                                       children: [
                                         getAdaptiveIcon(
-                                          iconName: 'attach_money',
-                                          defaultIcon: Icons.attach_money,
+                                          iconName: 'money_bag',
+                                          defaultIcon: Icons.savings,
                                           color: Theme.of(context).colorScheme.primary,
                                           size: 24,
                                         ),

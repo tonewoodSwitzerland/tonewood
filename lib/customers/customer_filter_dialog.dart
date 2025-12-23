@@ -165,8 +165,8 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                       // Umsatz Filter
                       _buildFilterSection(
                         title: 'Umsatz (CHF)',
-                        icon: Icons.attach_money,
-                        iconName: 'attach_money',
+                        icon: Icons.savings,
+                        iconName: 'money_bag',
                         child: Column(
                           children: [
                             Row(

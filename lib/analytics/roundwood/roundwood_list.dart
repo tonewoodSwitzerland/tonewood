@@ -23,6 +23,7 @@ class RoundwoodList extends StatefulWidget {
   final RoundwoodService service;
   final bool isDesktopLayout;
   final bool showHeaderActions;
+  final Function(String id, Map<String, dynamic> data)? onItemSelected;  // ← NEU
 
   const RoundwoodList({
     Key? key,
@@ -31,6 +32,7 @@ class RoundwoodList extends StatefulWidget {
     required this.onFilterChanged,
     required this.service,
     required this.isDesktopLayout,
+    this.onItemSelected,
   }) : super(key: key);
 
   @override
@@ -140,7 +142,16 @@ class RoundwoodListState extends State<RoundwoodList> {
                         final item = RoundwoodItem.fromFirestore(sortedDocs[index]);
                         return RoundwoodListItem(
                           item: item,
-                          onTap: () => _showEditDialog(item),
+                          onTap: () {
+                            if (widget.onItemSelected != null) {
+                              // Wenn Callback gesetzt, rufe ihn auf (für Stamm-Auswahl)
+                              widget.onItemSelected!(sortedDocs[index].id, sortedDocs[index].data() as Map<String, dynamic>);
+                            } else {
+                              // Sonst normaler Edit-Dialog
+                              _showEditDialog(item);
+                            }
+                          },
+
                           isDesktopLayout: widget.isDesktopLayout,
                         );
                       },

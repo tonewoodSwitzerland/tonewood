@@ -429,8 +429,8 @@ class ProductionBatches extends StatelessWidget {
                                   symbol: 'CHF',
                                   decimalDigits: 2
                               ).format(batch['price_CHF']),
-                              Icons.attach_money,
-                              'attach_money'
+                              Icons.savings,
+                              'money_bag'
                             ),
                             _buildDetailRow(
                               'Gesamtwert',

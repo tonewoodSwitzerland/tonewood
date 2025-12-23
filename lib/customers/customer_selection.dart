@@ -133,6 +133,7 @@ class CustomerSelectionSheet {
     bool _showHouseNumber = currentCustomer.houseNumber.isNotEmpty; // NEU
 
     bool _showShippingFirstName = (currentCustomer.shippingFirstName ?? '').isNotEmpty;
+    bool _showGroupError = false;
 
     final customFieldTitleController = TextEditingController(text: currentCustomer.customFieldTitle);
     final customFieldValueController = TextEditingController(text: currentCustomer.customFieldValue);
@@ -1601,9 +1602,10 @@ class CustomerSelectionSheet {
                             const SizedBox(height: 16),
 
 // Kundengruppen
+                            // Kundengruppen
                             buildSectionCard(
                               context,
-                              title: 'Kundengruppen',
+                              title: 'Kundengruppen *',  // Stern hinzufügen
                               icon: 'group',
                               defaultIcon: Icons.group,
                               iconColor: Colors.teal,
@@ -1616,19 +1618,19 @@ class CustomerSelectionSheet {
                                     onChanged: (ids) {
                                       setState(() {
                                         _selectedGroupIds = ids;
+                                        if (ids.isNotEmpty) _showGroupError = false;
                                       });
                                     },
                                     showLabel: false,
                                   ),
-                                  if (_selectedGroupIds.isEmpty)
+                                  if (_selectedGroupIds.isEmpty && _showGroupError)
                                     Padding(
                                       padding: const EdgeInsets.only(top: 8),
                                       child: Text(
-                                        'Keine Kundengruppe ausgewählt',
+                                        'Bitte mindestens eine Kundengruppe auswählen',
                                         style: TextStyle(
                                           fontSize: 12,
-                                          fontStyle: FontStyle.italic,
-                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                          color: Theme.of(context).colorScheme.error,  // Rot statt neutral
                                         ),
                                       ),
                                     ),
@@ -1664,6 +1666,17 @@ class CustomerSelectionSheet {
                                         flex: 2,
                                         child: ElevatedButton.icon(
                                           onPressed: () async {
+
+                                            // Kundengruppen-Validierung
+                                            if (_selectedGroupIds.isEmpty) {
+                                              setState(() {
+                                                _showGroupError = true;
+                                              });
+                                              return;  // Abbrechen
+                                            }
+
+
+
                                             if (formKey.currentState?.validate() == true) {
                                               try {
                                                 final updatedCustomer = Customer(
@@ -1852,6 +1865,7 @@ class CustomerSelectionSheet {
     bool _showFirstName = false;
     bool _showHouseNumber = false; // NEU
     bool _showShippingFirstName = false;
+    bool _showGroupError = false;
 
     final customFieldTitleController = TextEditingController();
     final customFieldValueController = TextEditingController();
@@ -3283,9 +3297,10 @@ class CustomerSelectionSheet {
       const SizedBox(height: 16),
 
 // Kundengruppen
+      // Kundengruppen
       buildSectionCard(
         context,
-        title: 'Kundengruppen',
+        title: 'Kundengruppen *',  // Stern hinzufügen
         icon: 'group',
         defaultIcon: Icons.group,
         iconColor: Colors.teal,
@@ -3298,19 +3313,19 @@ class CustomerSelectionSheet {
               onChanged: (ids) {
                 setState(() {
                   _selectedGroupIds = ids;
+                  if (ids.isNotEmpty) _showGroupError = false;
                 });
               },
               showLabel: false,
             ),
-            if (_selectedGroupIds.isEmpty)
+            if (_selectedGroupIds.isEmpty && _showGroupError)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'Keine Kundengruppe ausgewählt (optional)',
+                  'Bitte mindestens eine Kundengruppe auswählen',
                   style: TextStyle(
                     fontSize: 12,
-                    fontStyle: FontStyle.italic,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    color: Theme.of(context).colorScheme.error,  // Rot statt neutral
                   ),
                 ),
               ),
@@ -3345,6 +3360,19 @@ class CustomerSelectionSheet {
                   flex: 2,
                   child: ElevatedButton.icon(
                     onPressed: () async {
+                      // Kundengruppen-Validierung
+                      if (_selectedGroupIds.isEmpty) {
+                        setState(() {
+                          _showGroupError = true;
+                        });
+                        return;  // Abbrechen
+                      }
+
+
+
+
+
+
                       if (formKey.currentState?.validate() == true) {
                         try {
                           print("streetcontr:${streetController.text.trim()},");
@@ -3579,6 +3607,8 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
   List<DocumentSnapshot> _customerDocs = [];
   bool _isLoading = false;
   bool _hasMore = true;
+
+
   final int _limit = 10;
   final ScrollController _scrollController = ScrollController();
   Timer? _debounce;

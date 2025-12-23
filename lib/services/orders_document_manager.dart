@@ -554,6 +554,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
           'weight_per_unit': (item['weight'] as num?)?.toDouble() ?? 0.0,
           'volume_per_unit': (item['volume_per_unit'] as num?)?.toDouble() ?? 0.0,
           'density': (item['density'] as num?)?.toDouble() ?? 0.0,
+          'custom_density': (item['custom_density'] as num?)?.toDouble(),
           'custom_length': (item['custom_length'] as num?)?.toDouble() ?? 0.0,
           'custom_width': (item['custom_width'] as num?)?.toDouble() ?? 0.0,
           'custom_thickness': (item['custom_thickness'] as num?)?.toDouble() ?? 0.0,
@@ -1177,9 +1178,11 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
   Future<void> _showCommercialInvoiceSettings() async {
     final settings = Map<String, dynamic>.from(_settings['commercial_invoice']);
 
+
     // NEU: Berechne Verpackungsgewicht aus Packliste
     double totalPackagingWeight = 0.0;
     int numberOfPackages = 0;
+    double manualPackagingWeight = settings['packaging_weight']?.toDouble() ?? 0.0;
 
     try {
       final packingListDoc = await FirebaseFirestore.instance
@@ -1416,36 +1419,37 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
 
                         const SizedBox(height: 16),
 
-                        // Verpackungsgewicht (nur Anzeige!)
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                        // Verpackungsgewicht - editierbar wenn NICHT aus Packliste
+                        if (numberOfPackages > 0) ...[
+                          // Nur Anzeige wenn aus Packliste
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
                             ),
-                            borderRadius: BorderRadius.circular(8),
-                            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
-                          ),
-                          child: Row(
-                            children: [
-                              getAdaptiveIcon(iconName: 'scale',defaultIcon:Icons.scale),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Verpackungsgewicht (kg)',
-                                      style: TextStyle(fontSize: 12),
-                                    ),
-                                    Text(
-                                      totalPackagingWeight.toStringAsFixed(2),
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
+                            child: Row(
+                              children: [
+                                getAdaptiveIcon(iconName: 'scale', defaultIcon: Icons.scale),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Verpackungsgewicht (kg)',
+                                        style: TextStyle(fontSize: 12),
                                       ),
-                                    ),
-                                    if (numberOfPackages > 0)
+                                      Text(
+                                        totalPackagingWeight.toStringAsFixed(2),
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
                                       Text(
                                         'Summe aller Pakete aus Packliste',
                                         style: TextStyle(
@@ -1453,13 +1457,40 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         ),
                                       ),
-                                  ],
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else ...[
+                          // Editierbares Feld wenn KEINE Packliste
+                          TextField(
+                            controller: TextEditingController(
+                              text: (settings['packaging_weight'] ?? 0.0).toString(),
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: InputDecoration(
+                              labelText: 'Verpackungsgewicht (kg)',
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: getAdaptiveIcon(
+                                  iconName: 'scale',
+                                  defaultIcon: Icons.scale,
                                 ),
                               ),
-                            ],
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              helperText: 'Gesamtgewicht der Verpackung in kg',
+                            ),
+                            onChanged: (value) {
+                              setModalState(() {
+                                settings['packaging_weight'] = double.tryParse(value) ?? 0.0;
+                              });
+                            },
                           ),
-                        ),
-
+                        ],
                         const SizedBox(height: 24),
 
                         // Datum der Handelsrechnung
@@ -1529,11 +1560,22 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                         const SizedBox(height: 8),
 
 // NEU: Checkbox für Übernahme als Lieferdatum
+                        // NEU: Checkbox für Übernahme als Lieferdatum
                         CheckboxListTile(
                           title: const Text('Als Lieferdatum übernehmen'),
-                          subtitle: const Text(
-                            'wird im Lieferschein als Lieferdatum verwendet',
-                            style: TextStyle(fontSize: 11),
+                          subtitle: Text(
+                            useAsDeliveryDate && commercialInvoiceDate != null
+                                ? 'Lieferdatum: ${DateFormat('dd.MM.yyyy').format(commercialInvoiceDate!)}'
+                                : 'wird im Lieferschein als Lieferdatum verwendet',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: useAsDeliveryDate && commercialInvoiceDate != null
+                                  ? Colors.green[700]
+                                  : null,
+                              fontWeight: useAsDeliveryDate && commercialInvoiceDate != null
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
                           ),
                           value: useAsDeliveryDate,
                           onChanged: (value) {
@@ -1547,9 +1589,12 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             iconName: 'local_shipping',
                             defaultIcon: Icons.local_shipping,
                             size: 20,
-                            color: Theme.of(context).colorScheme.primary,
+                            color: useAsDeliveryDate && commercialInvoiceDate != null
+                                ? Colors.green[700]
+                                : Theme.of(context).colorScheme.primary,
                           ),
                         ),
+
 
                         const SizedBox(height: 24),
 
@@ -1626,6 +1671,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           ),
                         const SizedBox(height: 16),
 
+
                         // Standardsätze
                         Text(
                           'Standardsätze',
@@ -1635,7 +1681,66 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             color: Theme.of(context).colorScheme.primary,
                           ),
                         ),
+
                         const SizedBox(height: 16),
+
+// NEU: Alle auswählen / Alle abwählen
+                        Row(
+                          children: [
+                            TextButton.icon(
+                              onPressed: () {
+                                setModalState(() {
+                                  settings['origin_declaration'] = true;
+                                  settings['cites'] = true;
+                                  settings['export_reason'] = true;
+                                  settings['incoterms'] = true;
+                                  settings['delivery_date'] = true;
+                                  settings['carrier'] = true;
+                                  settings['signature'] = true;
+                                  // Setze Standard-Signatur wenn aktiviert
+                                  selectedSignature ??= 'x4i6s1FMleIE0bdg0Ujv';
+                                  settings['selected_signature'] = selectedSignature;
+                                });
+                              },
+                              icon: getAdaptiveIcon(
+                                iconName: 'select_all',
+                                defaultIcon: Icons.select_all,
+                                size: 20,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              label: const Text('Alle auswählen'),
+                            ),
+                            const SizedBox(width: 8),
+                            TextButton.icon(
+                              onPressed: () {
+                                setModalState(() {
+                                  settings['origin_declaration'] = false;
+                                  settings['cites'] = false;
+                                  settings['export_reason'] = false;
+                                  settings['incoterms'] = false;
+                                  settings['delivery_date'] = false;
+                                  settings['carrier'] = false;
+                                  settings['signature'] = false;
+                                  selectedIncoterms.clear();
+                                  incotermsFreeTexts.clear();
+                                  selectedDeliveryDate = null;
+                                  settings['delivery_date_value'] = null;
+                                  selectedSignature = null;
+                                  settings['selected_signature'] = null;
+                                });
+                              },
+                              icon: getAdaptiveIcon(
+                                iconName: 'deselect',
+                                defaultIcon: Icons.deselect,
+                                size: 20,
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
+                              label: const Text('Alle abwählen'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+
 
                         // Ursprungserklärung - mit Info-Icon
                         Row(
@@ -2002,14 +2107,28 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           ),
                         ],
 
-                        // Lieferdatum - NEU: Mit Datumspicker
+                        // Lieferdatum - Automatisch von oben übernommen wenn useAsDeliveryDate aktiv
                         CheckboxListTile(
-                          title: const Text('Lieferdatum'),
-                          subtitle: selectedDeliveryDate != null
-                              ? Text(deliveryDateMonthOnly
-                              ? '${['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][selectedDeliveryDate!.month - 1]} ${selectedDeliveryDate!.year}'
-                              : DateFormat('dd.MM.yyyy').format(selectedDeliveryDate!))
-                              : null,
+                          title: const Text('Lieferdatum auf Handelsrechnung'),
+                          subtitle: Text(
+                            settings['delivery_date'] == true
+                                ? (useAsDeliveryDate && commercialInvoiceDate != null
+                                ? (deliveryDateMonthOnly
+                                ? '${['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][commercialInvoiceDate!.month - 1]} ${commercialInvoiceDate!.year}'
+                                : DateFormat('dd.MM.yyyy').format(commercialInvoiceDate!))
+                                : (selectedDeliveryDate != null
+                                ? (deliveryDateMonthOnly
+                                ? '${['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][selectedDeliveryDate!.month - 1]} ${selectedDeliveryDate!.year}'
+                                : DateFormat('dd.MM.yyyy').format(selectedDeliveryDate!))
+                                : 'Datum auswählen'))
+                                : 'Lieferdatum auf der Handelsrechnung anzeigen',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: settings['delivery_date'] == true && (useAsDeliveryDate && commercialInvoiceDate != null || selectedDeliveryDate != null)
+                                  ? Colors.green[700]
+                                  : null,
+                            ),
+                          ),
                           value: settings['delivery_date'] ?? false,
                           onChanged: (value) {
                             setModalState(() {
@@ -2017,40 +2136,81 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                               if (!(settings['delivery_date'] ?? false)) {
                                 selectedDeliveryDate = null;
                                 settings['delivery_date_value'] = null;
+                              } else if (useAsDeliveryDate && commercialInvoiceDate != null) {
+                                // Übernimm automatisch das Handelsrechnungsdatum
+                                selectedDeliveryDate = commercialInvoiceDate;
+                                settings['delivery_date_value'] = commercialInvoiceDate;
                               }
                             });
                           },
                         ),
                         if (settings['delivery_date'] ?? false) ...[
-                          Padding(
-                            padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () async {
-                                      final date = await showDatePicker(
-                                        context: context,
-                                        initialDate: selectedDeliveryDate ?? DateTime.now(),
-                                        firstDate: DateTime(2020),
-                                        lastDate: DateTime(2030),
-                                      );
-                                      if (date != null) {
-                                        setModalState(() {
-                                          selectedDeliveryDate = date;
-                                          settings['delivery_date_value'] = date;
-                                        });
-                                      }
-                                    },
-                                    icon: getAdaptiveIcon(iconName: 'calendar_today',defaultIcon:Icons.calendar_today),
-                                    label: Text(selectedDeliveryDate != null
-                                        ? DateFormat('dd.MM.yyyy').format(selectedDeliveryDate!)
-                                        : 'Datum auswählen'),
-                                  ),
+                          // Info wenn Datum von oben übernommen wird
+                          if (useAsDeliveryDate && commercialInvoiceDate != null)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: Colors.green.withOpacity(0.3)),
                                 ),
-                              ],
+                                child: Row(
+                                  children: [
+                                    getAdaptiveIcon(
+                                      iconName: 'link',
+                                      defaultIcon: Icons.link,
+                                      size: 16,
+                                      color: Colors.green[700],
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Wird automatisch vom Handelsrechnungsdatum übernommen',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.green[700],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          else ...[
+                            // Manueller Datepicker nur wenn NICHT von oben übernommen
+                            Padding(
+                              padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: () async {
+                                        final date = await showDatePicker(
+                                          context: context,
+                                          initialDate: selectedDeliveryDate ?? DateTime.now(),
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime(2030),
+                                        );
+                                        if (date != null) {
+                                          setModalState(() {
+                                            selectedDeliveryDate = date;
+                                            settings['delivery_date_value'] = date;
+                                          });
+                                        }
+                                      },
+                                      icon: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
+                                      label: Text(selectedDeliveryDate != null
+                                          ? DateFormat('dd.MM.yyyy').format(selectedDeliveryDate!)
+                                          : 'Datum auswählen'),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
+                          ],
+                          // Format-Toggle immer anzeigen
                           Padding(
                             padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
                             child: Row(
@@ -2082,7 +2242,6 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             ),
                           ),
                         ],
-
                         // Carrier mit Textfeld
                         CheckboxListTile(
                           title: const Text('Transporteur'),
@@ -2112,13 +2271,18 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           ),
 
                         // Signatur - NEU: Mit Dropdown
+                        // Signatur - NEU: Mit Dropdown und automatischer Vorauswahl
                         CheckboxListTile(
                           title: const Text('Signatur'),
                           value: settings['signature'] ?? false,
                           onChanged: (value) {
                             setModalState(() {
                               settings['signature'] = value ?? false;
-                              if (!(settings['signature'] ?? false)) {
+                              if (settings['signature'] == true) {
+                                // Automatische Vorauswahl wenn aktiviert
+                                selectedSignature ??= 'x4i6s1FMleIE0bdg0Ujv';
+                                settings['selected_signature'] = selectedSignature;
+                              } else {
                                 selectedSignature = null;
                                 settings['selected_signature'] = null;
                               }
@@ -2190,6 +2354,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                       .doc('tara_settings')
                                       .set({
                                     'number_of_packages': numberOfPackages > 0 ? numberOfPackages : settings['number_of_packages'],
+                                    'packaging_weight': numberOfPackages > 0 ? totalPackagingWeight : (settings['packaging_weight'] ?? 0.0),
                                     'commercial_invoice_date': commercialInvoiceDate != null
                                         ? Timestamp.fromDate(commercialInvoiceDate!)
                                         : null,
@@ -2257,6 +2422,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
 
   Future<void> _showPackingListSettings() async {
     // Kopiere bestehende Packages oder erstelle neue
+    // Kopiere bestehende Packages oder erstelle neue
     List<Map<String, dynamic>> packages = [];
 
     try {
@@ -2276,7 +2442,49 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
       print('Fehler beim Laden der Packlisten-Einstellungen: $e');
     }
 
-    // Falls noch keine Pakete existieren, erstelle Paket 1
+// NEU: Aktualisiere die Maße in bestehenden Paketen mit aktuellen Werten aus der Order
+    for (final package in packages) {
+      final packageItems = package['items'] as List<dynamic>? ?? [];
+      for (int i = 0; i < packageItems.length; i++) {
+        final assignedItem = packageItems[i] as Map<String, dynamic>;
+        final productId = assignedItem['product_id'];
+
+        // Finde das aktuelle Item in der Order
+        final currentItem = widget.order.items.firstWhere(
+              (item) => item['product_id'] == productId,
+          orElse: () => <String, dynamic>{},
+        );
+
+        if (currentItem.isNotEmpty) {
+          // Aktualisiere die Maße mit den aktuellen Werten
+          packageItems[i] = {
+            ...assignedItem,
+            'custom_length': (currentItem['custom_length'] as num?)?.toDouble() ?? 0.0,
+            'custom_width': (currentItem['custom_width'] as num?)?.toDouble() ?? 0.0,
+            'custom_thickness': (currentItem['custom_thickness'] as num?)?.toDouble() ?? 0.0,
+            'density': (currentItem['density'] as num?)?.toDouble() ?? 0.0,
+            'custom_density': (currentItem['custom_density'] as num?)?.toDouble(),
+            'volume_per_unit': (currentItem['volume_per_unit'] as num?)?.toDouble() ?? 0.0,
+            'weight_per_unit': (currentItem['weight'] as num?)?.toDouble() ?? 0.0,
+            'product_name': currentItem['product_name'] ?? assignedItem['product_name'],
+            'product_name_en': currentItem['product_name_en'] ?? assignedItem['product_name_en'],
+            'wood_code': currentItem['wood_code'] ?? assignedItem['wood_code'],
+            'wood_name': currentItem['wood_name'] ?? assignedItem['wood_name'],
+            'unit': currentItem['unit'] ?? assignedItem['unit'],
+            'instrument_code': currentItem['instrument_code'] ?? assignedItem['instrument_code'],
+            'instrument_name': currentItem['instrument_name'] ?? assignedItem['instrument_name'],
+            'part_code': currentItem['part_code'] ?? assignedItem['part_code'],
+            'part_name': currentItem['part_name'] ?? assignedItem['part_name'],
+            'quality_code': currentItem['quality_code'] ?? assignedItem['quality_code'],
+            'quality_name': currentItem['quality_name'] ?? assignedItem['quality_name'],
+          };
+
+          print('Aktualisiert: ${currentItem['product_name']} - ${currentItem['custom_length']}×${currentItem['custom_width']}×${currentItem['custom_thickness']}');
+        }
+      }
+    }
+
+// Falls noch keine Pakete existieren, erstelle Paket 1
     if (packages.isEmpty) {
       final firstPackageId = DateTime.now().millisecondsSinceEpoch.toString(); // NEU: Eindeutige ID
       packages.add({
@@ -3115,8 +3323,9 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
             }
           }
 
-          final density = (item['density'] as num?)?.toDouble() ?? 0.0;
-          final weightPerPiece = volumePerPiece * density;
+          final density = (item['custom_density'] as num?)?.toDouble()
+              ?? (item['density'] as num?)?.toDouble()
+              ?? 0.0; final weightPerPiece = volumePerPiece * density;
           netWeight += weightPerPiece * quantity;
         }
       }
@@ -3522,15 +3731,15 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                             if (grossWeight != null && grossWeight > 0) {
                               setModalState(() {
                                 package['gross_weight'] = grossWeight;
-                                // Tara = Brutto - Netto
+                                // Tara = Brutto - Netto (auf 3 Nachkommastellen begrenzt)
                                 final netWeight = calculateNetWeight();
                                 final calculatedTara = grossWeight - netWeight;
-                                package['tare_weight'] = calculatedTara > 0 ? calculatedTara : 0.0;
-                                weightController.text = package['tare_weight'].toStringAsFixed(2);
+                                final roundedTara = double.parse((calculatedTara > 0 ? calculatedTara : 0.0).toStringAsFixed(3));
+                                package['tare_weight'] = roundedTara;
+                                weightController.text = roundedTara.toStringAsFixed(2);
                               });
                             }
-                          },
-                        ),
+                          },    ),
                       ),
                       if (package['gross_weight'] != null) ...[
                         const SizedBox(height: 4),
@@ -3806,6 +4015,7 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                     'weight_per_unit': (item['weight'] as num?)?.toDouble() ?? 0.0,
                     'volume_per_unit': (item['volume_per_unit'] as num?)?.toDouble() ?? 0.0,
                     'density': (item['density'] as num?)?.toDouble() ?? 0.0,
+                    'custom_density': (item['custom_density'] as num?)?.toDouble(),
                     'custom_length': (item['custom_length'] as num?)?.toDouble() ?? 0.0,
                     'custom_width': (item['custom_width'] as num?)?.toDouble() ?? 0.0,
                     'custom_thickness': (item['custom_thickness'] as num?)?.toDouble() ?? 0.0,
