@@ -318,9 +318,7 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
             TextFormField(
               controller: _originalNumberController,
               decoration: _getInputDecoration(labelText: 'Original Stammnummer', icon: Icons.tag),
-              maxLength: 5,
-              validator: (v) => v?.isEmpty ?? true ? 'Pflichtfeld' : null,
-            ),
+              ),
             const SizedBox(height: 16),
 
             // 4. Farbe/Spray

@@ -1323,14 +1323,25 @@ print("sB:$searchBarcode");
                       color: const Color(0xFF0F4A29),
                     ),
                   ),
-                  SizedBox(width: isWide ? 48 : 24),
+                  SizedBox(width: isWide ? 24 : 12),
+                  // NEU: Scannen Button
+                  Expanded(
+                    child: _buildOptionButton(
+                      icon: getAdaptiveIcon(iconName: 'qr_code_scanner', defaultIcon: Icons.qr_code_scanner, color: Colors.white),
+                      label: 'Scannen',
+                      onPressed: _scanBarcodeForEdit,
+                      isWideScreen: isWide,
+                      color: const Color(0xFF0F4A29).withOpacity(0.85),
+                    ),
+                  ),
+                  SizedBox(width: isWide ? 24 : 12),
                   Expanded(
                     child: _buildOptionButton(
                       icon: getAdaptiveIcon(iconName: 'add_circle', defaultIcon: Icons.add_circle, color: Colors.white),
                       label: 'Neu anlegen',
                       onPressed: () => setState(() => selectedAction = 'neu'),
                       isWideScreen: isWide,
-                      color: const Color(0xFF0F4A29).withOpacity(0.8),
+                      color: const Color(0xFF0F4A29).withOpacity(0.7),
                     ),
                   ),
                 ],
@@ -2462,63 +2473,106 @@ print("sB:$searchBarcode");
                 index: _verwaltungTabController.index,
                 children: [
                   // === TAB 1: Produkte ===
+                  // === TAB 1: Produkte ===
                   Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Row(
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: _buildActionChip(
-                            icon: Icons.edit,
-                            iconName: 'edit',
-                            label: 'Bearbeiten',
-                            onTap: _showEditBarcodeInputDialog,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildActionChip(
-                            icon: Icons.add_circle,
-                            iconName: 'add_circle',
-                            label: 'Neu anlegen',
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => AddProductScreen(editMode: false, isProduction: true)),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildActionChip(
+                                icon: Icons.edit,
+                                iconName: 'edit',
+                                label: 'Bearbeiten',
+                                onTap: _showEditBarcodeInputDialog,
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            // NEU: Scannen Chip
+                            Expanded(
+                              child: _buildActionChip(
+                                icon: Icons.qr_code_scanner,
+                                iconName: 'qr_code_scanner',
+                                label: 'Scannen',
+                                onTap: _scanBarcodeForEdit,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildActionChip(
+                                icon: Icons.add_circle,
+                                iconName: 'add_circle',
+                                label: 'Neu anlegen',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => AddProductScreen(editMode: false, isProduction: true)),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // Platzhalter für symmetrisches Layout
+                            const Expanded(child: SizedBox()),
+                          ],
                         ),
                       ],
                     ),
                   ),
-
                   // === TAB 2: Rundholz ===
                   Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Row(
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: _buildActionChip(
-                            icon: Icons.add_circle,
-                            iconName: 'add_circle',
-                            label: 'Neuer Stamm',
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const RoundwoodEntryScreen()),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildActionChip(
+                                icon: Icons.add_circle,
+                                iconName: 'add_circle',
+                                label: 'Neuer Stamm',
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const RoundwoodEntryScreen()),
+                                ),
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildActionChip(
+                                icon: Icons.edit,
+                                iconName: 'edit',
+                                label: 'Bearbeiten',
+                                onTap: _showRoundwoodListDialog,
+                              ),
+                            ),
+
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildActionChip(
-                            icon: Icons.edit,
-                            iconName: 'edit',
-                            label: 'Bearbeiten',
-                            onTap: _showRoundwoodListDialog,
-                          ),
+                        SizedBox(height: 8),
+                        Row(
+                          children: [
+
+                            Expanded(
+                              child: _buildActionChip(
+                                icon: Icons.lock,
+                                iconName: 'lock',
+                                label: 'Abschließen',
+                                onTap: _showStammAbschliessenDialog,
+                              ),
+
+                            ),
+                            const SizedBox(width: 8),
+
+                            Expanded(child: SizedBox(width: 8,)),
+                            ],
                         ),
                       ],
                     ),
-                  ),
-                ],
+                  ),   ],
               );
             },
           ),
@@ -2526,7 +2580,175 @@ print("sB:$searchBarcode");
       ),
     );
   }
+  void _showStammAbschliessenDialog() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.9,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
+            children: [
+              // Drag Handle
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // Header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Colors.grey[200]!, width: 1)),
+                ),
+                child: Row(
+                  children: [
+                    getAdaptiveIcon(
+                      iconName: 'lock',
+                      defaultIcon: Icons.lock,
+                      color: Colors.orange[700],
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Stamm abschließen',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F4A29),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                      color: Colors.grey[600],
+                    ),
+                  ],
+                ),
+              ),
+              // Info
+              Container(
+                margin: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange[200]!),
+                ),
+                child: Row(
+                  children: [
+                    getAdaptiveIcon(
+                      iconName: 'info',
+                      defaultIcon: Icons.info_outline,
+                      color: Colors.orange[700],
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Wähle einen Stamm zum Abschließen. Abgeschlossene Stämme werden bei der Buchung ausgeblendet.',
+                        style: TextStyle(fontSize: 13, color: Colors.orange[900]),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // RoundwoodList - nur offene Stämme
+              Expanded(
+                child: RoundwoodList(
+                  showHeaderActions: false,
+                  filter: RoundwoodFilter(showClosed: false),
+                  onFilterChanged: (filter) {},
+                  service: RoundwoodService(),
+                  isDesktopLayout: false,
+                  onItemSelected: (stammId, stammData) {
+                    Navigator.pop(context);
+                    _confirmCloseStamm(stammId, stammData);
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
+  void _confirmCloseStamm(String stammId, Map<String, dynamic> stammData) {
+    final stammNr = stammData['internal_number'] ?? '?';
+    final stammJahr = stammData['year'] ?? '?';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            getAdaptiveIcon(
+              iconName: 'lock',
+              defaultIcon: Icons.lock,
+              color: Colors.orange[700],
+            ),
+            const SizedBox(width: 8),
+            const Text('Stamm abschließen?'),
+          ],
+        ),
+        content: Text(
+          'Möchtest du den Stamm $stammNr/$stammJahr wirklich abschließen?\n\nDer Stamm wird bei der Buchung ausgeblendet, kann aber weiterhin eingesehen werden.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _closeStamm(stammId, stammData);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange[700],
+            ),
+            child: const Text('Abschließen', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _closeStamm(String stammId, Map<String, dynamic> stammData) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('roundwood')
+          .doc(stammId)
+          .update({
+        'is_closed': true,
+        'closed_at': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      AppToast.show(
+        message: 'Stamm ${stammData['internal_number']}/${stammData['year']} abgeschlossen',
+        height: h,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      AppToast.show(message: 'Fehler: $e', height: h);
+    }
+  }
   Widget _buildMobileLayout() {
     return Scaffold(
       backgroundColor: Colors.grey[50],

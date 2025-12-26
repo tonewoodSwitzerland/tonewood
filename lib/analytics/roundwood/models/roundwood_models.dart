@@ -20,6 +20,7 @@ class RoundwoodItem {
   final DateTime? cuttingDate;
   final List<String> purposes; // VEREINFACHT: direkte Liste der Verwendungszwecke
   final String? otherPurpose; // NEU: "andere" Freitext
+  final bool isClosed; // NEU
 
   RoundwoodItem({
     required this.id,
@@ -41,6 +42,7 @@ class RoundwoodItem {
     this.cuttingDate,
     required this.purposes,
     this.otherPurpose,
+    required this.isClosed, // NEU
   });
 
   factory RoundwoodItem.fromFirestore(DocumentSnapshot doc) {
@@ -94,6 +96,7 @@ class RoundwoodItem {
           : null,
       purposes: purposes,
       otherPurpose: otherPurpose,
+        isClosed: data['is_closed'] ?? false,
     );
   }
 
@@ -145,6 +148,7 @@ class RoundwoodFilter {
   final DateTime? startDate;
   final DateTime? endDate;
   final String? timeRange;
+  final bool? showClosed; // NEU: null = alle, false = nur offene, true = nur geschlossene
 
   RoundwoodFilter({
     this.woodTypes,
@@ -159,6 +163,7 @@ class RoundwoodFilter {
     this.startDate,
     this.endDate,
     this.timeRange,
+    this.showClosed,
   });
 
   Map<String, dynamic> toMap() {
@@ -175,6 +180,7 @@ class RoundwoodFilter {
       if (startDate != null) 'start_date': startDate,
       if (endDate != null) 'end_date': endDate,
       if (timeRange != null) 'time_range': timeRange,
+      if (showClosed != null) 'show_closed': showClosed,
     };
   }
 
@@ -191,6 +197,7 @@ class RoundwoodFilter {
     DateTime? startDate,
     DateTime? endDate,
     String? timeRange,
+    bool? showClosed,  // ← NEU
     bool clearWoodTypes = false,
     bool clearQualities = false,
     bool clearPurposes = false,
@@ -200,6 +207,7 @@ class RoundwoodFilter {
     bool clearFSC = false,
     bool clearYear = false,
     bool clearDates = false,
+  bool clearShowClosed = false,
   }) {
     return RoundwoodFilter(
       woodTypes: clearWoodTypes ? null : (woodTypes ?? this.woodTypes),
@@ -214,6 +222,7 @@ class RoundwoodFilter {
       startDate: clearDates ? null : (startDate ?? this.startDate),
       endDate: clearDates ? null : (endDate ?? this.endDate),
       timeRange: clearDates ? null : (timeRange ?? this.timeRange),
+      showClosed: clearShowClosed ? null : (showClosed ?? this.showClosed),
     );
   }
 }

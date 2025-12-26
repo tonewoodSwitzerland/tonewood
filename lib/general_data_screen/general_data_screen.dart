@@ -257,6 +257,45 @@ class GeneralDataScreenState extends State<GeneralDataScreen> {
                           ),
                         ],
                       ),
+
+                      TableRow(
+                        children: [
+                          TableCell(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: Text(
+                                'HH',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                          TableCell(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: Text('Holzart - 10 (Fichte)'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      TableRow(
+                        children: [
+                          TableCell(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: Text(
+                                'QQ',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                          TableCell(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: Text('Qualität - 11 (AAAA)'),
+                            ),
+                          ),
+                        ],
+                      ),
                       TableRow(
                         children: [
                           TableCell(
@@ -375,7 +414,7 @@ class GeneralDataScreenState extends State<GeneralDataScreen> {
                     ],
                   ),
                   SizedBox(height: 24),
-                  _buildBarcodeExample('1813.1022.1100.24.0001', 'Beispiel eines Produktions-Barcodes'),
+                  _buildBarcodeExample('1813.1011.1100.24.0001', 'Beispiel eines Produktions-Barcodes'),
                 ],
               ),
             ),

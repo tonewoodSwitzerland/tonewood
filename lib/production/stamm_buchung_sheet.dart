@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../constants.dart';
+import '../home/add_product_screen.dart';
 import '../services/icon_helper.dart';
 
 /// Sheet/Dialog für die Produktionsbuchung über einen ausgewählten Stamm
@@ -97,6 +98,11 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
 
   // Menge
   final TextEditingController _mengeController = TextEditingController(text: '1');
+  final TextEditingController _preisController = TextEditingController();
+  String _selectedUnit = 'Stk';
+  bool _isNewProduct = false;  // True wenn Produkt noch nicht in inventory existiert
+
+  final List<String> _availableUnits = ['Stk', 'Kg', 'Palette', 'm³', 'm²'];
 
   // Behalten-Checkboxen (werden in Firebase gespeichert)
   bool _keepInstrument = false;
@@ -157,6 +163,36 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
       debugPrint('Fehler beim Laden der Keep-Settings: $e');
     }
   }
+
+
+  Future<void> _checkProductExists() async {
+    final shortBarcode = _generateShortBarcode();
+    if (shortBarcode.isEmpty || shortBarcode.contains('─')) return;
+
+    try {
+      final inventoryDoc = await FirebaseFirestore.instance
+          .collection('inventory')
+          .doc(shortBarcode)
+          .get();
+
+      if (mounted) {
+        setState(() {
+          if (inventoryDoc.exists) {
+            _isNewProduct = false;
+            final data = inventoryDoc.data()!;
+            _selectedUnit = data['unit'] ?? 'Stk';
+            _preisController.text = (data['price_CHF'] ?? 0.0).toString();
+          } else {
+            _isNewProduct = true;
+            _preisController.text = '';
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Fehler beim Prüfen des Produkts: $e');
+    }
+  }
+
 
   Future<void> _saveKeepSettings() async {
     try {
@@ -278,6 +314,15 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
       return;
     }
 
+    // NEU: Bei neuem Produkt Preis prüfen
+    if (_isNewProduct) {
+      final preis = double.tryParse(_preisController.text) ?? 0.0;
+      if (preis <= 0) {
+        AppToast.show(message: 'Bitte gültigen Preis eingeben', height: h);
+        return;
+      }
+    }
+
     setState(() => _isSaving = true);
 
     try {
@@ -287,19 +332,34 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
       final productId = _generateBarcode();
       final shortBarcode = _generateShortBarcode();
 
-      // Hole Preis aus inventory falls vorhanden
-      double price = 0.0;
-      final inventoryDoc = await firestore.collection('inventory').doc(shortBarcode).get();
-      if (inventoryDoc.exists) {
-        price = (inventoryDoc.data()?['price_CHF'] as num?)?.toDouble() ?? 0.0;
-      }
-
-      final value = menge * price;
-
       // Namen holen
       final instrumentName = _getNameFromDocs(instruments, selectedInstrument);
       final partName = _getNameFromDocs(parts, selectedPart);
       final qualityName = _getNameFromDocs(qualities, selectedQuality);
+
+      // NEU: Preis und Unit bestimmen
+      double price;
+      String unit;
+
+      if (_isNewProduct) {
+        price = double.tryParse(_preisController.text) ?? 0.0;
+        unit = _selectedUnit;
+      } else {
+        // Hole aus inventory
+        final inventoryDoc = await firestore.collection('inventory').doc(shortBarcode).get();
+        if (inventoryDoc.exists) {
+          price = (inventoryDoc.data()?['price_CHF'] as num?)?.toDouble() ?? 0.0;
+          unit = inventoryDoc.data()?['unit'] ?? 'Stk';
+        } else {
+          price = 0.0;
+          unit = 'Stk';
+        }
+      }
+
+      final value = menge * price;
+
+      // Produktname generieren
+      final productName = '$instrumentName $partName';
 
       // 1. Production Collection Update/Create
       final productionRef = firestore.collection('production').doc(productId);
@@ -324,14 +384,15 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
           'wood_name': woodName,
           'quality_code': selectedQuality,
           'quality_name': qualityName,
+          'product_name': productName,  // ← NEU: product_name setzen
           'year': year,
           'thermally_treated': thermallyTreated,
           'haselfichte': haselfichte,
           'moonwood': moonwood,
           'FSC_100': fsc100,
           'quantity': menge,
-          'unit': 'Stk',
-          'price_CHF': price,
+          'unit': unit,  // ← NEU: unit setzen
+          'price_CHF': price,  // ← NEU: price setzen
           'created_at': FieldValue.serverTimestamp(),
           'last_stock_entry': FieldValue.serverTimestamp(),
         });
@@ -372,7 +433,7 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
         'year': year,
         'quantity': menge,
         'value': value,
-        'unit': 'Stk',
+        'unit': unit,
         'price_CHF': price,
         'instrument_code': selectedInstrument,
         'instrument_name': instrumentName,
@@ -390,18 +451,42 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
 
       // 5. Inventory Update
       final inventoryRef = firestore.collection('inventory').doc(shortBarcode);
-      batch.set(inventoryRef, {
-        'quantity': FieldValue.increment(menge),
-        'last_stock_entry': FieldValue.serverTimestamp(),
-        'last_stock_change': menge,
-      }, SetOptions(merge: true));
+      final existingInventory = await inventoryRef.get();
+
+      if (existingInventory.exists) {
+        batch.update(inventoryRef, {
+          'quantity': FieldValue.increment(menge),
+          'last_stock_entry': FieldValue.serverTimestamp(),
+          'last_stock_change': menge,
+        });
+      } else {
+        // NEU: Komplettes Inventory-Dokument erstellen
+        batch.set(inventoryRef, {
+          'instrument_code': selectedInstrument,
+          'instrument_name': instrumentName,
+          'part_code': selectedPart,
+          'part_name': partName,
+          'wood_code': woodType,
+          'wood_name': woodName,
+          'quality_code': selectedQuality,
+          'quality_name': qualityName,
+          'product_name': productName,
+          'short_barcode': shortBarcode,
+          'unit': unit,
+          'price_CHF': price,
+          'quantity': menge,
+          'created_at': FieldValue.serverTimestamp(),
+          'last_stock_entry': FieldValue.serverTimestamp(),
+          'last_modified': FieldValue.serverTimestamp(),
+        });
+      }
 
       // 6. Stock Entry für History
       final entryRef = firestore.collection('stock_entries').doc();
       batch.set(entryRef, {
         'product_id': productId,
         'batch_number': nextBatchNumber,
-        'product_name': '$instrumentName $partName',
+        'product_name': productName,
         'quantity_change': menge,
         'timestamp': FieldValue.serverTimestamp(),
         'type': 'entry',
@@ -423,7 +508,7 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
         height: h,
       );
 
-      // Reset Formular für nächste Buchung (nur Felder ohne "behalten")
+      // Reset Formular
       setState(() {
         if (!_keepInstrument) selectedInstrument = null;
         if (!_keepPart) selectedPart = null;
@@ -431,10 +516,11 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
         if (!_keepThermo) thermallyTreated = false;
         if (!_keepHasel) haselfichte = false;
         if (!_keepMenge) _mengeController.text = '1';
+        _isNewProduct = false;
+        _preisController.text = '';
         _isSaving = false;
       });
 
-      // Liste neu laden
       _loadGebuchteProdukte();
 
     } catch (e) {
@@ -444,7 +530,6 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
       AppToast.show(message: 'Fehler beim Buchen: $e', height: h);
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -541,7 +626,8 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
                 ),
               ),
               IconButton(
-                onPressed: () => _showCloseConfirmation(),
+                onPressed: () => Navigator.pop(context),  // ← Direkt schließen, keine Bestätigung
+
                 icon: getAdaptiveIcon(
                   iconName: 'close',
                   defaultIcon: Icons.close,
@@ -699,71 +785,156 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
       ),
     );
   }
-
   Widget _buildProduktItem(Map<String, dynamic> produkt) {
+    final productId = produkt['product_id'] as String? ?? '';
+    // Short Barcode aus product_id extrahieren (erste 2 Teile: IIPP.HHQQ)
+    final parts = productId.split('.');
+    final shortBarcode = parts.length >= 2 ? '${parts[0]}.${parts[1]}' : productId;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F4A29).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '${produkt['quantity'] ?? 0}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F4A29),
+      child: InkWell(
+        onTap: () => _openProductEdit(shortBarcode),
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // Menge Badge
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F4A29).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${produkt['quantity'] ?? 0}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F4A29),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(width: 12),
+              // Produkt-Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Zeile 1: Produkt Name
+                    Text(
+                      '${produkt['instrument_name']} ${produkt['part_name']}',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    // Zeile 2: Qualität & Holzart
+                    Text(
+                      '${produkt['quality_name']} • ${produkt['wood_name']}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                    // Zeile 3: Artikelnummer (NEU)
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'tag',
+                          defaultIcon: Icons.tag,
+                          color: Colors.grey[500],
+                          size: 12,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          productId,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[500],
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                        const Spacer(),
+                        // Edit-Hinweis
+                        getAdaptiveIcon(
+                          iconName: 'edit',
+                          defaultIcon: Icons.edit,
+                          color: Colors.grey[400],
+                          size: 14,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              // Eigenschaften Icons
+              Column(
                 children: [
-                  Text(
-                    '${produkt['instrument_name']} ${produkt['part_name']}',
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  Text(
-                    '${produkt['quality_name']} • ${produkt['wood_name']}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  ),
+                  if (produkt['thermally_treated'] == true)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: getAdaptiveIcon(
+                        iconName: 'whatshot',
+                        defaultIcon: Icons.whatshot,
+                        color: Colors.orange,
+                        size: 16,
+                      ),
+                    ),
+                  if (produkt['haselfichte'] == true)
+                    getAdaptiveIcon(
+                      iconName: 'grain',
+                      defaultIcon: Icons.grain,
+                      color: Colors.brown,
+                      size: 16,
+                    ),
                 ],
               ),
-            ),
-            if (produkt['thermally_treated'] == true)
-              Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: getAdaptiveIcon(
-                  iconName: 'whatshot',
-                  defaultIcon: Icons.whatshot,
-                  color: Colors.orange,
-                  size: 16,
-                ),
-              ),
-            if (produkt['haselfichte'] == true)
-              Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: getAdaptiveIcon(
-                  iconName: 'grain',
-                  defaultIcon: Icons.grain,
-                  color: Colors.brown,
-                  size: 16,
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Neue Methode: _openProductEdit() hinzufügen
+// ═══════════════════════════════════════════════════════════════════════════
+
+  Future<void> _openProductEdit(String shortBarcode) async {
+    try {
+      // Hole Produkt-Daten aus inventory
+      final inventoryDoc = await FirebaseFirestore.instance
+          .collection('inventory')
+          .doc(shortBarcode)
+          .get();
+
+      if (!mounted) return;
+
+      if (inventoryDoc.exists) {
+        // Navigiere zum AddProductScreen im Edit-Modus
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AddProductScreen(
+              isProduction: false,
+              editMode: true,
+              barcode: shortBarcode,
+              productData: inventoryDoc.data(),
+              onSave: () {
+                // Optional: Liste neu laden nach Speichern
+                _loadGebuchteProdukte();
+              },
+            ),
+          ),
+        );
+      } else {
+        AppToast.show(
+          message: 'Produkt $shortBarcode nicht im Verkaufslager gefunden',
+          height: h,
+        );
+      }
+    } catch (e) {
+      debugPrint('Fehler beim Öffnen des Produkts: $e');
+      AppToast.show(message: 'Fehler: $e', height: h);
+    }
+  }
   Widget _buildBuchungsFormular() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -792,8 +963,9 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
       ),
     );
   }
-
   Widget _buildStammInfoCard() {
+    final previewBarcode = _generatePreviewBarcode();
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -801,22 +973,62 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFF0F4A29).withOpacity(0.2)),
       ),
-      child: Row(
+      child: Column(
         children: [
-          getAdaptiveIcon(
-            iconName: 'info',
-            defaultIcon: Icons.info_outline,
-            color: const Color(0xFF0F4A29),
-            size: 20,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Vom Stamm übernommen: $woodName, Jahr $year${moonwood ? ', Mondholz' : ''}${fsc100 ? ', FSC' : ''}',
-              style: TextStyle(
-                fontSize: 13,
-                color: const Color(0xFF0F4A29).withOpacity(0.8),
+          // Stamm-Info Zeile
+          Row(
+            children: [
+              getAdaptiveIcon(
+                iconName: 'info',
+                defaultIcon: Icons.info_outline,
+                color: const Color(0xFF0F4A29),
+                size: 20,
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Vom Stamm: $woodName, Jahr $year${moonwood ? ', Mondholz' : ''}${fsc100 ? ', FSC' : ''}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: const Color(0xFF0F4A29).withOpacity(0.8),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Barcode Preview
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F4A29).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: const Color(0xFF0F4A29).withOpacity(0.3),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                getAdaptiveIcon(
+                  iconName: 'qr_code',
+                  defaultIcon: Icons.qr_code,
+                  color: const Color(0xFF0F4A29),
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  previewBarcode,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'monospace',
+                    letterSpacing: 1,
+                    color: Color(0xFF0F4A29),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -824,6 +1036,27 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
     );
   }
 
+  String _generatePreviewBarcode() {
+    // Teil 1: Instrument (II) + Part (PP)
+    final instrument = selectedInstrument ?? '──';
+    final part = selectedPart ?? '──';
+
+    // Teil 2: Wood (HH) + Quality (QQ)
+    final wood = woodType.isNotEmpty ? woodType : '──';
+    final quality = selectedQuality ?? '──';
+
+    // Teil 3: Eigenschaften (EEEE)
+    final thermo = thermallyTreated ? '1' : '0';
+    final hasel = haselfichte ? '1' : '0';
+    final mond = moonwood ? '1' : '0';
+    final fsc = fsc100 ? '1' : '0';
+    final eigenschaften = '$thermo$hasel$mond$fsc';
+
+    // Teil 4: Jahr (JJ)
+    final jahr = year.toString().substring(2);
+
+    return '$instrument$part.$wood$quality.$eigenschaften.$jahr';
+  }
   Widget _buildProduktAuswahlCard() {
     return Card(
       elevation: 2,
@@ -860,7 +1093,10 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
               label: 'Instrument',
               value: selectedInstrument,
               items: instruments,
-              onChanged: (v) => setState(() => selectedInstrument = v),
+              onChanged: (v) {
+                setState(() => selectedInstrument = v);
+                _checkProductExists();  // ← NEU
+              },
               keepValue: _keepInstrument,
               onKeepChanged: (v) => _toggleKeep('instrument', v),
             ),
@@ -871,18 +1107,29 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
               label: 'Bauteil',
               value: selectedPart,
               items: parts,
-              onChanged: (v) => setState(() => selectedPart = v),
+              onChanged: (v) {
+                setState(() => selectedPart = v);
+                _checkProductExists();  // ← NEU
+              },
               keepValue: _keepPart,
               onKeepChanged: (v) => _toggleKeep('part', v),
             ),
             const SizedBox(height: 12),
 
-            // Qualität mit Behalten-Checkbox
+            // Qualität mit Behalten-Checkbox + Auto-Thermo
             _buildDropdownWithKeep(
               label: 'Qualität',
               value: selectedQuality,
               items: qualities,
-              onChanged: (v) => setState(() => selectedQuality = v),
+              onChanged: (v) {
+                setState(() {
+                  selectedQuality = v;
+                  if (v != null && ['20', '21', '22', '23'].contains(v)) {
+                    thermallyTreated = true;
+                  }
+                });
+                _checkProductExists();  // ← NEU
+              },
               keepValue: _keepQuality,
               onKeepChanged: (v) => _toggleKeep('quality', v),
             ),
@@ -1132,6 +1379,108 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ═══════════════════════════════════════════════════════════════
+            // NEU: Hinweis wenn neues Produkt
+            // ═══════════════════════════════════════════════════════════════
+            if (_isNewProduct) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange[300]!),
+                ),
+                child: Row(
+                  children: [
+                    getAdaptiveIcon(
+                      iconName: 'info',
+                      defaultIcon: Icons.info_outline,
+                      color: Colors.orange[700],
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Neues Produkt - bitte Einheit und Preis angeben',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.orange[900],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Einheit Dropdown
+              Row(
+                children: [
+                  getAdaptiveIcon(
+                    iconName: 'straighten',
+                    defaultIcon: Icons.straighten,
+                    color: const Color(0xFF0F4A29),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Einheit',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _selectedUnit,
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                ),
+                items: _availableUnits.map((unit) => DropdownMenuItem(
+                  value: unit,
+                  child: Text(unit),
+                )).toList(),
+                onChanged: (v) => setState(() => _selectedUnit = v ?? 'Stk'),
+              ),
+              const SizedBox(height: 16),
+              // Preis Eingabe
+              Row(
+                children: [
+                  getAdaptiveIcon(
+                    iconName: 'payments',
+                    defaultIcon: Icons.payments,
+                    color: const Color(0xFF0F4A29),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Preis (CHF)',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _preisController,
+                decoration: InputDecoration(
+                  hintText: '0.00',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                  prefixText: 'CHF ',
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                ],
+              ),
+              const SizedBox(height: 24),
+            ],
+
+            // ═══════════════════════════════════════════════════════════════
+            // Bestehende Menge-Eingabe
+            // ═══════════════════════════════════════════════════════════════
             Row(
               children: [
                 getAdaptiveIcon(
@@ -1142,12 +1491,22 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
                 const SizedBox(width: 8),
                 const Text(
                   'Menge',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F4A29),
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
+                const Spacer(),
+                // Zeige Einheit wenn bekannt
+                if (!_isNewProduct)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _selectedUnit,
+                      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 16),
@@ -1172,15 +1531,11 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
                   child: TextField(
                     controller: _mengeController,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                     decoration: InputDecoration(
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                      suffixText: _selectedUnit,
                     ),
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -1208,12 +1563,13 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
       ),
     );
   }
-
   Widget _buildActionButtons() {
     final canBook = selectedInstrument != null &&
         selectedPart != null &&
         selectedQuality != null &&
         (_mengeController.text.isNotEmpty && int.tryParse(_mengeController.text) != 0);
+
+    final isClosed = widget.stammData['is_closed'] ?? false;
 
     return Column(
       children: [
@@ -1248,30 +1604,151 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
           ),
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          height: 50,
-          child: OutlinedButton.icon(
-            onPressed: () => _showCloseConfirmation(),
-            icon: getAdaptiveIcon(
-              iconName: 'check_circle',
-              defaultIcon: Icons.check_circle,
-              color: const Color(0xFF0F4A29),
-            ),
-            label: const Text('Stamm abschließen'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF0F4A29),
-              side: const BorderSide(color: Color(0xFF0F4A29)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+        Row(
+          children: [
+            // Fertig Button
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.pop(context),
+                icon: getAdaptiveIcon(
+                  iconName: 'check',
+                  defaultIcon: Icons.check,
+                  color: const Color(0xFF0F4A29),
+                ),
+                label: const Text('Fertig'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF0F4A29),
+                  side: const BorderSide(color: Color(0xFF0F4A29)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
               ),
             ),
-          ),
+            const SizedBox(width: 12),
+            // Stamm abschließen Button
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: isClosed ? null : () => _showCloseStammConfirmation(),
+                icon: getAdaptiveIcon(
+                  iconName: isClosed ? 'lock' : 'lock_open',
+                  defaultIcon: isClosed ? Icons.lock : Icons.lock_open,
+                  color: Colors.white,
+                ),
+                label: Text(isClosed ? 'Abgeschlossen' : 'Abschließen'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isClosed ? Colors.grey : Colors.orange[700],
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.grey[400],
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
+  void _showCloseStammConfirmation() {
+    final stammNr = widget.stammData['internal_number'] ?? '?';
+    final stammJahr = widget.stammData['year'] ?? '?';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            getAdaptiveIcon(
+              iconName: 'lock',
+              defaultIcon: Icons.lock,
+              color: Colors.orange[700],
+            ),
+            const SizedBox(width: 8),
+            const Text('Stamm abschließen?'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Möchtest du den Stamm $stammNr/$stammJahr wirklich abschließen?'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange[200]!),
+              ),
+              child: Row(
+                children: [
+                  getAdaptiveIcon(
+                    iconName: 'info',
+                    defaultIcon: Icons.info_outline,
+                    color: Colors.orange[700],
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Abgeschlossene Stämme werden standardmäßig ausgeblendet, können aber weiterhin geöffnet werden.',
+                      style: TextStyle(fontSize: 13, color: Colors.orange[900]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _closeStamm();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange[700],
+            ),
+            child: const Text('Abschließen', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _closeStamm() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('roundwood')
+          .doc(widget.stammId)
+          .update({
+        'is_closed': true,
+        'closed_at': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      AppToast.show(
+        message: 'Stamm ${widget.stammData['internal_number']}/${widget.stammData['year']} abgeschlossen',
+        height: h,
+      );
+
+      // Sheet schließen
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      AppToast.show(message: 'Fehler: $e', height: h);
+    }
+  }
   InputDecoration _inputDecoration(String label) {
     return InputDecoration(
       labelText: label,
@@ -1318,6 +1795,7 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
   @override
   void dispose() {
     _mengeController.dispose();
+    _preisController.dispose();  // ← NEU
     super.dispose();
   }
 }

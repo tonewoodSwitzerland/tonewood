@@ -7,6 +7,16 @@ class RoundwoodService {
   Stream<QuerySnapshot> getRoundwoodStream(RoundwoodFilter filter) {
     Query query = _firestore.collection('roundwood');
 
+    // WICHTIG: is_closed Filter wird NICHT in der Query angewendet,
+    // weil Firestore bei isEqualTo: false keine Dokumente ohne das Feld zurückgibt.
+    // Stattdessen filtern wir client-seitig in der RoundwoodList.
+
+    // NUR wenn explizit geschlossene gesucht werden:
+    if (filter.showClosed == true) {
+      query = query.where('is_closed', isEqualTo: true);
+    }
+    // Bei showClosed == false oder null: alle laden und client-seitig filtern
+
     // Zeitraum Filter
     if (filter.timeRange != null) {
       DateTime startDate;
@@ -33,7 +43,7 @@ class RoundwoodService {
           isLessThanOrEqualTo: filter.endDate);
     }
 
-    // NEU: Jahr Filter
+    // Jahr Filter
     if (filter.year != null) {
       query = query.where('year', isEqualTo: filter.year);
     }
@@ -48,7 +58,7 @@ class RoundwoodService {
       query = query.where('quality', whereIn: filter.qualities);
     }
 
-    // NEU: Verwendungszwecke Filter (neue Struktur)
+    // Verwendungszwecke Filter
     if (filter.purposes?.isNotEmpty == true) {
       query = query.where('purposes', arrayContainsAny: filter.purposes);
     }
@@ -63,7 +73,7 @@ class RoundwoodService {
       query = query.where('is_moonwood', isEqualTo: true);
     }
 
-    // NEU: FSC Filter
+    // FSC Filter
     if (filter.isFSC == true) {
       query = query.where('is_fsc', isEqualTo: true);
     }
@@ -87,7 +97,6 @@ class RoundwoodService {
     return _firestore.collection('roundwood').doc(id).delete();
   }
 
-  // NEU: Hilfsmethode zum Abrufen aller verfügbaren Jahre
   Future<List<int>> getAvailableYears() async {
     final snapshot = await _firestore.collection('roundwood').get();
     final years = <int>{};

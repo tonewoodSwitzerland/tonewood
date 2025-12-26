@@ -181,6 +181,86 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
       ),
     );
   }
+  Widget _buildSpecialFilters() {
+    return Column(
+      children: [
+        // Mondholz Filter (existiert bereits)
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey[300]!),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SwitchListTile(
+            title: const Text('Nur Mondholz'),
+            secondary: getAdaptiveIcon(iconName: 'nightlight', defaultIcon: Icons.nightlight, color: const Color(0xFF0F4A29)),
+            value: tempFilter.isMoonwood ?? false,
+            onChanged: (value) {
+              setState(() {
+                tempFilter = tempFilter.copyWith(isMoonwood: value ? true : null, clearMoonwood: !value);
+              });
+            },
+            activeColor: const Color(0xFF0F4A29),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // FSC Filter (existiert bereits)
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey[300]!),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SwitchListTile(
+            title: const Text('Nur FSC-zertifiziert'),
+            secondary: getAdaptiveIcon(iconName: 'eco', defaultIcon: Icons.eco, color: Colors.green),
+            value: tempFilter.isFSC ?? false,
+            onChanged: (value) {
+              setState(() {
+                tempFilter = tempFilter.copyWith(isFSC: value ? true : null, clearFSC: !value);
+              });
+            },
+            activeColor: const Color(0xFF0F4A29),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // ═══════════════════════════════════════════════════════════════════
+        // NEU: Abgeschlossene Stämme ausblenden
+        // ═══════════════════════════════════════════════════════════════════
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.orange[300]!),
+            borderRadius: BorderRadius.circular(8),
+            color: (tempFilter.showClosed == false) ? Colors.orange[50] : null,
+          ),
+          child: SwitchListTile(
+            title: const Text('Abgeschlossene ausblenden'),
+            subtitle: Text(
+              'Nur offene Stämme anzeigen',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+            secondary: getAdaptiveIcon(
+              iconName: (tempFilter.showClosed == false) ? 'visibility_off' : 'visibility',
+              defaultIcon: (tempFilter.showClosed == false) ? Icons.visibility_off : Icons.visibility,
+              color: Colors.orange[700],
+            ),
+            value: tempFilter.showClosed == false,
+            onChanged: (value) {
+              setState(() {
+                tempFilter = tempFilter.copyWith(
+                  showClosed: value ? false : null,
+                  clearShowClosed: !value,
+                );
+              });
+            },
+            activeColor: Colors.orange[700],
+          ),
+        ),
+      ],
+    );
+  }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ERGÄNZUNG 2: In _buildActiveFiltersBar() den Chip hinzufügen
+// ═══════════════════════════════════════════════════════════════════════════
 
   Widget _buildActiveFiltersBar() {
     return SingleChildScrollView(
@@ -188,21 +268,32 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          // NEU: Jahr Chip
-          if (tempFilter.year != null) _buildFilterChip('Jahr: ${tempFilter.year}', () => _updateFilter(clearYear: true)),
+          if (tempFilter.year != null)
+            _buildFilterChip('Jahr: ${tempFilter.year}', () => _updateFilter(clearYear: true)),
           if (tempFilter.woodTypes?.isNotEmpty ?? false)
             ...tempFilter.woodTypes!.map((w) => _buildFilterChip('Holz: $w', () => _removeWoodType(w))),
           if (tempFilter.qualities?.isNotEmpty ?? false)
             ...tempFilter.qualities!.map((q) => _buildFilterChip('Qualität: $q', () => _removeQuality(q))),
-          // NEU: Verwendungszweck Chips
           if (tempFilter.purposes?.isNotEmpty ?? false)
             ...tempFilter.purposes!.map((p) => _buildFilterChip('Zweck: $p', () => _removePurpose(p))),
-          if (tempFilter.origin != null) _buildFilterChip('Herkunft: ${tempFilter.origin}', () => _updateFilter(clearOrigin: true)),
-          if (tempFilter.volumeMin != null || tempFilter.volumeMax != null) _buildVolumeChip(),
-          if (tempFilter.timeRange != null || tempFilter.startDate != null) _buildTimeRangeChip(),
-          if (tempFilter.isMoonwood ?? false) _buildFilterChip('Nur Mondholz', () => _updateFilter(clearMoonwood: true)),
-          // NEU: FSC Chip
-          if (tempFilter.isFSC ?? false) _buildFilterChip('Nur FSC', () => _updateFilter(clearFSC: true)),
+          if (tempFilter.origin != null)
+            _buildFilterChip('Herkunft: ${tempFilter.origin}', () => _updateFilter(clearOrigin: true)),
+          if (tempFilter.volumeMin != null || tempFilter.volumeMax != null)
+            _buildVolumeChip(),
+          if (tempFilter.timeRange != null || tempFilter.startDate != null)
+            _buildTimeRangeChip(),
+          if (tempFilter.isMoonwood ?? false)
+            _buildFilterChip('Nur Mondholz', () => _updateFilter(clearMoonwood: true)),
+          if (tempFilter.isFSC ?? false)
+            _buildFilterChip('Nur FSC', () => _updateFilter(clearFSC: true)),
+          // ═══════════════════════════════════════════════════════════════════
+          // NEU: Chip für "Abgeschlossene ausblenden"
+          // ═══════════════════════════════════════════════════════════════════
+          if (tempFilter.showClosed == false)
+            _buildFilterChip(
+              'Abgeschlossene ausgeblendet',
+                  () => _updateFilter(clearShowClosed: true),
+            ),
         ],
       ),
     );
@@ -526,48 +617,7 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
     );
   }
 
-  Widget _buildSpecialFilters() {
-    return Column(
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey[300]!),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: SwitchListTile(
-            title: const Text('Nur Mondholz'),
-            secondary: getAdaptiveIcon(iconName: 'nightlight', defaultIcon: Icons.nightlight, color: const Color(0xFF0F4A29)),
-            value: tempFilter.isMoonwood ?? false,
-            onChanged: (value) {
-              setState(() {
-                tempFilter = tempFilter.copyWith(isMoonwood: value ? true : null, clearMoonwood: !value);
-              });
-            },
-            activeColor: const Color(0xFF0F4A29),
-          ),
-        ),
-        const SizedBox(height: 8),
-        // NEU: FSC Filter
-        Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey[300]!),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: SwitchListTile(
-            title: const Text('Nur FSC-zertifiziert'),
-            secondary: getAdaptiveIcon(iconName: 'eco', defaultIcon: Icons.eco, color: Colors.green),
-            value: tempFilter.isFSC ?? false,
-            onChanged: (value) {
-              setState(() {
-                tempFilter = tempFilter.copyWith(isFSC: value ? true : null, clearFSC: !value);
-              });
-            },
-            activeColor: const Color(0xFF0F4A29),
-          ),
-        ),
-      ],
-    );
-  }
+
 
   void _resetFilters() {
     setState(() {
@@ -589,6 +639,7 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
     bool clearMoonwood = false,
     bool clearFSC = false,
     bool clearDates = false,
+    bool clearShowClosed = false,  // ← NEU
   }) {
     setState(() {
       tempFilter = tempFilter.copyWith(
@@ -601,6 +652,7 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
         clearMoonwood: clearMoonwood,
         clearFSC: clearFSC,
         clearDates: clearDates,
+        clearShowClosed: clearShowClosed,  // ← NEU
       );
     });
   }

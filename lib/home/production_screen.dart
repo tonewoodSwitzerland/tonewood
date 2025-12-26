@@ -223,7 +223,7 @@ class ProductionScreenState extends State<ProductionScreen> {
                       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       child: ListTile(
                         title: Text(
-                          data['product_name']+' - '+ data['quality_name'] ?? 'Unbekanntes Produkt',
+                          '${data['product_name'] ?? 'Unbekannt'} - ${data['quality_name'] ?? ''}',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         subtitle: Column(
