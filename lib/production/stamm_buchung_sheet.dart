@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../constants.dart';
 import '../home/add_product_screen.dart';
+import '../home/barcode_scanner.dart';
 import '../services/icon_helper.dart';
 
 /// Sheet/Dialog für die Produktionsbuchung über einen ausgewählten Stamm
@@ -140,7 +141,97 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
     fsc100 = widget.stammData['is_fsc'] ?? false;
     year = widget.stammData['year'] ?? DateTime.now().year;
   }
+  Future<void> _scanAndFillProduct() async {
+    try {
+      final String? barcodeResult = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SimpleBarcodeScannerPage(),
+        ),
+      );
 
+      if (barcodeResult == null || barcodeResult == '-1') return;
+
+      // Parse den Barcode (Format: IIPP.HHQQ)
+      final barcodeParts = barcodeResult.split('.');
+      if (barcodeParts.length < 2 || barcodeParts[0].length != 4 || barcodeParts[1].length != 4) {
+        AppToast.show(
+          message: 'Ungültiges Format. Erwartet: IIPP.HHQQ',
+          height: h,
+        );
+        return;
+      }
+
+      final instrumentCode = barcodeParts[0].substring(0, 2);
+      final partCode = barcodeParts[0].substring(2, 4);
+      final scannedWoodCode = barcodeParts[1].substring(0, 2);
+      final qualityCode = barcodeParts[1].substring(2, 4);
+
+      // Prüfe ob der Holztyp zum Stamm passt
+      if (scannedWoodCode != woodType) {
+        // Hole den Namen der gescannten Holzart
+        String scannedWoodName = scannedWoodCode;
+        try {
+          final woodDoc = await FirebaseFirestore.instance
+              .collection('wood_types')
+              .doc(scannedWoodCode)
+              .get();
+          if (woodDoc.exists) {
+            scannedWoodName = woodDoc.data()?['name'] ?? scannedWoodCode;
+          }
+        } catch (_) {}
+
+        AppToast.show(
+          message: 'Holzart $scannedWoodCode ($scannedWoodName) passt nicht zum Stamm $woodType ($woodName)',
+          height: h,
+        );
+        return;
+      }
+
+      // Prüfe ob die Codes in den Dropdowns existieren
+      final instrumentExists = instruments?.any(
+            (doc) => (doc.data() as Map<String, dynamic>)['code'] == instrumentCode,
+      ) ?? false;
+      final partExists = parts?.any(
+            (doc) => (doc.data() as Map<String, dynamic>)['code'] == partCode,
+      ) ?? false;
+      final qualityExists = qualities?.any(
+            (doc) => (doc.data() as Map<String, dynamic>)['code'] == qualityCode,
+      ) ?? false;
+
+      if (!instrumentExists || !partExists || !qualityExists) {
+        AppToast.show(
+          message: 'Ein oder mehrere Codes wurden nicht gefunden',
+          height: h,
+        );
+        return;
+      }
+
+      // Setze die Werte
+      setState(() {
+        selectedInstrument = instrumentCode;
+        selectedPart = partCode;
+        selectedQuality = qualityCode;
+
+        // Auto-Thermo für bestimmte Qualitäten
+        if (['20', '21', '22', '23'].contains(qualityCode)) {
+          thermallyTreated = true;
+        }
+      });
+
+      // Prüfe ob Produkt existiert
+      _checkProductExists();
+
+      AppToast.show(
+        message: 'Produkt übernommen ✓',
+        height: h,
+      );
+
+    } catch (e) {
+      debugPrint('Fehler beim Scannen: $e');
+      AppToast.show(message: 'Fehler beim Scannen', height: h);
+    }
+  }
   Future<void> _loadKeepSettings() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -499,7 +590,17 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
         'roundwood_internal_number': widget.stammData['internal_number'],
       });
 
+
+
       await batch.commit();
+
+      await FirebaseFirestore.instance
+          .collection('roundwood')
+          .doc(widget.stammId)
+          .update({
+        'last_booking': FieldValue.serverTimestamp(),
+      });
+
 
       if (!mounted) return;
 
@@ -1083,11 +1184,27 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
                   ),
                 ),
                 const Spacer(),
+                // ═══════════════════════════════════════════════════
+                // NEU: Scan-Button
+                // ═══════════════════════════════════════════════════
+                IconButton(
+                  onPressed: _scanAndFillProduct,
+                  icon: getAdaptiveIcon(
+                    iconName: 'qr_code_scanner',
+                    defaultIcon: Icons.qr_code_scanner,
+                    color: const Color(0xFF0F4A29),
+                    size: 22,
+                  ),
+                  tooltip: 'Verkaufscode scannen',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+                const SizedBox(width: 8),
+                // ═══════════════════════════════════════════════════
                 _buildKeepInfoButton(),
               ],
             ),
             const SizedBox(height: 16),
-
             // Instrument mit Behalten-Checkbox
             _buildDropdownWithKeep(
               label: 'Instrument',
@@ -1527,7 +1644,11 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
                   ),
                 ),
                 const SizedBox(width: 8),
+                // ═══════════════════════════════════════════════════════════════
+                // TextField OHNE suffix
+                // ═══════════════════════════════════════════════════════════════
                 Expanded(
+                  flex: 2,
                   child: TextField(
                     controller: _mengeController,
                     textAlign: TextAlign.center,
@@ -1535,10 +1656,31 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
                     decoration: InputDecoration(
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                      suffixText: _selectedUnit,
                     ),
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // ═══════════════════════════════════════════════════════════════
+                // NEU: Einheit als separates Element
+                // ═══════════════════════════════════════════════════════════════
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F4A29).withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: const Color(0xFF0F4A29).withOpacity(0.25),
+                    ),
+                  ),
+                  child: Text(
+                    _selectedUnit,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F4A29),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),

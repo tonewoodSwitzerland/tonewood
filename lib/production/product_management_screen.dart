@@ -61,6 +61,62 @@ class ProductManagementScreenState extends State<ProductManagementScreen>
       _searchProductAndEdit(barcode);
     }
   }
+
+
+  Future<void> _openLastStammBuchung() async {
+    try {
+      // Lade die letzten Stämme und filtere client-seitig
+      final snapshot = await FirebaseFirestore.instance
+          .collection('roundwood')
+          .orderBy('timestamp', descending: true)
+          .limit(20)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        AppToast.show(message: 'Keine Stämme vorhanden', height: h);
+        return;
+      }
+
+      // Finde den ersten offenen Stamm (is_closed ist null, false oder fehlt)
+      final offeneStaemme = snapshot.docs.where((doc) {
+        final data = doc.data();
+        final isClosed = data['is_closed'];
+        return isClosed != true; // null, false oder fehlt = offen
+      }).toList();
+
+      if (offeneStaemme.isEmpty) {
+        AppToast.show(message: 'Keine offenen Stämme vorhanden', height: h);
+        return;
+      }
+
+      // Sortiere nach last_booking falls vorhanden, sonst nach timestamp
+      offeneStaemme.sort((a, b) {
+        final aBooking = a.data()['last_booking'] as Timestamp?;
+        final bBooking = b.data()['last_booking'] as Timestamp?;
+
+        if (aBooking != null && bBooking != null) {
+          return bBooking.compareTo(aBooking);
+        } else if (aBooking != null) {
+          return -1;
+        } else if (bBooking != null) {
+          return 1;
+        }
+        return 0; // Behalte ursprüngliche Reihenfolge (nach timestamp)
+      });
+
+      final doc = offeneStaemme.first;
+      if (!mounted) return;
+
+      showStammBuchungSheet(
+        context: context,
+        stammId: doc.id,
+        stammData: doc.data(),
+      );
+    } catch (e) {
+      debugPrint('Fehler beim Laden des letzten Stamms: $e');
+      AppToast.show(message: 'Fehler: $e', height: h);
+    }
+  }
   Future<void> _scanBarcodeForEdit() async {
     try {
       final String? barcodeResult = await Navigator.push<String>(
@@ -2822,6 +2878,24 @@ print("sB:$searchBarcode");
                             onTap: _showStammAuswahlDialog,
                           ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // ═══════════════════════════════════════════════════════════════
+                    // NEU: Dritte Zeile - Letzter Stamm
+                    // ═══════════════════════════════════════════════════════════════
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildActionChip(
+                            icon: Icons.history,
+                            iconName: 'history',
+                            label: 'Letzter Stamm',
+                            onTap: _openLastStammBuchung,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Expanded(child: SizedBox()), // Platzhalter für symmetrie
                       ],
                     ),
                   ],
