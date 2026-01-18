@@ -29,6 +29,51 @@ abstract class BasePdfGenerator {
 
     return '$currency ${convertedAmount.toStringAsFixed(2)}';
   }
+  /// Formatiert Betrag OHNE Währungszeichen (für Tabellen)
+  static String formatAmountOnly(dynamic amount, String currency, Map<String, double> exchangeRates) {
+    double doubleAmount = 0.0;
+    if (amount != null) {
+      if (amount is num) {
+        doubleAmount = amount.toDouble();
+      } else if (amount is String) {
+        doubleAmount = double.tryParse(amount) ?? 0.0;
+      }
+    }
+
+    double convertedAmount = doubleAmount;
+    if (currency != 'CHF' && exchangeRates.containsKey(currency)) {
+      convertedAmount = doubleAmount * (exchangeRates[currency] ?? 1.0);
+    }
+
+    return convertedAmount.toStringAsFixed(2);
+  }
+
+  /// Währungshinweis-Widget für über Tabellen
+  static pw.Widget buildCurrencyHint(String currency, String language) {
+    final currencyNames = {
+      'CHF': {'DE': 'Schweizer Franken (CHF)', 'EN': 'Swiss Francs (CHF)'},
+      'EUR': {'DE': 'Euro (EUR)', 'EN': 'Euros (EUR)'},
+      'USD': {'DE': 'US-Dollar (USD)', 'EN': 'US Dollars (USD)'},
+    };
+
+    final name = currencyNames[currency]?[language] ?? currency;
+    final text = language == 'EN'
+        ? 'All prices in $name'
+        : 'Alle Preise in $name';
+
+    return pw.Container(
+      alignment: pw.Alignment.centerLeft,
+      margin: const pw.EdgeInsets.only(bottom: 4),
+      child: pw.Text(
+        text,
+        style: pw.TextStyle(
+          fontSize: 8,
+          fontStyle: pw.FontStyle.italic,
+          color: PdfColors.blueGrey600,
+        ),
+      ),
+    );
+  }
 
  static Map<String, String> _translateReference(String reference, String language) {
     final parts = reference.split(':');

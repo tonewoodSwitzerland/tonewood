@@ -771,6 +771,10 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
       // Items vorbereiten
       final items = basketSnapshot.docs.map((doc) {
         final data = doc.data();
+
+
+
+
         return {
           ...data,
           'basket_doc_id': doc.id,
@@ -937,6 +941,28 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
         .collection('temporary_basket')
         .get();
     for (final doc in basketDocs.docs) {
+
+
+      final data = doc.data();
+
+      // NEU: Wenn es ein Online-Shop-Item ist, setze in_cart zurück
+      if (data['is_online_shop_item'] == true && data['online_shop_barcode'] != null) {
+        final onlineShopBarcode = data['online_shop_barcode'] as String;
+        try {
+          await FirebaseFirestore.instance
+              .collection('onlineshop')
+              .doc(onlineShopBarcode)
+              .update({
+            'in_cart': false,
+            'cart_timestamp': FieldValue.delete(),
+          });
+        } catch (e) {
+          print('Fehler beim Zurücksetzen von in_cart für $onlineShopBarcode: $e');
+        }
+      }
+
+
+
       batch.delete(doc.reference);
     }
 

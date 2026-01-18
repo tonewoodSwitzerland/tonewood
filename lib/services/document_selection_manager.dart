@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:tonewood/services/pdf_generators/commercial_invoice_generator.dart';
 import 'package:tonewood/services/pdf_generators/delivery_note_generator.dart';
 import 'package:tonewood/services/pdf_generators/packing_list_generator.dart';
+import 'package:tonewood/services/product_sorting_manager.dart';
 import 'package:tonewood/services/swiss_rounding.dart';
 import 'additional_text_manager.dart';
 import 'countries.dart';
@@ -594,6 +595,7 @@ class DocumentSelectionManager {
               ? (data['validity_date'] as Timestamp).toDate()
               : null,
           'show_dimensions': data['show_dimensions'] ?? false,
+          'show_validity_addition': data['show_validity_addition'] ?? false,
         };
       }
     } catch (e) {
@@ -3325,11 +3327,16 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
   Future<void> showQuoteSettingsDialog() async {
     DateTime? validityDate;
     bool showDimensions = false; // NEU: Standard deaktiviert
-
+    bool showValidityAddition = true;
     // Lade bestehende Einstellungen
     final existingSettings = await DocumentSelectionManager.loadQuoteSettings();
     validityDate = existingSettings['validity_date'];
     showDimensions = existingSettings['show_dimensions'] ?? false; // NEU
+    showValidityAddition = existingSettings['show_validity_addition'] ?? true;
+
+    print("ex:$existingSettings");
+
+
 
     await showModalBottomSheet<void>(
       context: context,
@@ -3523,7 +3530,35 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                             ],
                           ),
                         ),
+                        const SizedBox(height: 16),
 
+// NEU: Checkbox für Vorauszahlung-Hinweis
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: CheckboxListTile(
+                            title: const Text('Zahlungshinweis anzeigen'),
+                            subtitle: const Text(
+                              'Zeigt den Hinweis zur Vorauszahlung an (Standard: an für Nicht-CH Kunden)',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            value: showValidityAddition,
+                            onChanged: (value) {
+                              setDialogState(() {
+                                showValidityAddition = value ?? true;
+                              });
+                            },
+                            secondary: getAdaptiveIcon(
+                              iconName: 'payment',
+                              defaultIcon: Icons.payment,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ),
                         const Spacer(),
 
                         // Action Buttons
@@ -3550,6 +3585,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
                                         ? Timestamp.fromDate(validityDate!)
                                         : null,
                                     'show_dimensions': showDimensions, // NEU
+                                    'show_validity_addition': showValidityAddition, // NEU
                                   });
 
                                   if (dialogContext.mounted) {
@@ -5870,6 +5906,68 @@ print(existingSettings);
                           ],
                         ),
                       ),
+
+                      const SizedBox(height: 12),
+                      InkWell(
+                        onTap: () => ProductSortingManager.showSortingDialog(context),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.primaryContainer,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: getAdaptiveIcon(
+                                  iconName: 'sort',
+                                  defaultIcon: Icons.sort,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Sortierreihenfolge',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: Theme.of(context).colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Produkte nach Instrument, Holzart, etc. sortieren',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              getAdaptiveIcon(
+                                iconName: 'chevron_right',
+                                defaultIcon: Icons.chevron_right,
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+
                       const SizedBox(height: 20),
 
                       // In showDocumentSelectionBottomSheet, ersetze die Dokumenten-Liste mit dieser Version:

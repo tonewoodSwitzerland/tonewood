@@ -283,26 +283,28 @@ class QuoteService {
     final batch = _firestore.batch();
 
     for (final item in items) {
-      // Überspringe manuelle Produkte
       // Überspringe manuelle Produkte und Dienstleistungen
-      if (item['is_manual_product'] == true || item['is_service'] == true) continue;
+      if (item['is_manual_product'] == true || item['is_service'] == true) {
+        continue;
+      }
 
+      final productId = item['product_id'] as String;
+      final quantity = (item['quantity'] as num).toDouble();
       final movementRef = _firestore.collection('stock_movements').doc();
 
-      // Sichere Konvertierung der Quantity
-      final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+      final movementData = {
+        'productId': productId,
+        'quoteId': quoteId,
+        'quantity': -quantity,
+        'type': StockMovementType.reservation.name,
+        'status': StockMovementStatus.reserved.name,
+        'timestamp': FieldValue.serverTimestamp(),
+        // NEU: Online-Shop Barcode für einzigartige Produkte speichern
+        if (item['is_online_shop_item'] == true && item['online_shop_barcode'] != null)
+          'onlineShopBarcode': item['online_shop_barcode'],
+      };
 
-      final movement = StockMovement(
-        id: movementRef.id,
-        type: StockMovementType.reservation,
-        quoteId: quoteId,
-        productId: item['product_id'],
-        quantity: -quantity, // Negativ für Abgang
-        status: StockMovementStatus.reserved,
-        timestamp: DateTime.now(),
-      );
-
-      batch.set(movementRef, movement.toMap());
+      batch.set(movementRef, movementData);
     }
 
     await batch.commit();
@@ -447,23 +449,88 @@ class QuoteService {
 // Prüfe Verfügbarkeit (unter Berücksichtigung von Reservierungen)
   static Future<Map<String, double>> checkAvailability(
       List<Map<String, dynamic>> items,
-      {String? excludeQuoteId}  // NEU: Optional Quote-ID zum Ausschließen
+      {String? excludeQuoteId}
       ) async {
     print('=== START checkAvailability ===');
     print('Anzahl zu prüfender Items: ${items.length}');
-    print('Exclude Quote ID: $excludeQuoteId');  // NEU
+    print('Exclude Quote ID: $excludeQuoteId');
 
     final availability = <String, double>{};
 
     for (final item in items) {
-      // ... (Debug-Ausgaben bleiben gleich)
-
+      // Überspringe manuelle Produkte und Dienstleistungen
       if (item['is_manual_product'] == true || item['is_service'] == true) {
         print('-> Überspringe manuelles Produkt oder Dienstleistung');
         continue;
       }
 
       final productId = item['product_id'] as String;
+
+      // NEU: Spezielle Behandlung für Online-Shop-Items
+      if (item['is_online_shop_item'] == true && item['online_shop_barcode'] != null) {
+        final onlineShopBarcode = item['online_shop_barcode'] as String;
+        print('\n=== Online-Shop-Item: $onlineShopBarcode ===');
+
+        // 1. Prüfe ob das Produkt noch existiert und nicht verkauft ist
+        final shopDoc = await _firestore
+            .collection('onlineshop')
+            .doc(onlineShopBarcode)
+            .get();
+
+        if (!shopDoc.exists) {
+          print('-> Produkt existiert nicht mehr');
+          availability[productId] = 0;
+          continue;
+        }
+
+        if (shopDoc.data()?['sold'] == true) {
+          print('-> Produkt bereits verkauft');
+          availability[productId] = 0;
+          continue;
+        }
+
+        // 2. Prüfe ob im Warenkorb
+        if (shopDoc.data()?['in_cart'] == true) {
+          print('-> Produkt ist im Warenkorb');
+          availability[productId] = 0;
+          continue;
+        }
+
+        // 3. Prüfe ob bereits in einem anderen Angebot reserviert
+        final reservationCheck = await _firestore
+            .collection('stock_movements')
+            .where('onlineShopBarcode', isEqualTo: onlineShopBarcode)
+            .where('type', isEqualTo: StockMovementType.reservation.name)
+            .where('status', isEqualTo: StockMovementStatus.reserved.name)
+            .get();
+
+        bool isReservedByOther = false;
+        for (final doc in reservationCheck.docs) {
+          final reservedQuoteId = doc.data()['quoteId'] as String?;
+
+          // Überspringe eigene Reservierung
+          if (excludeQuoteId != null && reservedQuoteId == excludeQuoteId) {
+            print('-> Überspringe eigene Reservierung für Quote $reservedQuoteId');
+            continue;
+          }
+
+          print('-> Reserviert in Angebot: $reservedQuoteId');
+          isReservedByOther = true;
+          break;
+        }
+
+        if (isReservedByOther) {
+          availability[productId] = 0;
+        } else {
+          availability[productId] = 1; // Online-Shop-Item ist verfügbar (immer Menge 1)
+        }
+
+        print('-> Verfügbar: ${availability[productId]}');
+        continue;
+      }
+
+      // NORMALE LAGERPRODUKTE (bestehende Logik)
+      print('\n=== Lagerprodukt: $productId ===');
 
       // Hole aktuellen Bestand
       final inventoryDoc = await _firestore
@@ -480,14 +547,13 @@ class QuoteService {
       print('Aktueller Lagerbestand: $currentStock');
 
       // Hole alle aktiven Reservierungen
-      print('\nLade Reservierungen für $productId...');
-      var reservationsQuery = _firestore
+      print('Lade Reservierungen für $productId...');
+      final reservations = await _firestore
           .collection('stock_movements')
           .where('productId', isEqualTo: productId)
           .where('type', isEqualTo: StockMovementType.reservation.name)
-          .where('status', isEqualTo: StockMovementStatus.reserved.name);
-
-      final reservations = await reservationsQuery.get();
+          .where('status', isEqualTo: StockMovementStatus.reserved.name)
+          .get();
 
       print('Anzahl gefundener Reservierungen: ${reservations.docs.length}');
 
@@ -497,24 +563,25 @@ class QuoteService {
           final data = doc.data();
           final quoteId = data['quoteId'] as String?;
 
-          // NEU: Überspringe Reservierungen der aktuellen Quote
+          // Überspringe Reservierungen der aktuellen Quote
           if (excludeQuoteId != null && quoteId == excludeQuoteId) {
             print('  -> ÜBERSPRINGE eigene Reservierung für Quote $quoteId');
             return sum;
           }
 
           final qty = (data['quantity'] as num?)?.toDouble().abs() ?? 0.0;
-          print('  -> Addiere ${qty} zur Gesamtreservierung (Quote: $quoteId)');
+          print('  -> Addiere $qty zur Gesamtreservierung (Quote: $quoteId)');
           return sum + qty;
         },
       );
 
-      print('\nGesamte reservierte Menge (ohne eigene): $reservedQuantity');
+      print('Gesamte reservierte Menge (ohne eigene): $reservedQuantity');
       print('Verfügbare Menge: ${currentStock - reservedQuantity}');
 
       availability[productId] = currentStock - reservedQuantity;
     }
 
+    print('=== END checkAvailability ===');
     return availability;
   }
 }

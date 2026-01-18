@@ -1133,6 +1133,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   ),
 
                   // Footer mit Aktionsbuttons
+                  // Footer mit Aktionsbuttons
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -1147,138 +1148,172 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                       ],
                     ),
                     child: SafeArea(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (!data['sold'])
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: isInCart ? null : () async {
-                                  // Sicherheitsdialog
-                                  final bool? confirmDelete = await showDialog<bool>(
-                                    context: context,
-                                    builder: (context) => AlertDialog(
-                                      title: Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.all(8),
-                                            decoration: BoxDecoration(
-                                              color: Colors.red.withOpacity(0.1),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child:  getAdaptiveIcon(iconName: 'warning', defaultIcon:
-                                              Icons.warning,
-                                              color: Colors.red,
-                                            ),
+                          // NEU: "In den Warenkorb" Button (nur wenn nicht verkauft und nicht im Warenkorb)
+                          if (!data['sold'] && !isInCart)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.icon(
+                                  onPressed: () async {
+                                    await _addOnlineShopItemToBasket(data);
+                                    Navigator.of(context).pop();
+                                  },
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: Colors.blue[700],
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
+                                  ),
+                                  icon: getAdaptiveIcon(
+                                    iconName: 'add_shopping_cart',
+                                    defaultIcon: Icons.add_shopping_cart,
+                                  ),
+                                  label: const Text('In den Warenkorb'),
+                                ),
+                              ),
+                            ),
+
+                          // Bestehende Buttons in Row
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              if (!data['sold'])
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: isInCart ? null : () async {
+                                      // Sicherheitsdialog
+                                      final bool? confirmDelete = await showDialog<bool>(
+                                        context: context,
+                                        builder: (context) => AlertDialog(
+                                          title: Row(
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.all(8),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.red.withOpacity(0.1),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: getAdaptiveIcon(
+                                                  iconName: 'warning',
+                                                  defaultIcon: Icons.warning,
+                                                  color: Colors.red,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              const Text('Produkt entfernen'),
+                                            ],
                                           ),
-                                          const SizedBox(width: 12),
-                                          const Text('Produkt entfernen'),
+                                          content: Text(
+                                            'Möchtest du das Produkt "${data['product_name']}" wirklich aus dem Online-Shop entfernen? Der Eintrag wird gelöscht, der normale Warenbestand um +1 erhöht.',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(context, false),
+                                              child: const Text('Abbrechen'),
+                                            ),
+                                            FilledButton.icon(
+                                              onPressed: () => Navigator.pop(context, true),
+                                              style: FilledButton.styleFrom(
+                                                backgroundColor: Colors.red,
+                                              ),
+                                              icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete),
+                                              label: const Text('Entfernen'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+
+                                      // Nur wenn bestätigt wurde
+                                      if (confirmDelete == true) {
+                                        await _removeFromOnlineShop(data);
+                                        Navigator.of(context).pop();
+                                      }
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                      side: const BorderSide(color: Colors.red),
+                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                      disabledForegroundColor: Colors.grey.withOpacity(0.5),
+                                      disabledBackgroundColor: Colors.grey.withOpacity(0.1),
+                                    ),
+                                    icon: getAdaptiveIcon(iconName: 'remove_shopping_cart', defaultIcon: Icons.remove_shopping_cart),
+                                    label: Text(isInCart ? 'Im Warenkorb' : 'Entfernen'),
+                                  ),
+                                ),
+                              if (!data['sold'])
+                                const SizedBox(width: 12),
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: (data['sold'] || isInCart) ? null : () async {
+                                    // Sicherheitsdialog
+                                    final bool? confirmSold = await showDialog<bool>(
+                                      context: context,
+                                      builder: (context) => AlertDialog(
+                                        title: Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFF0F4A29).withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: getAdaptiveIcon(
+                                                iconName: 'sell',
+                                                defaultIcon: Icons.sell,
+                                                color: Color(0xFF0F4A29),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            const Text('Verkaufen'),
+                                          ],
+                                        ),
+                                        content: Text(
+                                          'Möchtest du das Produkt "${data['product_name']}" wirklich als verkauft markieren?',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(context, false),
+                                            child: const Text('Abbrechen'),
+                                          ),
+                                          FilledButton.icon(
+                                            onPressed: () => Navigator.pop(context, true),
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: const Color(0xFF0F4A29),
+                                            ),
+                                            icon: getAdaptiveIcon(
+                                              iconName: 'check',
+                                              defaultIcon: Icons.check,
+                                            ),
+                                            label: const Text('Als verkauft markieren'),
+                                          ),
                                         ],
                                       ),
-                                      content: Text(
-                                        'Möchtest du das Produkt "${data['product_name']}" wirklich aus dem Online-Shop entfernen? Der Eintrag wird gelöscht, der normale Warenbestand um +1 erhöht.',
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(context, false),
-                                          child: const Text('Abbrechen'),
-                                        ),
-                                        FilledButton.icon(
-                                          onPressed: () => Navigator.pop(context, true),
-                                          style: FilledButton.styleFrom(
-                                            backgroundColor: Colors.red,
-                                          ),
-                                          icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete),
-                                          label: const Text('Entfernen'),
-                                        ),
-                                      ],
-                                    ),
-                                  );
+                                    );
 
-                                  // Nur wenn bestätigt wurde
-                                  if (confirmDelete == true) {
-                                    await _removeFromOnlineShop(data);
-                                    Navigator.of(context).pop();
-                                  }
-                                },
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                  side: const BorderSide(color: Colors.red),
-                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                  disabledForegroundColor: Colors.grey.withOpacity(0.5),
-                                  disabledBackgroundColor: Colors.grey.withOpacity(0.1),
-                                ),
-                                icon: getAdaptiveIcon(iconName: 'remove_shopping_cart',defaultIcon:Icons.remove_shopping_cart),
-                                label: Text(isInCart ? 'Im Warenkorb' : 'Entfernen'),
-                              ),
-                            ),
-                          if (!data['sold'])
-                            const SizedBox(width: 12),
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: (data['sold'] || isInCart) ? null : () async {
-                                // Sicherheitsdialog
-                                final bool? confirmSold = await showDialog<bool>(
-                                  context: context,
-                                  builder: (context) => AlertDialog(
-                                    title: Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.all(8),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF0F4A29).withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child:  getAdaptiveIcon(iconName: 'sell', defaultIcon:
-                                            Icons.sell,
-                                            color: Color(0xFF0F4A29),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        const Text('Verkaufen'),
-                                      ],
-                                    ),
-                                    content: Text(
-                                      'Möchtest du das Produkt "${data['product_name']}" wirklich als verkauft markieren?',
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(context, false),
-                                        child: const Text('Abbrechen'),
-                                      ),
-                                      FilledButton.icon(
-                                        onPressed: () => Navigator.pop(context, true),
-                                        style: FilledButton.styleFrom(
-                                          backgroundColor: const Color(0xFF0F4A29),
-                                        ),
-                                        icon: getAdaptiveIcon(
-                                            iconName: 'check',
-                                            defaultIcon:Icons.check),
-                                        label: const Text('Als verkauft markieren'),
-                                      ),
-                                    ],
+                                    // Nur wenn bestätigt wurde
+                                    if (confirmSold == true) {
+                                      await _markAsSold(data);
+                                      Navigator.of(context).pop();
+                                    }
+                                  },
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFF0F4A29),
+                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                    disabledBackgroundColor: Colors.grey[300],
                                   ),
-                                );
-
-                                // Nur wenn bestätigt wurde
-                                if (confirmSold == true) {
-                                  await _markAsSold(data);
-                                  Navigator.of(context).pop();
-                                }
-                              },
-                              style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF0F4A29),
-                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                disabledBackgroundColor: Colors.grey[300],
+                                  icon: getAdaptiveIcon(
+                                    iconName: 'sell',
+                                    defaultIcon: Icons.sell,
+                                  ),
+                                  label: Text(
+                                      isInCart ? 'Im Warenkorb - nicht verfügbar' :
+                                      data['sold'] ? 'Bereits verkauft' : 'Als verkauft markieren'
+                                  ),
+                                ),
                               ),
-                              icon:  getAdaptiveIcon(
-                              iconName: 'sell',
-            defaultIcon:Icons.sell),
-                              label: Text(
-                                  isInCart ? 'Im Warenkorb - nicht verfügbar' :
-                                  data['sold'] ? 'Bereits verkauft' : 'Als verkauft markieren'
-                              ),
-                            ),
+                            ],
                           ),
                         ],
                       ),
@@ -1298,10 +1333,74 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
 
 
+  /// Prüft ob ein Online-Shop-Item bereits im Warenkorb oder in einem Angebot reserviert ist
+  Future<Map<String, dynamic>> _checkOnlineShopItemAvailability(String onlineShopBarcode) async {
+    // 1. Prüfe ob bereits im aktuellen Warenkorb
+    final cartCheck = await FirebaseFirestore.instance
+        .collection('temporary_basket')
+        .where('online_shop_barcode', isEqualTo: onlineShopBarcode)
+        .limit(1)
+        .get();
+
+    if (cartCheck.docs.isNotEmpty) {
+      return {
+        'available': false,
+        'reason': 'cart',
+        'message': 'Dieses Produkt befindet sich bereits im Warenkorb',
+      };
+    }
+
+    // 2. Prüfe ob in einem aktiven Angebot reserviert
+    final reservationCheck = await FirebaseFirestore.instance
+        .collection('stock_movements')
+        .where('onlineShopBarcode', isEqualTo: onlineShopBarcode)
+        .where('type', isEqualTo: 'reservation')
+        .where('status', isEqualTo: 'reserved')
+        .limit(1)
+        .get();
+
+    if (reservationCheck.docs.isNotEmpty) {
+      final quoteId = reservationCheck.docs.first.data()['quoteId'] ?? 'unbekannt';
+      return {
+        'available': false,
+        'reason': 'reserved',
+        'message': 'Dieses Produkt ist im Angebot $quoteId reserviert',
+        'quoteId': quoteId,
+      };
+    }
+
+    return {
+      'available': true,
+      'reason': null,
+      'message': null,
+    };
+  }
 
   Future<void> _addOnlineShopItemToBasket(Map<String, dynamic> data) async {
-    // Für Online-Shop Items muss eine andere ID-Struktur verwendet werden
-    // Wir verwenden den vollständigen Barcode als Produkt-ID
+    final onlineShopBarcode = data['barcode'];
+
+    // Prüfe Verfügbarkeit
+    final availabilityCheck = await _checkOnlineShopItemAvailability(onlineShopBarcode);
+
+    if (availabilityCheck['available'] != true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(availabilityCheck['message'] ?? 'Produkt nicht verfügbar'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
+    // Für Online-Shop Items: Hole zusätzliche Produktdaten aus inventory
+    final inventoryDoc = await FirebaseFirestore.instance
+        .collection('inventory')
+        .doc(data['short_barcode'])
+        .get();
+
+    final inventoryData = inventoryDoc.data() ?? {};
+
     await FirebaseFirestore.instance
         .collection('temporary_basket')
         .add({
@@ -1319,19 +1418,31 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       'wood_code': data['wood_code'],
       'quality_name': data['quality_name'],
       'quality_code': data['quality_code'],
-      'is_online_shop_item': true, // Markierung für Online-Shop Items
-      'online_shop_barcode': data['barcode'], // Original Shop-Barcode speichern
+      // Englische Bezeichnungen
+      'instrument_name_en': inventoryData['instrument_name_en'] ?? '',
+      'part_name_en': inventoryData['part_name_en'] ?? '',
+      'wood_name_en': inventoryData['wood_name_en'] ?? '',
+      'product_name_en': inventoryData['product_name_en'] ?? '',
+      // Online-Shop spezifisch
+      'is_online_shop_item': true,
+      'online_shop_barcode': onlineShopBarcode,
     });
 
-    // Optional: Markiere das Item als "im Warenkorb" in der Online-Shop-Collection
-    // Dies verhindert, dass andere Benutzer es gleichzeitig in den Warenkorb legen
+    // Markiere das Item als "im Warenkorb" in der Online-Shop-Collection
     await FirebaseFirestore.instance
         .collection('onlineshop')
-        .doc(data['barcode'])
+        .doc(onlineShopBarcode)
         .update({
       'in_cart': true,
       'cart_timestamp': FieldValue.serverTimestamp(),
     });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Produkt wurde dem Warenkorb hinzugefügt'),
+        backgroundColor: Colors.green,
+      ),
+    );
   }
   Future<void> _removeFromOnlineShop(Map<String, dynamic> data) async {
     try {
@@ -3973,44 +4084,164 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktopLayout = screenWidth > ResponsiveBreakpoints.tablet;
     final bool isSold = data['sold'] == true;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: (isSold ? Colors.red : Colors.green).withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: (isSold ? Colors.red : Colors.green).withOpacity(0.3),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-isSold?
-        getAdaptiveIcon(
-        iconName: 'sell',
-        defaultIcon:Icons.sell,color: Colors.red,size: 16)
-          :
-getAdaptiveIcon(
-    iconName: 'storefront',
-    defaultIcon:Icons.storefront,color: Colors.green,size: 16),
+    final bool isInCart = data['in_cart'] == true;
+    final String onlineShopBarcode = data['barcode'] ?? '';
 
-          const SizedBox(width: 6),
-          Text(
-            isSold
-                ? (isDesktopLayout ? 'Verkauft' : 'Verk.')
-                : (isDesktopLayout ? 'Verfügbar' : 'Verf.'),
-            style: TextStyle(
-              color: isSold ? Colors.red : Colors.green,
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
+    // Wenn verkauft - höchste Priorität
+    if (isSold) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: Colors.red.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            getAdaptiveIcon(
+              iconName: 'sell',
+              defaultIcon: Icons.sell,
+              color: Colors.red,
+              size: 16,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              isDesktopLayout ? 'Verkauft' : 'Verk.',
+              style: const TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Wenn im Warenkorb
+    if (isInCart) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.blue.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: Colors.blue.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            getAdaptiveIcon(
+              iconName: 'shopping_cart',
+              defaultIcon: Icons.shopping_cart,
+              color: Colors.blue,
+              size: 16,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              isDesktopLayout ? 'Im Warenkorb' : 'Warenk.',
+              style: const TextStyle(
+                color: Colors.blue,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Prüfe auf Reservierung in Angebot (StreamBuilder für Echtzeit-Updates)
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('stock_movements')
+          .where('onlineShopBarcode', isEqualTo: onlineShopBarcode)
+          .where('type', isEqualTo: 'reservation')
+          .where('status', isEqualTo: 'reserved')
+          .limit(1)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final isReserved = snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+
+        if (isReserved) {
+          final quoteId = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+          final quoteNumber = quoteId['quoteId'] ?? '';
+
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.orange.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                getAdaptiveIcon(
+                  iconName: 'pending',
+                  defaultIcon: Icons.pending,
+                  color: Colors.orange,
+                  size: 16,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  isDesktopLayout ? 'Reserviert ($quoteNumber)' : 'Reserv.',
+                  style: const TextStyle(
+                    color: Colors.orange,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Verfügbar (Standard)
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.green.withOpacity(0.3),
+              width: 1,
             ),
           ),
-        ],
-      ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              getAdaptiveIcon(
+                iconName: 'storefront',
+                defaultIcon: Icons.storefront,
+                color: Colors.green,
+                size: 16,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                isDesktopLayout ? 'Verfügbar' : 'Verf.',
+                style: const TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
-
 // Neue Hilfsmethode für Lagerbestand Status
   Widget _buildInventoryStatus(Map<String, dynamic> data) {
     return Column(

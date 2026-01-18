@@ -19,6 +19,7 @@ import 'customer_filter_service.dart';
 import 'customer_group/customer_group_management_screen.dart';
 import 'customer_group/customer_group_selection_widget.dart';
 import 'customer_group/customer_group_service.dart';
+import 'customer_import_dialog.dart';
 import 'customer_label_print_screen.dart';
 import 'customer_selection.dart';
 
@@ -31,19 +32,35 @@ class CustomerManagementScreen extends StatefulWidget {
 }
 
 class CustomerManagementScreenState extends State<CustomerManagementScreen> {
-  final TextEditingController searchController = TextEditingController();
-  List<DocumentSnapshot> _customerDocs = [];
-  bool _isLoading = false;
-  bool _hasMore = true;
-  final int _limit = 10;
+  // ============================================================================
+  // STATE VARIABLES - Gruppiert nach Funktion
+  // ============================================================================
+
+  // --- UI Controllers ---
+  final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  Timer? _debounce;
+
+  // --- Data State ---
+  List<DocumentSnapshot> _customerDocs = [];
+  DocumentSnapshot? _lastDocument; // Für bessere Pagination
+
+  // --- Loading State ---
+  bool _isLoading = false;
+  bool _isFilteredDataLoading = false;
+  bool _hasMore = true;
+  final int _pageSize = 20; // Erhöht von 10 auf 20
+
+  // --- Search State ---
   String _lastSearchTerm = '';
-  List<Customer> _allLoadedCustomers = [];
-// Filter-bezogene Variablen
+  Timer? _debounce;
+  static const _searchDebounceMs = 500;
+
+  // --- Filter State ---
   Map<String, dynamic> _activeFilters = CustomerFilterService.createEmptyFilter();
   StreamSubscription<Map<String, dynamic>>? _filterSubscription;
-  bool _isFilteredDataLoading = false;
+  List<DocumentSnapshot>? _cachedFilterResults; // NEU: Cache für Filter
+
+
   @override
   void initState() {
     super.initState();
@@ -60,20 +77,19 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       }
     });
 
-    searchController.addListener(_onSearchChanged);
+    _searchController.addListener(_onSearchChanged);
   }
   void _onSearchChanged() {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), () {
-      if (searchController.text != _lastSearchTerm) {
-        _lastSearchTerm = searchController.text;
+    _debounce = Timer(const Duration(milliseconds: _searchDebounceMs), () { // ← Nutze Konstante
+      if (_searchController.text != _lastSearchTerm) {
+        _lastSearchTerm = _searchController.text;
 
         if (_lastSearchTerm.isEmpty) {
           // If search is cleared, reload initial data
           setState(() {
             _customerDocs = [];
             _hasMore = true;
-            _allLoadedCustomers = [];
           });
           _loadInitialCustomers();
         } else {
@@ -88,7 +104,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       if (mounted) {
         setState(() {
           _activeFilters = filters;
-          searchController.text = filters['searchText'] ?? '';
+          _searchController.text = filters['searchText'] ?? '';
         });
         _applyFilters();
       }
@@ -102,8 +118,19 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
   Future<void> _applyFilters() async {
     if (!CustomerFilterService.hasActiveFilters(_activeFilters)) {
       // Wenn keine Filter aktiv sind, lade normale Daten
+      _cachedFilterResults = null; // Cache löschen
       _loadInitialCustomers();
       return;
+    }
+
+    // NEU: Check Cache first!
+    if (_cachedFilterResults != null) {
+      setState(() {
+        _customerDocs = _cachedFilterResults!;
+        _hasMore = false;
+        _isFilteredDataLoading = false;
+      });
+      return; // Fertig! Keine neue Query nötig
     }
 
     setState(() {
@@ -129,12 +156,14 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
         _activeFilters,
       );
 
+      // NEU: Speichere im Cache!
+      _cachedFilterResults = filteredCustomers.map((customerData) {
+        return _MockDocumentSnapshot(customerData);
+      }).toList();
+
       // Konvertiere zurück zu DocumentSnapshots für die Anzeige
       setState(() {
-        _customerDocs = filteredCustomers.map((customerData) {
-          // Erstelle ein Mock-DocumentSnapshot
-          return _MockDocumentSnapshot(customerData);
-        }).toList();
+        _customerDocs = _cachedFilterResults!;
         _hasMore = false; // Bei gefilterten Daten kein weiteres Laden
         _isFilteredDataLoading = false;
       });
@@ -145,7 +174,6 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       });
     }
   }
-
   void _showFilterDialog() {
     CustomerFilterDialog.show(
       context,
@@ -165,7 +193,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       onFavoriteSelected: (favoriteData) {
         setState(() {
           _activeFilters = Map<String, dynamic>.from(favoriteData['filters']);
-          searchController.text = _activeFilters['searchText'] ?? '';
+          _searchController.text = _activeFilters['searchText'] ?? '';
         });
         CustomerFilterService.saveFilters(_activeFilters);
       },
@@ -231,7 +259,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
     });
 
     // If we have enough customers loaded already, filter them client-side
-    if (_allLoadedCustomers.length > 20) {
+    if (_customerDocs.length > 20) {
       _filterExistingResults();
     } else {
       // If we don't have many customers loaded, get more from Firestore
@@ -260,36 +288,67 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
   }
 
   Future<void> _loadAllCustomersForSearch() async {
-    // For a comprehensive search, we'll load more customers
-    // This could be optimized with server-side search in a production app
-    final searchSnapshot = await FirebaseFirestore.instance
-        .collection('customers')
-        .orderBy('company')
-        .get();
+    final searchTerm = _lastSearchTerm.toLowerCase();
 
-    // Process the results
-    List<DocumentSnapshot> matchingDocs = [];
-
-    for (var doc in searchSnapshot.docs) {
+    // SCHRITT 1: Suche in bereits geladenen Daten (instant!)
+    final localResults = _customerDocs.where((doc) {
       final customer = Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id);
-      final searchTerm = _lastSearchTerm.toLowerCase();
 
-      if (customer.company.toLowerCase().contains(searchTerm) ||
+      return customer.company.toLowerCase().contains(searchTerm) ||
           customer.firstName.toLowerCase().contains(searchTerm) ||
           customer.lastName.toLowerCase().contains(searchTerm) ||
           customer.city.toLowerCase().contains(searchTerm) ||
-          customer.email.toLowerCase().contains(searchTerm)) {
-        matchingDocs.add(doc);
-      }
+          customer.email.toLowerCase().contains(searchTerm);
+    }).toList();
+
+    // Zeige lokale Ergebnisse sofort an
+    if (localResults.isNotEmpty) {
+      setState(() {
+        _customerDocs = localResults;
+        _isLoading = true; // Weiter laden im Hintergrund
+      });
     }
 
-    setState(() {
-      _customerDocs = matchingDocs;
-      _allLoadedCustomers = matchingDocs.map((doc) =>
-          Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
-      _hasMore = false; // All results loaded
-      _isLoading = false;
-    });
+    // SCHRITT 2: Lade zusätzliche Ergebnisse vom Server (max 50)
+    try {
+      final serverSnapshot = await FirebaseFirestore.instance
+          .collection('customers')
+          .orderBy('company')
+          .limit(50) // Nur 50 statt 800!
+          .get();
+
+      // Filtere Server-Ergebnisse
+      final Map<String, DocumentSnapshot> allResults = {};
+
+      // Füge lokale Ergebnisse hinzu
+      for (final doc in localResults) {
+        allResults[doc.id] = doc;
+      }
+
+      // Füge Server-Ergebnisse hinzu (ohne Duplikate)
+      for (var doc in serverSnapshot.docs) {
+        final customer = Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+
+        if (customer.company.toLowerCase().contains(searchTerm) ||
+            customer.firstName.toLowerCase().contains(searchTerm) ||
+            customer.lastName.toLowerCase().contains(searchTerm) ||
+            customer.city.toLowerCase().contains(searchTerm) ||
+            customer.email.toLowerCase().contains(searchTerm)) {
+          allResults[doc.id] = doc;
+        }
+      }
+
+      setState(() {
+        _customerDocs = allResults.values.toList();
+        _hasMore = false;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Search error: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _loadInitialCustomers() async {
@@ -303,15 +362,13 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       final querySnapshot = await FirebaseFirestore.instance
           .collection('customers')
           .orderBy('company')
-          .limit(_limit)
+          .limit(_pageSize)
           .get();
 
       setState(() {
         _customerDocs = querySnapshot.docs;
-        // Store all loaded customers for client-side filtering
-        _allLoadedCustomers = querySnapshot.docs.map((doc) =>
-            Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
-        _hasMore = querySnapshot.docs.length == _limit;
+        // DIESE ZEILE GELÖSCHT!
+        _hasMore = querySnapshot.docs.length == _pageSize;
         _isLoading = false;
       });
     } catch (error) {
@@ -321,7 +378,6 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       });
     }
   }
-
   Future<void> _loadMoreCustomers() async {
     if (_isLoading || !_hasMore || _customerDocs.isEmpty) return;
 
@@ -336,16 +392,14 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
           .collection('customers')
           .orderBy('company')
           .startAfterDocument(lastDoc)
-          .limit(_limit)
+          .limit(_pageSize)
           .get();
 
       if (mounted) {
         setState(() {
           _customerDocs.addAll(querySnapshot.docs);
-          // Add to our client-side store for filtering
-          _allLoadedCustomers.addAll(querySnapshot.docs.map((doc) =>
-              Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList());
-          _hasMore = querySnapshot.docs.length == _limit;
+          // DIESE ZEILE GELÖSCHT!
+          _hasMore = querySnapshot.docs.length == _pageSize;
           _isLoading = false;
         });
       }
@@ -358,11 +412,10 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       }
     }
   }
-
   @override
   void dispose() {
-    searchController.removeListener(_onSearchChanged);
-    searchController.dispose();
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
     _scrollController.dispose();
     _debounce?.cancel();
     super.dispose();
@@ -420,6 +473,9 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                     ),
                   );
                   break;
+                case 'import':
+                  _showImportDialog();
+                  break;
                 case 'export':
                   CustomerExportService.exportCustomersCsv(context);
                   break;
@@ -448,6 +504,16 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
               ),
               const PopupMenuDivider(),
               PopupMenuItem(
+                value: 'import',
+                child: Row(
+                  children: [
+                    getAdaptiveIcon(iconName: 'upload_file', defaultIcon: Icons.upload_file, size: 20),
+                    const SizedBox(width: 12),
+                    const Text('Kundenimport'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
                 value: 'export',
                 child: Row(
                   children: [
@@ -468,7 +534,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
           Container(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: TextField(
-              controller: searchController,
+              controller: _searchController,
               style: const TextStyle(fontSize: 14),
               decoration: InputDecoration(
                 hintText: 'Suchen',
@@ -477,7 +543,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                   iconName: 'search',
                   defaultIcon: Icons.search,
                 ),
-                suffixIcon: searchController.text.isNotEmpty
+                suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
                   icon: getAdaptiveIcon(
                     iconName: 'clear',
@@ -486,7 +552,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                   ),
                   onPressed: () {
                     setState(() {
-                      searchController.clear();
+                      _searchController.clear();
                     });
                   },
                 )
@@ -767,7 +833,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                     leading: CircleAvatar(
                       backgroundColor: Theme.of(context).primaryColor,
                       child: Text(
-                        customer.company.isNotEmpty ? customer.company.substring(0, 1).toUpperCase() : '?',
+                        _getInitial(customer),
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
@@ -775,13 +841,15 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                       ),
                     ),
                     title: Text(
-                      customer.company,
+                      customer.company.isNotEmpty ? customer.company : customer.fullName,
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(customer.fullName),
+                        // Zeige Name nur wenn Firma vorhanden ist
+                        if (customer.company.isNotEmpty && customer.fullName.isNotEmpty)
+                          Text(customer.fullName),
                         Text('${customer.zipCode} ${customer.city}'),
                         // NEU: Kundengruppen-Chips anzeigen
                         if (customer.customerGroupIds.isNotEmpty) ...[
@@ -793,18 +861,22 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                         ],
                       ],
                     ),
-                    isThreeLine: true,
+                    isThreeLine: customer.company.isNotEmpty || customer.customerGroupIds.isNotEmpty,
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
                           icon: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit),
                           onPressed: () async {
-                            await CustomerSelectionSheet.showEditCustomerDialog(context, customer);
-                            if (_lastSearchTerm.isEmpty) {
-                              _loadInitialCustomers();
-                            } else {
-                              _performSearch();
+                            final wasUpdated = await CustomerSelectionSheet.showEditCustomerDialog(context, customer);
+                            if (wasUpdated) {
+                              // NEU: Cache invalidieren!
+                              _cachedFilterResults = null;
+                              if (_lastSearchTerm.isEmpty) {
+                                _loadInitialCustomers();
+                              } else {
+                                _performSearch();
+                              }
                             }
                           },
                         ),
@@ -827,27 +899,59 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-
-        onPressed: () async {
-          final newCustomer = await CustomerSelectionSheet.showNewCustomerDialog(context);
-          if (newCustomer != null) {
-            // Reload customers to include the new one
-            setState(() {
-              _customerDocs = [];
-              _hasMore = true;
-              _allLoadedCustomers = [];
-              _lastSearchTerm = '';
-              searchController.clear();
-            });
-            _loadInitialCustomers();
-          }
-        },
+          onPressed: () async {
+            final newCustomer = await CustomerSelectionSheet.showNewCustomerDialog(context);
+            if (newCustomer != null) {
+              // NEU: Cache invalidieren!
+              _cachedFilterResults = null;
+              // Reload customers to include the new one
+              setState(() {
+                _customerDocs = [];
+                _hasMore = true;
+                _lastSearchTerm = '';
+                _searchController.clear();
+              });
+              _loadInitialCustomers();
+            }
+          },
         child: getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add),
         tooltip: 'Neuer Kunde',
       ),
     );
   }
+  String _getInitial(Customer customer) {
+    // Versuche zuerst Firma
+    if (customer.company.isNotEmpty) {
+      return customer.company.substring(0, 1).toUpperCase();
+    }
 
+    // Dann Vorname
+    if (customer.firstName.isNotEmpty) {
+      return customer.firstName.substring(0, 1).toUpperCase();
+    }
+
+    // Dann Nachname
+    if (customer.lastName.isNotEmpty) {
+      return customer.lastName.substring(0, 1).toUpperCase();
+    }
+
+    // Fallback
+    return '?';
+  }
+  void _showImportDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => CustomerImportDialog(
+        onImportComplete: () {
+          // NEU: Cache invalidieren!
+          _cachedFilterResults = null;
+          // Liste neu laden nach erfolgreichem Import
+          _loadInitialCustomers();
+        },
+      ),
+    );
+  }
   // Löschbestätigung anzeigen
   void _showDeleteConfirmation(BuildContext context, Customer customer) {
     showDialog(
@@ -867,6 +971,9 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
               final success = await CustomerSelectionSheet.deleteCustomer(context, customer.id);
               if (success && context.mounted) {
                 Navigator.pop(context);
+                // NEU: Cache invalidieren!
+                _cachedFilterResults = null;
+                _loadInitialCustomers(); // Liste neu laden
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Kunde wurde gelöscht'),
@@ -1059,10 +1166,16 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                       child: Row(
                         children: [
                           Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () {
+                            child:
+                            OutlinedButton.icon(
+                              onPressed: () async {
                                 Navigator.pop(context);
-                                CustomerSelectionSheet.showEditCustomerDialog(context, currentCustomer);
+                                final wasUpdated = await CustomerSelectionSheet.showEditCustomerDialog(context, currentCustomer);
+                                if (wasUpdated) {
+                                  // NEU: Cache invalidieren und neu laden!
+                                  _cachedFilterResults = null;
+                                  _loadInitialCustomers();
+                                }
                               },
                               icon: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit),
                               label: const Text('Bearbeiten'),

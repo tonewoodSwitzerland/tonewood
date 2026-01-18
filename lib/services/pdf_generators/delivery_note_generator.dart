@@ -5,6 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../pdf_settings_screen.dart';
+import '../product_sorting_manager.dart';
 import 'base_delivery_note_generator.dart';
 import '../additional_text_manager.dart';
 
@@ -43,41 +44,20 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
   }
 
   // Gruppiere Items nach Holzart
+  /// Gruppiert Items nach Holzart mit konfigurierbarer Sortierung
   static Future<Map<String, List<Map<String, dynamic>>>> _groupItemsByWoodType(
       List<Map<String, dynamic>> items,
       String language,
       ) async {
-    final Map<String, List<Map<String, dynamic>>> grouped = {};
-    final Map<String, Map<String, dynamic>> woodTypeCache = {};
 
-    for (final item in items) {
-      final woodCode = item['wood_code'] as String?;
-      if (woodCode == null) continue;
-
-      if (!woodTypeCache.containsKey(woodCode)) {
-        woodTypeCache[woodCode] = await BaseDeliveryNotePdfGenerator.getWoodTypeInfo(woodCode) ?? {};
-      }
-
-      final woodInfo = woodTypeCache[woodCode]!;
-      final woodName = language == 'EN'
-          ? (woodInfo['name_english'] ?? woodInfo['name'] ?? item['wood_name'] ?? 'Unknown wood type')
-          : (woodInfo['name'] ?? item['wood_name'] ?? 'Unbekannte Holzart');
-
-      final woodNameLatin = woodInfo['name_latin'] ?? '';
-      final groupKey = '$woodName\n($woodNameLatin)';
-
-      if (!grouped.containsKey(groupKey)) {
-        grouped[groupKey] = [];
-      }
-
-      final enhancedItem = Map<String, dynamic>.from(item);
-      enhancedItem['wood_display_name'] = groupKey;
-      enhancedItem['wood_name_latin'] = woodNameLatin;
-
-      grouped[groupKey]!.add(enhancedItem);
-    }
-
-    return grouped;
+    // Nutze den ProductSortingManager für die Gruppierung (Holzart ist fixiert)
+    return await ProductSortingManager.groupAndSortProducts(
+      items,
+      language,
+      getAdditionalInfo: (code, criteria) async {
+        return await ProductSortingManager.getInfoForCriteria(code, criteria);
+      },
+    );
   }
 
   /// Fasst Items mit gleicher product_id zusammen (addiert Mengen)

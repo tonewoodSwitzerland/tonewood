@@ -1078,6 +1078,24 @@ return Scaffold(
           .collection('temporary_basket')
           .get();
       for (var doc in basketDocs.docs) {
+        final data = doc.data();
+
+        // NEU: Wenn es ein Online-Shop-Item ist, setze in_cart zurück
+        if (data['is_online_shop_item'] == true && data['online_shop_barcode'] != null) {
+          final onlineShopBarcode = data['online_shop_barcode'] as String;
+          try {
+            await FirebaseFirestore.instance
+                .collection('onlineshop')
+                .doc(onlineShopBarcode)
+                .update({
+              'in_cart': false,
+              'cart_timestamp': FieldValue.delete(),
+            });
+          } catch (e) {
+            print('Fehler beim Zurücksetzen von in_cart für $onlineShopBarcode: $e');
+          }
+        }
+
         batch.delete(doc.reference);
       }
 
@@ -2835,42 +2853,52 @@ return Scaffold(
                           : Theme.of(context).colorScheme.onErrorContainer,
                     ),
                     const SizedBox(width: 12),
-                    customer != null
-                        ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          customer.company.isNotEmpty ? customer.company : customer.fullName,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: Theme.of(context).colorScheme.onSecondaryContainer,
+                    Expanded(  // ← Hinzugefügt
+                      child: customer != null
+                          ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Flexible(  // ← Statt unbegrenztem Text
+                            child: Text(
+                              customer.company.isNotEmpty ? customer.company : customer.fullName,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: Theme.of(context).colorScheme.onSecondaryContainer,
+                              ),
+                              overflow: TextOverflow.ellipsis,  // ← Hinzugefügt
+                            ),
                           ),
+                          if (customer.company.isNotEmpty)
+                            Flexible(
+                              child: Text(
+                                ' • ${customer.fullName} • ${customer.city}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context).colorScheme.onSecondaryContainer.withOpacity(0.7),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            )
+                          else
+                            Flexible(
+                              child: Text(
+                                ' • ${customer.city}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context).colorScheme.onSecondaryContainer.withOpacity(0.7),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                      )
+                          : Text(
+                        'Bitte Kunde auswählen',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.onErrorContainer,
                         ),
-                        // Nur Subtitle zeigen wenn Firma vorhanden ist
-                        if (customer.company.isNotEmpty)
-                          Text(
-                            ' • ${customer.fullName} • ${customer.city}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).colorScheme.onSecondaryContainer.withOpacity(0.7),
-                            ),
-                          )
-                        else
-                          Text(
-                            ' • ${customer.city}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).colorScheme.onSecondaryContainer.withOpacity(0.7),
-                            ),
-                          )
-                      ],
-                    )
-                        : Text(
-                      'Bitte Kunde auswählen',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.onErrorContainer,
                       ),
                     ),
                     if (customer != null)
@@ -2904,8 +2932,25 @@ return Scaffold(
   }
 
   void _showCustomerSelection() async {
+    // NEU: Hole aktuellen Kunden aus Firestore
+    Customer? currentCustomer;
+    final tempDocs = await FirebaseFirestore.instance
+        .collection('temporary_customer')
+        .limit(1)
+        .get();
+
+    if (tempDocs.docs.isNotEmpty) {
+      currentCustomer = Customer.fromMap(
+        tempDocs.docs.first.data(),
+        tempDocs.docs.first.id,
+      );
+    }
+
     // Zeige das Customer Selection Sheet an und warte auf das Ergebnis
-    final selectedCustomer = await CustomerSelectionSheet.show(context);
+    final selectedCustomer = await CustomerSelectionSheet.show(
+      context,
+      currentCustomer: currentCustomer,  // ← Übergib den aktuellen Kunden
+    );
 
     // Wenn ein Kunde ausgewählt wurde, speichere ihn
     if (selectedCustomer != null) {
@@ -2925,7 +2970,6 @@ return Scaffold(
       }
     }
   }
-
   Stream<Customer?> get _temporaryCustomerStream => FirebaseFirestore.instance
       .collection('temporary_customer')
       .limit(1)
@@ -2950,6 +2994,25 @@ return Scaffold(
         batch.delete(doc.reference);
       }
 
+      // NEU: Prüfe ob Schweizer Kunde
+      final isSwissCustomer = customer.country.toLowerCase().contains('schweiz') ||
+          customer.country.toLowerCase().contains('switzerland') ||
+          customer.countryCode == 'CH';
+
+
+      print("isSwissCustomer:$isSwissCustomer");
+      // NEU: Setze show_validity_addition basierend auf Land
+      // Nicht-Schweizer = true (müssen vorauszahlen)
+      // Schweizer = false (müssen nicht vorauszahlen)
+
+      await FirebaseFirestore.instance
+          .collection('temporary_document_settings')
+          .doc('quote_settings')
+          .set({
+        'show_validity_addition': !isSwissCustomer,
+      });
+
+
       // Füge neuen temporären Kunden hinzu
       batch.set(
         FirebaseFirestore.instance.collection('temporary_customer').doc(customer.id),
@@ -2964,6 +3027,7 @@ return Scaffold(
       print('Fehler beim Speichern des temporären Kunden: $e');
     }
   }
+
   void _showServiceSelectionDialog() {
     ServiceSelectionSheet.show(
       context,
@@ -4987,7 +5051,7 @@ return Scaffold(
                 TextFormField(
                   controller: temperatureController,
                   decoration: InputDecoration(
-                    labelText: 'Temperatur (°C)',
+                    labelText: 'Temperatur (°C) *',  // Stern hinzufügen
                     border: const OutlineInputBorder(),
                     filled: true,
                     fillColor: Theme.of(context).colorScheme.surface,
@@ -4999,13 +5063,18 @@ return Scaffold(
                       ),
                     ),
                     suffixText: '°C',
-                    helperText: 'Behandlungstemperatur (z.B. 180, 200, 212)',
+                    helperText: 'Pflichtfeld - Behandlungstemperatur (z.B. 180, 200, 212)',  // Angepasster Hilfetext
+                    // Optional: Fehlerrahmen wenn leer
+                    errorText: temperatureController.text.isEmpty ? 'Temperatur erforderlich' : null,
                   ),
                   keyboardType: TextInputType.number,
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
                     LengthLimitingTextInputFormatter(3),
                   ],
+                  onChanged: (value) {
+                    setDialogState(() {});  // UI aktualisieren für Fehleranzeige
+                  },
                 ),
               ],
 
@@ -5568,6 +5637,19 @@ return Scaffold(
                             child: ElevatedButton.icon(
                               onPressed: () async {
                                 try {
+                                  // NEU: Validierung für Thermobehandlung
+                                  if (!isService && hasThermalTreatment && temperatureController.text.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Bitte Behandlungstemperatur eingeben'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                    return; // Abbruch wenn Temperatur fehlt
+                                  }
+
+
+
                                   // Neuen Preis parsen (Komma oder Punkt akzeptieren)
                                   final String normalizedInput = priceController.text.replaceAll(',', '.');
                                   final newPrice = double.tryParse(normalizedInput) ?? 0.0;
@@ -5805,6 +5887,63 @@ return Scaffold(
       print('Fehler beim Laden des Standard-Volumens für Artikel: $e');
       return null;
     }
+  }
+
+  /// Prüft ob ein Online-Shop-Item bereits im Warenkorb oder in einem Angebot reserviert ist
+  Future<Map<String, dynamic>> _checkOnlineShopItemAvailability(String onlineShopBarcode) async {
+    // 1. Prüfe ob bereits im aktuellen Warenkorb
+    final cartCheck = await FirebaseFirestore.instance
+        .collection('temporary_basket')
+        .where('online_shop_barcode', isEqualTo: onlineShopBarcode)
+        .limit(1)
+        .get();
+
+    if (cartCheck.docs.isNotEmpty) {
+      return {
+        'available': false,
+        'reason': 'cart',
+        'message': 'Dieses Produkt befindet sich bereits im Warenkorb',
+      };
+    }
+
+    // 2. Prüfe ob in einem aktiven Angebot reserviert
+    final reservationCheck = await FirebaseFirestore.instance
+        .collection('stock_movements')
+        .where('onlineShopBarcode', isEqualTo: onlineShopBarcode)
+        .where('type', isEqualTo: 'reservation')
+        .where('status', isEqualTo: 'reserved')
+        .limit(1)
+        .get();
+
+    if (reservationCheck.docs.isNotEmpty) {
+      final quoteId = reservationCheck.docs.first.data()['quoteId'] ?? 'unbekannt';
+      return {
+        'available': false,
+        'reason': 'reserved',
+        'message': 'Dieses Produkt ist bereits im Angebot $quoteId reserviert',
+        'quoteId': quoteId,
+      };
+    }
+
+    // 3. Prüfe auch das in_cart Flag im onlineshop Dokument
+    final shopDoc = await FirebaseFirestore.instance
+        .collection('onlineshop')
+        .doc(onlineShopBarcode)
+        .get();
+
+    if (shopDoc.exists && shopDoc.data()?['in_cart'] == true) {
+      return {
+        'available': false,
+        'reason': 'in_cart_flag',
+        'message': 'Dieses Produkt ist als "im Warenkorb" markiert',
+      };
+    }
+
+    return {
+      'available': true,
+      'reason': null,
+      'message': null,
+    };
   }
 
   Future<void> _addToTemporaryBasket(String shortBarcode, Map<String, dynamic> productData, num quantity, String? onlineShopBarcode) async {
@@ -6047,6 +6186,20 @@ return Scaffold(
               Navigator.pop(context);
 
               try {
+                // NEU: Prüfe ob es ein Online-Shop-Item ist und setze in_cart zurück
+                final isOnlineShopItem = itemData['is_online_shop_item'] == true;
+                final onlineShopBarcode = itemData['online_shop_barcode'] as String?;
+
+                if (isOnlineShopItem && onlineShopBarcode != null) {
+                  await FirebaseFirestore.instance
+                      .collection('onlineshop')
+                      .doc(onlineShopBarcode)
+                      .update({
+                    'in_cart': false,
+                    'cart_timestamp': FieldValue.delete(),
+                  });
+                }
+
                 // 1. Lösche aus temporary_basket
                 await FirebaseFirestore.instance
                     .collection('temporary_basket')
@@ -6525,7 +6678,7 @@ return Scaffold(
                               TextFormField(
                                 controller: temperatureController,
                                 decoration: InputDecoration(
-                                  labelText: 'Temperatur (°C)',
+                                  labelText: 'Temperatur (°C) *',  // Stern hinzufügen
                                   border: const OutlineInputBorder(),
                                   filled: true,
                                   fillColor: Theme.of(context).colorScheme.surface,
@@ -6537,13 +6690,18 @@ return Scaffold(
                                     ),
                                   ),
                                   suffixText: '°C',
-                                  helperText: 'Behandlungstemperatur (z.B. 180, 200, 212)',
+                                  helperText: 'Pflichtfeld - Behandlungstemperatur (z.B. 180, 200, 212)',  // Angepasster Hilfetext
+                                  // Optional: Fehlerrahmen wenn leer
+                                  errorText: temperatureController.text.isEmpty ? 'Temperatur erforderlich' : null,
                                 ),
                                 keyboardType: TextInputType.number,
                                 inputFormatters: [
                                   FilteringTextInputFormatter.digitsOnly,
                                   LengthLimitingTextInputFormatter(3),
                                 ],
+                                onChanged: (value) {
+                                  setState(() {});  // UI aktualisieren für Fehleranzeige
+                                },
                               ),
                             ],
 
@@ -7110,6 +7268,11 @@ return Scaffold(
                               ElevatedButton(
                                 onPressed: () async {
                                   if (quantityController.text.isNotEmpty) {
+                                    // NEU: Validierung für Thermobehandlung
+                                    if (hasThermalTreatment && temperatureController.text.isEmpty) {
+
+                                      return; // Abbruch wenn Temperatur fehlt
+                                    }
                                     // Ersetze Komma durch Punkt für die Konvertierung
                                     final normalizedInput = quantityController.text.replaceAll(',', '.');
 
@@ -7298,6 +7461,21 @@ return Scaffold(
         final onlineShopDoc = onlineShopDocs.docs.first;
         final onlineShopBarcode = onlineShopDoc.id;
         final onlineShopData = onlineShopDoc.data();
+
+        // NEU: Prüfe Verfügbarkeit des Online-Shop-Items
+        final availabilityCheck = await _checkOnlineShopItemAvailability(onlineShopBarcode);
+
+        if (!availabilityCheck['available']) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(availabilityCheck['message'] ?? 'Produkt nicht verfügbar'),
+              backgroundColor: Colors.orange,
+
+            ),
+          );
+          return;
+        }
 
         // Hole die Produktdaten aus dem Inventory
         final doc = await FirebaseFirestore.instance

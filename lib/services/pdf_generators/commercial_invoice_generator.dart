@@ -5,6 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import '../product_sorting_manager.dart';
 import 'base_pdf_generator.dart';
 import '../additional_text_manager.dart';
 
@@ -165,6 +166,8 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               pw.Expanded(
                 child: pw.Column(
                   children: [
+                    BasePdfGenerator.buildCurrencyHint(currency, language),
+
                     // Produkttabelle nur wenn Produkte vorhanden
                     if (productItems.isNotEmpty)
                       _buildProductTable(groupedProductItems, currency, exchangeRates, language, taraSettings),
@@ -536,10 +539,12 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       List<Map<String, dynamic>> items,
       String language
       ) async {
+    final sortedItems = await ProductSortingManager.sortProducts(items);
+
     final Map<String, List<Map<String, dynamic>>> grouped = {};
     final Map<String, Map<String, dynamic>> woodTypeCache = {};
 
-    for (final item in items) {
+    for (final item in sortedItems) {
       String tariffNumber = '';
 
       final woodCode = item['wood_code'] as String;
@@ -903,14 +908,14 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                BasePdfGenerator.formatCurrency(pricePerUnit, currency, exchangeRates),
+                BasePdfGenerator.formatAmountOnly(pricePerUnit, currency, exchangeRates),
                 style: const pw.TextStyle(fontSize: 8),
                 textAlign: pw.TextAlign.right,
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                BasePdfGenerator.formatCurrency(total, currency, exchangeRates),
+                BasePdfGenerator.formatAmountOnly(total, currency, exchangeRates),
                 style: const pw.TextStyle(fontSize: 8),
                 textAlign: pw.TextAlign.right,
               ),
@@ -939,7 +944,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
-              BasePdfGenerator.formatCurrency(totalAmount, currency, exchangeRates),
+              BasePdfGenerator.formatAmountOnly(totalAmount, currency, exchangeRates),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
               textAlign: pw.TextAlign.right,
             ),
@@ -1181,7 +1186,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
-                  BasePdfGenerator.formatCurrency(pricePerUnit, currency, exchangeRates),
+                  BasePdfGenerator.formatAmountOnly(pricePerUnit, currency, exchangeRates),
                   style: const pw.TextStyle(fontSize: 8),
                   textAlign: pw.TextAlign.right,
                 ),
@@ -1189,7 +1194,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
               BasePdfGenerator.buildContentCell(
                 pw.Text(
-                  BasePdfGenerator.formatCurrency(itemTotal, currency, exchangeRates),
+                  BasePdfGenerator.formatAmountOnly(itemTotal, currency, exchangeRates),
                   style: pw.TextStyle(
                     fontSize: 8,
                     fontWeight: discountAmount > 0 ? pw.FontWeight.bold : null,
@@ -1286,7 +1291,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
-              BasePdfGenerator.formatCurrency(totalAmount, currency, exchangeRates),
+              BasePdfGenerator.formatAmountOnly(totalAmount, currency, exchangeRates),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
               textAlign: pw.TextAlign.right,
             ),

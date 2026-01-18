@@ -22,13 +22,13 @@ import 'customer_management_screen.dart';
 /// Zentrale Klasse für alle Kundenfunktionen
 class CustomerSelectionSheet {
   /// Zeigt die Kundenauswahl als ModalBottomSheet an
-  static Future<Customer?> show(BuildContext context) async {
+  static Future<Customer?> show(BuildContext context, {Customer? currentCustomer}) async {
     final Customer? selectedCustomer = await showModalBottomSheet<Customer?>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return const _CustomerSelectionBottomSheet();
+        return _CustomerSelectionBottomSheet(initialCustomer: currentCustomer);  // NEU
       },
     );
 
@@ -47,7 +47,7 @@ class CustomerSelectionSheet {
 
 
   /// Zeigt einen Dialog zum Bearbeiten eines Kunden an
-  static Future<void> showEditCustomerDialog(BuildContext context, Customer customer) async {
+  static Future<bool> showEditCustomerDialog(BuildContext context, Customer customer) async {
     final customerDoc = await FirebaseFirestore.instance
         .collection('customers')
         .doc(customer.id)
@@ -62,11 +62,12 @@ class CustomerSelectionSheet {
           ),
         );
       }
-      return;
+      return false;
     }
 
     // Erstelle Customer-Objekt mit aktuellen Daten
     final currentCustomer = Customer.fromMap(customerDoc.data()!, customerDoc.id);
+    bool wasUpdated = false; // ← NEU!
 
     print( currentCustomer.houseNumber);
 
@@ -123,12 +124,9 @@ class CustomerSelectionSheet {
         .toList();
 
     bool _useShippingAddress = currentCustomer.hasDifferentShippingAddress;
-
     bool showVatOnDocuments = currentCustomer.showVatOnDocuments ?? false;
     bool showEoriOnDocuments = currentCustomer.showEoriOnDocuments ?? false;
     bool showCustomFieldOnDocuments = currentCustomer.showCustomFieldOnDocuments ?? false;
-
-
     bool _showFirstName = currentCustomer.firstName.isNotEmpty;
     bool _showHouseNumber = currentCustomer.houseNumber.isNotEmpty; // NEU
 
@@ -1666,16 +1664,13 @@ class CustomerSelectionSheet {
                                         flex: 2,
                                         child: ElevatedButton.icon(
                                           onPressed: () async {
-
                                             // Kundengruppen-Validierung
                                             if (_selectedGroupIds.isEmpty) {
                                               setState(() {
                                                 _showGroupError = true;
                                               });
-                                              return;  // Abbrechen
+                                              return; // Abbrechen
                                             }
-
-
 
                                             if (formKey.currentState?.validate() == true) {
                                               try {
@@ -1689,15 +1684,11 @@ class CustomerSelectionSheet {
                                                   houseNumber: houseNumberController.text.trim(),
                                                   zipCode: zipCodeController.text.trim(),
                                                   city: cityController.text.trim(),
-                                                  province: provinceController.text.trim(), // NEU
+                                                  province: provinceController.text.trim(),
                                                   country: countryController.text.trim(),
                                                   countryCode: countryCodeController.text.trim(),
                                                   email: emailController.text.trim(),
-
                                                   customerGroupIds: _selectedGroupIds,
-
-
-                                                  // Neue Felder
                                                   phone1: phone1Controller.text.trim(),
                                                   phone2: phone2Controller.text.trim(),
                                                   vatNumber: vatNumberController.text.trim(),
@@ -1705,11 +1696,8 @@ class CustomerSelectionSheet {
                                                   language: languageController.text.trim(),
                                                   wantsChristmasCard: christmasLetterController.text == 'JA',
                                                   notes: notesController.text.trim(),
-
                                                   addressSupplement: addressSupplementController.text.trim(),
                                                   districtPOBox: districtPOBoxController.text.trim(),
-
-                                                  // Abweichende Lieferadresse
                                                   hasDifferentShippingAddress: _useShippingAddress,
                                                   shippingCompany: _useShippingAddress ? shippingCompanyController.text.trim() : '',
                                                   shippingFirstName: _useShippingAddress ? shippingFirstNameController.text.trim() : '',
@@ -1717,7 +1705,7 @@ class CustomerSelectionSheet {
                                                   shippingStreet: _useShippingAddress ? shippingStreetController.text.trim() : '',
                                                   shippingHouseNumber: _useShippingAddress ? shippingHouseNumberController.text.trim() : '',
                                                   shippingZipCode: _useShippingAddress ? shippingZipCodeController.text.trim() : '',
-                                                  shippingProvince: _useShippingAddress ? shippingProvinceController.text.trim() : '', // NEU
+                                                  shippingProvince: _useShippingAddress ? shippingProvinceController.text.trim() : '',
                                                   shippingCity: _useShippingAddress ? shippingCityController.text.trim() : '',
                                                   shippingCountry: _useShippingAddress ? shippingCountryController.text.trim() : '',
                                                   shippingCountryCode: _useShippingAddress ? shippingCountryCodeController.text.trim() : '',
@@ -1730,8 +1718,6 @@ class CustomerSelectionSheet {
                                                       ? null : customFieldTitleController.text.trim(),
                                                   customFieldValue: customFieldValueController.text.trim().isEmpty
                                                       ? null : customFieldValueController.text.trim(),
-
-                                                  // NEU: Zusätzliche Adresszeilen
                                                   additionalAddressLines: additionalAddressLines
                                                       .map((c) => c.text.trim())
                                                       .where((text) => text.isNotEmpty)
@@ -1743,9 +1729,6 @@ class CustomerSelectionSheet {
                                                       .toList()
                                                       : [],
                                                 );
-                                                print("streetcontr:${streetController.text.trim()},");
-
-                                                print("test111");
 
                                                 await FirebaseFirestore.instance
                                                     .collection('customers')
@@ -1753,6 +1736,7 @@ class CustomerSelectionSheet {
                                                     .update(updatedCustomer.toMap());
 
                                                 if (context.mounted) {
+                                                  wasUpdated = true; // ← NEU! Setze Flag auf true
                                                   Navigator.pop(context);
                                                   ScaffoldMessenger.of(context).showSnackBar(
                                                     const SnackBar(
@@ -1816,6 +1800,7 @@ class CustomerSelectionSheet {
     for (var controller in shippingAdditionalAddressLines) {
       controller.dispose();
     }
+    return wasUpdated;
   }
 
   /// Zeigt einen Dialog zum Erstellen eines neuen Kunden an
@@ -3592,7 +3577,9 @@ class CustomerSelectionSheet {
 }
 
 class _CustomerSelectionBottomSheet extends StatefulWidget {
-  const _CustomerSelectionBottomSheet();
+  final Customer? initialCustomer;  // NEU
+
+  const _CustomerSelectionBottomSheet({this.initialCustomer});  // NEU
 
   @override
   _CustomerSelectionBottomSheetState createState() => _CustomerSelectionBottomSheetState();
@@ -3621,6 +3608,7 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
   @override
   void initState() {
     super.initState();
+    selectedCustomer = widget.initialCustomer;  // NEU
     _loadInitialCustomers();
 
     _scrollController.addListener(() {
@@ -3900,6 +3888,26 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
                 ),
               ),
             ),
+          if (selectedCustomer != null && _lastSearchTerm.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Aktuell ausgewählt',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildCustomerListTile(selectedCustomer!, true),
+                  const Divider(),
+                ],
+              ),
+            ),
 
           // Kundenliste
           Expanded(
@@ -3945,6 +3953,12 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
 
                 final doc = _customerDocs[index];
                 final customer = Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+
+                // NEU: Bereits ausgewählten Kunden überspringen (wird oben angezeigt)
+                if (selectedCustomer != null && customer.id == selectedCustomer!.id && _lastSearchTerm.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+
                 final isSelected = selectedCustomer?.id == customer.id;
 
                 return _buildCustomerListTile(customer, isSelected);

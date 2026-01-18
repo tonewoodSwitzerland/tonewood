@@ -64,13 +64,14 @@ extension QuoteViewStatusExtension on QuoteViewStatus {
   }
 }
 
-double _convertPrice(double priceInCHF, Quote quote) {
+double _convertPrice(num priceInCHF, Quote quote) {
+  final price = priceInCHF.toDouble();
   final currency = quote.metadata['currency'] ?? 'CHF';
-  if (currency == 'CHF') return priceInCHF;
+  if (currency == 'CHF') return price;
 
   final exchangeRates = quote.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
   final rate = (exchangeRates[currency] as num?)?.toDouble() ?? 1.0;
-  return priceInCHF * rate;
+  return price * rate;
 }
 
 
@@ -82,11 +83,20 @@ class QuotesOverviewScreen extends StatefulWidget {
 }
 
 class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedFilterSettings();
+  }
+
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   QuoteViewStatus? _filterStatus;
   String _rejectionReason = '';
   bool _hasUnsearchedChanges = false;
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -104,15 +114,19 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
               child: getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list),
             ),
             onSelected: (value) {
+              // 1. UI Status aktualisieren
               if (value == 'clear_all') {
                 setState(() {
                   _filterStatus = null;
                 });
-              } else if (value is QuoteViewStatus?) {
+              } else if (value is QuoteViewStatus) {
                 setState(() {
                   _filterStatus = value;
                 });
               }
+
+              // 2. Einstellung speichern (NEU)
+              _saveFilterSettings(value);
             },
             itemBuilder: (context) => [
               if (_filterStatus != null)
@@ -324,6 +338,68 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
     );
   }
 
+  // -- NEU: Funktion zum Laden aus Firestore --
+  Future<void> _loadSavedFilterSettings() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      // Wir speichern die Einstellungen unter users/{uid}/settings/quotes_overview
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('settings')
+          .doc('quotes_overview')
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        final savedStatusName = data['filter_status'] as String?;
+
+        if (savedStatusName != null) {
+          // Versuche, den String (z.B. 'open') zurück in das Enum zu wandeln
+          try {
+            final status = QuoteViewStatus.values.firstWhere(
+                  (e) => e.name == savedStatusName,
+            );
+            setState(() {
+              _filterStatus = status;
+            });
+          } catch (e) {
+            // Falls der gespeicherte Status ungültig ist, passiert nichts (bleibt null/alle)
+          }
+        } else {
+          // Wenn explizit null gespeichert war (für "Alle anzeigen")
+          setState(() {
+            _filterStatus = null;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Fehler beim Laden der Filtereinstellungen: $e');
+    }
+  }
+
+  // -- NEU: Funktion zum Speichern in Firestore --
+  Future<void> _saveFilterSettings(QuoteViewStatus? status) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('settings')
+          .doc('quotes_overview')
+          .set({
+        // Speichert den internen Namen (z.B. 'accepted') oder null
+        'filter_status': status?.name,
+        'updated_at': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Fehler beim Speichern der Filtereinstellungen: $e');
+    }
+  }
   Widget _buildCompactStatistics() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('quotes').snapshots(),
@@ -356,6 +432,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                   Icons.schedule,
                   'schedule',
                   QuoteColors.open,
+                  QuoteViewStatus.open, // Ziel-Status für Filter
                 ),
               ),
               const SizedBox(width: 8),
@@ -366,6 +443,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                   Icons.timer_off,
                   'timer_off',
                   QuoteColors.expired,
+                  QuoteViewStatus.expired, // Ziel-Status für Filter
                 ),
               ),
             ],
@@ -375,51 +453,73 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
     );
   }
 
-  Widget _buildCompactStatCard(String title, String value, IconData icon,String iconName, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2), width: 1),
-      ),
-      child: Row(
-        children: [
-          getAdaptiveIcon(
-              iconName: iconName,
-              defaultIcon:icon, color: color, size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                    height: 1,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: color.withOpacity(0.8),
-                    height: 1,
-                  ),
-                ),
-              ],
-            ),
+  Widget _buildCompactStatCard(String title, String value, IconData icon, String iconName, Color color, QuoteViewStatus targetStatus) {
+    final bool isActive = _filterStatus == targetStatus;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          // Wenn bereits aktiv, Filter aufheben, sonst setzen
+          final newStatus = isActive ? null : targetStatus;
+          setState(() {
+            _filterStatus = newStatus;
+          });
+
+          // NEU: Sofort speichern
+          _saveFilterSettings(newStatus);
+
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          // Hintergrund wird kräftiger, wenn der Filter aktiv ist
+          color: isActive ? color.withOpacity(0.2) : color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isActive ? color : color.withOpacity(0.2),
+            width: isActive ? 2 : 1,
           ),
-        ],
+        ),
+        child: Row(
+          children: [
+            getAdaptiveIcon(iconName: iconName, defaultIcon: icon, color: color, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                      height: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                      color: color.withOpacity(0.8),
+                      height: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isActive)
+              getAdaptiveIcon(iconName: 'check_circle', defaultIcon: Icons.check_circle, color: color, size: 14),
+          ],
+        ),
       ),
     );
   }
-
   Stream<QuerySnapshot> _buildQuotesQuery() {
     Query query = FirebaseFirestore.instance.collection('quotes');
     return query.orderBy('createdAt', descending: true).snapshots();
@@ -615,7 +715,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  if (viewStatus == QuoteViewStatus.open) ...[
+
                     _buildCompactActionButton(
                       icon: Icons.content_copy,
                       iconName:'content_copy',
@@ -648,7 +748,6 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                       color: QuoteColors.rejected,
                     ),
                     const SizedBox(width: 4),
-                  ],
                   _buildCompactActionButton(
                     icon: Icons.history,
                     iconName:'history',
@@ -1475,6 +1574,121 @@ Status: ${_getViewStatus(quote).displayName}
   }
 
   Future<void> _copyQuoteToNewQuote(Quote quote) async {
+    // NEU: Prüfe zuerst ob Online-Shop-Items noch verfügbar sind
+    final unavailableItems = <String>[];
+
+    for (final item in quote.items) {
+      if (item['is_online_shop_item'] == true && item['online_shop_barcode'] != null) {
+        final onlineShopBarcode = item['online_shop_barcode'] as String;
+
+        // Prüfe ob das Produkt noch existiert und nicht verkauft ist
+        final shopDoc = await FirebaseFirestore.instance
+            .collection('onlineshop')
+            .doc(onlineShopBarcode)
+            .get();
+
+        if (!shopDoc.exists || shopDoc.data()?['sold'] == true) {
+          unavailableItems.add('${item['product_name']} (verkauft/entfernt)');
+          continue;
+        }
+
+        // Prüfe ob im Warenkorb
+        if (shopDoc.data()?['in_cart'] == true) {
+          unavailableItems.add('${item['product_name']} (im Warenkorb)');
+          continue;
+        }
+
+        // Prüfe ob bereits in einem anderen Angebot reserviert
+        final reservationCheck = await FirebaseFirestore.instance
+            .collection('stock_movements')
+            .where('onlineShopBarcode', isEqualTo: onlineShopBarcode)
+            .where('type', isEqualTo: 'reservation')
+            .where('status', isEqualTo: 'reserved')
+            .limit(1)
+            .get();
+
+        if (reservationCheck.docs.isNotEmpty) {
+          final reservedQuoteId = reservationCheck.docs.first.data()['quoteId'] ?? 'unbekannt';
+          unavailableItems.add('${item['product_name']} (reserviert in $reservedQuoteId)');
+        }
+      }
+    }
+
+    // Wenn es nicht verfügbare Items gibt, zeige Warnung
+    if (unavailableItems.isNotEmpty) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Row(
+            children: [
+              getAdaptiveIcon(
+                iconName: 'warning',
+                defaultIcon: Icons.warning,
+                color: Colors.orange,
+              ),
+              const SizedBox(width: 8),
+              const Text('Nicht verfügbare Artikel'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Folgende Online-Shop-Artikel können nicht kopiert werden:'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: unavailableItems.map((item) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'cancel',
+                          defaultIcon: Icons.cancel,
+                          color: Colors.red,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(item, style: const TextStyle(fontSize: 12))),
+                      ],
+                    ),
+                  )).toList(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Diese Artikel werden beim Kopieren übersprungen. Möchtest du trotzdem fortfahren?',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Abbrechen'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Trotzdem kopieren'),
+            ),
+          ],
+        ),
+      );
+
+      if (proceed != true) return;
+    }
+
     // Bestätigungsdialog
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1555,11 +1769,21 @@ Status: ${_getViewStatus(quote).displayName}
         ),
       );
 
-      // Sammle die Daten - KORRIGIERT
+      // NEU: Filtere nicht verfügbare Online-Shop-Items heraus
+      final availableItems = quote.items.where((item) {
+        if (item['is_online_shop_item'] == true && item['online_shop_barcode'] != null) {
+          final productName = item['product_name'] ?? '';
+          // Prüfe ob dieses Item in der unavailableItems Liste ist
+          return !unavailableItems.any((unavailable) => unavailable.startsWith(productName));
+        }
+        return true; // Normale Items immer übernehmen
+      }).toList();
+
+      // Sammle die Daten
       final quoteData = {
         'customer': quote.customer,
         'costCenter': quote.costCenter,
-        'items': quote.items,
+        'items': availableItems, // NEU: Nur verfügbare Items
         'currency': quote.metadata['currency'] ?? 'CHF',
         'exchangeRates': quote.metadata['exchangeRates'] ?? {
           'CHF': 1.0,
@@ -1568,9 +1792,9 @@ Status: ${_getViewStatus(quote).displayName}
         },
         'vatRate': quote.metadata['vatRate'] ?? 8.1,
         'taxOption': quote.metadata['taxOption'] ?? 0,
-        'additionalTexts': quote.metadata['additionalTexts'] ?? {}, // KORRIGIERT
+        'additionalTexts': quote.metadata['additionalTexts'] ?? {},
         'documentLanguage': quote.customer['language'] ?? 'DE',
-        'shippingCosts': quote.metadata['shippingCosts'], // NEU: Versandkosten auch übernehmen
+        'shippingCosts': quote.metadata['shippingCosts'],
       };
 
       // Modal schließen
@@ -1599,7 +1823,6 @@ Status: ${_getViewStatus(quote).displayName}
       }
     }
   }
-
   Future<void> _createHistoryEntry(Quote quote, String action) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -1798,6 +2021,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
   void initState() {
     super.initState();
     _checkAdditionalTexts();
+
   }
 
   Future<void> _checkAdditionalTexts() async {
