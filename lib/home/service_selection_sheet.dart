@@ -383,7 +383,7 @@ class ServiceSelectionSheet {
     }
 
     // Preis in ausgewählter Währung
-    final priceInCHF = serviceData['price_CHF'] as double;
+    final priceInCHF = (serviceData['price_CHF'] as num).toDouble();
     final displayPrice = selectedCurrency != 'CHF'
         ? priceInCHF * exchangeRates[selectedCurrency]!
         : priceInCHF;

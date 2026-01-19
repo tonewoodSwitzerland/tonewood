@@ -146,21 +146,15 @@ class _OrderDetailsContent extends StatelessWidget {
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending: return OrderColors.pending;
+
       case OrderStatus.processing: return OrderColors.processing;
       case OrderStatus.shipped: return OrderColors.shipped;
-      case OrderStatus.delivered: return OrderColors.delivered;
+
       case OrderStatus.cancelled: return OrderColors.cancelled;
     }
   }
 
-  Color _getPaymentStatusColor(PaymentStatus status) {
-    switch (status) {
-      case PaymentStatus.pending: return OrderColors.paymentPending;
-      case PaymentStatus.partial: return OrderColors.paymentPartial;
-      case PaymentStatus.paid: return OrderColors.paymentPaid;
-    }
-  }
+
 
   double _convertPrice(double priceInCHF) {
     final currency = order.metadata?['currency'] ?? 'CHF';
@@ -308,24 +302,7 @@ class _OrderDetailsContent extends StatelessWidget {
     );
   }
 
-  Widget _buildPaymentChip(BuildContext context, PaymentStatus status) {
-    final color = _getPaymentStatusColor(status);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          getAdaptiveIcon(iconName: 'payments', defaultIcon: Icons.payments, size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(status.displayName, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: color)),
-        ],
-      ),
-    );
-  }
+
 
   Widget _buildQuickActions(BuildContext context, OrderX currentOrder) {
     return Row(
@@ -435,16 +412,7 @@ class _OrderDetailsContent extends StatelessWidget {
                   ],
                 ),
               ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Zahlung', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5))),
-                    const SizedBox(height: 4),
-                    _buildPaymentChip(context, currentOrder.paymentStatus),
-                  ],
-                ),
-              ),
+
             ],
           ),
           const SizedBox(height: 12),
@@ -542,7 +510,7 @@ class _OrderDetailsContent extends StatelessWidget {
   }
 
   Widget _buildActionButtons(BuildContext context, OrderX currentOrder) {
-    final canCancel = currentOrder.status == OrderStatus.pending || currentOrder.status == OrderStatus.processing;
+    final canCancel = currentOrder.status == OrderStatus.processing;
 
     return Container(
       padding: const EdgeInsets.all(12),

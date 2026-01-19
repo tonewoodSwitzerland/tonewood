@@ -11,7 +11,7 @@ class OrderFilterService {
   static Map<String, dynamic> createEmptyFilter() {
     return {
       'orderStatus': <String>[],
-      'paymentStatus': <String>[],
+
       'minAmount': null,
       'maxAmount': null,
       'veranlagungStatus': null, // null = alle, 'required' = benötigt Verfügung, 'completed' = hat Verfügung
@@ -93,11 +93,6 @@ class OrderFilterService {
       query = query.where('status', whereIn: orderStatusList);
     }
 
-    // Zahlungsstatus Filter
-    final paymentStatusList = List<String>.from(filters['paymentStatus'] ?? []);
-    if (paymentStatusList.isNotEmpty) {
-      query = query.where('paymentStatus', whereIn: paymentStatusList);
-    }
 
     // Sortierung
     query = query.orderBy('orderDate', descending: true);
@@ -181,7 +176,7 @@ class OrderFilterService {
   // Helper: Prüfe ob Filter aktiv sind
   static bool hasActiveFilters(Map<String, dynamic> filters) {
     return (filters['orderStatus'] as List?)?.isNotEmpty == true ||
-        (filters['paymentStatus'] as List?)?.isNotEmpty == true ||
+
         filters['minAmount'] != null ||
         filters['maxAmount'] != null ||
         filters['veranlagungStatus'] != null ||
@@ -197,10 +192,6 @@ class OrderFilterService {
       parts.add('$orderStatusCount Auftragsstatus');
     }
 
-    final paymentStatusCount = (filters['paymentStatus'] as List?)?.length ?? 0;
-    if (paymentStatusCount > 0) {
-      parts.add('$paymentStatusCount Zahlungsstatus');
-    }
 
     if (filters['minAmount'] != null || filters['maxAmount'] != null) {
       final min = filters['minAmount']?.toString() ?? '';
@@ -343,39 +334,6 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                       ),
                     ),
 
-                    const SizedBox(height: 24),
-
-                    // Zahlungsstatus
-                    _buildFilterSection(
-                      title: 'Zahlungsstatus',
-                      icon: Icons.payments,
-                      iconName: 'payments',
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: PaymentStatus.values.map((status) {
-                          final isSelected = (_filters['paymentStatus'] as List).contains(status.name);
-                          return FilterChip(
-                            label: Text(status.displayName),
-                            selected: isSelected,
-                            onSelected: (selected) {
-                              setState(() {
-                                if (selected) {
-                                  (_filters['paymentStatus'] as List).add(status.name);
-                                } else {
-                                  (_filters['paymentStatus'] as List).remove(status.name);
-                                }
-                              });
-                            },
-                            avatar:  getAdaptiveIcon(iconName: 'money_bag', defaultIcon:
-                              Icons.savings,
-                              size: 16,
-                              color: _getPaymentStatusColor(status),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
 
                     const SizedBox(height: 24),
 
@@ -577,27 +535,16 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return const Color(0xFFEF9A3C);
+
       case OrderStatus.processing:
         return const Color(0xFF2196F3);
       case OrderStatus.shipped:
         return const Color(0xFF7C4DFF);
-      case OrderStatus.delivered:
-        return const Color(0xFF4CAF50);
+
       case OrderStatus.cancelled:
         return const Color(0xFF757575);
     }
   }
 
-  Color _getPaymentStatusColor(PaymentStatus status) {
-    switch (status) {
-      case PaymentStatus.pending:
-        return const Color(0xFFFF7043);
-      case PaymentStatus.partial:
-        return const Color(0xFFFFA726);
-      case PaymentStatus.paid:
-        return const Color(0xFF66BB6A);
-    }
-  }
+
 }

@@ -42,7 +42,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
 
   String _searchQuery = '';
   OrderStatus? _filterStatus;
-  PaymentStatus? _filterPaymentStatus;
+
   Map<String, dynamic> _activeFilters = OrderFilterService.createEmptyFilter();
   StreamSubscription<Map<String, dynamic>>? _filterSubscription;
   final TextEditingController _searchController = TextEditingController();
@@ -353,7 +353,6 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
 
 
 
-
   Widget _buildCompactStatistics() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('orders').snapshots(),
@@ -364,13 +363,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
             .map((doc) => OrderX.fromFirestore(doc))
             .toList();
 
+        // Nur noch "In Bearbeitung" zählen (nicht versendet, nicht storniert)
         final openOrders = orders.where((o) =>
-        o.status != OrderStatus.delivered &&
-            o.status != OrderStatus.cancelled
-        ).length;
-
-        final unpaidOrders = orders.where((o) =>
-        o.paymentStatus != PaymentStatus.paid
+        o.status == OrderStatus.processing
         ).length;
 
         return Container(
@@ -380,30 +375,20 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
             children: [
               Expanded(
                 child: _buildCompactStatCard(
-                  'Offen',
+                  'In Bearbeitung',
                   openOrders.toString(),
                   Icons.schedule,
                   'schedule',
-                  OrderColors.pending,
+                  OrderColors.processing,
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildCompactStatCard(
-                  'Unbezahlt',
-                  unpaidOrders.toString(),
-                  Icons.savings,
-                  'money_bag',
-                  OrderColors.paymentPending,
-                ),
-              ),
+              // ENTFERNT: Zweite Karte "Unbezahlt"
             ],
           ),
         );
       },
     );
   }
-
   Widget _buildCompactStatCard(String title, String value, IconData icon,String iconName, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -643,8 +628,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       _buildCompactStatusChip(order.status),
-                      const SizedBox(height: 4),
-                      _buildCompactPaymentChip(order.paymentStatus),
+
                     ],
                   ),
                 ],
@@ -780,7 +764,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                     onPressed: () => _shareOrder(order),
                     tooltip: 'Teilen',
                   ),
-                  if (order.status == OrderStatus.pending || order.status == OrderStatus.processing) ...[
+                  if ( order.status == OrderStatus.processing) ...[
                     const SizedBox(width: 4),
                     _buildCompactActionButton(
                       icon: Icons.cancel,
@@ -906,60 +890,20 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
     );
   }
 
-  Widget _buildCompactPaymentChip(PaymentStatus status) {
-    final color = _getPaymentStatusColor(status);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-        getAdaptiveIcon(
-        iconName: 'money_bag',
-        defaultIcon:
-          Icons.savings, size: 10, color: color),
-          const SizedBox(width: 2),
-          Text(
-            status.displayName,
-            style: TextStyle(
-              fontSize: 10,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
-      case OrderStatus.pending:
-        return OrderColors.pending;
+
       case OrderStatus.processing:
         return OrderColors.processing;
       case OrderStatus.shipped:
         return OrderColors.shipped;
-      case OrderStatus.delivered:
-        return OrderColors.delivered;
+
       case OrderStatus.cancelled:
         return OrderColors.cancelled;
     }
   }
 
-  Color _getPaymentStatusColor(PaymentStatus status) {
-    switch (status) {
-      case PaymentStatus.pending:
-        return OrderColors.paymentPending;
-      case PaymentStatus.partial:
-        return OrderColors.paymentPartial;
-      case PaymentStatus.paid:
-        return OrderColors.paymentPaid;
-    }
-  }
 
   void _showOrderDetails(OrderX order) {
     OrderDetailsSheet.show(
@@ -1573,54 +1517,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    ...PaymentStatus.values.map((status) {
-                      final isOrderCancelled = order.status == OrderStatus.cancelled;
 
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-                        dense: true,
-                        leading: getAdaptiveIcon(
-                            iconName: 'money_bag',
-                            defaultIcon:Icons.savings,
-                            size: 16,
-                            color: isOrderCancelled
-                                ? Theme.of(context).colorScheme.onSurface.withOpacity(0.4)
-                                : _getPaymentStatusColor(status)),
-                        title: Text(
-                          status.displayName,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: isOrderCancelled
-                                ? Theme.of(context).colorScheme.onSurface.withOpacity(0.4)
-                                : null,
-                          ),
-                        ),
-                        trailing: order.paymentStatus == status
-                            ? getAdaptiveIcon(
-                            iconName: 'check_circle',
-                            defaultIcon:Icons.check_circle,
-                            color: isOrderCancelled
-                                ? Theme.of(context).colorScheme.onSurface.withOpacity(0.4)
-                                : _getPaymentStatusColor(status),
-                            size: 20)
-                            : isOrderCancelled
-                            ? getAdaptiveIcon(
-                          iconName: 'lock',
-                          defaultIcon: Icons.lock,
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
-                          size: 16,
-                        )
-                            : null,
-                        enabled: !isOrderCancelled,
-                        onTap: !isOrderCancelled
-                            ? () async {
-                          Navigator.pop(context);
-                          await _updatePaymentStatusValue(order, status);
-                        }
-                            : null,
-                      );
-                    }),
                   ],
                 ),
               ),
@@ -1696,70 +1593,6 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
     }
   }
 
-  Future<void> _updatePaymentStatusValue(OrderX order, PaymentStatus status) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      final batch = FirebaseFirestore.instance.batch();
-
-      // Update Order
-      final orderRef = FirebaseFirestore.instance
-          .collection('orders')
-          .doc(order.id);
-
-      batch.update(orderRef, {
-        'paymentStatus': status.name,
-        'payment_updated_at': FieldValue.serverTimestamp(),
-      });
-
-      // Create History Entry
-      final historyRef = FirebaseFirestore.instance
-          .collection('orders')
-          .doc(order.id)
-          .collection('history')
-          .doc();
-
-      batch.set(historyRef, {
-        'timestamp': FieldValue.serverTimestamp(),
-        'user_id': user?.uid ?? 'unknown',
-        'user_email': user?.email ?? 'Unknown User',
-        'user_name': user?.email ?? 'Unknown',
-        'action': 'payment_status_change',
-        'changes': {
-          'field': 'paymentStatus',
-          'old_value': order.paymentStatus.name,
-          'new_value': status.name,
-          'old_display': order.paymentStatus.displayName,
-          'new_display': status.displayName,
-        },
-      });
-
-      await batch.commit();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Zahlungsstatus wurde auf ${status.displayName} geändert'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(8),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(8),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-        );
-      }
-    }
-  }
 
   void _showOrderHistory(OrderX order) {
     showModalBottomSheet(
@@ -1885,21 +1718,12 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                           iconName='swap_horiz';
                           color = _getStatusColor(OrderStatus.values.firstWhere(
                                 (s) => s.name == changes['new_value'],
-                            orElse: () => OrderStatus.pending,
+                            orElse: () => OrderStatus.processing,
                           ));
                           title = 'Status geändert';
                           subtitle = '${changes['old_display']} → ${changes['new_display']}';
                           break;
-                        case 'payment_status_change':
-                          icon = Icons.payment;
-                          iconName='payment';
-                          color = _getPaymentStatusColor(PaymentStatus.values.firstWhere(
-                                (s) => s.name == changes['new_value'],
-                            orElse: () => PaymentStatus.pending,
-                          ));
-                          title = 'Zahlungsstatus geändert';
-                          subtitle = '${changes['old_display']} → ${changes['new_display']}';
-                          break;
+
                         case 'order_cancelled':
                           icon = Icons.cancel;
                           iconName='cancel';
@@ -3193,7 +3017,7 @@ Datum: ${DateFormat('dd.MM.yyyy').format(order.orderDate)}
 Kunde: ${order.customer['company'] ?? order.customer['fullName']}
 Betrag: CHF ${(order.calculations['total'] as num? ?? 0).toStringAsFixed(2)}
 Status: ${order.status.displayName}
-Zahlungsstatus: ${order.paymentStatus.displayName}
+
 ''';
 
     await Share.share(orderInfo, subject: 'Auftrag ${order.orderNumber}');

@@ -42,13 +42,14 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
 
   // --- Data State ---
   List<DocumentSnapshot> _customerDocs = [];
-  DocumentSnapshot? _lastDocument; // Für bessere Pagination
+  List<Customer> _allLoadedCustomers = []; // NEU: Für Client-seitiges Filtern
+  DocumentSnapshot? _lastDocument;
 
   // --- Loading State ---
   bool _isLoading = false;
   bool _isFilteredDataLoading = false;
   bool _hasMore = true;
-  final int _pageSize = 20; // Erhöht von 10 auf 20
+  final int _pageSize = 20;
 
   // --- Search State ---
   String _lastSearchTerm = '';
@@ -58,13 +59,16 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
   // --- Filter State ---
   Map<String, dynamic> _activeFilters = CustomerFilterService.createEmptyFilter();
   StreamSubscription<Map<String, dynamic>>? _filterSubscription;
-  List<DocumentSnapshot>? _cachedFilterResults; // NEU: Cache für Filter
+  List<DocumentSnapshot>? _cachedFilterResults;
+
+  // NEU: Favoriten-Filter
+  bool _showOnlyFavorites = false;
 
 
   @override
   void initState() {
     super.initState();
-    _loadFilters(); // NEU
+    _loadFilters();
     CustomerGroupService.initializeDefaultGroups();
     _loadInitialCustomers();
 
@@ -72,33 +76,35 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 &&
           !_isLoading &&
           _hasMore &&
-          !CustomerFilterService.hasActiveFilters(_activeFilters)) { // NEU: Check für aktive Filter
+          !_showOnlyFavorites && // NEU: Nicht bei Favoriten-Filter
+          !CustomerFilterService.hasActiveFilters(_activeFilters)) {
         _loadMoreCustomers();
       }
     });
 
     _searchController.addListener(_onSearchChanged);
   }
+
   void _onSearchChanged() {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: _searchDebounceMs), () { // ← Nutze Konstante
+    _debounce = Timer(const Duration(milliseconds: _searchDebounceMs), () {
       if (_searchController.text != _lastSearchTerm) {
         _lastSearchTerm = _searchController.text;
 
         if (_lastSearchTerm.isEmpty) {
-          // If search is cleared, reload initial data
           setState(() {
             _customerDocs = [];
             _hasMore = true;
+            _allLoadedCustomers = [];
           });
           _loadInitialCustomers();
         } else {
-          // With search text, we'll do a client-side search with improved loading
           _performSearch();
         }
       }
     });
   }
+
   void _loadFilters() {
     _filterSubscription = CustomerFilterService.loadSavedFilters().listen((filters) {
       if (mounted) {
@@ -111,26 +117,20 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
     });
   }
 
-
-
-
-
   Future<void> _applyFilters() async {
     if (!CustomerFilterService.hasActiveFilters(_activeFilters)) {
-      // Wenn keine Filter aktiv sind, lade normale Daten
-      _cachedFilterResults = null; // Cache löschen
+      _cachedFilterResults = null;
       _loadInitialCustomers();
       return;
     }
 
-    // NEU: Check Cache first!
     if (_cachedFilterResults != null) {
       setState(() {
         _customerDocs = _cachedFilterResults!;
         _hasMore = false;
         _isFilteredDataLoading = false;
       });
-      return; // Fertig! Keine neue Query nötig
+      return;
     }
 
     setState(() {
@@ -138,7 +138,6 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
     });
 
     try {
-      // Lade alle Kunden für die Filterung
       final allCustomersSnapshot = await FirebaseFirestore.instance
           .collection('customers')
           .get();
@@ -150,21 +149,18 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       })
           .toList();
 
-      // Wende Filter an
       final filteredCustomers = await CustomerFilterService.applyClientSideFilters(
         allCustomers,
         _activeFilters,
       );
 
-      // NEU: Speichere im Cache!
       _cachedFilterResults = filteredCustomers.map((customerData) {
         return _MockDocumentSnapshot(customerData);
       }).toList();
 
-      // Konvertiere zurück zu DocumentSnapshots für die Anzeige
       setState(() {
         _customerDocs = _cachedFilterResults!;
-        _hasMore = false; // Bei gefilterten Daten kein weiteres Laden
+        _hasMore = false;
         _isFilteredDataLoading = false;
       });
     } catch (e) {
@@ -174,6 +170,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       });
     }
   }
+
   void _showFilterDialog() {
     CustomerFilterDialog.show(
       context,
@@ -253,25 +250,29 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       }
     }
   }
+
   void _performSearch() {
     setState(() {
       _isLoading = true;
     });
 
-    // If we have enough customers loaded already, filter them client-side
-    if (_customerDocs.length > 20) {
+    if (_allLoadedCustomers.length > 20) {
       _filterExistingResults();
     } else {
-      // If we don't have many customers loaded, get more from Firestore
       _loadAllCustomersForSearch();
     }
   }
 
   void _filterExistingResults() {
-    // Filter the already loaded customers
+    final searchTerm = _lastSearchTerm.toLowerCase();
+
     final filteredDocs = _customerDocs.where((doc) {
       final customer = Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id);
-      final searchTerm = _lastSearchTerm.toLowerCase();
+
+      // NEU: Auch Favoriten-Filter berücksichtigen
+      if (_showOnlyFavorites && !customer.isFavorite) {
+        return false;
+      }
 
       return customer.company.toLowerCase().contains(searchTerm) ||
           customer.firstName.toLowerCase().contains(searchTerm) ||
@@ -282,7 +283,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
 
     setState(() {
       _customerDocs = filteredDocs;
-      _hasMore = false; // No more to load when filtering
+      _hasMore = false;
       _isLoading = false;
     });
   }
@@ -294,6 +295,11 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
     final localResults = _customerDocs.where((doc) {
       final customer = Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id);
 
+      // NEU: Auch Favoriten-Filter berücksichtigen
+      if (_showOnlyFavorites && !customer.isFavorite) {
+        return false;
+      }
+
       return customer.company.toLowerCase().contains(searchTerm) ||
           customer.firstName.toLowerCase().contains(searchTerm) ||
           customer.lastName.toLowerCase().contains(searchTerm) ||
@@ -301,31 +307,32 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
           customer.email.toLowerCase().contains(searchTerm);
     }).toList();
 
-    // Zeige lokale Ergebnisse sofort an
     if (localResults.isNotEmpty) {
       setState(() {
         _customerDocs = localResults;
-        _isLoading = true; // Weiter laden im Hintergrund
+        _isLoading = true;
       });
     }
 
-    // SCHRITT 2: Lade zusätzliche Ergebnisse vom Server (max 50)
+    // SCHRITT 2: Lade zusätzliche Ergebnisse vom Server
     try {
-      final serverSnapshot = await FirebaseFirestore.instance
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
           .collection('customers')
-          .orderBy('company')
-          .limit(50) // Nur 50 statt 800!
-          .get();
+          .orderBy('company');
 
-      // Filtere Server-Ergebnisse
+      // NEU: Favoriten-Filter anwenden
+      if (_showOnlyFavorites) {
+        query = query.where('isFavorite', isEqualTo: true);
+      }
+
+      final serverSnapshot = await query.limit(50).get();
+
       final Map<String, DocumentSnapshot> allResults = {};
 
-      // Füge lokale Ergebnisse hinzu
       for (final doc in localResults) {
         allResults[doc.id] = doc;
       }
 
-      // Füge Server-Ergebnisse hinzu (ohne Duplikate)
       for (var doc in serverSnapshot.docs) {
         final customer = Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id);
 
@@ -340,6 +347,8 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
 
       setState(() {
         _customerDocs = allResults.values.toList();
+        _allLoadedCustomers = allResults.values.map((doc) =>
+            Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
         _hasMore = false;
         _isLoading = false;
       });
@@ -359,15 +368,21 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
     });
 
     try {
-      final querySnapshot = await FirebaseFirestore.instance
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
           .collection('customers')
-          .orderBy('company')
-          .limit(_pageSize)
-          .get();
+          .orderBy('company');
+
+      // NEU: Favoriten-Filter anwenden
+      if (_showOnlyFavorites) {
+        query = query.where('isFavorite', isEqualTo: true);
+      }
+
+      final querySnapshot = await query.limit(_pageSize).get();
 
       setState(() {
         _customerDocs = querySnapshot.docs;
-        // DIESE ZEILE GELÖSCHT!
+        _allLoadedCustomers = querySnapshot.docs.map((doc) =>
+            Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
         _hasMore = querySnapshot.docs.length == _pageSize;
         _isLoading = false;
       });
@@ -378,6 +393,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       });
     }
   }
+
   Future<void> _loadMoreCustomers() async {
     if (_isLoading || !_hasMore || _customerDocs.isEmpty) return;
 
@@ -388,9 +404,16 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
     try {
       final lastDoc = _customerDocs.last;
 
-      final querySnapshot = await FirebaseFirestore.instance
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
           .collection('customers')
-          .orderBy('company')
+          .orderBy('company');
+
+      // NEU: Favoriten-Filter anwenden
+      if (_showOnlyFavorites) {
+        query = query.where('isFavorite', isEqualTo: true);
+      }
+
+      final querySnapshot = await query
           .startAfterDocument(lastDoc)
           .limit(_pageSize)
           .get();
@@ -398,7 +421,8 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       if (mounted) {
         setState(() {
           _customerDocs.addAll(querySnapshot.docs);
-          // DIESE ZEILE GELÖSCHT!
+          _allLoadedCustomers.addAll(querySnapshot.docs.map((doc) =>
+              Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList());
           _hasMore = querySnapshot.docs.length == _pageSize;
           _isLoading = false;
         });
@@ -412,12 +436,26 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       }
     }
   }
+
+  // NEU: Toggle Favoriten-Filter
+  void _toggleFavoritesFilter() {
+    setState(() {
+      _showOnlyFavorites = !_showOnlyFavorites;
+      _customerDocs = [];
+      _hasMore = true;
+      _allLoadedCustomers = [];
+      _cachedFilterResults = null;
+    });
+    _loadInitialCustomers();
+  }
+
   @override
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _scrollController.dispose();
     _debounce?.cancel();
+    _filterSubscription?.cancel();
     super.dispose();
   }
 
@@ -428,7 +466,33 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       appBar: AppBar(
         title: const Text('Kunden'),
         actions: [
-          // Filter-Button (bleibt prominent)
+          // NEU: Favoriten-Filter-Button (Kunden-Favoriten, nicht Filter-Favoriten!)
+          IconButton(
+            onPressed: _toggleFavoritesFilter,
+            icon: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: _showOnlyFavorites
+                    ? Colors.amber.shade100
+                    : Colors.transparent,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _showOnlyFavorites
+                      ? Colors.amber.shade700
+                      : Colors.grey.shade400,
+                  width: 1.5,
+                ),
+              ),
+              child: getAdaptiveIcon(
+                iconName: _showOnlyFavorites ? 'star' : 'star_border',
+                defaultIcon: _showOnlyFavorites ? Icons.star : Icons.star_border,
+                size: 20,
+                color: _showOnlyFavorites ? Colors.amber.shade700 : Colors.grey,
+              ),
+            ),
+            tooltip: _showOnlyFavorites ? 'Alle Kunden anzeigen' : 'Nur Favoriten anzeigen',
+          ),
+          // Filter-Button
           IconButton(
             icon: Badge(
               isLabelVisible: CustomerFilterService.hasActiveFilters(_activeFilters),
@@ -440,19 +504,19 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
             ),
             onPressed: _showFilterDialog,
           ),
-          // Favoriten-Button (bleibt prominent)
+          // Filter-Favoriten-Button (gespeicherte Filter)
           IconButton(
             icon: getAdaptiveIcon(
-              iconName: 'star',
-              defaultIcon: Icons.star,
+              iconName: 'bookmark',
+              defaultIcon: Icons.bookmark,
               color: CustomerFilterService.hasActiveFilters(_activeFilters)
                   ? Theme.of(context).colorScheme.primary
                   : null,
             ),
             onPressed: _showFilterFavorites,
-            tooltip: 'Filter-Favoriten',
+            tooltip: 'Gespeicherte Filter',
           ),
-          // NEU: Mehr-Menü für weitere Aktionen
+          // Mehr-Menü
           PopupMenuButton<String>(
             icon: getAdaptiveIcon(iconName: 'more_vert', defaultIcon: Icons.more_vert),
             onSelected: (value) {
@@ -571,12 +635,53 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
               ),
             ),
           ),
-          SizedBox(height:8),
-// Filter-Chips anzeigen
+          const SizedBox(height: 8),
+
+          // NEU: Favoriten-Filter-Hinweis
+          if (_showOnlyFavorites)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.star, size: 16, color: Colors.amber.shade700),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Nur Favoriten werden angezeigt',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.amber.shade900,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: _toggleFavoritesFilter,
+                      child: Text(
+                        'Filter aufheben',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).primaryColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // Filter-Chips anzeigen
           if (CustomerFilterService.hasActiveFilters(_activeFilters))
             Container(
               height: 40,
-              margin: const EdgeInsets.only(top: 0,),
+              margin: const EdgeInsets.only(top: 0),
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: ListView(
                 scrollDirection: Axis.horizontal,
@@ -590,7 +695,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                           'Umsatz: ${_activeFilters['minRevenue'] != null ? 'ab CHF ${_activeFilters['minRevenue']}' : ''}${_activeFilters['minRevenue'] != null && _activeFilters['maxRevenue'] != null ? ' - ' : ''}${_activeFilters['maxRevenue'] != null ? 'bis CHF ${_activeFilters['maxRevenue']}' : ''}',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
+                        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['minRevenue'] = null;
@@ -610,7 +715,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                           'Zeitraum: ${_activeFilters['revenueStartDate'] != null ? DateFormat('dd.MM.yy').format(_activeFilters['revenueStartDate']) : ''}${_activeFilters['revenueStartDate'] != null && _activeFilters['revenueEndDate'] != null ? ' - ' : ''}${_activeFilters['revenueEndDate'] != null ? DateFormat('dd.MM.yy').format(_activeFilters['revenueEndDate']) : ''}',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon:  getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
+                        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['revenueStartDate'] = null;
@@ -630,7 +735,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                           'Aufträge: ${_activeFilters['minOrderCount'] ?? ''}${_activeFilters['minOrderCount'] != null && _activeFilters['maxOrderCount'] != null ? '-' : ''}${_activeFilters['maxOrderCount'] ?? ''}',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon:  getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
+                        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['minOrderCount'] = null;
@@ -650,7 +755,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                           'Weihnachtskarte: ${_activeFilters['wantsChristmasCard'] ? 'JA' : 'NEIN'}',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon:getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
+                        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['wantsChristmasCard'] = null;
@@ -669,7 +774,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                           'MwSt-Nr: ${_activeFilters['hasVatNumber'] ? 'Vorhanden' : 'Fehlt'}',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon:  getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
+                        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['hasVatNumber'] = null;
@@ -688,7 +793,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                           'EORI-Nr: ${_activeFilters['hasEoriNumber'] ? 'Vorhanden' : 'Fehlt'}',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon:   getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
+                        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['hasEoriNumber'] = null;
@@ -707,7 +812,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                           '${(_activeFilters['countries'] as List).length} Länder',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon:   getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
+                        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['countries'] = [];
@@ -726,7 +831,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                           '${(_activeFilters['languages'] as List).length} Sprachen',
                           style: const TextStyle(fontSize: 12),
                         ),
-                        deleteIcon:   getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close, size: 16),
+                        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 16),
                         onDeleted: () {
                           setState(() {
                             _activeFilters['languages'] = [];
@@ -753,10 +858,10 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                         },
                       ),
                     ),
-
                 ],
               ),
             ),
+
           // Search status
           if (_lastSearchTerm.isNotEmpty)
             Padding(
@@ -764,7 +869,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
               child: Row(
                 children: [
                   Text(
-                    'Suchergebnisse für "${_lastSearchTerm}"',
+                    'Suchergebnisse für "$_lastSearchTerm"',
                     style: TextStyle(
                       fontStyle: FontStyle.italic,
                       color: Theme.of(context).colorScheme.secondary,
@@ -781,7 +886,8 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                 ],
               ),
             ),
-          SizedBox(height: 8,),
+          const SizedBox(height: 8),
+
           // Kundenliste mit Lazy Loading
           Expanded(
             child: _isLoading && _customerDocs.isEmpty
@@ -792,21 +898,30 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   getAdaptiveIcon(
-                    iconName: 'search_off',
-                    defaultIcon: Icons.search_off,
+                    iconName: _showOnlyFavorites ? 'star_border' : 'search_off',
+                    defaultIcon: _showOnlyFavorites ? Icons.star_border : Icons.search_off,
                     size: 48,
                     color: Colors.grey,
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    _lastSearchTerm.isEmpty
+                    _showOnlyFavorites
+                        ? 'Keine Favoriten vorhanden'
+                        : _lastSearchTerm.isEmpty
                         ? 'Keine Kunden gefunden'
-                        : 'Keine Ergebnisse für "${_lastSearchTerm}"',
+                        : 'Keine Ergebnisse für "$_lastSearchTerm"',
                     style: const TextStyle(
                       fontSize: 16,
                       color: Colors.grey,
                     ),
                   ),
+                  if (_showOnlyFavorites) ...[
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: _toggleFavoritesFilter,
+                      child: const Text('Alle Kunden anzeigen'),
+                    ),
+                  ],
                 ],
               ),
             )
@@ -827,117 +942,144 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                 final doc = _customerDocs[index];
                 final customer = Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id);
 
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Theme.of(context).primaryColor,
-                      child: Text(
-                        _getInitial(customer),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    title: Text(
-                      customer.company.isNotEmpty ? customer.company : customer.fullName,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Zeige Name nur wenn Firma vorhanden ist
-                        if (customer.company.isNotEmpty && customer.fullName.isNotEmpty)
-                          Text(customer.fullName),
-                        Text('${customer.zipCode} ${customer.city}'),
-                        // NEU: Kundengruppen-Chips anzeigen
-                        if (customer.customerGroupIds.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          CustomerGroupChips(
-                            groupIds: customer.customerGroupIds,
-                            wrap: true,
-                          ),
-                        ],
-                      ],
-                    ),
-                    isThreeLine: customer.company.isNotEmpty || customer.customerGroupIds.isNotEmpty,
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit),
-                          onPressed: () async {
-                            final wasUpdated = await CustomerSelectionSheet.showEditCustomerDialog(context, customer);
-                            if (wasUpdated) {
-                              // NEU: Cache invalidieren!
-                              _cachedFilterResults = null;
-                              if (_lastSearchTerm.isEmpty) {
-                                _loadInitialCustomers();
-                              } else {
-                                _performSearch();
-                              }
-                            }
-                          },
-                        ),
-                        IconButton(
-                          icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete),
-                          onPressed: () {
-                            _showDeleteConfirmation(context, customer);
-                          },
-                        ),
-                      ],
-                    ),
-                    onTap: () {
-                      _showCustomerDetails(context, customer);
-                    },
-                  ),
-                );
+                return _buildCustomerCard(context, customer);
               },
             ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-          onPressed: () async {
-            final newCustomer = await CustomerSelectionSheet.showNewCustomerDialog(context);
-            if (newCustomer != null) {
-              // NEU: Cache invalidieren!
-              _cachedFilterResults = null;
-              // Reload customers to include the new one
-              setState(() {
-                _customerDocs = [];
-                _hasMore = true;
-                _lastSearchTerm = '';
-                _searchController.clear();
-              });
-              _loadInitialCustomers();
-            }
-          },
+        onPressed: () async {
+          final newCustomer = await CustomerSelectionSheet.showNewCustomerDialog(context);
+          if (newCustomer != null) {
+            _cachedFilterResults = null;
+            setState(() {
+              _customerDocs = [];
+              _hasMore = true;
+              _lastSearchTerm = '';
+              _searchController.clear();
+              _allLoadedCustomers = [];
+            });
+            _loadInitialCustomers();
+          }
+        },
         child: getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add),
         tooltip: 'Neuer Kunde',
       ),
     );
   }
+
+  // NEU: Ausgelagerte Methode für Kunden-Card mit Favoriten-Badge
+  Widget _buildCustomerCard(BuildContext context, Customer customer) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Stack(
+          children: [
+            CircleAvatar(
+              backgroundColor: Theme.of(context).primaryColor,
+              child: Text(
+                _getInitial(customer),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            // NEU: Stern-Badge für Favoriten
+            if (customer.isFavorite)
+              Positioned(
+                right: -2,
+                bottom: -2,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.star,
+                    size: 14,
+                    color: Colors.amber.shade700,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        title: Text(
+          customer.company.isNotEmpty ? customer.company : customer.fullName,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (customer.company.isNotEmpty && customer.fullName.isNotEmpty)
+              Text(customer.fullName),
+            Text('${customer.zipCode} ${customer.city}'),
+            if (customer.customerGroupIds.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              CustomerGroupChips(
+                groupIds: customer.customerGroupIds,
+                wrap: true,
+              ),
+            ],
+          ],
+        ),
+        isThreeLine: customer.company.isNotEmpty || customer.customerGroupIds.isNotEmpty,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit),
+              onPressed: () async {
+                final wasUpdated = await CustomerSelectionSheet.showEditCustomerDialog(context, customer);
+                if (wasUpdated) {
+                  _cachedFilterResults = null;
+                  if (_lastSearchTerm.isEmpty) {
+                    _loadInitialCustomers();
+                  } else {
+                    _performSearch();
+                  }
+                }
+              },
+            ),
+            IconButton(
+              icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete),
+              onPressed: () {
+                _showDeleteConfirmation(context, customer);
+              },
+            ),
+          ],
+        ),
+        onTap: () {
+          _showCustomerDetails(context, customer);
+        },
+      ),
+    );
+  }
+
   String _getInitial(Customer customer) {
-    // Versuche zuerst Firma
     if (customer.company.isNotEmpty) {
       return customer.company.substring(0, 1).toUpperCase();
     }
-
-    // Dann Vorname
     if (customer.firstName.isNotEmpty) {
       return customer.firstName.substring(0, 1).toUpperCase();
     }
-
-    // Dann Nachname
     if (customer.lastName.isNotEmpty) {
       return customer.lastName.substring(0, 1).toUpperCase();
     }
-
-    // Fallback
     return '?';
   }
+
+  // ... Rest der Methoden bleiben unverändert (showImportDialog, showDeleteConfirmation, etc.)
+
+
   void _showImportDialog() {
     showDialog(
       context: context,

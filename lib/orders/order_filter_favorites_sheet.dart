@@ -219,18 +219,7 @@ class _OrderFilterFavoritesBottomSheet extends StatelessWidget {
       parts.add('Status: $statusNames');
     }
 
-    // Zahlungsstatus
-    final paymentStatus = (filters['paymentStatus'] as List?)?.cast<String>() ?? [];
-    if (paymentStatus.isNotEmpty) {
-      final statusNames = paymentStatus.map((s) {
-        try {
-          return PaymentStatus.values.firstWhere((e) => e.name == s).displayName;
-        } catch (_) {
-          return s;
-        }
-      }).join(', ');
-      parts.add('Zahlung: $statusNames');
-    }
+
 
     // Betrag
     if (filters['minAmount'] != null || filters['maxAmount'] != null) {

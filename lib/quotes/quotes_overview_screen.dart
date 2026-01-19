@@ -2388,35 +2388,68 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                     ),
                     const SizedBox(height: 12),
 
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 0,
                       children: [
-                        Expanded(
-                          child: RadioListTile<String>(
-                            title: const Text('BAR'),
-                            value: 'BAR',
-                            groupValue: _invoiceSettings['payment_method'],
-                            onChanged: (value) {
+                        ChoiceChip(
+                          label: const Text('BAR'),
+                          selected: _invoiceSettings['payment_method'] == 'BAR',
+                          onSelected: (selected) {
+                            if (selected) {
                               setState(() {
-
-                                _invoiceSettings['payment_method'] = value;
+                                _invoiceSettings['payment_method'] = 'BAR';
+                                _invoiceSettings['custom_payment_method'] = '';
                               });
-                            },
-                            contentPadding: EdgeInsets.zero,
-                          ),
+                            }
+                          },
                         ),
-                        Expanded(
-                          child: RadioListTile<String>(
-                            title: const Text('Andere'),
-                            value: 'custom',
-                            groupValue: _invoiceSettings['payment_method'],
-                            onChanged: (value) {
+                        ChoiceChip(
+                          label: const Text('Überweisung'),
+                          selected: _invoiceSettings['payment_method'] == 'TRANSFER',
+                          onSelected: (selected) {
+                            if (selected) {
                               setState(() {
-
-                                _invoiceSettings['payment_method'] = value;
+                                _invoiceSettings['payment_method'] = 'TRANSFER';
+                                _invoiceSettings['custom_payment_method'] = '';
                               });
-                            },
-                            contentPadding: EdgeInsets.zero,
-                          ),
+                            }
+                          },
+                        ),
+                        ChoiceChip(
+                          label: const Text('Kreditkarte'),
+                          selected: _invoiceSettings['payment_method'] == 'CREDIT_CARD',
+                          onSelected: (selected) {
+                            if (selected) {
+                              setState(() {
+                                _invoiceSettings['payment_method'] = 'CREDIT_CARD';
+                                _invoiceSettings['custom_payment_method'] = '';
+                              });
+                            }
+                          },
+                        ),
+                        ChoiceChip(
+                          label: const Text('PayPal'),
+                          selected: _invoiceSettings['payment_method'] == 'PAYPAL',
+                          onSelected: (selected) {
+                            if (selected) {
+                              setState(() {
+                                _invoiceSettings['payment_method'] = 'PAYPAL';
+                                _invoiceSettings['custom_payment_method'] = '';
+                              });
+                            }
+                          },
+                        ),
+                        ChoiceChip(
+                          label: const Text('Andere'),
+                          selected: _invoiceSettings['payment_method'] == 'custom',
+                          onSelected: (selected) {
+                            if (selected) {
+                              setState(() {
+                                _invoiceSettings['payment_method'] = 'custom';
+                              });
+                            }
+                          },
                         ),
                       ],
                     ),
@@ -2426,7 +2459,7 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                       TextField(
                         controller: _customPaymentController,
                         decoration: InputDecoration(
-                          labelText: 'Zahlungsmethode (z.B. PayPal, Karte)',
+                          labelText: 'Zahlungsmethode eingeben',
                           prefixIcon: getAdaptiveIcon(
                             iconName: 'payment',
                             defaultIcon: Icons.payment,
@@ -2440,7 +2473,85 @@ class _OrderConfigurationSheetState extends State<_OrderConfigurationSheet> {
                         },
                       ),
                     ],
-
+                    // =====================================================
+                    // NEU: Zahlungsdatum für 100% Vorauskasse
+                    // =====================================================
+                    const SizedBox(height: 16),
+                    InkWell(
+                      onTap: () async {
+                        final DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: _downPaymentDate ?? DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now().add(const Duration(days: 30)), // Auch ein paar Tage in die Zukunft erlauben
+                          locale: const Locale('de', 'DE'),
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            _downPaymentDate = picked;
+                            _invoiceSettings['down_payment_date'] = picked;
+                            _invoiceSettings['full_payment_date'] = picked; // NEU: Separates Feld für Klarheit
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            getAdaptiveIcon(
+                              iconName: 'calendar_today',
+                              defaultIcon: Icons.calendar_today,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Zahlungsdatum',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  Text(
+                                    _downPaymentDate != null
+                                        ? DateFormat('dd.MM.yyyy').format(_downPaymentDate!)
+                                        : 'Datum auswählen',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: _downPaymentDate == null
+                                          ? Theme.of(context).colorScheme.onSurface.withOpacity(0.5)
+                                          : null,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (_downPaymentDate != null)
+                              IconButton(
+                                icon: getAdaptiveIcon(
+                                  iconName: 'clear',
+                                  defaultIcon: Icons.clear,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _downPaymentDate = null;
+                                    _invoiceSettings['down_payment_date'] = null;
+                                    _invoiceSettings['full_payment_date'] = null;
+                                  });
+                                },
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 16),
 
                     // Vorschau bei 100% Vorkasse

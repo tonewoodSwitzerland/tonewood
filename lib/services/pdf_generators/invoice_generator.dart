@@ -786,9 +786,6 @@ class InvoiceGenerator extends BasePdfGenerator {
     final List<String> parts = [];
 
     if (reference.isNotEmpty) {
-      if (reference == 'Barzahlung' || reference == 'Cash payment') {
-        return ' (${reference})';
-      }
       parts.add(reference);
     }
 
@@ -800,11 +797,6 @@ class InvoiceGenerator extends BasePdfGenerator {
       return '';
     }
 
-    if (reference == 'Barzahlung' || reference == 'Cash payment' ||
-        reference.toLowerCase().contains('paypal') ||
-        reference.toLowerCase().contains('überweisung')) {
-      return ' (${parts.join(', ')})';
-    }
     return ' (${parts.join(', ')})';
   }
 
@@ -904,6 +896,7 @@ class InvoiceGenerator extends BasePdfGenerator {
     }
 
     // Anzahlung berechnen
+    // Anzahlung berechnen
     final isFullPayment = downPaymentSettings?['is_full_payment'] ?? false;
 
     double downPaymentAmount = 0.0;
@@ -913,12 +906,31 @@ class InvoiceGenerator extends BasePdfGenerator {
     if (isFullPayment) {
       downPaymentAmount = totalInTargetCurrency;
       final paymentMethod = downPaymentSettings?['payment_method'] ?? 'BAR';
-      if (paymentMethod == 'BAR') {
-        downPaymentReference = language == 'EN' ? 'Cash payment' : 'Barzahlung';
-      } else {
-        downPaymentReference = downPaymentSettings?['custom_payment_method'] ?? '';
+
+      // Zahlungsmethode mit Übersetzung
+      switch (paymentMethod) {
+        case 'BAR':
+          downPaymentReference = language == 'EN' ? 'Cash payment' : 'Barzahlung';
+          break;
+        case 'TRANSFER':
+          downPaymentReference = language == 'EN' ? 'Bank transfer' : 'Überweisung';
+          break;
+        case 'CREDIT_CARD':
+          downPaymentReference = language == 'EN' ? 'Credit card' : 'Kreditkarte';
+          break;
+        case 'PAYPAL':
+          downPaymentReference = 'PayPal'; // Bleibt gleich in beiden Sprachen
+          break;
+        case 'custom':
+          downPaymentReference = downPaymentSettings?['custom_payment_method'] ?? '';
+          break;
+        default:
+          downPaymentReference = language == 'EN' ? 'Cash payment' : 'Barzahlung';
       }
-      downPaymentDate = DateTime.now();
+
+      downPaymentDate = downPaymentSettings?['down_payment_date'] ??
+          downPaymentSettings?['full_payment_date'] ??
+          DateTime.now();
     } else {
       downPaymentAmount = downPaymentSettings != null
           ? ((downPaymentSettings['down_payment_amount'] as num?) ?? 0.0).toDouble()

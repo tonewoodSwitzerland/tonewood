@@ -68,6 +68,7 @@ class CustomerSelectionSheet {
     // Erstelle Customer-Objekt mit aktuellen Daten
     final currentCustomer = Customer.fromMap(customerDoc.data()!, customerDoc.id);
     bool wasUpdated = false; // ← NEU!
+    bool _isFavorite = currentCustomer.isFavorite;
 
     print( currentCustomer.houseNumber);
 
@@ -308,7 +309,33 @@ class CustomerSelectionSheet {
                               color: Theme.of(context).primaryColor,
                             ),
                           ),
+
                           const Spacer(),
+                          // NEU: Favoriten-Toggle
+                          IconButton(
+                            onPressed: () {
+                              setState(() {
+                                _isFavorite = !_isFavorite;
+                              });
+                            },
+                            icon: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: _isFavorite
+                                    ? Colors.amber.shade100
+                                    : Colors.grey.shade200,
+                                shape: BoxShape.circle,
+                              ),
+                              child: getAdaptiveIcon(
+                                iconName: _isFavorite ? 'star' : 'star_border',
+                                defaultIcon: _isFavorite ? Icons.star : Icons.star_border,
+                                size: 24,
+                                color: _isFavorite ? Colors.amber.shade700 : Colors.grey,
+                              ),
+                            ),
+                            tooltip: _isFavorite ? 'Als Favorit entfernen' : 'Als Favorit markieren',
+                          ),
+
                           // Schließen-Button
                           IconButton(
                             onPressed: () => Navigator.pop(context),
@@ -1675,6 +1702,7 @@ class CustomerSelectionSheet {
                                             if (formKey.currentState?.validate() == true) {
                                               try {
                                                 final updatedCustomer = Customer(
+                                                  isFavorite: _isFavorite, // NEU
                                                   id: customer.id,
                                                   name: companyController.text.trim(),
                                                   company: companyController.text.trim(),
@@ -3595,6 +3623,7 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
   bool _isLoading = false;
   bool _hasMore = true;
 
+  bool _showOnlyFavorites = false;
 
   final int _limit = 10;
   final ScrollController _scrollController = ScrollController();
@@ -3680,14 +3709,17 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
   }
 
   Future<void> _loadAllCustomersForSearch() async {
-    // Für eine umfassende Suche laden wir mehr Kunden
-    // Dies könnte in einer Produktionsapp mit serverseitiger Suche optimiert werden
-    final searchSnapshot = await FirebaseFirestore.instance
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
         .collection('customers')
-        .orderBy('company')
-        .get();
+        .orderBy('company');
 
-    // Ergebnisse verarbeiten
+    // NEU: Favoriten-Filter anwenden
+    if (_showOnlyFavorites) {
+      query = query.where('isFavorite', isEqualTo: true);
+    }
+
+    final searchSnapshot = await query.get();
+
     List<DocumentSnapshot> matchingDocs = [];
 
     for (var doc in searchSnapshot.docs) {
@@ -3707,11 +3739,10 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
       _customerDocs = matchingDocs;
       _allLoadedCustomers = matchingDocs.map((doc) =>
           Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
-      _hasMore = false; // Alle Ergebnisse geladen
+      _hasMore = false;
       _isLoading = false;
     });
   }
-
   Future<void> _loadInitialCustomers() async {
     if (_isLoading) return;
 
@@ -3720,18 +3751,22 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
     });
 
     try {
-      final query = await FirebaseFirestore.instance
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
           .collection('customers')
-          .orderBy('company')
-          .limit(_limit)
-          .get();
+          .orderBy('company');
+
+      // NEU: Favoriten-Filter anwenden
+      if (_showOnlyFavorites) {
+        query = query.where('isFavorite', isEqualTo: true);
+      }
+
+      final result = await query.limit(_limit).get();
 
       setState(() {
-        _customerDocs = query.docs;
-        // Alle geladenen Kunden für Client-seitiges Filtern speichern
-        _allLoadedCustomers = query.docs.map((doc) =>
+        _customerDocs = result.docs;
+        _allLoadedCustomers = result.docs.map((doc) =>
             Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
-        _hasMore = query.docs.length == _limit;
+        _hasMore = result.docs.length == _limit;
         _isLoading = false;
       });
     } catch (error) {
@@ -3752,20 +3787,26 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
     try {
       final lastDoc = _customerDocs.last;
 
-      final query = await FirebaseFirestore.instance
+      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
           .collection('customers')
-          .orderBy('company')
+          .orderBy('company');
+
+      // NEU: Favoriten-Filter anwenden
+      if (_showOnlyFavorites) {
+        query = query.where('isFavorite', isEqualTo: true);
+      }
+
+      final result = await query
           .startAfterDocument(lastDoc)
           .limit(_limit)
           .get();
 
       if (mounted) {
         setState(() {
-          _customerDocs.addAll(query.docs);
-          // Zu unserem Client-seitigen Speicher für Filterung hinzufügen
-          _allLoadedCustomers.addAll(query.docs.map((doc) =>
+          _customerDocs.addAll(result.docs);
+          _allLoadedCustomers.addAll(result.docs.map((doc) =>
               Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList());
-          _hasMore = query.docs.length == _limit;
+          _hasMore = result.docs.length == _limit;
           _isLoading = false;
         });
       }
@@ -3778,7 +3819,6 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
       }
     }
   }
-
   @override
   void dispose() {
     customerSearchController.removeListener(_onSearchChanged);
@@ -3833,6 +3873,41 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 const Spacer(),
+                // NEU: Favoriten-Filter-Button
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _showOnlyFavorites = !_showOnlyFavorites;
+                      // Neu laden mit Filter
+                      _customerDocs = [];
+                      _hasMore = true;
+                      _allLoadedCustomers = [];
+                      _loadInitialCustomers();
+                    });
+                  },
+                  icon: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: _showOnlyFavorites
+                          ? Colors.amber.shade100
+                          : Colors.transparent,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: _showOnlyFavorites
+                            ? Colors.amber.shade700
+                            : Colors.grey.shade400,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: getAdaptiveIcon(
+                      iconName: _showOnlyFavorites ? 'star' : 'star_border',
+                      defaultIcon: _showOnlyFavorites ? Icons.star : Icons.star_border,
+                      size: 20,
+                      color: _showOnlyFavorites ? Colors.amber.shade700 : Colors.grey,
+                    ),
+                  ),
+                  tooltip: _showOnlyFavorites ? 'Alle Kunden anzeigen' : 'Nur Favoriten anzeigen',
+                ),
                 IconButton(
                   onPressed: () async {
                     final newCustomer = await CustomerSelectionSheet.showNewCustomerDialog(context);
@@ -3874,7 +3949,53 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
               ),
             ),
           ),
-
+          // NEU: Favoriten-Filter-Hinweis
+          if (_showOnlyFavorites)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.star, size: 16, color: Colors.amber.shade700),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Nur Favoriten werden angezeigt',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.amber.shade900,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _showOnlyFavorites = false;
+                          _customerDocs = [];
+                          _hasMore = true;
+                          _allLoadedCustomers = [];
+                          _loadInitialCustomers();
+                        });
+                      },
+                      child: Text(
+                        'Filter aufheben',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).primaryColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           // Suchstatus anzeigen (optional)
           if (_lastSearchTerm.isNotEmpty)
             Padding(
@@ -4063,19 +4184,47 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
           : null,
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: isSelected
-              ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: Text(
-            getAvatarLetter(),
-            style: TextStyle(
-              color: isSelected
-                  ? Theme.of(context).colorScheme.onPrimary
-                  : Theme.of(context).colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.bold,
+        leading: Stack(
+          children: [
+            CircleAvatar(
+              backgroundColor: isSelected
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.surfaceContainerHighest,
+              child: Text(
+                getAvatarLetter(),
+                style: TextStyle(
+                  color: isSelected
+                      ? Theme.of(context).colorScheme.onPrimary
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
-          ),
+            // NEU: Stern-Badge für Favoriten
+            if (customer.isFavorite)
+              Positioned(
+                right: -2,
+                bottom: -2,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.star,
+                    size: 14,
+                    color: Colors.amber.shade700,
+                  ),
+                ),
+              ),
+          ],
         ),
         title: Text(
           getDisplayName(),
@@ -4099,7 +4248,18 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
             : null,
         trailing: IconButton(
           icon: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit),
-          onPressed: () => CustomerSelectionSheet.showEditCustomerDialog(context, customer),
+          onPressed: () async {
+            final wasUpdated = await CustomerSelectionSheet.showEditCustomerDialog(context, customer);
+            if (wasUpdated) {
+              // Liste neu laden um Änderungen anzuzeigen
+              setState(() {
+                _customerDocs = [];
+                _hasMore = true;
+                _allLoadedCustomers = [];
+              });
+              _loadInitialCustomers();
+            }
+          },
           tooltip: 'Kunde bearbeiten',
         ),
         isThreeLine: false,
@@ -4110,6 +4270,7 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
       ),
     );
   }
+
 }
 
 

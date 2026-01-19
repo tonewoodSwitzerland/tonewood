@@ -50,8 +50,11 @@ class Customer {
   final List<String> additionalAddressLines;
   final List<String> shippingAdditionalAddressLines;
 
-  // NEU: Kundengruppen
+  // Kundengruppen
   final List<String> customerGroupIds;
+
+  // NEU: Favorit
+  final bool isFavorite;
 
   Customer({
     required this.id,
@@ -96,8 +99,9 @@ class Customer {
     this.customFieldValue,
     this.additionalAddressLines = const [],
     this.shippingAdditionalAddressLines = const [],
-    // NEU: Kundengruppen
     this.customerGroupIds = const [],
+    // NEU: Favorit
+    this.isFavorite = false,
   });
 
   factory Customer.fromMap(Map<String, dynamic> map, String id) {
@@ -148,10 +152,11 @@ class Customer {
       shippingAdditionalAddressLines: map['shippingAdditionalAddressLines'] != null
           ? List<String>.from(map['shippingAdditionalAddressLines'])
           : [],
-      // NEU: Kundengruppen
       customerGroupIds: map['customerGroupIds'] != null
           ? List<String>.from(map['customerGroupIds'])
           : [],
+      // NEU: Favorit
+      isFavorite: map['isFavorite'] ?? false,
     );
   }
 
@@ -199,8 +204,9 @@ class Customer {
       'customFieldValue': customFieldValue,
       'additionalAddressLines': additionalAddressLines,
       'shippingAdditionalAddressLines': shippingAdditionalAddressLines,
-      // NEU: Kundengruppen
       'customerGroupIds': customerGroupIds,
+      // NEU: Favorit
+      'isFavorite': isFavorite,
     };
   }
 
@@ -235,7 +241,6 @@ class Customer {
     return name.isNotEmpty ? name : fullName;
   }
 
-  // NEU: Hat Kundengruppen?
   bool get hasCustomerGroups => customerGroupIds.isNotEmpty;
 
   static String _getCountryCode(String country) {
@@ -333,8 +338,9 @@ class Customer {
     String? shippingEmail,
     List<String>? additionalAddressLines,
     List<String>? shippingAdditionalAddressLines,
-    // NEU: Kundengruppen
     List<String>? customerGroupIds,
+    // NEU: Favorit
+    bool? isFavorite,
   }) {
     return Customer(
       id: id ?? this.id,
@@ -374,8 +380,9 @@ class Customer {
       shippingEmail: shippingEmail ?? this.shippingEmail,
       additionalAddressLines: additionalAddressLines ?? this.additionalAddressLines,
       shippingAdditionalAddressLines: shippingAdditionalAddressLines ?? this.shippingAdditionalAddressLines,
-      // NEU: Kundengruppen
       customerGroupIds: customerGroupIds ?? this.customerGroupIds,
+      // NEU: Favorit
+      isFavorite: isFavorite ?? this.isFavorite,
     );
   }
 }

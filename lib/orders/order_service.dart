@@ -108,13 +108,13 @@ class OrderService {
         id: orderId,
        quoteNumber: quote.quoteNumber,
         orderNumber: orderNumber,
-        status: OrderStatus.pending,
+        status: OrderStatus.processing,
         quoteId: quoteId,
         customer: quote.customer,
         items: quote.items,
         calculations: quote.calculations,
         orderDate: DateTime.now(),
-        paymentStatus: PaymentStatus.pending,
+
         documents: initialDocuments,
           metadata: {
             ...quote.metadata, // NEU: Übernehme ALLE metadata aus der Quote
@@ -410,16 +410,7 @@ class OrderService {
     });
   }
 
-  // Aktualisiere Zahlungsstatus
-  static Future<void> updatePaymentStatus(String orderId, PaymentStatus status) async {
-    await _firestore
-        .collection('orders')
-        .doc(orderId)
-        .update({
-      'paymentStatus': status.name,
-      'payment_updated_at': FieldValue.serverTimestamp(),
-    });
-  }
+
 
   // Lade Auftrag
   static Future<OrderX?> getOrder(String orderId) async {
@@ -470,19 +461,7 @@ class OrderService {
       print('invoiceSettings: $invoiceSettings');
       print('is_full_payment: ${invoiceSettings['is_full_payment']}');
 
-// NEU: Bei 100% Vorkasse den Zahlungsstatus setzen
-      if (invoiceSettings['is_full_payment'] == true) {
-        await FirebaseFirestore.instance
-            .collection('orders')
-            .doc(order.id)
-            .update({
-          'paymentStatus': PaymentStatus.paid.name,
-          'payment_updated_at': FieldValue.serverTimestamp(),
-          'payment_completed_at': FieldValue.serverTimestamp(),
-          'metadata.payment_method': invoiceSettings['payment_method'],
-          'metadata.custom_payment_method': invoiceSettings['custom_payment_method'],
-        });
-      }
+
       // 4. Erstelle die Rechnung mit den Einstellungen aus der Quote
       // HIER IST DIE KORREKTUR: Konvertiere exchangeRates zu Map<String, double>
       final rawExchangeRates = quote.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
