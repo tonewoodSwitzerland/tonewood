@@ -18,8 +18,6 @@ enum OrderStatus {
   }
 }
 
-// ENTFERNT: PaymentStatus enum komplett entfernt
-
 class OrderX {
   final String id;
   final String orderNumber;
@@ -31,9 +29,9 @@ class OrderX {
   final Map<String, dynamic> calculations;
   final DateTime orderDate;
   final DateTime? deliveryDate;
-  // ENTFERNT: paymentStatus
   final Map<String, String> documents;
   final Map<String, dynamic> metadata;
+  final Map<String, dynamic>? costCenter;  // NEU
 
   OrderX({
     required this.id,
@@ -46,25 +44,30 @@ class OrderX {
     required this.calculations,
     required this.orderDate,
     this.deliveryDate,
-    // ENTFERNT: paymentStatus
     required this.documents,
     required this.metadata,
+    this.costCenter,  // NEU
   });
 
   factory OrderX.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
-
+    // DEBUG
+    print('=== OrderX.fromFirestore DEBUG ===');
+    print('Doc ID: ${doc.id}');
+    print('Raw costCenter in data: ${data['costCenter']}');
+    print('Raw costCenter type: ${data['costCenter']?.runtimeType}');
+    print('==================================');
     // Status-Migration: Alte Status auf neue mappen
     OrderStatus parseStatus(String? statusName) {
       switch (statusName) {
         case 'pending':
-          return OrderStatus.processing; // pending → processing
+          return OrderStatus.processing;
         case 'processing':
           return OrderStatus.processing;
         case 'shipped':
           return OrderStatus.shipped;
         case 'delivered':
-          return OrderStatus.shipped; // delivered → shipped
+          return OrderStatus.shipped;
         case 'cancelled':
           return OrderStatus.cancelled;
         default:
@@ -105,9 +108,11 @@ class OrderX {
       deliveryDate: data['deliveryDate'] != null
           ? (data['deliveryDate'] as Timestamp).toDate()
           : null,
-      // ENTFERNT: paymentStatus
       documents: Map<String, String>.from(data['documents'] ?? {}),
       metadata: Map<String, dynamic>.from(data['metadata'] ?? {}),
+      costCenter: data['costCenter'] != null
+          ? Map<String, dynamic>.from(data['costCenter'])
+          : null,  // NEU
     );
   }
 
@@ -122,9 +127,41 @@ class OrderX {
       'calculations': calculations,
       'orderDate': Timestamp.fromDate(orderDate),
       'deliveryDate': deliveryDate != null ? Timestamp.fromDate(deliveryDate!) : null,
-      // ENTFERNT: paymentStatus
       'documents': documents,
       'metadata': metadata,
+      if (costCenter != null) 'costCenter': costCenter,  // NEU
     };
+  }
+
+  OrderX copyWith({
+    String? id,
+    String? orderNumber,
+    String? quoteNumber,
+    OrderStatus? status,
+    String? quoteId,
+    Map<String, dynamic>? customer,
+    List<Map<String, dynamic>>? items,
+    Map<String, dynamic>? calculations,
+    DateTime? orderDate,
+    DateTime? deliveryDate,
+    Map<String, String>? documents,
+    Map<String, dynamic>? metadata,
+    Map<String, dynamic>? costCenter,
+  }) {
+    return OrderX(
+      id: id ?? this.id,
+      orderNumber: orderNumber ?? this.orderNumber,
+      quoteNumber: quoteNumber ?? this.quoteNumber,
+      status: status ?? this.status,
+      quoteId: quoteId ?? this.quoteId,
+      customer: customer ?? this.customer,
+      items: items ?? this.items,
+      calculations: calculations ?? this.calculations,
+      orderDate: orderDate ?? this.orderDate,
+      deliveryDate: deliveryDate ?? this.deliveryDate,
+      documents: documents ?? this.documents,
+      metadata: metadata ?? this.metadata,
+      costCenter: costCenter ?? this.costCenter,
+    );
   }
 }

@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../countries.dart';
+
 /// Basis-Generator für Dokumente mit Fenstertaschen-Layout
 /// C6/5 Dokumententasche mit Fenster RECHTS
 ///
@@ -320,11 +322,17 @@ abstract class BaseDeliveryNotePdfGenerator {
             ),
 
           // Land
-          if (country != null && country.isNotEmpty)
-            pw.Text(
-              country,
-              style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
-            ),
+          // Land - mit Übersetzung
+          if (country != null && country.isNotEmpty) ...[
+                () {
+              final countryObj = Countries.getCountryByName(country!);  // <-- ! hinzugefügt
+              final translatedCountry = countryObj?.getNameForLanguage(language) ?? country;
+              return pw.Text(
+                translatedCountry,
+                style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
+              );
+            }(),
+          ],
         ],
       ),
     );

@@ -667,7 +667,7 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
             'Auftrag erfolgreich erstellt',
             'Auftragsnummer: ${order.orderNumber}\n'
                 'Angebotsnummer: ${quote.quoteNumber}\n\n'
-                '${createdDocuments.length} Dokumente wurden erstellt.',
+                'Dokumente wurden erstellt.',
             order.id,
           );
         }

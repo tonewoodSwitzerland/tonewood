@@ -88,47 +88,56 @@ class RoundwoodAnalysisState extends State<RoundwoodAnalysis> {
 
   Widget _buildSummaryStats(List<RoundwoodItem> items) {
     final totalVolume = items.fold<double>(0, (sum, item) => sum + item.volume);
-    final moonwoodCount = items.where((item) => item.isMoonwood).length;
-    final fscCount = items.where((item) => item.isFSC).length; // NEU
+    final moonwoodItems = items.where((item) => item.isMoonwood).toList();
+    final moonwoodVolume = moonwoodItems.fold<double>(0, (sum, item) => sum + item.volume);
+    final fscItems = items.where((item) => item.isFSC).toList();
+    final fscVolume = fscItems.fold<double>(0, (sum, item) => sum + item.volume);
+
+    final cards = [
+      RoundwoodStatsCard(
+        value: '${totalVolume.toStringAsFixed(2)} m³',
+        iconName: 'straighten',
+        icon: Icons.straighten,
+      ),
+      RoundwoodStatsCard(
+        value: items.length.toString(),
+        iconName: 'forest',
+        icon: Icons.forest,
+      ),
+      RoundwoodStatsCard(
+        value: '${(moonwoodItems.length / items.length * 100).toStringAsFixed(1)}%',
+        subtitle: '${moonwoodVolume.toStringAsFixed(1)} m³',
+        iconName: 'nightlight',
+        icon: Icons.nightlight,
+      ),
+      RoundwoodStatsCard(
+        value: '${(fscItems.length / items.length * 100).toStringAsFixed(1)}%',
+        subtitle: '${fscVolume.toStringAsFixed(1)} m³',
+        iconName: 'eco',
+        icon: Icons.eco,
+      ),
+    ];
+
+    // Mobile: 2x2 Grid, Desktop: Row
+    if (!widget.isDesktopLayout) {
+      return GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 1.3,
+        children: cards,
+      );
+    }
 
     return Row(
-      children: [
-        Expanded(
-          child: RoundwoodStatsCard(
-            value: '${totalVolume.toStringAsFixed(2)} m³',
-            iconName: 'straighten',
-            icon: Icons.straighten,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: RoundwoodStatsCard(
-            value: items.length.toString(),
-            iconName: 'forest',
-            icon: Icons.forest,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: RoundwoodStatsCard(
-            value: '${(moonwoodCount / items.length * 100).toStringAsFixed(1)}%',
-            iconName: 'nightlight',
-            icon: Icons.nightlight,
-          ),
-        ),
-        const SizedBox(width: 16),
-        // NEU: FSC Statistik
-        Expanded(
-          child: RoundwoodStatsCard(
-            value: '${(fscCount / items.length * 100).toStringAsFixed(1)}%',
-            iconName: 'eco',
-            icon: Icons.eco,
-          ),
-        ),
-      ],
+      children: cards
+          .expand((card) => [Expanded(child: card), const SizedBox(width: 16)])
+          .toList()
+        ..removeLast(),
     );
   }
-
   // NEU: Jahres-Übersicht
   Widget _buildYearOverview(List<RoundwoodItem> items) {
     final yearCount = <int, int>{};
@@ -275,10 +284,27 @@ class RoundwoodAnalysisState extends State<RoundwoodAnalysis> {
   }
 
   Color getSafeColor(int index, int totalItems) {
-    const baseColor = Color(0xFF0F4A29);
-    double opacity = 0.3 + (index / (totalItems > 1 ? totalItems - 1 : 1) * 0.6);
-    opacity = opacity.clamp(0.3, 0.9);
-    return baseColor.withOpacity(opacity);
+    // Professionelle Business-Palette - satt aber elegant
+    const colors = [
+      Color(0xFF0F4A29), // Dunkelgrün (Brand)
+      Color(0xFF1565C0), // Königsblau
+      Color(0xFFC62828), // Tiefrot
+      Color(0xFF6A1B9A), // Violett
+      Color(0xFFEF6C00), // Orange
+      Color(0xFF00838F), // Cyan/Teal
+      Color(0xFF2E7D32), // Grün
+      Color(0xFF4527A0), // Indigo
+      Color(0xFFAD1457), // Magenta
+      Color(0xFF00695C), // Dunkles Teal
+      Color(0xFF558B2F), // Olivgrün
+      Color(0xFF5D4037), // Braun
+      Color(0xFF37474F), // Blaugrau
+      Color(0xFFD84315), // Terrakotta
+      Color(0xFF1976D2), // Hellblau
+      Color(0xFF7B1FA2), // Lila
+    ];
+
+    return colors[index % colors.length];
   }
 
   Widget _buildDistributionChart({
@@ -288,7 +314,8 @@ class RoundwoodAnalysisState extends State<RoundwoodAnalysis> {
     required bool hasFilter,
     required VoidCallback onClearFilter,
     required bool smoothEdges,
-  }) {
+  })
+  {
     final cleanData = Map<String, int>.fromEntries(
       data.entries.where((entry) => entry.key.isNotEmpty && entry.key != 'null' && entry.value > 0),
     );

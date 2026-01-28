@@ -4,6 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../document_selection_manager.dart';
+import '../pdf_settings_screen.dart';
 import 'base_pdf_generator.dart';
 
 class PackingListGenerator extends BasePdfGenerator {
@@ -55,6 +56,9 @@ class PackingListGenerator extends BasePdfGenerator {
 
     // Generiere Packliste-Nummer falls nicht übergeben
     final packingNum = packingListNumber ?? await getNextPackingListNumber();
+
+    // NEU: Lade Adress-Anzeigemodus
+    final addressMode = await PdfSettingsHelper.getAddressDisplayMode('packing_list');
 
     // Lade Packliste-Einstellungen
     Map<String, dynamic> packingSettings;
@@ -284,8 +288,7 @@ class PackingListGenerator extends BasePdfGenerator {
                 pw.SizedBox(height: 20),
 
                 // Kundenadresse
-               BasePdfGenerator.buildCustomerAddress(customerData,'packing_list', language: language),
-
+                BasePdfGenerator.buildCustomerAddress(customerData, 'packing_list', language: language, addressDisplayMode: addressMode),
                 pw.Expanded(
                   child: pw.Center(
                     child: pw.Text(
@@ -328,7 +331,7 @@ class PackingListGenerator extends BasePdfGenerator {
           content.add(pw.SizedBox(height: 20));
 
           // Kundenadresse
-          content.add(BasePdfGenerator.buildCustomerAddress(customerData,'packing_list'));
+          content.add(BasePdfGenerator.buildCustomerAddress(customerData,'packing_list', language: language));
           content.add(pw.SizedBox(height: 20));
 
           // Für jedes Paket eine Tabelle
@@ -458,10 +461,10 @@ class PackingListGenerator extends BasePdfGenerator {
         children: [
           BasePdfGenerator.buildHeaderCell(getTranslation('product'), 8),
           BasePdfGenerator.buildHeaderCell(getTranslation('quality'), 8),
-          BasePdfGenerator.buildHeaderCell(getTranslation('qty'), 8, align: pw.TextAlign.right),
+          BasePdfGenerator.buildHeaderCell(getTranslation('qty'), 8, align: pw.TextAlign.left),
           BasePdfGenerator.buildHeaderCell(getTranslation('unit'), 8),
-          BasePdfGenerator.buildHeaderCell(getTranslation('weight_pc'), 8, align: pw.TextAlign.right),
-          BasePdfGenerator.buildHeaderCell(getTranslation('volume_pc'), 8, align: pw.TextAlign.right),
+          BasePdfGenerator.buildHeaderCell(getTranslation('weight_pc'), 8, align: pw.TextAlign.left),
+          BasePdfGenerator.buildHeaderCell(getTranslation('volume_pc'), 8, align: pw.TextAlign.left),
           BasePdfGenerator.buildHeaderCell(getTranslation('total_weight'), 8, align: pw.TextAlign.right),
           BasePdfGenerator.buildHeaderCell(getTranslation('total_volume'), 8, align: pw.TextAlign.right),
         ],
@@ -610,7 +613,7 @@ class PackingListGenerator extends BasePdfGenerator {
                     ? quantity.toStringAsFixed(3)
                     : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
                 style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.right,
+                textAlign: pw.TextAlign.left,
               ),
             ),
             BasePdfGenerator.buildContentCell(
@@ -620,14 +623,14 @@ class PackingListGenerator extends BasePdfGenerator {
               pw.Text(
                 weightPerPieceText,
                 style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.right,
+                textAlign: pw.TextAlign.left,
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 volumePerPieceText,
                 style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.right,
+                textAlign: pw.TextAlign.left,
               ),
             ),
             BasePdfGenerator.buildContentCell(
@@ -696,7 +699,7 @@ class PackingListGenerator extends BasePdfGenerator {
                 textAlign: pw.TextAlign.right),
           ),
           BasePdfGenerator.buildContentCell(
-            pw.Text('${grossVolume.toStringAsFixed(4)} m³',
+            pw.Text('${(packageNetVolume+grossVolume).toStringAsFixed(4)} m³',
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
                 textAlign: pw.TextAlign.right),
           ),

@@ -44,6 +44,7 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
   final TextEditingController _lengthController = TextEditingController();
   final TextEditingController _widthController = TextEditingController();
   final TextEditingController _thicknessController = TextEditingController();
+  final TextEditingController _partsController = TextEditingController(text: '1');
 
   // NEU: Zusätzliche Controller für Gewichtslogik
   final TextEditingController _volumeController = TextEditingController();
@@ -185,6 +186,13 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
       if (_notesController.text.trim().isNotEmpty) {
         manualProduct['notes'] = _notesController.text.trim();
       }
+// NEU: Anzahl Bauteile hinzufügen
+      if (_partsController.text.isNotEmpty) {
+        final parts = int.tryParse(_partsController.text);
+        if (parts != null && parts > 0) {
+          manualProduct['parts'] = parts;
+        }
+      }
 
       // NEU: Gratisartikel-Logik
       if (_isGratisartikel) {
@@ -226,30 +234,31 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
     }
   }
   void _calculateVolumeFromDimensions() {
-    // Parse die Maße
     final lengthText = _lengthController.text.replaceAll(',', '.');
     final widthText = _widthController.text.replaceAll(',', '.');
     final thicknessText = _thicknessController.text.replaceAll(',', '.');
+    final partsText = _partsController.text;
 
     final length = double.tryParse(lengthText);
     final width = double.tryParse(widthText);
     final thickness = double.tryParse(thicknessText);
+    final parts = int.tryParse(partsText) ?? 1;
 
-    // Nur berechnen wenn alle drei Werte vorhanden sind
     if (length != null && length > 0 &&
         width != null && width > 0 &&
         thickness != null && thickness > 0) {
 
-      // Berechne Volumen in m³ (Maße sind in mm)
-      final volumeInM3 = (length * width * thickness) / 1000000000.0;
+      // Volumen pro Bauteil in m³
+      final volumePerPart = (length * width * thickness) / 1000000000.0;
 
-      // Setze das berechnete Volumen
+      // NEU: Gesamtvolumen = Volumen pro Bauteil × Anzahl Bauteile
+      final totalVolume = volumePerPart * parts;
+
       setState(() {
-        _volumeController.text = volumeInM3.toStringAsFixed(5);
+        _volumeController.text = totalVolume.toStringAsFixed(7);
       });
     }
   }
-
 
   // NEU: Hilfsmethode für Dichte aus Holzart
   Future<void> _updateDensityFromWood(Map<String, dynamic>? wood) async {
@@ -823,7 +832,36 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                       ],
                       onChanged: (value) => setState(() {}), // Für Gewichtsberechnung
                     ),
+                    const SizedBox(height: 12),
 
+// NEU: Anzahl Bauteile
+                    TextFormField(
+                      controller: _partsController,
+                      decoration: InputDecoration(
+                        labelText: 'Anzahl Bauteile pro Einheit',
+                        border: const OutlineInputBorder(),
+                        filled: true,
+                        fillColor: Theme.of(context).colorScheme.surface,
+                        prefixIcon: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: getAdaptiveIcon(
+                            iconName: 'category',
+                            defaultIcon: Icons.category,
+                            size: 20,
+                          ),
+                        ),
+                        helperText: 'z.B. 2 bei einem Set aus Decke und Boden',
+                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _calculateVolumeFromDimensions();
+                        });
+                      },
+                    ),
                     const SizedBox(height: 12),
 
 // NEU: Dichte-Eingabe
@@ -1186,6 +1224,7 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
     _notesController.dispose();
     _proformaController.dispose();
     _customTariffController.dispose();
+    _partsController.dispose();
     super.dispose();
   }
 }

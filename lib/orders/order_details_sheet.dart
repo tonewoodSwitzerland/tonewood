@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../services/icon_helper.dart';
+import '../../services/swiss_rounding.dart';
 import 'order_model.dart';
 
 class OrderColors {
@@ -121,7 +122,7 @@ class OrderDetailsSheet extends StatelessWidget {
   }
 }
 
-class _OrderDetailsContent extends StatelessWidget {
+class _OrderDetailsContent extends StatefulWidget {
   final OrderX order;
   final Function(OrderX) onStatusChange;
   final Function(OrderX) onViewDocuments;
@@ -144,40 +145,74 @@ class _OrderDetailsContent extends StatelessWidget {
     required this.isDesktop,
   });
 
+  @override
+  State<_OrderDetailsContent> createState() => _OrderDetailsContentState();
+}
+
+class _OrderDetailsContentState extends State<_OrderDetailsContent> {
+  Map<String, bool> _roundingSettings = {'CHF': true, 'EUR': false, 'USD': false};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoundingSettings();
+  }
+
+  Future<void> _loadRoundingSettings() async {
+    final settings = await SwissRounding.loadRoundingSettings();
+    if (mounted) {
+      setState(() {
+        _roundingSettings = settings;
+      });
+    }
+  }
+
+  OrderX get order => widget.order;
+  bool get isDesktop => widget.isDesktop;
+
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
-
       case OrderStatus.processing: return OrderColors.processing;
       case OrderStatus.shipped: return OrderColors.shipped;
-
       case OrderStatus.cancelled: return OrderColors.cancelled;
     }
   }
 
+  double _convertPrice(double priceInCHF, OrderX currentOrder) {
+    final currency = currentOrder.metadata?['currency'] ?? 'CHF';
+    double convertedPrice = priceInCHF;
 
+    if (currency != 'CHF') {
+      final rates = currentOrder.metadata?['exchangeRates'] as Map<String, dynamic>? ?? {};
+      final rate = (rates[currency] as num?)?.toDouble() ?? 1.0;
+      convertedPrice = priceInCHF * rate;
+    }
 
-  double _convertPrice(double priceInCHF) {
-    final currency = order.metadata?['currency'] ?? 'CHF';
-    if (currency == 'CHF') return priceInCHF;
-    final rates = order.metadata?['exchangeRates'] as Map<String, dynamic>? ?? {};
-    final rate = (rates[currency] as num?)?.toDouble() ?? 1.0;
-    return priceInCHF * rate;
+    if (_roundingSettings[currency] == true) {
+      convertedPrice = SwissRounding.round(
+        convertedPrice,
+        currency: currency,
+        roundingSettings: _roundingSettings,
+      );
+    }
+
+    return convertedPrice;
   }
 
-  String get _currencySymbol => order.metadata?['currency'] ?? 'CHF';
+  String _getCurrencySymbol(OrderX currentOrder) => currentOrder.metadata?['currency'] ?? 'CHF';
 
-  bool get _needsVeranlagung {
-    final total = (order.calculations['total'] as num? ?? 0).toDouble();
+  bool _needsVeranlagung(OrderX currentOrder) {
+    final total = (currentOrder.calculations['total'] as num? ?? 0).toDouble();
     return total > 1000.0;
   }
 
-  bool get _hasVeranlagung {
-    return order.metadata?['veranlagungsnummer'] != null &&
-        order.metadata!['veranlagungsnummer'].toString().isNotEmpty;
+  bool _hasVeranlagung(OrderX currentOrder) {
+    return currentOrder.metadata?['veranlagungsnummer'] != null &&
+        currentOrder.metadata!['veranlagungsnummer'].toString().isNotEmpty;
   }
 
-  String _getCustomerName() {
-    final c = order.customer;
+  String _getCustomerName(OrderX currentOrder) {
+    final c = currentOrder.customer;
     if (c['company']?.toString().trim().isNotEmpty == true) return c['company'];
     if (c['fullName']?.toString().trim().isNotEmpty == true) return c['fullName'];
     return '${c['firstName'] ?? ''} ${c['lastName'] ?? ''}'.trim();
@@ -242,8 +277,6 @@ class _OrderDetailsContent extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        // const SizedBox(width: 8),
-                        // _buildStatusChip(context, currentOrder.status),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -270,8 +303,8 @@ class _OrderDetailsContent extends StatelessWidget {
                   ],
                 ),
               ),
-              _buildQuickActions(context, currentOrder),
-              const SizedBox(width: 8),
+           //   _buildQuickActions(context, currentOrder),
+             // const SizedBox(width: 8),
               IconButton(
                 icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
                 onPressed: () => Navigator.pop(context),
@@ -302,21 +335,19 @@ class _OrderDetailsContent extends StatelessWidget {
     );
   }
 
-
-
   Widget _buildQuickActions(BuildContext context, OrderX currentOrder) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         _buildIconAction(context, Icons.history, 'history', 'Verlauf', () {
-          Navigator.pop(context);
-          onShowHistory(currentOrder);
+        //  Navigator.pop(context);
+          widget.onShowHistory(currentOrder);
         }),
         _buildIconAction(context, Icons.folder, 'folder', 'Dokumente', () {
-          Navigator.pop(context);
-          onViewDocuments(currentOrder);
+          //Navigator.pop(context);
+          widget.onViewDocuments(currentOrder);
         }),
-        _buildIconAction(context, Icons.share, 'share', 'Teilen', () => onShare(currentOrder)),
+        _buildIconAction(context, Icons.share, 'share', 'Teilen', () => widget.onShare(currentOrder)),
       ],
     );
   }
@@ -349,8 +380,10 @@ class _OrderDetailsContent extends StatelessWidget {
                 const SizedBox(height: 20),
                 _buildInfoCards(context, currentOrder, isDesktop: true),
                 const SizedBox(height: 20),
+                _buildAddressSection(context, currentOrder),
+                const SizedBox(height: 20),
                 _buildActionButtons(context, currentOrder),
-                if (_needsVeranlagung) ...[
+                if (_needsVeranlagung(currentOrder)) ...[
                   const SizedBox(height: 20),
                   _buildVeranlagungCard(context, currentOrder),
                 ],
@@ -379,8 +412,10 @@ class _OrderDetailsContent extends StatelessWidget {
           const SizedBox(height: 16),
           _buildInfoCards(context, currentOrder, isDesktop: false),
           const SizedBox(height: 16),
+          _buildAddressSection(context, currentOrder),
+          const SizedBox(height: 16),
           _buildActionButtons(context, currentOrder),
-          if (_needsVeranlagung) ...[
+          if (_needsVeranlagung(currentOrder)) ...[
             const SizedBox(height: 16),
             _buildVeranlagungCard(context, currentOrder),
           ],
@@ -399,29 +434,22 @@ class _OrderDetailsContent extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Auftragsstatus', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5))),
-                    const SizedBox(height: 4),
-                    _buildStatusChip(context, currentOrder.status),
-                  ],
-                ),
-              ),
-
+              Text('Status', style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6))),
+              const Spacer(),
+              _buildStatusChip(context, currentOrder.status),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: currentOrder.status != OrderStatus.cancelled ? () {
                 Navigator.pop(context);
-                onStatusChange(currentOrder);
+                widget.onStatusChange(currentOrder);
               } : null,
               icon: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit, size: 18),
               label: const Text('Status ändern'),
@@ -437,14 +465,15 @@ class _OrderDetailsContent extends StatelessWidget {
   }
 
   Widget _buildInfoCards(BuildContext context, OrderX currentOrder, {required bool isDesktop}) {
-    final total = _convertPrice((currentOrder.calculations['total'] as num).toDouble());
+    final total = _convertPrice((currentOrder.calculations['total'] as num).toDouble(), currentOrder);
+    final currencySymbol = _getCurrencySymbol(currentOrder);
 
     if (isDesktop) {
       return Column(
         children: [
-          _buildInfoCard(context, 'business', Icons.business, 'Kunde', _getCustomerName(), null),
+          _buildInfoCard(context, 'business', Icons.business, 'Kunde', _getCustomerName(currentOrder), null),
           const SizedBox(height: 10),
-          _buildInfoCard(context, 'payments', Icons.payments, 'Betrag', '$_currencySymbol ${total.toStringAsFixed(2)}', OrderColors.delivered),
+          _buildInfoCard(context, 'payments', Icons.payments, 'Betrag', '$currencySymbol ${total.toStringAsFixed(2)}', OrderColors.delivered),
           const SizedBox(height: 10),
           _buildInfoCard(context, 'email', Icons.email, 'E-Mail', currentOrder.customer['email'] ?? '-', null),
         ],
@@ -455,15 +484,1101 @@ class _OrderDetailsContent extends StatelessWidget {
       children: [
         Row(
           children: [
-            Expanded(child: _buildCompactInfoCard(context, 'payments', Icons.payments, '$_currencySymbol ${total.toStringAsFixed(2)}', OrderColors.delivered)),
+            Expanded(child: _buildCompactInfoCard(context, 'payments', Icons.payments, '$currencySymbol ${total.toStringAsFixed(2)}', OrderColors.delivered)),
             const SizedBox(width: 8),
             Expanded(child: _buildCompactInfoCard(context, 'translate', Icons.translate, currentOrder.metadata?['language'] ?? 'DE', null)),
           ],
         ),
         const SizedBox(height: 8),
-        _buildInfoCard(context, 'business', Icons.business, 'Kunde', _getCustomerName(), null),
+        _buildInfoCard(context, 'business', Icons.business, 'Kunde', _getCustomerName(currentOrder), null),
       ],
     );
+  }
+
+  // ============================================================================
+  // NEU: Adress-Sektion
+  // ============================================================================
+  Widget _buildAddressSection(BuildContext context, OrderX currentOrder) {
+    final customer = currentOrder.customer;
+
+    // Prüfe beide möglichen Strukturen:
+    // 1. Verschachtelt: customer['shipping_address']['street']
+    // 2. Flach: customer['hasDifferentShippingAddress'] + customer['shippingStreet']
+    final hasShippingAddressNested = customer['shipping_address'] != null &&
+        (customer['shipping_address'] is Map) &&
+        (customer['shipping_address'] as Map).isNotEmpty &&
+        customer['shipping_address']['street']?.toString().isNotEmpty == true;
+
+    final hasShippingAddressFlat = customer['hasDifferentShippingAddress'] == true &&
+        customer['shippingStreet']?.toString().isNotEmpty == true;
+
+    final hasShippingAddress = hasShippingAddressNested || hasShippingAddressFlat;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          // Header mit Abgleich-Button
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
+            child: Row(
+              children: [
+                getAdaptiveIcon(
+                  iconName: 'location_on',
+                  defaultIcon: Icons.location_on,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Adressen',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => _showSyncAddressDialog(context, currentOrder),
+                  icon: getAdaptiveIcon(
+                    iconName: 'sync',
+                    defaultIcon: Icons.sync,
+                    size: 16,
+                  ),
+                  label: const Text('Abgleichen', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+
+          // Rechnungsadresse
+          _buildAddressCard(
+            context: context,
+            title: 'Rechnungsadresse',
+            iconName: 'receipt',
+            icon: Icons.receipt,
+            address: _formatBillingAddress(customer),
+            onEdit: () => _showEditAddressDialog(context, currentOrder, 'billing'),
+          ),
+
+          const Divider(height: 1),
+
+          // Lieferadresse
+          _buildAddressCard(
+            context: context,
+            title: 'Lieferadresse',
+            iconName: 'local_shipping',
+            icon: Icons.local_shipping,
+            address: hasShippingAddress
+                ? _formatShippingAddressAuto(customer)
+                : 'Identisch mit Rechnungsadresse',
+            isIdentical: !hasShippingAddress,
+            onEdit: () => _showEditAddressDialog(context, currentOrder, 'shipping'),
+          ),
+        ],
+      ),
+    );
+  }
+  /// Formatiert Lieferadresse - erkennt automatisch ob flach oder verschachtelt
+  String _formatShippingAddressAuto(Map<String, dynamic> customer) {
+    // Prüfe ob verschachtelte Struktur mit Daten vorhanden
+    if (customer['shipping_address'] != null &&
+        customer['shipping_address'] is Map &&
+        (customer['shipping_address'] as Map).isNotEmpty &&
+        customer['shipping_address']['street']?.toString().isNotEmpty == true) {
+      return _formatShippingAddress(customer['shipping_address']);
+    }
+
+    // Flache Struktur (wie im Customer Model)
+    final parts = <String>[];
+
+    if (customer['shippingCompany']?.toString().isNotEmpty == true) {
+      parts.add(customer['shippingCompany']);
+    }
+
+    final firstName = customer['shippingFirstName']?.toString() ?? '';
+    final lastName = customer['shippingLastName']?.toString() ?? '';
+    if (firstName.isNotEmpty || lastName.isNotEmpty) {
+      parts.add('$firstName $lastName'.trim());
+    }
+
+    if (customer['shippingStreet']?.toString().isNotEmpty == true) {
+      final houseNumber = customer['shippingHouseNumber']?.toString() ?? '';
+      parts.add('${customer['shippingStreet']} $houseNumber'.trim());
+    }
+
+    // NEU: Zusätzliche Lieferadresszeilen
+    if (customer['shippingAdditionalAddressLines'] != null) {
+      final lines = customer['shippingAdditionalAddressLines'] as List<dynamic>;
+      for (final line in lines) {
+        if (line.toString().isNotEmpty) {
+          parts.add(line.toString());
+        }
+      }
+    }
+
+    final zip = customer['shippingZipCode']?.toString() ?? '';
+    final city = customer['shippingCity']?.toString() ?? '';
+    if (zip.isNotEmpty || city.isNotEmpty) {
+      parts.add('$zip $city'.trim());
+    }
+
+    if (customer['shippingProvince']?.toString().isNotEmpty == true) {
+      parts.add(customer['shippingProvince']);
+    }
+
+    if (customer['shippingCountry']?.toString().isNotEmpty == true) {
+      parts.add(customer['shippingCountry']);
+    }
+
+    return parts.isNotEmpty ? parts.join('\n') : 'Keine Lieferadresse';
+  }
+
+
+  Widget _buildAddressCard({
+    required BuildContext context,
+    required String title,
+    required String iconName,
+    required IconData icon,
+    required String address,
+    required VoidCallback onEdit,
+    bool isIdentical = false,
+  }) {
+    return InkWell(
+      onTap: onEdit,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            getAdaptiveIcon(
+              iconName: iconName,
+              defaultIcon: icon,
+              size: 18,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  if (isIdentical)
+                    Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'check_circle',
+                          defaultIcon: Icons.check_circle,
+                          size: 14,
+                          color: Colors.green,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          address,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontStyle: FontStyle.italic,
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Text(
+                      address,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                ],
+              ),
+            ),
+            getAdaptiveIcon(
+              iconName: 'edit',
+              defaultIcon: Icons.edit,
+              size: 16,
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.6),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatBillingAddress(Map<String, dynamic> customer) {
+    final parts = <String>[];
+
+    if (customer['company']?.toString().isNotEmpty == true) {
+      parts.add(customer['company']);
+    }
+
+    final firstName = customer['firstName']?.toString() ?? '';
+    final lastName = customer['lastName']?.toString() ?? '';
+    if (firstName.isNotEmpty || lastName.isNotEmpty) {
+      parts.add('$firstName $lastName'.trim());
+    }
+
+    final street = customer['street']?.toString() ?? '';
+    final houseNumber = customer['houseNumber']?.toString() ?? '';
+    if (street.isNotEmpty || houseNumber.isNotEmpty) {
+      parts.add('$street $houseNumber'.trim());
+    }
+
+    // NEU: Zusätzliche Adresszeilen
+    if (customer['additionalAddressLines'] != null) {
+      final lines = customer['additionalAddressLines'] as List<dynamic>;
+      for (final line in lines) {
+        if (line.toString().isNotEmpty) {
+          parts.add(line.toString());
+        }
+      }
+    }
+
+    final zip = customer['zipCode']?.toString() ?? '';
+    final city = customer['city']?.toString() ?? '';
+    if (zip.isNotEmpty || city.isNotEmpty) {
+      parts.add('$zip $city'.trim());
+    }
+
+    if (customer['province']?.toString().isNotEmpty == true) {
+      parts.add(customer['province']);
+    }
+
+    if (customer['country']?.toString().isNotEmpty == true) {
+      parts.add(customer['country']);
+    }
+
+    return parts.join('\n');
+  }
+  String _formatShippingAddress(Map<String, dynamic> shipping) {
+    final parts = <String>[];
+
+    if (shipping['company']?.toString().isNotEmpty == true) {
+      parts.add(shipping['company']);
+    }
+
+    if (shipping['name']?.toString().isNotEmpty == true) {
+      parts.add(shipping['name']);
+    }
+
+    if (shipping['street']?.toString().isNotEmpty == true) {
+      parts.add(shipping['street']);
+    }
+
+    final zip = shipping['zip']?.toString() ?? '';
+    final city = shipping['city']?.toString() ?? '';
+    if (zip.isNotEmpty || city.isNotEmpty) {
+      parts.add('$zip $city'.trim());
+    }
+
+    if (shipping['country']?.toString().isNotEmpty == true) {
+      parts.add(shipping['country']);
+    }
+
+    return parts.join('\n');
+  }
+
+  // ============================================================================
+  // Adresse bearbeiten Dialog
+  // ============================================================================
+  Future<void> _showEditAddressDialog(BuildContext context, OrderX currentOrder, String type) async {
+    final isBilling = type == 'billing';
+    final customer = currentOrder.customer;
+
+    // Controller initialisieren
+    final companyController = TextEditingController();
+    final firstNameController = TextEditingController();
+    final lastNameController = TextEditingController();
+    final streetController = TextEditingController();
+    final houseNumberController = TextEditingController();
+    final zipController = TextEditingController();
+    final cityController = TextEditingController();
+    final provinceController = TextEditingController();
+    final countryController = TextEditingController();
+    final additionalLinesController = TextEditingController();
+    bool useIdenticalAddress = false;
+
+    if (isBilling) {
+      // Rechnungsadresse - flache Struktur
+      companyController.text = customer['company']?.toString() ?? '';
+      firstNameController.text = customer['firstName']?.toString() ?? '';
+      lastNameController.text = customer['lastName']?.toString() ?? '';
+      streetController.text = customer['street']?.toString() ?? '';
+      houseNumberController.text = customer['houseNumber']?.toString() ?? '';
+      zipController.text = customer['zipCode']?.toString() ?? '';  // KORRIGIERT: war 'zip'
+      cityController.text = customer['city']?.toString() ?? '';
+      provinceController.text = customer['province']?.toString() ?? '';
+      countryController.text = customer['country']?.toString() ?? '';
+      if (customer['additionalAddressLines'] != null) {
+        final lines = customer['additionalAddressLines'] as List<dynamic>;
+        additionalLinesController.text = lines.join('\n');
+      }
+
+    } else {
+      // Lieferadresse - prüfe ob flache oder verschachtelte Struktur
+      final hasShippingNested = customer['shipping_address'] != null &&
+          (customer['shipping_address'] is Map) &&
+          customer['shipping_address']['street']?.toString().isNotEmpty == true;
+
+      final hasShippingFlat = customer['hasDifferentShippingAddress'] == true &&
+          customer['shippingStreet']?.toString().isNotEmpty == true;
+
+      useIdenticalAddress = !hasShippingNested && !hasShippingFlat;
+
+      if (hasShippingFlat) {
+        // Flache Struktur (vom Customer Model)
+        companyController.text = customer['shippingCompany']?.toString() ?? '';
+        firstNameController.text = customer['shippingFirstName']?.toString() ?? '';
+        lastNameController.text = customer['shippingLastName']?.toString() ?? '';
+        streetController.text = customer['shippingStreet']?.toString() ?? '';
+        houseNumberController.text = customer['shippingHouseNumber']?.toString() ?? '';
+        zipController.text = customer['shippingZipCode']?.toString() ?? '';
+        cityController.text = customer['shippingCity']?.toString() ?? '';
+        provinceController.text = customer['shippingProvince']?.toString() ?? '';
+        countryController.text = customer['shippingCountry']?.toString() ?? '';
+        if (customer['shippingAdditionalAddressLines'] != null) {
+          final lines = customer['shippingAdditionalAddressLines'] as List<dynamic>;
+          additionalLinesController.text = lines.join('\n');
+        }
+      } else if (hasShippingNested) {
+        // Verschachtelte Struktur
+        final shipping = customer['shipping_address'] as Map<String, dynamic>;
+        companyController.text = shipping['company']?.toString() ?? '';
+        firstNameController.text = shipping['firstName']?.toString() ?? '';
+        lastNameController.text = shipping['lastName']?.toString() ?? shipping['name']?.toString() ?? '';
+        streetController.text = shipping['street']?.toString() ?? '';
+        houseNumberController.text = shipping['houseNumber']?.toString() ?? '';
+        zipController.text = shipping['zipCode']?.toString() ?? shipping['zip']?.toString() ?? '';
+        cityController.text = shipping['city']?.toString() ?? '';
+        provinceController.text = shipping['province']?.toString() ?? '';
+        countryController.text = shipping['country']?.toString() ?? '';
+        if (customer['shipping_address']['additionalAddressLines'] != null) {
+          final lines = customer['shipping_address']['additionalAddressLines'] as List<dynamic>;
+          additionalLinesController.text = lines.join('\n');
+        }
+      }
+    }
+
+    final result = await showModalBottomSheet<Map<String, dynamic>?>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.85,
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              children: [
+                // Drag Handle
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.outline.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+
+                // Header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                  child: Row(
+                    children: [
+                      getAdaptiveIcon(
+                        iconName: isBilling ? 'receipt' : 'local_shipping',
+                        defaultIcon: isBilling ? Icons.receipt : Icons.local_shipping,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          isBilling ? 'Rechnungsadresse bearbeiten' : 'Lieferadresse bearbeiten',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const Divider(),
+
+                // Content
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Toggle für Lieferadresse
+                        if (!isBilling) ...[
+                          Container(
+                            decoration: BoxDecoration(
+                              color: useIdenticalAddress
+                                  ? Colors.green.withOpacity(0.1)
+                                  : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: useIdenticalAddress
+                                    ? Colors.green.withOpacity(0.3)
+                                    : Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                              ),
+                            ),
+                            child: SwitchListTile(
+                              title: const Text('Identisch mit Rechnungsadresse'),
+                              subtitle: Text(
+                                useIdenticalAddress
+                                    ? 'Lieferung an Rechnungsadresse'
+                                    : 'Abweichende Lieferadresse',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: useIdenticalAddress ? Colors.green[700] : null,
+                                ),
+                              ),
+                              value: useIdenticalAddress,
+                              onChanged: (value) {
+                                setDialogState(() {
+                                  useIdenticalAddress = value;
+                                });
+                              },
+                              secondary: getAdaptiveIcon(
+                                iconName: useIdenticalAddress ? 'check_circle' : 'edit_location',
+                                defaultIcon: useIdenticalAddress ? Icons.check_circle : Icons.edit_location,
+                                color: useIdenticalAddress ? Colors.green : null,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+
+                        // Adressfelder (ausgeblendet wenn identisch)
+                        if (isBilling || !useIdenticalAddress) ...[
+                          // Firma
+                          TextField(
+                            controller: companyController,
+                            decoration: InputDecoration(
+                              labelText: 'Firma',
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: getAdaptiveIcon(iconName: 'business', defaultIcon: Icons.business),
+                              ),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Vorname + Nachname
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: firstNameController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Vorname',
+                                    prefixIcon: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: getAdaptiveIcon(iconName: 'person', defaultIcon: Icons.person),
+                                    ),
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextField(
+                                  controller: lastNameController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Nachname',
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Straße + Hausnummer
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: TextField(
+                                  controller: streetController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Straße',
+                                    prefixIcon: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: getAdaptiveIcon(iconName: 'home', defaultIcon: Icons.home),
+                                    ),
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                flex: 1,
+                                child: TextField(
+                                  controller: houseNumberController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Nr.',
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+// NEU: Zusätzliche Adresszeilen
+                          TextField(
+                            controller: additionalLinesController,
+                            maxLines: 3,
+                            decoration: InputDecoration(
+                              labelText: 'Zusätzliche Adresszeilen',
+                              hintText: 'z.B. Gebäude, Etage, Abteilung...',
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: getAdaptiveIcon(iconName: 'notes', defaultIcon: Icons.notes),
+                              ),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              alignLabelWithHint: true,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          // PLZ + Ort
+                          Row(
+                            children: [
+                              SizedBox(
+                                width: 120,
+                                child: TextField(
+                                  controller: zipController,
+                                  decoration: InputDecoration(
+                                    labelText: 'PLZ',
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: TextField(
+                                  controller: cityController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Ort',
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Provinz
+                          TextField(
+                            controller: provinceController,
+                            decoration: InputDecoration(
+                              labelText: 'Provinz / Bundesland',
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: getAdaptiveIcon(iconName: 'map', defaultIcon: Icons.map),
+                              ),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Land
+                          TextField(
+                            controller: countryController,
+                            decoration: InputDecoration(
+                              labelText: 'Land',
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: getAdaptiveIcon(iconName: 'flag', defaultIcon: Icons.flag),
+                              ),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Actions
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, -5),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Abbrechen'),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(context, {
+                              'type': type,
+                              'useIdentical': useIdenticalAddress,
+                              'company': companyController.text,
+                              'firstName': firstNameController.text,
+                              'lastName': lastNameController.text,
+                              'street': streetController.text,
+                              'houseNumber': houseNumberController.text,
+                              'additionalAddressLines': additionalLinesController.text,  // NEU
+                              'zipCode': zipController.text,
+                              'city': cityController.text,
+                              'province': provinceController.text,
+                              'country': countryController.text,
+                            });
+                          },
+                          child: const Text('Speichern'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    // Ergebnis verarbeiten
+    if (result != null) {
+      await _saveAddressChanges(currentOrder, result);
+    }
+
+    // Controller aufräumen
+    companyController.dispose();
+    firstNameController.dispose();
+    lastNameController.dispose();
+    streetController.dispose();
+    houseNumberController.dispose();
+    zipController.dispose();
+    cityController.dispose();
+    provinceController.dispose();
+    countryController.dispose();
+    additionalLinesController.dispose();
+  }
+  Future<void> _saveAddressChanges(OrderX currentOrder, Map<String, dynamic> data) async {
+    try {
+      final type = data['type'] as String;
+      final useIdentical = data['useIdentical'] as bool? ?? false;
+
+      final updateData = <String, dynamic>{};
+
+      if (type == 'billing') {
+        // Rechnungsadresse aktualisieren (flache Struktur)
+        updateData['customer.company'] = data['company'];
+        updateData['customer.firstName'] = data['firstName'];
+        updateData['customer.lastName'] = data['lastName'];
+        updateData['customer.street'] = data['street'];
+        updateData['customer.houseNumber'] = data['houseNumber'];
+        updateData['customer.zipCode'] = data['zipCode'];
+        updateData['customer.city'] = data['city'];
+        updateData['customer.province'] = data['province'];
+        updateData['customer.country'] = data['country'];
+        final additionalLines = (data['additionalAddressLines'] as String?)
+            ?.split('\n')
+            .where((line) => line.trim().isNotEmpty)
+            .toList() ?? [];
+        updateData['customer.additionalAddressLines'] = additionalLines;
+
+      } else {
+        // Lieferadresse aktualisieren
+        if (useIdentical) {
+          // Lieferadresse entfernen (= identisch mit Rechnungsadresse)
+          updateData['customer.hasDifferentShippingAddress'] = false;
+          updateData['customer.shippingCompany'] = '';
+          updateData['customer.shippingFirstName'] = '';
+          updateData['customer.shippingLastName'] = '';
+          updateData['customer.shippingStreet'] = '';
+          updateData['customer.shippingHouseNumber'] = '';
+          updateData['customer.shippingZipCode'] = '';
+          updateData['customer.shippingCity'] = '';
+          updateData['customer.shippingProvince'] = '';
+          updateData['customer.shippingCountry'] = '';
+          // Auch verschachtelte Struktur leeren falls vorhanden
+          updateData['customer.shipping_address'] = {};
+        } else {
+          // Abweichende Lieferadresse setzen (flache Struktur)
+          updateData['customer.hasDifferentShippingAddress'] = true;
+          updateData['customer.shippingCompany'] = data['company'];
+          updateData['customer.shippingFirstName'] = data['firstName'];
+          updateData['customer.shippingLastName'] = data['lastName'];
+          updateData['customer.shippingStreet'] = data['street'];
+          updateData['customer.shippingHouseNumber'] = data['houseNumber'];
+          updateData['customer.shippingZipCode'] = data['zipCode'];
+          updateData['customer.shippingCity'] = data['city'];
+          updateData['customer.shippingProvince'] = data['province'];
+          updateData['customer.shippingCountry'] = data['country'];
+
+          final additionalLines = (data['additionalAddressLines'] as String?)
+              ?.split('\n')
+              .where((line) => line.trim().isNotEmpty)
+              .toList() ?? [];
+          updateData['customer.shippingAdditionalAddressLines'] = additionalLines;
+
+        }
+      }
+
+      await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(currentOrder.id)
+          .update(updateData);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(type == 'billing'
+                ? 'Rechnungsadresse aktualisiert'
+                : 'Lieferadresse aktualisiert'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Speichern: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+  // ============================================================================
+  // Adresse mit Kundenstamm abgleichen
+  // ============================================================================
+  Future<void> _showSyncAddressDialog(BuildContext context, OrderX currentOrder) async {
+    final customerId = currentOrder.customer['customerId'] ?? currentOrder.customer['id'];
+
+    if (customerId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Keine Kunden-ID gefunden'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Kundenstammdaten laden
+    final customerDoc = await FirebaseFirestore.instance
+        .collection('customers')
+        .doc(customerId)
+        .get();
+
+    if (!customerDoc.exists) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Kunde nicht im Kundenstamm gefunden'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    final masterData = customerDoc.data()!;
+    final orderData = currentOrder.customer;
+
+    // Unterschiede finden
+    final differences = <String, Map<String, String>>{};
+
+    void compare(String field, String? orderValue, String? masterValue, String label) {
+      final oVal = orderValue?.trim() ?? '';
+      final mVal = masterValue?.trim() ?? '';
+      if (oVal != mVal) {
+        differences[field] = {
+          'label': label,
+          'order': oVal.isEmpty ? '(leer)' : oVal,
+          'master': mVal.isEmpty ? '(leer)' : mVal,
+        };
+      }
+    }
+
+    compare('company', orderData['company'], masterData['company'], 'Firma');
+    compare('firstName', orderData['firstName'], masterData['firstName'], 'Vorname');
+    compare('lastName', orderData['lastName'], masterData['lastName'], 'Nachname');
+    compare('street', orderData['street'], masterData['street'], 'Straße');
+    compare('zip', orderData['zip'], masterData['zip'], 'PLZ');
+    compare('city', orderData['city'], masterData['city'], 'Ort');
+    compare('country', orderData['country'], masterData['country'], 'Land');
+    compare('email', orderData['email'], masterData['email'], 'E-Mail');
+    compare('phone', orderData['phone'], masterData['phone'], 'Telefon');
+
+    if (!mounted) return;
+
+    if (differences.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              getAdaptiveIcon(
+                iconName: 'check_circle',
+                defaultIcon: Icons.check_circle,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 8),
+              const Text('Adressdaten sind bereits identisch'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+      return;
+    }
+
+    // Dialog mit Unterschieden anzeigen
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            getAdaptiveIcon(
+              iconName: 'sync',
+              defaultIcon: Icons.sync,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            const Text('Adressdaten abgleichen'),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Folgende Unterschiede wurden gefunden:',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: differences.entries.map((entry) {
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              entry.value['label']!,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Auftrag:',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                        ),
+                                      ),
+                                      Text(
+                                        entry.value['order']!,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.orange[700],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                getAdaptiveIcon(
+                                  iconName: 'arrow_forward',
+                                  defaultIcon: Icons.arrow_forward,
+                                  size: 16,
+                                  color: Colors.green,
+                                ),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        'Kundenstamm:',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                        ),
+                                      ),
+                                      Text(
+                                        entry.value['master']!,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.green[700],
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        textAlign: TextAlign.end,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    getAdaptiveIcon(
+                      iconName: 'info',
+                      defaultIcon: Icons.info,
+                      color: Colors.blue,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Die Auftragsdaten werden mit den aktuellen Kundenstammdaten überschrieben.',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: getAdaptiveIcon(iconName: 'sync', defaultIcon: Icons.sync),
+            label: const Text('Abgleichen'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        // Auftragsdaten mit Kundenstamm aktualisieren
+        final updateData = <String, dynamic>{};
+
+        for (final field in differences.keys) {
+          updateData['customer.$field'] = masterData[field] ?? '';
+        }
+
+        await FirebaseFirestore.instance
+            .collection('orders')
+            .doc(currentOrder.id)
+            .update(updateData);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  getAdaptiveIcon(
+                    iconName: 'check_circle',
+                    defaultIcon: Icons.check_circle,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 8),
+                  Text('${differences.length} Feld(er) aktualisiert'),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Fehler beim Abgleichen: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildInfoCard(BuildContext context, String iconName, IconData icon, String label, String value, Color? color) {
@@ -523,13 +1638,13 @@ class _OrderDetailsContent extends StatelessWidget {
           Row(
             children: [
               Expanded(child: _buildSecondaryButton(context, 'folder', Icons.folder, 'Dokumente', Theme.of(context).colorScheme.primary, () {
-                Navigator.pop(context);
-                onViewDocuments(currentOrder);
+              //  Navigator.pop(context);
+                widget.onViewDocuments(currentOrder);
               })),
               const SizedBox(width: 8),
               Expanded(child: _buildSecondaryButton(context, 'history', Icons.history, 'Verlauf', Theme.of(context).colorScheme.primary, () {
-                Navigator.pop(context);
-                onShowHistory(currentOrder);
+              //  Navigator.pop(context);
+                widget.onShowHistory(currentOrder);
               })),
             ],
           ),
@@ -540,7 +1655,7 @@ class _OrderDetailsContent extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: () {
                   Navigator.pop(context);
-                  onCancel(currentOrder);
+                  widget.onCancel(currentOrder);
                 },
                 icon: getAdaptiveIcon(iconName: 'cancel', defaultIcon: Icons.cancel, color: Colors.red, size: 18),
                 label: const Text('Auftrag stornieren', style: TextStyle(color: Colors.red)),
@@ -586,9 +1701,9 @@ class _OrderDetailsContent extends StatelessWidget {
         border: Border.all(color: hasVeranlagung ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3)),
       ),
       child: InkWell(
-        onTap: onVeranlagung != null ? () {
+        onTap: widget.onVeranlagung != null ? () {
           Navigator.pop(context);
-          onVeranlagung!(currentOrder);
+          widget.onVeranlagung!(currentOrder);
         } : null,
         child: Row(
           children: [
@@ -675,6 +1790,8 @@ class _OrderDetailsContent extends StatelessWidget {
         (item['custom_width'] != null && item['custom_width'] > 0) ||
         (item['custom_thickness'] != null && item['custom_thickness'] > 0);
 
+    final currencySymbol = _getCurrencySymbol(currentOrder);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -683,7 +1800,7 @@ class _OrderDetailsContent extends StatelessWidget {
         border: Border.all(color: Theme.of(context).colorScheme.outline.withOpacity(0.15)),
       ),
       child: InkWell(
-        onTap: () => onEditItemMeasurements(currentOrder, item, index),
+        onTap: () => widget.onEditItemMeasurements(currentOrder, item, index),
         borderRadius: BorderRadius.circular(10),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -703,7 +1820,7 @@ class _OrderDetailsContent extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${qty.toStringAsFixed(0)} × $_currencySymbol ${_convertPrice(price).toStringAsFixed(2)}',
+                          '${qty.toStringAsFixed(0)} × $currencySymbol ${_convertPrice(price, currentOrder).toStringAsFixed(2)}',
                           style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)),
                         ),
                       ],
@@ -716,7 +1833,7 @@ class _OrderDetailsContent extends StatelessWidget {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      isGratis ? 'GRATIS' : '$_currencySymbol ${_convertPrice(total).toStringAsFixed(2)}',
+                      isGratis ? 'GRATIS' : '$currencySymbol ${_convertPrice(total, currentOrder).toStringAsFixed(2)}',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,

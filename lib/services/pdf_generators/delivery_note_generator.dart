@@ -87,10 +87,25 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
 
     return consolidated.values.toList();
   }
+
+  /// Prüft ob mindestens ein Item thermobehandelt ist
+  static bool _hasAnyThermalTreatment(Map<String, List<Map<String, dynamic>>> groupedItems) {
+    for (final items in groupedItems.values) {
+      for (final item in items) {
+        if (item['has_thermal_treatment'] == true && item['thermal_treatment_temperature'] != null) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /// Berechnet optimale Spaltenbreiten basierend auf Inhalt
   /// Berechnet optimale Spaltenbreiten basierend auf Inhalt
   static Map<int, pw.FlexColumnWidth> _calculateOptimalColumnWidths(
       Map<String, List<Map<String, dynamic>>> groupedItems,
       String language,
+      bool showThermalColumn,
       ) {
     const double charWidth = 0.18;
 
@@ -119,45 +134,70 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
       }
     });
 
-    double productWidth = (maxProductLen * charWidth).clamp(2.5, 4.0);
+    double productWidth = (maxProductLen * charWidth).clamp(3.0, 5.0);  // Größer
     double instrWidth = (maxInstrLen * charWidth).clamp(2.5, 4.0);
     double qualWidth = (maxQualLen * charWidth).clamp(1.5, 2.0);
     double fscWidth = (maxFscLen * charWidth).clamp(1.0, 1.5);
 
-    return {
-      0: pw.FlexColumnWidth(productWidth),  // Produkt
-      1: pw.FlexColumnWidth(instrWidth),    // Instrument
-      2: pw.FlexColumnWidth(qualWidth),     // Qualität
-      3: pw.FlexColumnWidth(fscWidth),      // FSC
-      4: const pw.FlexColumnWidth(1.0),     // Ursprung
-      5: const pw.FlexColumnWidth(1.0),     // °C
-      6: const pw.FlexColumnWidth(1.5),     // Anzahl
-      7: const pw.FlexColumnWidth(1.0),     // Einheit
-    };
+    if (showThermalColumn) {
+      return {
+        0: pw.FlexColumnWidth(productWidth),  // Produkt (größer)
+        1: pw.FlexColumnWidth(instrWidth),    // Instrument
+        2: pw.FlexColumnWidth(qualWidth),     // Qualität
+        3: pw.FlexColumnWidth(fscWidth),      // FSC
+        4: const pw.FlexColumnWidth(1.0),     // Ursprung
+        5: const pw.FlexColumnWidth(1.0),     // °C
+        6: const pw.FlexColumnWidth(1.0),     // Anzahl (kleiner)
+        7: const pw.FlexColumnWidth(1.0),     // Einheit
+      };
+    } else {
+      return {
+        0: pw.FlexColumnWidth(productWidth),  // Produkt (größer)
+        1: pw.FlexColumnWidth(instrWidth),    // Instrument
+        2: pw.FlexColumnWidth(qualWidth),     // Qualität
+        3: pw.FlexColumnWidth(fscWidth),      // FSC
+        4: const pw.FlexColumnWidth(1.0),     // Ursprung
+        5: const pw.FlexColumnWidth(1.0),     // Anzahl (kleiner)
+        6: const pw.FlexColumnWidth(1.0),     // Einheit
+      };
+    }
   }
+
   // Produkttabelle (ohne Preise)
   static pw.Widget _buildProductTable(
       Map<String, List<Map<String, dynamic>>> groupedItems,
       String language,
+      bool showThermalColumn,
       ) {
     final List<pw.TableRow> rows = [];
 
     // Header-Zeile
+    final headerCells = <pw.Widget>[
+      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Product' : 'Produkt', 8),
+      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Instrument' : 'Instrument', 8),
+      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Quality' : 'Qualität', 8),
+      BaseDeliveryNotePdfGenerator.buildHeaderCell('FSC®', 8),
+      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Orig' : 'Urs', 8),
+    ];
+
+    if (showThermalColumn) {
+      headerCells.add(BaseDeliveryNotePdfGenerator.buildHeaderCell('°C', 8));
+    }
+
+    headerCells.addAll([
+      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Qty' : 'Anz.', 8, align: pw.TextAlign.left),
+      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Unit' : 'Einh', 8),
+    ]);
+
     rows.add(
       pw.TableRow(
         decoration: pw.BoxDecoration(color: PdfColors.blueGrey50),
-        children: [
-          BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Product' : 'Produkt', 8),
-          BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Instrument' : 'Instrument', 8),
-          BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Quality' : 'Qualität', 8),
-          BaseDeliveryNotePdfGenerator.buildHeaderCell('FSC®', 8),
-          BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Orig' : 'Urs', 8),
-          BaseDeliveryNotePdfGenerator.buildHeaderCell('°C', 8),
-          BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Qty' : 'Anz.', 8, align: pw.TextAlign.right),
-          BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Unit' : 'Einh', 8),
-        ],
+        children: headerCells,
       ),
     );
+
+    // Anzahl Spalten für leere Zellen in Gruppenheader
+    final emptyColumnsCount = showThermalColumn ? 7 : 6;
 
     // Für jede Holzart-Gruppe
     groupedItems.forEach((woodGroup, items) {
@@ -177,7 +217,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
                 ),
               ),
             ),
-            ...List.generate(7, (index) => pw.SizedBox(height: 16)),
+            ...List.generate(emptyColumnsCount, (index) => pw.SizedBox(height: 16)),
           ],
         ),
       );
@@ -190,52 +230,62 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
           unit = language == 'EN' ? 'pcs' : 'Stk';
         }
 
+        final contentCells = <pw.Widget>[
+          BaseDeliveryNotePdfGenerator.buildContentCell(
+            pw.Text(
+              language == 'EN' ? item['part_name_en'] ?? item['part_name'] ?? '' : item['part_name'] ?? '',
+              style: const pw.TextStyle(fontSize: 8),
+            ),
+          ),
+          BaseDeliveryNotePdfGenerator.buildContentCell(
+            pw.Text(
+              language == 'EN' ? item['instrument_name_en'] ?? item['instrument_name'] ?? '' : item['instrument_name'] ?? '',
+              style: const pw.TextStyle(fontSize: 8),
+            ),
+          ),
+          BaseDeliveryNotePdfGenerator.buildContentCell(
+            pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
+          ),
+          BaseDeliveryNotePdfGenerator.buildContentCell(
+            pw.Text(item['fsc_status'] ?? '-', style: const pw.TextStyle(fontSize: 8)),
+          ),
+          BaseDeliveryNotePdfGenerator.buildContentCell(
+            pw.Text('CH', style: const pw.TextStyle(fontSize: 8)),
+          ),
+        ];
+
+        if (showThermalColumn) {
+          contentCells.add(
+            BaseDeliveryNotePdfGenerator.buildContentCell(
+              pw.Text(
+                item['has_thermal_treatment'] == true && item['thermal_treatment_temperature'] != null
+                    ? item['thermal_treatment_temperature'].toString()
+                    : '',
+                style: const pw.TextStyle(fontSize: 8),
+                textAlign: pw.TextAlign.left,
+              ),
+            ),
+          );
+        }
+
+        contentCells.addAll([
+          BaseDeliveryNotePdfGenerator.buildContentCell(
+            pw.Text(
+              unit != "Stk"
+                  ? quantity.toStringAsFixed(3)
+                  : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
+              style: const pw.TextStyle(fontSize: 8),
+              textAlign: pw.TextAlign.left,
+            ),
+          ),
+          BaseDeliveryNotePdfGenerator.buildContentCell(
+            pw.Text(unit, style: const pw.TextStyle(fontSize: 8)),
+          ),
+        ]);
+
         rows.add(
           pw.TableRow(
-            children: [
-              BaseDeliveryNotePdfGenerator.buildContentCell(
-                pw.Text(
-                  language == 'EN' ? item['part_name_en'] ?? item['part_name'] ?? '' : item['part_name'] ?? '',
-                  style: const pw.TextStyle(fontSize: 8),
-                ),
-              ),
-              BaseDeliveryNotePdfGenerator.buildContentCell(
-                pw.Text(
-                  language == 'EN' ? item['instrument_name_en'] ?? item['instrument_name'] ?? '' : item['instrument_name'] ?? '',
-                  style: const pw.TextStyle(fontSize: 8),
-                ),
-              ),
-              BaseDeliveryNotePdfGenerator.buildContentCell(
-                pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
-              ),
-              BaseDeliveryNotePdfGenerator.buildContentCell(
-                pw.Text(item['fsc_status'] ?? '-', style: const pw.TextStyle(fontSize: 8)),
-              ),
-              BaseDeliveryNotePdfGenerator.buildContentCell(
-                pw.Text('CH', style: const pw.TextStyle(fontSize: 8)),
-              ),
-              BaseDeliveryNotePdfGenerator.buildContentCell(
-                pw.Text(
-                  item['has_thermal_treatment'] == true && item['thermal_treatment_temperature'] != null
-                      ? item['thermal_treatment_temperature'].toString()
-                      : '',
-                  style: const pw.TextStyle(fontSize: 8),
-                  textAlign: pw.TextAlign.center,
-                ),
-              ),
-              BaseDeliveryNotePdfGenerator.buildContentCell(
-                pw.Text(
-                  unit != "Stk"
-                      ? quantity.toStringAsFixed(3)
-                      : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
-                  style: const pw.TextStyle(fontSize: 8),
-                  textAlign: pw.TextAlign.right,
-                ),
-              ),
-              BaseDeliveryNotePdfGenerator.buildContentCell(
-                pw.Text(unit, style: const pw.TextStyle(fontSize: 8)),
-              ),
-            ],
+            children: contentCells,
           ),
         );
       }
@@ -245,6 +295,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
     final columnWidths = _calculateOptimalColumnWidths(
       groupedItems,
       language,
+      showThermalColumn,
     );
 
     return pw.Table(
@@ -349,8 +400,11 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
     final deliveryNum = deliveryNoteNumber ?? await getNextDeliveryNoteNumber();
 
     final productItems = items.where((item) => item['is_service'] != true).toList();
-    final consolidatedItems = _consolidateItems(productItems);  // NEU
-    final groupedItems = await _groupItemsByWoodType(consolidatedItems, language);  // GEÄNDERT
+    final consolidatedItems = _consolidateItems(productItems);
+    final groupedItems = await _groupItemsByWoodType(consolidatedItems, language);
+
+    // NEU: Prüfe ob °C-Spalte angezeigt werden soll
+    final showThermalColumn = _hasAnyThermalTreatment(groupedItems);
 
     final additionalTextsWidget = await _buildAdditionalTexts(language);
 
@@ -386,11 +440,11 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
 
               pw.SizedBox(height: 15),
 
-              // Produkttabelle
+              // Produkttabelle mit dynamischer °C-Spalte
               pw.Expanded(
                 child: pw.Column(
                   children: [
-                    _buildProductTable(groupedItems, language),
+                    _buildProductTable(groupedItems, language, showThermalColumn),
                     pw.SizedBox(height: 10),
                     additionalTextsWidget,
                   ],

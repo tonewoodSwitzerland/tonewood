@@ -263,9 +263,7 @@ class CurrencyConverterSheet {
                                   ),
                                 ),
                                 value: currentCurrency,
-                                items: ['CHF', 'EUR', 'USD'].where((currency) =>
-                                    exchangeRatesNotifier.value.containsKey(currency)
-                                ).map((currency) =>
+                                items: ['CHF', 'EUR', 'USD'].map((currency) =>
                                     DropdownMenuItem(
                                       value: currency,
                                       child: Text(currency),

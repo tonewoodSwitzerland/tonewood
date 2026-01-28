@@ -9,6 +9,8 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/swiss_rounding.dart';
+import 'edit_item_measurements_dialog.dart';
 import 'order_details_sheet.dart';
 import 'order_filter_favorites_sheet.dart';
 import 'order_filter_service.dart';
@@ -42,16 +44,18 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
 
   String _searchQuery = '';
   OrderStatus? _filterStatus;
-
+  OrderStatus? _quickFilterStatus;
   Map<String, dynamic> _activeFilters = OrderFilterService.createEmptyFilter();
   StreamSubscription<Map<String, dynamic>>? _filterSubscription;
   final TextEditingController _searchController = TextEditingController();
   bool _isLoadingFilters = true;
+  Map<String, bool> _roundingSettings = {'CHF': true, 'EUR': false, 'USD': false};
 
   @override
   void initState() {
     super.initState();
     _loadFilters();
+    _loadRoundingSettings();
   }
 
   @override
@@ -299,7 +303,12 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
       ),
     );
   }
-
+  Future<void> _loadRoundingSettings() async {
+    final settings = await SwissRounding.loadRoundingSettings();
+    setState(() {
+      _roundingSettings = settings;
+    });
+  }
   // Neue Methode für die Suchfunktion:
   void _showSearchDialog() {
     showDialog(
@@ -351,8 +360,6 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
   }
 
 
-
-
   Widget _buildCompactStatistics() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('orders').snapshots(),
@@ -363,10 +370,8 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
             .map((doc) => OrderX.fromFirestore(doc))
             .toList();
 
-        // Nur noch "In Bearbeitung" zählen (nicht versendet, nicht storniert)
-        final openOrders = orders.where((o) =>
-        o.status == OrderStatus.processing
-        ).length;
+        final processingOrders = orders.where((o) => o.status == OrderStatus.processing).length;
+        final shippedOrders = orders.where((o) => o.status == OrderStatus.shipped).length;
 
         return Container(
           height: 60,
@@ -374,66 +379,63 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
           child: Row(
             children: [
               Expanded(
-                child: _buildCompactStatCard(
-                  'In Bearbeitung',
-                  openOrders.toString(),
-                  Icons.schedule,
-                  'schedule',
-                  OrderColors.processing,
-                ),
+                child: _buildCompactStatCard('In Bearbeitung', processingOrders.toString(), Icons.schedule, 'schedule', OrderColors.processing, OrderStatus.processing),
               ),
-              // ENTFERNT: Zweite Karte "Unbezahlt"
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildCompactStatCard('Versendet', shippedOrders.toString(), Icons.local_shipping, 'local_shipping', OrderColors.shipped, OrderStatus.shipped),
+              ),
             ],
           ),
         );
       },
     );
   }
-  Widget _buildCompactStatCard(String title, String value, IconData icon,String iconName, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2), width: 1),
-      ),
-      child: Row(
-        children: [
-          getAdaptiveIcon(
-              iconName: iconName,
-              defaultIcon:icon, color: color, size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                    height: 1,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: color.withOpacity(0.8),
-                    height: 1,
-                  ),
-                ),
-              ],
+  Widget _buildCompactStatCard(String title, String value, IconData icon, String iconName, Color color, OrderStatus targetStatus) {
+    final bool isActive = _quickFilterStatus == targetStatus;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          if (isActive) {
+            _quickFilterStatus = null;
+            _activeFilters['quickStatus'] = null;
+          } else {
+            _quickFilterStatus = targetStatus;
+            _activeFilters['quickStatus'] = targetStatus.name;
+          }
+        });
+        OrderFilterService.saveFilters(_activeFilters);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? color.withOpacity(0.2) : color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isActive ? color : color.withOpacity(0.2), width: isActive ? 2 : 1),
+        ),
+        child: Row(
+          children: [
+            getAdaptiveIcon(iconName: iconName, defaultIcon: icon, color: color, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color, height: 1)),
+                  const SizedBox(height: 2),
+                  Text(title, style: TextStyle(fontSize: 11, fontWeight: isActive ? FontWeight.bold : FontWeight.normal, color: color.withOpacity(0.8), height: 1)),
+                ],
+              ),
             ),
-          ),
-        ],
+            if (isActive) getAdaptiveIcon(iconName: 'check_circle', defaultIcon: Icons.check_circle, color: color, size: 14),
+          ],
+        ),
       ),
     );
   }
-
 
   void _loadFilters() {
     _filterSubscription = OrderFilterService.loadSavedFilters().listen((filters) {
@@ -441,6 +443,16 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
         setState(() {
           _activeFilters = filters;
           _searchController.text = filters['searchText'] ?? '';
+          final quickStatus = filters['quickStatus'] as String?;
+          if (quickStatus != null) {
+            try {
+              _quickFilterStatus = OrderStatus.values.firstWhere((s) => s.name == quickStatus);
+            } catch (_) {
+              _quickFilterStatus = null;
+            }
+          } else {
+            _quickFilterStatus = null;
+          }
           _isLoadingFilters = false;
         });
       }
@@ -915,377 +927,59 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
       onShare: _shareOrder,
       onCancel: _releaseOrder,
       onEditItemMeasurements: (order, item, index) {
-        _showEditItemMeasurementsDialog(context, order, item, index);
+        EditItemMeasurementsDialog.show(context, order, item, index);
       },
       onVeranlagung: _showVeranlagungsverfuegungDialog,
     );
   }
 
-  void _showEditItemMeasurementsDialog(BuildContext context, OrderX order, Map<String, dynamic> item, int itemIndex) {
-    // Controller für die Eingabefelder
-    final lengthController = TextEditingController(
-      text: item['custom_length']?.toString() ?? '',
-    );
-    final widthController = TextEditingController(
-      text: item['custom_width']?.toString() ?? '',
-    );
-    final thicknessController = TextEditingController(
-      text: item['custom_thickness']?.toString() ?? '',
-    );
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Drag Handle
-                Container(
-                  margin: const EdgeInsets.only(top: 12, bottom: 8),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-
-                // Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  child: Row(
-                    children: [
-                      getAdaptiveIcon(
-                        iconName: 'straighten',
-                        defaultIcon:
-                        Icons.straighten,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Maße bearbeiten',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              item['product_name']?.toString() ?? 'Produkt',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon:  getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const Divider(),
-
-                // Content
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      // Info Box
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            getAdaptiveIcon(
-                              iconName: 'info',
-                              defaultIcon:
-                              Icons.info,
-                              size: 20,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Gib die exakten Maße des Artikels ein. Diese Angaben erscheinen auf den Dokumenten.',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Maße Eingabefelder
-                      Row(
-                        children: [
-                          // Länge
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Länge (mm)',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                TextField(
-                                  controller: lengthController,
-                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  textAlign: TextAlign.center,
-                                  decoration: InputDecoration(
-                                    hintText: '0',
-                                    prefixIcon:
-                                    getAdaptiveIcon(iconName: 'arrow_right_alt', defaultIcon:
-                                      Icons.arrow_right_alt,
-                                      color: Theme.of(context).colorScheme.primary,
-                                    ),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    filled: true,
-                                    fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          const SizedBox(width: 12),
-
-                          // Breite
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Breite (mm)',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                TextField(
-                                  controller: widthController,
-                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  textAlign: TextAlign.center,
-                                  decoration: InputDecoration(
-                                    hintText: '0',
-                                    prefixIcon:
-                                    getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon:
-                                      Icons.swap_horiz,
-                                      color: Theme.of(context).colorScheme.primary,
-                                    ),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    filled: true,
-                                    fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          const SizedBox(width: 12),
-
-                          // Dicke
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Dicke (mm)',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                TextField(
-                                  controller: thicknessController,
-                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  textAlign: TextAlign.center,
-                                  decoration: InputDecoration(
-                                    hintText: '0',
-                                    prefixIcon:getAdaptiveIcon(iconName: 'height', defaultIcon:
-                                      Icons.height,
-                                      color: Theme.of(context).colorScheme.primary,
-                                    ),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    filled: true,
-                                    fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 32),
-
-                      // Action Buttons
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => Navigator.pop(context),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              child: const Text('Abbrechen'),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () async {
-                                // Validiere und parse die Eingaben
-                                final length = double.tryParse(lengthController.text);
-                                final width = double.tryParse(widthController.text);
-                                final thickness = double.tryParse(thicknessController.text);
-
-                                try {
-                                  // Update das Item in der Liste
-                                  final updatedItems = List<Map<String, dynamic>>.from(order.items);
-
-                                  // Update direkt am korrekten Index
-                                  updatedItems[itemIndex] = {
-                                    ...updatedItems[itemIndex],
-                                    'custom_length': length,
-                                    'custom_width': width,
-                                    'custom_thickness': thickness,
-                                  };
-
-                                  // Update in Firestore
-                                  await FirebaseFirestore.instance
-                                      .collection('orders')
-                                      .doc(order.id)
-                                      .update({
-                                    'items': updatedItems,
-                                    'updated_at': FieldValue.serverTimestamp(),
-                                  });
-
-                                  // Erstelle History-Eintrag
-                                  final user = FirebaseAuth.instance.currentUser;
-                                  await FirebaseFirestore.instance
-                                      .collection('orders')
-                                      .doc(order.id)
-                                      .collection('history')
-                                      .add({
-                                    'timestamp': FieldValue.serverTimestamp(),
-                                    'user_id': user?.uid ?? 'unknown',
-                                    'user_email': user?.email ?? 'Unknown User',
-                                    'user_name': user?.email ?? 'Unknown',
-                                    'action': 'measurements_updated',
-                                    'product_name': item['product_name'],
-                                    'item_index': itemIndex,
-                                    'measurements': {
-                                      'length': length,
-                                      'width': width,
-                                      'thickness': thickness,
-                                    },
-                                  });
-
-                                  if (mounted) {
-                                    Navigator.pop(context); // Schließe nur Maße-Dialog
-
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Maße für ${item['product_name']} wurden aktualisiert'),
-                                        backgroundColor: Colors.green,
-                                        behavior: SnackBarBehavior.floating,
-                                        margin: const EdgeInsets.all(8),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                } catch (e) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Fehler beim Aktualisieren: $e'),
-                                        backgroundColor: Colors.red,
-                                        behavior: SnackBarBehavior.floating,
-                                        margin: const EdgeInsets.all(8),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
-                              icon:  getAdaptiveIcon(
-                                  iconName: 'save',
-                                  defaultIcon:Icons.save),
-                              label: const Text('Speichern'),
-                              style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 20),
-                    ],
-                  ),
-                ),
-              ],
+// Hilfsmethode für Volumen-Anzeige-Zeile
+  Widget _buildVolumeDisplayRow(BuildContext context, String unit, String value) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 50,
+          child: Text(
+            unit,
+            style: TextStyle(
+              fontWeight: FontWeight.w500,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
             ),
           ),
         ),
-      ),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              value,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontFamily: 'monospace',
+                color: Theme.of(context).colorScheme.tertiary,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
+// Hilfsmethode für Zahlenformatierung mit Tausendertrennung
+  String _formatVolumeNumber(double value, int decimals) {
+    if (decimals == 0) {
+      return value.toStringAsFixed(0).replaceAllMapped(
+        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+            (Match m) => '${m[1]}.',
+      );
+    }
+    return value.toStringAsFixed(decimals);
+  }
   Widget _buildInfoSection(String title, List<Widget> children) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -2558,9 +2252,17 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
             .doc(order.id)
             .snapshots(),
         builder: (context, snapshot) {
+          print('=== _viewOrderDocuments StreamBuilder ===');
+          print('snapshot.hasData: ${snapshot.hasData}');
+          print('snapshot.data?.exists: ${snapshot.data?.exists}');
+
           final currentOrder = snapshot.hasData && snapshot.data!.exists
               ? OrderX.fromFirestore(snapshot.data!)
               : order;
+
+          print('Using order from: ${snapshot.hasData ? "fromFirestore" : "parameter"}');
+          print('currentOrder.costCenter: ${currentOrder.costCenter}');
+          print('=========================================');
 
           return Container(
             height: MediaQuery.of(context).size.height * 0.7,
@@ -2641,7 +2343,8 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       final docUrl = entry.value;
 
                       // Prüfe ob das Dokument löschbar ist
-                      final isDeletable = ['delivery_note_pdf', 'commercial_invoice_pdf', 'packing_list_pdf']
+                      // Prüfe ob das Dokument löschbar ist
+                      final isDeletable = ['invoice_pdf','delivery-note_pdf', 'commercial-invoice_pdf', 'packing-list_pdf', 'delivery_note_pdf', 'commercial_invoice_pdf', 'packing_list_pdf']
                           .contains(docType);
 
                       return Card(
@@ -2696,7 +2399,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                     padding: const EdgeInsets.all(20),
                     child: ElevatedButton.icon(
                       onPressed: () async {
-                        Navigator.pop(context); // Schließe zuerst das aktuelle Modal
+                       // Navigator.pop(context); // Schließe zuerst das aktuelle Modal
                         await OrderDocumentManager.showCreateDocumentsDialog(context, currentOrder);
                       },
                       icon:   getAdaptiveIcon(
@@ -2936,22 +2639,6 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
 
 
 
-  String _getDocumentTypeDescription(String docType) {
-    switch (docType) {
-      case 'quote_pdf':
-        return 'PDF-Dokument des ursprünglichen Angebots';
-      case 'invoice_pdf':
-        return 'PDF-Dokument der Rechnung';
-      case 'delivery-note_pdf':
-        return 'PDF-Dokument des Lieferscheins';
-      case 'commercial-invoice_pdf':
-        return 'PDF-Dokument der Handelsrechnung';
-      case 'packing-list_pdf':
-        return 'PDF-Dokument der Packliste';
-      default:
-        return 'Dokument';
-    }
-  }
 
   Future<void> _openDocument(String url) async {
     try {
@@ -3235,10 +2922,27 @@ Status: ${order.status.displayName}
 
   double _convertPrice(double priceInCHF, OrderX order) {
     final currency = order.metadata['currency'] ?? 'CHF';
-    if (currency == 'CHF') return priceInCHF;
 
-    final exchangeRates = order.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
-    final rate = (exchangeRates[currency] as num?)?.toDouble() ?? 1.0;
-    return priceInCHF * rate;
+    double convertedPrice = priceInCHF;
+
+    // Währungsumrechnung nur wenn nicht CHF
+    if (currency != 'CHF') {
+      final exchangeRates = order.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
+      final rate = (exchangeRates[currency] as num?)?.toDouble() ?? 1.0;
+      convertedPrice = priceInCHF * rate;
+    }
+
+    // Rundung anwenden (für alle Währungen inkl. CHF, wenn in Settings aktiviert)
+    if (_roundingSettings[currency] == true) {
+      convertedPrice = SwissRounding.round(
+        convertedPrice,
+        currency: currency,
+        roundingSettings: _roundingSettings,
+      );
+    }
+
+
+    return convertedPrice;
   }
+
 }

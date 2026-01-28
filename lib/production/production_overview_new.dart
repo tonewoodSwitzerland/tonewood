@@ -374,16 +374,18 @@ class _ProductionOverviewNewState extends State<ProductionOverviewNew> {
                     final qData = q.value as Map<String, dynamic>;
                     final quantity = (qData['quantity'] as num?)?.toDouble() ?? 0;
                     final percentage = (qData['percentage'] as num?)?.toDouble() ?? 0;
+                    final qualityName = qData['quality_name'] ?? q.key;
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Row(
                         children: [
                           SizedBox(
-                            width: 50,
+                            width: 80,
                             child: Text(
-                              q.key,
+                              qualityName,
                               style: const TextStyle(fontWeight: FontWeight.w500),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           Expanded(
@@ -437,7 +439,6 @@ class _ProductionOverviewNewState extends State<ProductionOverviewNew> {
       ],
     );
   }
-
   Color _getQualityColor(String quality) {
     switch (quality) {
       case 'MA': return Colors.purple;

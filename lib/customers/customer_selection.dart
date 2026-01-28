@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../components/country_dropdown_widget.dart';
 import 'customer.dart';
+import 'customer_cache_service.dart';
 import 'customer_export_service.dart';
 import '../services/icon_helper.dart';
 
@@ -1158,6 +1159,9 @@ class CustomerSelectionSheet {
                                                   setState(() {
                                                     shippingLastNameController.text = lastNameController.text;
                                                     shippingFirstNameController.text = firstNameController.text;
+                                                    shippingEmailController.text=emailController.text;
+                                                    shippingPhoneController.text=phone1Controller.text;
+
                                                     if (firstNameController.text.isNotEmpty) {
                                                       _showShippingFirstName = true;
                                                     }
@@ -1672,7 +1676,7 @@ class CustomerSelectionSheet {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
-                                      '* Pflichtfelder',
+                                      '* Pflichtfelder!',
                                       style: TextStyle(
                                         color: Theme.of(context).colorScheme.outline,
                                         fontSize: 12,
@@ -3618,38 +3622,42 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
   Customer? selectedCustomer;
 
   // Speichern aller geladenen Kunden für Client-seitiges Filtern
-  List<Customer> _allLoadedCustomers = [];
-  List<DocumentSnapshot> _customerDocs = [];
+
   bool _isLoading = false;
-  bool _hasMore = true;
+
 
   bool _showOnlyFavorites = false;
 
-  final int _limit = 10;
+
   final ScrollController _scrollController = ScrollController();
   Timer? _debounce;
   String _lastSearchTerm = '';
 
-
+  final CustomerCacheService _cacheService = CustomerCacheService();
+  List<Customer> _displayedCustomers = [];
 
 
 
   @override
   void initState() {
     super.initState();
-    selectedCustomer = widget.initialCustomer;  // NEU
-    _loadInitialCustomers();
+    selectedCustomer = widget.initialCustomer;
+    _initializeCache();
 
-    _scrollController.addListener(() {
-      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 &&
-          !_isLoading &&
-          _hasMore) {
-        _loadMoreCustomers();
-      }
+    customerSearchController.addListener(_onSearchChanged);
+  }
+
+  Future<void> _initializeCache() async {
+    setState(() {
+      _isLoading = true;
     });
 
-    // Hinzufügen des Listeners für die Suche mit Debounce
-    customerSearchController.addListener(_onSearchChanged);
+    await _cacheService.initialize();
+
+    setState(() {
+      _displayedCustomers = _cacheService.getSorted(onlyFavorites: _showOnlyFavorites);
+      _isLoading = false;
+    });
   }
 
   void _onSearchChanged() {
@@ -3657,168 +3665,34 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
     _debounce = Timer(const Duration(milliseconds: 500), () {
       if (customerSearchController.text != _lastSearchTerm) {
         _lastSearchTerm = customerSearchController.text;
-
-        if (_lastSearchTerm.isEmpty) {
-          // Wenn Suche gelöscht wird, ursprüngliche Daten neu laden
-          setState(() {
-            _customerDocs = [];
-            _hasMore = true;
-            _allLoadedCustomers = [];
-          });
-          _loadInitialCustomers();
-        } else {
-          // Mit Suchtext führen wir eine Client-seitige Suche durch
-          _performSearch();
-        }
+        _applySearchAndFilters();
       }
     });
   }
 
-  void _performSearch() {
+  void _applySearchAndFilters() {
     setState(() {
-      _isLoading = true;
-    });
+      _displayedCustomers = _cacheService.search(
+        _lastSearchTerm,
+        onlyFavorites: _showOnlyFavorites,
+      );
 
-    // Wenn wir bereits genügend Kunden geladen haben, filtern wir sie Client-seitig
-    if (_allLoadedCustomers.length > 20) {
-      _filterExistingResults();
-    } else {
-      // Wenn wir nicht viele Kunden geladen haben, holen wir mehr von Firestore
-      _loadAllCustomersForSearch();
-    }
-  }
-
-  void _filterExistingResults() {
-    // Filtern der bereits geladenen Kunden
-    final filteredDocs = _customerDocs.where((doc) {
-      final customer = Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id);
-      final searchTerm = _lastSearchTerm.toLowerCase();
-
-      return customer.company.toLowerCase().contains(searchTerm) ||
-          customer.firstName.toLowerCase().contains(searchTerm) ||
-          customer.lastName.toLowerCase().contains(searchTerm) ||
-          customer.city.toLowerCase().contains(searchTerm) ||
-          customer.email.toLowerCase().contains(searchTerm);
-    }).toList();
-
-    setState(() {
-      _customerDocs = filteredDocs;
-      _hasMore = false; // Keine weiteren Daten mehr zu laden beim Filtern
-      _isLoading = false;
-    });
-  }
-
-  Future<void> _loadAllCustomersForSearch() async {
-    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
-        .collection('customers')
-        .orderBy('company');
-
-    // NEU: Favoriten-Filter anwenden
-    if (_showOnlyFavorites) {
-      query = query.where('isFavorite', isEqualTo: true);
-    }
-
-    final searchSnapshot = await query.get();
-
-    List<DocumentSnapshot> matchingDocs = [];
-
-    for (var doc in searchSnapshot.docs) {
-      final customer = Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id);
-      final searchTerm = _lastSearchTerm.toLowerCase();
-
-      if (customer.company.toLowerCase().contains(searchTerm) ||
-          customer.firstName.toLowerCase().contains(searchTerm) ||
-          customer.lastName.toLowerCase().contains(searchTerm) ||
-          customer.city.toLowerCase().contains(searchTerm) ||
-          customer.email.toLowerCase().contains(searchTerm)) {
-        matchingDocs.add(doc);
-      }
-    }
-
-    setState(() {
-      _customerDocs = matchingDocs;
-      _allLoadedCustomers = matchingDocs.map((doc) =>
-          Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
-      _hasMore = false;
-      _isLoading = false;
-    });
-  }
-  Future<void> _loadInitialCustomers() async {
-    if (_isLoading) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
-          .collection('customers')
-          .orderBy('company');
-
-      // NEU: Favoriten-Filter anwenden
-      if (_showOnlyFavorites) {
-        query = query.where('isFavorite', isEqualTo: true);
-      }
-
-      final result = await query.limit(_limit).get();
-
-      setState(() {
-        _customerDocs = result.docs;
-        _allLoadedCustomers = result.docs.map((doc) =>
-            Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList();
-        _hasMore = result.docs.length == _limit;
-        _isLoading = false;
+      // Nach Firma/Name sortieren
+      _displayedCustomers.sort((a, b) {
+        final aName = a.company.isNotEmpty ? a.company : a.name;
+        final bName = b.company.isNotEmpty ? b.company : b.name;
+        return aName.toLowerCase().compareTo(bName.toLowerCase());
       });
-    } catch (error) {
-      print('Fehler beim Laden der Kunden: $error');
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _loadMoreCustomers() async {
-    if (_isLoading || !_hasMore || _customerDocs.isEmpty) return;
-
-    setState(() {
-      _isLoading = true;
     });
-
-    try {
-      final lastDoc = _customerDocs.last;
-
-      Query<Map<String, dynamic>> query = FirebaseFirestore.instance
-          .collection('customers')
-          .orderBy('company');
-
-      // NEU: Favoriten-Filter anwenden
-      if (_showOnlyFavorites) {
-        query = query.where('isFavorite', isEqualTo: true);
-      }
-
-      final result = await query
-          .startAfterDocument(lastDoc)
-          .limit(_limit)
-          .get();
-
-      if (mounted) {
-        setState(() {
-          _customerDocs.addAll(result.docs);
-          _allLoadedCustomers.addAll(result.docs.map((doc) =>
-              Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id)).toList());
-          _hasMore = result.docs.length == _limit;
-          _isLoading = false;
-        });
-      }
-    } catch (error) {
-      print('Fehler beim Laden weiterer Kunden: $error');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
   }
+
+  void _toggleFavoritesFilter() {
+    setState(() {
+      _showOnlyFavorites = !_showOnlyFavorites;
+    });
+    _applySearchAndFilters();
+  }
+
   @override
   void dispose() {
     customerSearchController.removeListener(_onSearchChanged);
@@ -3862,6 +3736,7 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
           ),
 
           // Header
+          // Header
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(
@@ -3873,17 +3748,53 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 const Spacer(),
-                // NEU: Favoriten-Filter-Button
+                // NEU: Refresh-Button
+                IconButton(
+                  onPressed: _isLoading ? null : () async {
+                    setState(() {
+                      _isLoading = true;
+                    });
+
+                    try {
+                      await _cacheService.forceRefresh();
+                      _applySearchAndFilters();
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Fehler beim Aktualisieren: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    } finally {
+                      setState(() {
+                        _isLoading = false;
+                      });
+                    }
+                  },
+                  icon: _isLoading
+                      ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  )
+                      : getAdaptiveIcon(
+                    iconName: 'refresh',
+                    defaultIcon: Icons.refresh,
+                  ),
+                  tooltip: 'Kundenliste aktualisieren',
+                ),
+                // Favoriten-Filter-Button
                 IconButton(
                   onPressed: () {
                     setState(() {
                       _showOnlyFavorites = !_showOnlyFavorites;
-                      // Neu laden mit Filter
-                      _customerDocs = [];
-                      _hasMore = true;
-                      _allLoadedCustomers = [];
-                      _loadInitialCustomers();
                     });
+                    _applySearchAndFilters();
                   },
                   icon: Container(
                     padding: const EdgeInsets.all(4),
@@ -3908,25 +3819,30 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
                   ),
                   tooltip: _showOnlyFavorites ? 'Alle Kunden anzeigen' : 'Nur Favoriten anzeigen',
                 ),
+                // Neuer Kunde Button
                 IconButton(
                   onPressed: () async {
                     final newCustomer = await CustomerSelectionSheet.showNewCustomerDialog(context);
                     if (newCustomer != null) {
+                      _cacheService.addCustomer(newCustomer);
                       setState(() {
                         selectedCustomer = newCustomer;
                       });
+                      _applySearchAndFilters();
                     }
                   },
                   icon: getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add),
+                  tooltip: 'Neuer Kunde',
                 ),
+                // Schließen Button
                 IconButton(
                   onPressed: () => Navigator.pop(context),
                   icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                  tooltip: 'Schließen',
                 ),
               ],
             ),
           ),
-
           // Suchfeld
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -3974,15 +3890,7 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
                     ),
                     const Spacer(),
                     GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _showOnlyFavorites = false;
-                          _customerDocs = [];
-                          _hasMore = true;
-                          _allLoadedCustomers = [];
-                          _loadInitialCustomers();
-                        });
-                      },
+                      onTap: _toggleFavoritesFilter,
                       child: Text(
                         'Filter aufheben',
                         style: TextStyle(
@@ -4001,7 +3909,7 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
               child: Text(
-                'Suchergebnisse für "${_lastSearchTerm}" (${_customerDocs.length})',
+        'Suchergebnisse für "$_lastSearchTerm" (${_displayedCustomers.length})',
                 style: TextStyle(
                   fontStyle: FontStyle.italic,
                   fontSize: 12,
@@ -4032,9 +3940,9 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
 
           // Kundenliste
           Expanded(
-            child: _isLoading && _customerDocs.isEmpty
+            child: _isLoading &&_displayedCustomers.isEmpty
                 ? const Center(child: CircularProgressIndicator())
-                : _customerDocs.isEmpty
+                : _displayedCustomers.isEmpty
                 ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -4061,30 +3969,19 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
                 : ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _customerDocs.length + (_hasMore ? 1 : 0),
+              itemCount: _displayedCustomers.length,
               itemBuilder: (context, index) {
-                if (index >= _customerDocs.length) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                }
+                final customer = _displayedCustomers[index];
 
-                final doc = _customerDocs[index];
-                final customer = Customer.fromMap(doc.data() as Map<String, dynamic>, doc.id);
-
-                // NEU: Bereits ausgewählten Kunden überspringen (wird oben angezeigt)
+                // Bereits ausgewählten Kunden überspringen
                 if (selectedCustomer != null && customer.id == selectedCustomer!.id && _lastSearchTerm.isEmpty) {
                   return const SizedBox.shrink();
                 }
 
                 final isSelected = selectedCustomer?.id == customer.id;
-
                 return _buildCustomerListTile(customer, isSelected);
               },
-            ),
+            )
           ),
         ],
       ),
@@ -4251,13 +4148,16 @@ class _CustomerSelectionBottomSheetState extends State<_CustomerSelectionBottomS
           onPressed: () async {
             final wasUpdated = await CustomerSelectionSheet.showEditCustomerDialog(context, customer);
             if (wasUpdated) {
-              // Liste neu laden um Änderungen anzuzeigen
-              setState(() {
-                _customerDocs = [];
-                _hasMore = true;
-                _allLoadedCustomers = [];
-              });
-              _loadInitialCustomers();
+              // NEU: Kunde aus Firestore neu laden und Cache aktualisieren
+              final updatedDoc = await FirebaseFirestore.instance
+                  .collection('customers')
+                  .doc(customer.id)
+                  .get();
+              if (updatedDoc.exists) {
+                final updatedCustomer = Customer.fromMap(updatedDoc.data()!, updatedDoc.id);
+                _cacheService.updateCustomer(updatedCustomer);
+                _applySearchAndFilters();
+              }
             }
           },
           tooltip: 'Kunde bearbeiten',

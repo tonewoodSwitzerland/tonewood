@@ -11,11 +11,11 @@ class OrderFilterService {
   static Map<String, dynamic> createEmptyFilter() {
     return {
       'orderStatus': <String>[],
-
       'minAmount': null,
       'maxAmount': null,
-      'veranlagungStatus': null, // null = alle, 'required' = benötigt Verfügung, 'completed' = hat Verfügung
+      'veranlagungStatus': null,
       'searchText': '',
+      'quickStatus': null,  // NEU: Für Schnellfilter-Buttons
     };
   }
 
@@ -93,7 +93,6 @@ class OrderFilterService {
       query = query.where('status', whereIn: orderStatusList);
     }
 
-
     // Sortierung
     query = query.orderBy('orderDate', descending: true);
 
@@ -159,14 +158,20 @@ class OrderFilterService {
 
         switch (veranlagungStatus) {
           case 'required':
-          // Zeige nur Aufträge über 1000 CHF ohne Veranlagungsnummer
             return total > 1000.0 && !hasVeranlagungsnummer;
           case 'completed':
-          // Zeige nur Aufträge über 1000 CHF mit Veranlagungsnummer
             return total > 1000.0 && hasVeranlagungsnummer;
           default:
             return true;
         }
+      }).toList();
+    }
+
+    // NEU: Quick-Status Filter (für die Schnellfilter-Buttons)
+    final quickStatus = filters['quickStatus'] as String?;
+    if (quickStatus != null && quickStatus.isNotEmpty) {
+      filteredOrders = filteredOrders.where((order) {
+        return order.status.name == quickStatus;
       }).toList();
     }
 
@@ -176,11 +181,11 @@ class OrderFilterService {
   // Helper: Prüfe ob Filter aktiv sind
   static bool hasActiveFilters(Map<String, dynamic> filters) {
     return (filters['orderStatus'] as List?)?.isNotEmpty == true ||
-
         filters['minAmount'] != null ||
         filters['maxAmount'] != null ||
         filters['veranlagungStatus'] != null ||
-        (filters['searchText'] ?? '').toString().isNotEmpty;
+        (filters['searchText'] ?? '').toString().isNotEmpty ||
+        (filters['quickStatus'] != null && filters['quickStatus'].toString().isNotEmpty);  // NEU
   }
 
   // Helper: Erstelle Filter-Zusammenfassung für Anzeige
@@ -191,7 +196,6 @@ class OrderFilterService {
     if (orderStatusCount > 0) {
       parts.add('$orderStatusCount Auftragsstatus');
     }
-
 
     if (filters['minAmount'] != null || filters['maxAmount'] != null) {
       final min = filters['minAmount']?.toString() ?? '';
@@ -207,6 +211,14 @@ class OrderFilterService {
 
     if ((filters['searchText'] ?? '').toString().isNotEmpty) {
       parts.add('Suche: "${filters['searchText']}"');
+    }
+
+    // NEU: Quick-Filter in Zusammenfassung
+    final quickStatus = filters['quickStatus'] as String?;
+    if (quickStatus != null && quickStatus.isNotEmpty) {
+      final statusName = quickStatus == 'processing' ? 'In Bearbeitung' :
+      quickStatus == 'shipped' ? 'Versendet' : quickStatus;
+      parts.add('Schnellfilter: $statusName');
     }
 
     return parts.join(', ');
@@ -271,8 +283,9 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
               ),
               child: Row(
                 children: [
-                  getAdaptiveIcon(iconName: 'filter_list', defaultIcon:
-                    Icons.filter_list,
+                  getAdaptiveIcon(
+                    iconName: 'filter_list',
+                    defaultIcon: Icons.filter_list,
                     color: Theme.of(context).colorScheme.primary,
                   ),
                   const SizedBox(width: 12),
@@ -285,7 +298,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
+                    icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -333,7 +346,6 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                         }).toList(),
                       ),
                     ),
-
 
                     const SizedBox(height: 24),
 
@@ -416,7 +428,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                                 label: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                     getAdaptiveIcon(iconName: 'warning',defaultIcon:Icons.warning, size: 16, color: Colors.orange),
+                                    getAdaptiveIcon(iconName: 'warning', defaultIcon: Icons.warning, size: 16, color: Colors.orange),
                                     const SizedBox(width: 4),
                                     const Text('Verfügung fehlt'),
                                   ],
@@ -432,7 +444,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                                 label: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                     getAdaptiveIcon(iconName: 'check_circle',defaultIcon:Icons.check_circle, size: 16, color: Colors.green),
+                                    getAdaptiveIcon(iconName: 'check_circle', defaultIcon: Icons.check_circle, size: 16, color: Colors.green),
                                     const SizedBox(width: 4),
                                     const Text('Verfügung vorhanden'),
                                   ],
@@ -470,7 +482,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   TextButton.icon(
-                    icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:Icons.clear),
+                    icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear),
                     label: const Text('Zurücksetzen'),
                     onPressed: () {
                       setState(() {
@@ -480,15 +492,13 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                       });
                     },
                   ),
-
-                      FilledButton(
-                        onPressed: () {
-                          widget.onApply(_filters);
-                          Navigator.pop(context);
-                        },
-                        child: const Text('Anwenden'),
-                      ),
-
+                  FilledButton(
+                    onPressed: () {
+                      widget.onApply(_filters);
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Anwenden'),
+                  ),
                 ],
               ),
             ),
@@ -515,7 +525,7 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
         children: [
           Row(
             children: [
-              getAdaptiveIcon(iconName: iconName, defaultIcon:icon, size: 20),
+              getAdaptiveIcon(iconName: iconName, defaultIcon: icon, size: 20),
               const SizedBox(width: 8),
               Text(
                 title,
@@ -535,16 +545,12 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
 
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
-
       case OrderStatus.processing:
         return const Color(0xFF2196F3);
       case OrderStatus.shipped:
         return const Color(0xFF7C4DFF);
-
       case OrderStatus.cancelled:
         return const Color(0xFF757575);
     }
   }
-
-
 }

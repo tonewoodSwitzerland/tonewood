@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../countries.dart';
+import '../pdf_settings_screen.dart'; // NEU: Für PdfSettingsHelper
 
 abstract class BasePdfGenerator {
   // Gemeinsame Formatierungslogik
@@ -29,6 +30,7 @@ abstract class BasePdfGenerator {
 
     return '$currency ${convertedAmount.toStringAsFixed(2)}';
   }
+
   /// Formatiert Betrag OHNE Währungszeichen (für Tabellen)
   static String formatAmountOnly(dynamic amount, String currency, Map<String, double> exchangeRates) {
     double doubleAmount = 0.0;
@@ -75,7 +77,7 @@ abstract class BasePdfGenerator {
     );
   }
 
- static Map<String, String> _translateReference(String reference, String language) {
+  static Map<String, String> _translateReference(String reference, String language) {
     final parts = reference.split(':');
     if (parts.length != 2) return {'label': reference, 'value': ''};
 
@@ -98,6 +100,7 @@ abstract class BasePdfGenerator {
     final translatedKey = translations[language]?[key] ?? translations['DE']?[key] ?? key;
     return {'label': translatedKey, 'value': value};
   }
+
   static pw.Widget buildHeader({
     required String documentTitle,
     required String documentNumber,
@@ -108,7 +111,6 @@ abstract class BasePdfGenerator {
     String? additionalReference,
     String? secondaryReference,
   }) {
-
     // Übersetzungsfunktion für Header
     String getHeaderTranslation(String key, String lang) {
       final translations = {
@@ -294,8 +296,168 @@ abstract class BasePdfGenerator {
     );
   }
 
+  // ============================================================================
+  // NEU: Gibt den Standard-Anzeigemodus für einen Dokumenttyp zurück
+  // ============================================================================
+  static String _getDefaultAddressMode(String documentTitle) {
+    switch (documentTitle.toLowerCase()) {
+      case 'delivery_note':
+      case 'packing_list':
+        return 'shipping_only';
+      case 'quote':
+      case 'invoice':
+      case 'commercial_invoice':
+      default:
+        return 'both';
+    }
+  }
 
-  static pw.Widget buildCustomerAddress(Map<String, dynamic> customerData,String documentTitle, {String language = 'DE'}) {
+  // ============================================================================
+  // NEU: Hilfsmethode für einspaltiges Adress-Layout
+  // ============================================================================
+  static pw.Widget _buildSingleAddressLayout({
+    required Map<String, dynamic> customerData,
+    required String language,
+    required bool useShipping,
+    required bool hasCompany,
+    required bool hasName,
+    required String fullName,
+    required dynamic country,
+    required pw.Widget Function() buildContactInfo,
+  }) {
+    // Bestimme welche Felder verwendet werden sollen
+    final street = useShipping
+        ? (customerData['shippingStreet'] ?? customerData['street'] ?? '')
+        : (customerData['street'] ?? '');
+    final houseNumber = useShipping
+        ? (customerData['shippingHouseNumber'] ?? customerData['houseNumber'] ?? '')
+        : (customerData['houseNumber'] ?? '');
+    final zipCode = useShipping
+        ? (customerData['shippingZipCode'] ?? customerData['zipCode'] ?? '')
+        : (customerData['zipCode'] ?? '');
+    final city = useShipping
+        ? (customerData['shippingCity'] ?? customerData['city'] ?? '')
+        : (customerData['city'] ?? '');
+    final province = useShipping
+        ? (customerData['shippingProvince'] ?? customerData['province'])
+        : customerData['province'];
+    final countryName = useShipping
+        ? (customerData['shippingCountry'] ?? customerData['country'])
+        : customerData['country'];
+    final additionalLines = useShipping
+        ? (customerData['shippingAdditionalAddressLines'] as List? ?? [])
+        : (customerData['additionalAddressLines'] as List? ?? []);
+    final company = useShipping
+        ? (customerData['shippingCompany'] ?? customerData['company'] ?? '')
+        : (customerData['company'] ?? '');
+
+    final countryObj = Countries.getCountryByName(countryName);
+
+    // Für Shipping: Berechne Namen
+    final shippingFirstName = customerData['shippingFirstName']?.toString().trim() ?? '';
+    final shippingLastName = customerData['shippingLastName']?.toString().trim() ?? '';
+    final shippingFullName = '$shippingFirstName $shippingLastName'.trim();
+    final displayName = useShipping && shippingFullName.isNotEmpty ? shippingFullName : fullName;
+    final displayHasName = displayName.isNotEmpty;
+    final displayHasCompany = company.toString().trim().isNotEmpty;
+
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        // Adresse (links)
+        pw.Expanded(
+          flex: 3,
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Wenn Firma vorhanden, zeige Firma an erster Stelle
+              if (displayHasCompany) ...[
+                pw.Text(
+                  company.toString(),
+                  style: pw.TextStyle(
+                    fontSize: 14,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.blueGrey900,
+                  ),
+                ),
+                if (displayHasName) ...[
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    displayName,
+                    style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                  ),
+                ],
+              ] else ...[
+                if (displayHasName)
+                  pw.Text(
+                    displayName,
+                    style: pw.TextStyle(
+                      fontSize: 14,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blueGrey900,
+                    ),
+                  ),
+              ],
+
+              pw.SizedBox(height: 6),
+
+              // Straße und Hausnummer
+              pw.Text(
+                '$street $houseNumber'.trim(),
+                style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+              ),
+
+              // Zusätzliche Adress-Zeilen
+              ...additionalLines.map((line) =>
+                  pw.Text(
+                    line.toString(),
+                    style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                  )
+              ).toList(),
+
+              // PLZ und Stadt
+              pw.Text(
+                '$zipCode $city'.trim(),
+                style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+              ),
+
+              // Provinz
+              if (province?.toString().trim().isNotEmpty == true)
+                pw.Text(
+                  province.toString(),
+                  style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                ),
+
+              // Land
+              if (countryName != null && countryName.toString().trim().isNotEmpty)
+                pw.Text(
+                  countryObj?.getNameForLanguage(language).toUpperCase() ?? countryName.toString().toUpperCase(),
+                  style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
+                ),
+            ],
+          ),
+        ),
+
+        pw.SizedBox(width: 30),
+
+        // Kontaktdaten (rechts)
+        pw.Expanded(
+          flex: 2,
+          child: buildContactInfo(),
+        ),
+      ],
+    );
+  }
+
+  // ============================================================================
+  // HAUPTMETHODE: buildCustomerAddress mit addressDisplayMode Parameter
+  // ============================================================================
+  static pw.Widget buildCustomerAddress(
+      Map<String, dynamic> customerData,
+      String documentTitle, {
+        String language = 'DE',
+        String? addressDisplayMode, // NEU: Optional - überschreibt die Standard-Einstellung
+      }) {
     // Übersetzungsfunktion für Adressen
     String getAddressTranslation(String key) {
       final translations = {
@@ -332,7 +494,6 @@ abstract class BasePdfGenerator {
     final String fullName = '$firstName $lastName'.trim();
     final bool hasName = fullName.isNotEmpty;
 
-
     final String shippingFirstName = customerData['shippingFirstName']?.toString().trim() ?? '';
     final String shippingLastName = customerData['shippingLastName']?.toString().trim() ?? '';
     final String shippingFullName = '$shippingFirstName $shippingLastName'.trim();
@@ -342,154 +503,203 @@ abstract class BasePdfGenerator {
     final countryName = customerData['country'];
     final country = Countries.getCountryByName(countryName);
 
-    pw.Widget buildContactInfo({bool useShippingData = false, String documentTitle = ''}) {
-      final shouldUseShipping = useShippingData && documentTitle == 'delivery_note';
-      final isDeliveryNote = documentTitle == 'delivery_note';
+    // NEU: Bestimme den Anzeigemodus
+    final String displayMode = addressDisplayMode ?? _getDefaultAddressMode(documentTitle);
+
+    // Kontaktinfo-Builder
+    pw.Widget buildContactInfo({bool useShippingData = false, String docTitle = ''}) {
+      final isDeliveryOrPacking = docTitle == 'delivery_note' || docTitle == 'packing_list';
+      final isInvoiceOrQuote = docTitle == 'invoice' || docTitle == 'quote';
 
       // Entscheide welche Felder verwendet werden
-      final emailField = hasDifferentShippingAddress==true
+      final emailField = (hasDifferentShippingAddress == true && !isInvoiceOrQuote)
           ? customerData['shippingEmail']
           : customerData['email'];
 
-      final phoneField  = hasDifferentShippingAddress==true
+      final phoneField = (hasDifferentShippingAddress == true && !isInvoiceOrQuote)
           ? customerData['shippingPhone']
           : customerData['phone1'];
 
       return pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-      // Email
-      pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(
-            getAddressTranslation('email'),
-            style: pw.TextStyle(
-              fontSize: 9,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.blueGrey700,
-            ),
+          // Email
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                getAddressTranslation('email'),
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.blueGrey700,
+                ),
+              ),
+              pw.SizedBox(width: 4),
+              pw.Expanded(
+                child: pw.Text(
+                  emailField ?? '-',
+                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
+                ),
+              ),
+            ],
           ),
-          pw.SizedBox(width: 4),
-          pw.Expanded(
-            child: pw.Text(
-              emailField ?? '-',
-              style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
-            ),
+
+          pw.SizedBox(height: 4),
+
+          // Telefon
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                getAddressTranslation('phone'),
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.blueGrey700,
+                ),
+              ),
+              pw.SizedBox(width: 4),
+              pw.Text(
+                phoneField?.toString().trim().isNotEmpty == true ? phoneField : '-',
+                style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
+              ),
+            ],
           ),
+
+          // NUR bei NICHT-Lieferscheinen/Packlisten EORI und MwSt
+          if (!isDeliveryOrPacking) ...[
+            // EORI - wenn vorhanden UND Checkbox aktiviert
+            if (customerData['showEoriOnDocuments'] == true &&
+                customerData['eoriNumber']?.toString().trim().isNotEmpty == true) ...[
+              pw.SizedBox(height: 4),
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    getAddressTranslation('eori'),
+                    style: pw.TextStyle(
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blueGrey700,
+                    ),
+                  ),
+                  pw.SizedBox(width: 4),
+                  pw.Text(
+                    customerData['eoriNumber'],
+                    style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
+                  ),
+                ],
+              ),
+            ],
+
+            // MwSt - wenn vorhanden UND Checkbox aktiviert
+            if (customerData['showVatOnDocuments'] == true &&
+                customerData['vatNumber']?.toString().trim().isNotEmpty == true) ...[
+              pw.SizedBox(height: 4),
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    getAddressTranslation('vat_id'),
+                    style: pw.TextStyle(
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blueGrey700,
+                    ),
+                  ),
+                  pw.SizedBox(width: 4),
+                  pw.Expanded(
+                    child: pw.Text(
+                      customerData['vatNumber'],
+                      style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+
+          // Custom Field - für ALLE Dokumente wenn aktiviert
+          if (customerData['showCustomFieldOnDocuments'] == true &&
+              customerData['customFieldTitle'] != null &&
+              customerData['customFieldTitle'].toString().trim().isNotEmpty &&
+              customerData['customFieldValue'] != null &&
+              customerData['customFieldValue'].toString().trim().isNotEmpty) ...[
+            pw.SizedBox(height: 4),
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  '${customerData['customFieldTitle'].toString()}:',
+                  style: pw.TextStyle(
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.blueGrey700,
+                  ),
+                ),
+                pw.SizedBox(width: 4),
+                pw.Expanded(
+                  child: pw.Text(
+                    customerData['customFieldValue'].toString(),
+                    style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
-      ),
-
-      pw.SizedBox(height: 4),
-
-      // Telefon
-      pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-      pw.Text(
-      getAddressTranslation('phone'),
-      style: pw.TextStyle(
-      fontSize: 9,
-      fontWeight: pw.FontWeight.bold,
-      color: PdfColors.blueGrey700,
-      ),
-      ),
-      pw.SizedBox(width: 4),
-      pw.Text(
-      phoneField?.toString().trim().isNotEmpty == true
-      ? phoneField
-          : '-',
-      style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
-      ),
-      ],
-      ),
-
-      // NUR bei NICHT-Lieferscheinen EORI und MwSt
-      if (!isDeliveryNote) ...[
-      // EORI - wenn vorhanden UND Checkbox aktiviert
-      if (customerData['showEoriOnDocuments'] == true &&
-      customerData['eoriNumber']?.toString().trim().isNotEmpty == true) ...[
-      pw.SizedBox(height: 4),
-      pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-      pw.Text(
-      getAddressTranslation('eori'),
-      style: pw.TextStyle(
-      fontSize: 9,
-      fontWeight: pw.FontWeight.bold,
-      color: PdfColors.blueGrey700,
-      ),
-      ),
-      pw.SizedBox(width: 4),
-      pw.Text(
-      customerData['eoriNumber'],
-      style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
-      ),
-      ],
-      ),
-      ],
-
-      // MwSt - wenn vorhanden UND Checkbox aktiviert
-      if (customerData['showVatOnDocuments'] == true &&
-      customerData['vatNumber']?.toString().trim().isNotEmpty == true) ...[
-      pw.SizedBox(height: 4),
-      pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-      pw.Text(
-      getAddressTranslation('vat_id'),
-      style: pw.TextStyle(
-      fontSize: 9,
-      fontWeight: pw.FontWeight.bold,
-      color: PdfColors.blueGrey700,
-      ),
-      ),
-      pw.SizedBox(width: 4),
-      pw.Expanded(
-      child: pw.Text(
-      customerData['vatNumber'],
-      style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
-      ),
-      ),
-      ],
-      ),
-      ],
-      ],
-
-      // Custom Field - für ALLE Dokumente wenn aktiviert
-      if (customerData['showCustomFieldOnDocuments'] == true &&
-      customerData['customFieldTitle'] != null &&
-      customerData['customFieldTitle'].toString().trim().isNotEmpty &&
-      customerData['customFieldValue'] != null &&
-      customerData['customFieldValue'].toString().trim().isNotEmpty) ...[
-      pw.SizedBox(height: 4),
-      pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-      pw.Text(
-      '${customerData['customFieldTitle'].toString()}:',
-      style: pw.TextStyle(
-      fontSize: 9,
-      fontWeight: pw.FontWeight.bold,
-      color: PdfColors.blueGrey700,
-      ),
-      ),
-      pw.SizedBox(width: 4),
-      pw.Expanded(
-      child: pw.Text(
-      customerData['customFieldValue'].toString(),
-      style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 9),
-      ),
-      ),
-      ],
-      ),
-
-      ],
-      ],
-
       );
     }
+
+    // ========================================================================
+    // ENTSCHEIDUNGSLOGIK BASIEREND AUF DISPLAY MODE
+    // ========================================================================
+
+    // Fall 1: Nur Rechnungsadresse anzeigen
+    if (displayMode == 'billing_only') {
+      return _buildSingleAddressLayout(
+        customerData: customerData,
+        language: language,
+        useShipping: false,
+        hasCompany: hasCompany,
+        hasName: hasName,
+        fullName: fullName,
+        country: country,
+        buildContactInfo: () => buildContactInfo(docTitle: documentTitle),
+      );
+    }
+
+    // Fall 2: Nur Lieferadresse anzeigen
+    if (displayMode == 'shipping_only') {
+      // Wenn keine abweichende Lieferadresse existiert, zeige Rechnungsadresse
+      if (!hasDifferentShippingAddress) {
+        return _buildSingleAddressLayout(
+          customerData: customerData,
+          language: language,
+          useShipping: false,
+          hasCompany: hasCompany,
+          hasName: hasName,
+          fullName: fullName,
+          country: country,
+          buildContactInfo: () => buildContactInfo(useShippingData: true, docTitle: documentTitle),
+        );
+      }
+
+      // Zeige nur Lieferadresse
+      return _buildSingleAddressLayout(
+        customerData: customerData,
+        language: language,
+        useShipping: true,
+        hasCompany: hasShippingCompany,
+        hasName: hasShippingName,
+        fullName: shippingFullName,
+        country: Countries.getCountryByName(customerData['shippingCountry'] ?? customerData['country']),
+        buildContactInfo: () => buildContactInfo(useShippingData: true, docTitle: documentTitle),
+      );
+    }
+
+    // Fall 3: Beide Adressen anzeigen (displayMode == 'both')
     if (hasDifferentShippingAddress) {
       // Drei-spaltige Darstellung bei unterschiedlichen Adressen
       return pw.Row(
@@ -548,7 +758,7 @@ abstract class BasePdfGenerator {
                     '${customerData['shippingStreet'] ?? customerData['street'] ?? ''} ${customerData['shippingHouseNumber'] ?? customerData['houseNumber'] ?? ''}'.trim(),
                     style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                   ),
-                  // NEU: Zusätzliche Lieferadress-Zeilen
+                  // Zusätzliche Lieferadress-Zeilen
                   if (customerData['shippingAdditionalAddressLines'] != null)
                     ...(customerData['shippingAdditionalAddressLines'] as List).map((line) =>
                         pw.Text(
@@ -561,7 +771,7 @@ abstract class BasePdfGenerator {
                     '${customerData['shippingZipCode'] ?? customerData['zipCode'] ?? ''} ${customerData['shippingCity'] ?? customerData['city'] ?? ''}'.trim(),
                     style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                   ),
-                  // NEU: Provinz für Lieferadresse
+                  // Provinz für Lieferadresse
                   if ((customerData['shippingProvince'] ?? customerData['province'])?.toString().trim().isNotEmpty == true)
                     pw.Text(
                       customerData['shippingProvince'] ?? customerData['province'],
@@ -571,10 +781,8 @@ abstract class BasePdfGenerator {
                   if ((customerData['shippingCountry'] ?? customerData['country'])?.toString().trim().isNotEmpty == true) ...[
                         () {
                       final shippingCountryName = customerData['shippingCountry'] ?? customerData['country'];
-
                       final shippingCountry = Countries.getCountryByName(shippingCountryName);
                       return pw.Text(
-
                         shippingCountry?.getNameForLanguage(language).toUpperCase() ?? shippingCountryName.toUpperCase(),
                         style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                       );
@@ -640,7 +848,7 @@ abstract class BasePdfGenerator {
                     '${customerData['street'] ?? ''} ${customerData['houseNumber'] ?? ''}'.trim(),
                     style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                   ),
-                  // NEU: Zusätzliche Rechnungsadress-Zeilen
+                  // Zusätzliche Rechnungsadress-Zeilen
                   if (customerData['additionalAddressLines'] != null)
                     ...(customerData['additionalAddressLines'] as List).map((line) =>
                         pw.Text(
@@ -649,12 +857,11 @@ abstract class BasePdfGenerator {
                         )
                     ).toList(),
 
-
                   pw.Text(
                     '${customerData['zipCode'] ?? ''} ${customerData['city'] ?? ''}'.trim(),
                     style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
                   ),
-// NEU: Provinz für Rechnungsadresse
+                  // Provinz für Rechnungsadresse
                   if (customerData['province']?.toString().trim().isNotEmpty == true)
                     pw.Text(
                       customerData['province'],
@@ -675,105 +882,42 @@ abstract class BasePdfGenerator {
           // Kontaktdaten (rechts)
           pw.Expanded(
             flex: 2,
-            child: buildContactInfo(useShippingData: true,  documentTitle: documentTitle),
+            child: buildContactInfo(useShippingData: true, docTitle: documentTitle),
           ),
         ],
       );
     } else {
       // Zweispaltige Darstellung bei gleicher Adresse - ohne Hintergrund
-      return pw.Row(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          // Adresse (links)
-          pw.Expanded(
-            flex: 3,
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                // Wenn Firma vorhanden, zeige Firma an erster Stelle
-                if (hasCompany) ...[
-                  pw.Text(
-                    customerData['company'],
-                    style: pw.TextStyle(
-                      fontSize: 14,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.blueGrey900,
-                    ),
-                  ),
-                  if (hasName) ...[
-                    pw.SizedBox(height: 2),
-                    pw.Text(
-                      fullName,
-                      style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
-                    ),
-                  ],
-                ] else ...[
-                  if (hasName)
-                    pw.Text(
-                      fullName,
-                      style: pw.TextStyle(
-                        fontSize: 14,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.blueGrey900,
-                      ),
-                    ),
-                ],
-
-                pw.SizedBox(height: 6),
-
-                // Straße und Hausnummer
-                pw.Text(
-                  '${customerData['street'] ?? ''} ${customerData['houseNumber'] ?? ''}'.trim(),
-                  style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
-                ),
-// NEU: Zusätzliche Rechnungsadress-Zeilen
-                if (customerData['additionalAddressLines'] != null)
-                  ...(customerData['additionalAddressLines'] as List).map((line) =>
-                      pw.Text(
-                        line.toString(),
-                        style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
-                      )
-                  ).toList(),
-
-                // PLZ und Stadt
-                pw.Text(
-                  '${customerData['zipCode'] ?? ''} ${customerData['city'] ?? ''}'.trim(),
-                  style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
-                ),
-// NEU: Provinz für Rechnungsadresse
-                if (customerData['province']?.toString().trim().isNotEmpty == true)
-                  pw.Text(
-                    customerData['province'],
-                    style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
-                  ),
-                // Land
-
-                if (customerData['country'] != null &&
-                    customerData['country'].toString().trim().isNotEmpty)
-                  pw.Text(
-                    country?.getNameForLanguage(language).toUpperCase() ?? customerData['country'].toUpperCase(),
-                    style: const pw.TextStyle(color: PdfColors.blueGrey700, fontSize: 11),
-                  ),
-
-
-
-
-
-
-              ],
-            ),
-          ),
-
-          pw.SizedBox(width: 30),
-
-          // Kontaktdaten (rechts)
-          pw.Expanded(
-            flex: 2,
-            child: buildContactInfo(),
-          ),
-        ],
+      return _buildSingleAddressLayout(
+        customerData: customerData,
+        language: language,
+        useShipping: false,
+        hasCompany: hasCompany,
+        hasName: hasName,
+        fullName: fullName,
+        country: country,
+        buildContactInfo: () => buildContactInfo(docTitle: documentTitle),
       );
     }
+  }
+
+  // ============================================================================
+  // NEU: Async Version die die Einstellungen aus Firestore lädt
+  // ============================================================================
+  static Future<pw.Widget> buildCustomerAddressAsync(
+      Map<String, dynamic> customerData,
+      String documentTitle, {
+        String language = 'DE',
+      }) async {
+    // Lade die Einstellung aus Firestore
+    final addressMode = await PdfSettingsHelper.getAddressDisplayMode(documentTitle);
+
+    return buildCustomerAddress(
+      customerData,
+      documentTitle,
+      language: language,
+      addressDisplayMode: addressMode,
+    );
   }
 
   // Gemeinsamer Footer
@@ -820,7 +964,8 @@ abstract class BasePdfGenerator {
       ),
     );
   }
-  static String getTranslation(String key, String language) {  // <-- Geändert von Map<String, String> zu String
+
+  static String getTranslation(String key, String language) {
     final translations = {
       'DE': {
         'quote': 'OFFERTE',
@@ -860,6 +1005,7 @@ abstract class BasePdfGenerator {
 
     return translations[language]?[key] ?? translations['DE']?[key] ?? key;
   }
+
   // Hilfsmethoden für Zellen-Formatierung
   static pw.Widget buildHeaderCell(String text, double fontSize, {pw.TextAlign align = pw.TextAlign.left}) {
     return pw.Padding(

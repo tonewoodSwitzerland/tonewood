@@ -45,6 +45,10 @@ class StandardizedProductManagementScreenState extends State<StandardizedProduct
     });
 
     searchController.addListener(_onSearchChanged);
+
+
+
+
   }
 
   Future<void> _loadInstruments() async {
@@ -808,6 +812,16 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
     _thicknessValueController = TextEditingController(text: p?.dimensions.thickness.value.toString() ?? '');
     _thicknessValue2Controller = TextEditingController(text: p?.dimensions.thickness.value2?.toString() ?? '');
     _thicknessClassController = TextEditingController(text: p?.thicknessClass.toString() ?? '1');
+
+    // Listener für Live-Volumenberechnung
+    _lengthStandardController.addListener(() => setState(() {}));
+    _lengthAdditionController.addListener(() => setState(() {}));
+    _widthStandardController.addListener(() => setState(() {}));
+    _widthAdditionController.addListener(() => setState(() {}));
+    _thicknessValueController.addListener(() => setState(() {}));
+    _thicknessValue2Controller.addListener(() => setState(() {}));
+    _partsController.addListener(() => setState(() {}));
+
   }
 
   @override
@@ -1308,8 +1322,20 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
                       ],
                     ),
                   ),
+// Volumen Section (nur Anzeige)
+                  const SizedBox(height: 24),
+                  _buildSectionHeader(
+                      context,
+                      'Volumen (berechnet)',
+                      Icons.view_in_ar,
+                      'view_in_ar'
+                  ),
+                  const SizedBox(height: 16),
 
-                  const SizedBox(height: 80), // Extra space for button
+                  _buildVolumeDisplay(context),
+
+                  const SizedBox(height: 24),
+
                 ],
               ),
             ),
@@ -1369,7 +1395,250 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
       ],
     );
   }
+  Widget _buildVolumeDisplay(BuildContext context) {
+    // Werte auslesen
+    final lengthStandard = double.tryParse(_lengthStandardController.text) ?? 0;
+    final lengthAddition = double.tryParse(_lengthAdditionController.text) ?? 0;
+    final widthStandard = double.tryParse(_widthStandardController.text) ?? 0;
+    final widthAddition = double.tryParse(_widthAdditionController.text) ?? 0;
+    final thicknessValue = double.tryParse(_thicknessValueController.text) ?? 0;
+    final thicknessValue2 = double.tryParse(_thicknessValue2Controller.text);
+    final parts = int.tryParse(_partsController.text) ?? 1;
 
+    // Mit Zumaß berechnen
+    final lengthWithAddition = lengthStandard + lengthAddition;
+    final widthWithAddition = widthStandard + widthAddition;
+
+    // Effektive Dicke (bei Trapez: Durchschnitt)
+    final effectiveThickness = thicknessValue2 != null
+        ? (thicknessValue + thicknessValue2) / 2
+        : thicknessValue;
+
+    // Volumen berechnen (in mm³)
+    final volumeMm3Standard = lengthStandard * widthStandard * effectiveThickness * parts;
+    final volumeMm3WithAddition = lengthWithAddition * widthWithAddition * effectiveThickness * parts;
+
+    // Umrechnungen
+    final volumeDm3Standard = volumeMm3Standard / 1000000; // mm³ zu dm³
+    final volumeDm3WithAddition = volumeMm3WithAddition / 1000000;
+    final volumeM3Standard = volumeMm3Standard / 1000000000; // mm³ zu m³
+    final volumeM3WithAddition = volumeMm3WithAddition / 1000000000;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.tertiaryContainer.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.tertiary.withOpacity(0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Info-Hinweis
+          Row(
+            children: [
+              getAdaptiveIcon(
+                iconName: 'info',
+                defaultIcon: Icons.info_outline,
+                size: 16,
+                color: Theme.of(context).colorScheme.tertiary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Volumen wird automatisch aus den Abmessungen berechnet',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                    color: Theme.of(context).colorScheme.tertiary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Tabellen-Header
+          Row(
+            children: [
+              const SizedBox(width: 80),
+              Expanded(
+                child: Center(
+                  child: Text(
+                    'Standard',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: Text(
+                    'Mit Zumaß',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+
+          // mm³
+          _buildVolumeRow(
+            context,
+            'mm³',
+            volumeMm3Standard,
+            volumeMm3WithAddition,
+            0, // Dezimalstellen
+          ),
+          const SizedBox(height: 8),
+
+          // dm³
+          _buildVolumeRow(
+            context,
+            'dm³',
+            volumeDm3Standard,
+            volumeDm3WithAddition,
+            4,
+          ),
+          const SizedBox(height: 8),
+
+          // m³
+          _buildVolumeRow(
+            context,
+            'm³',
+            volumeM3Standard,
+            volumeM3WithAddition,
+            6,
+          ),
+
+          // Formel-Anzeige
+          const SizedBox(height: 16),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Formel:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Länge × Breite × Dicke${thicknessValue2 != null ? ' (Ø)' : ''} × Teile',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                if (lengthStandard > 0 && widthStandard > 0 && effectiveThickness > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Standard: ${lengthStandard.toStringAsFixed(0)} × ${widthStandard.toStringAsFixed(0)} × ${effectiveThickness.toStringAsFixed(1)} × $parts = ${volumeMm3Standard.toStringAsFixed(0)} mm³',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVolumeRow(
+      BuildContext context,
+      String unit,
+      double valueStandard,
+      double valueWithAddition,
+      int decimals,
+      ) {
+    String formatValue(double value, int dec) {
+      if (value == 0) return '-';
+      if (dec == 0) {
+        return value.toStringAsFixed(0).replaceAllMapped(
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+              (Match m) => '${m[1]}.',
+        );
+      }
+      return value.toStringAsFixed(dec);
+    }
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 80,
+          child: Text(
+            unit,
+            style: const TextStyle(fontWeight: FontWeight.w500),
+          ),
+        ),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Center(
+              child: Text(
+                formatValue(valueStandard, decimals),
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.primary,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.secondary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Center(
+              child: Text(
+                formatValue(valueWithAddition, decimals),
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.secondary,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 // Hilfsmethoden für das Layout:
 
   Widget _buildSectionHeader(BuildContext context, String title, IconData icon, String iconName) {

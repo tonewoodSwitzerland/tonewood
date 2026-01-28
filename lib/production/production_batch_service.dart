@@ -106,6 +106,7 @@ class ProductionBatchService {
   }
 
   /// Qualitätsverteilung für die 6 spezifischen Instrumente (nur Decke)
+  /// Qualitätsverteilung für die 6 spezifischen Instrumente (nur Decke)
   Future<Map<String, Map<String, dynamic>>> getQualityDistribution(int year) async {
     final batches = await getBatchesForYear(year);
 
@@ -129,24 +130,34 @@ class ProductionBatchService {
       final instrumentName = instrumentBatches.first['instrument_name'] as String? ?? '';
 
       // Gruppiere nach Qualität
-      final qualityMap = <String, double>{};
+      final qualityMap = <String, Map<String, dynamic>>{}; // GEÄNDERT: Map statt double
       double totalQuantity = 0.0;
 
       for (final batch in instrumentBatches) {
         final qualityCode = batch['quality_code'] as String? ?? 'unknown';
+        final qualityName = batch['quality_name'] as String? ?? qualityCode; // NEU
         final quantity = (batch['quantity'] as num?)?.toDouble() ?? 0.0;
 
-        qualityMap[qualityCode] = (qualityMap[qualityCode] ?? 0.0) + quantity;
+        if (!qualityMap.containsKey(qualityCode)) {
+          qualityMap[qualityCode] = {
+            'quantity': 0.0,
+            'quality_name': qualityName, // NEU
+          };
+        }
+        qualityMap[qualityCode]!['quantity'] =
+            (qualityMap[qualityCode]!['quantity'] as double) + quantity;
         totalQuantity += quantity;
       }
 
       // Berechne Prozentsätze
       final qualities = <String, Map<String, dynamic>>{};
       for (final entry in qualityMap.entries) {
+        final qty = entry.value['quantity'] as double;
         qualities[entry.key] = {
-          'quantity': entry.value,
+          'quantity': qty,
+          'quality_name': entry.value['quality_name'], // NEU
           'percentage': totalQuantity > 0
-              ? (entry.value / totalQuantity * 100)
+              ? (qty / totalQuantity * 100)
               : 0.0,
         };
       }
@@ -160,7 +171,6 @@ class ProductionBatchService {
 
     return result;
   }
-
   /// Menge und Wert nach Holzart
   Future<List<Map<String, dynamic>>> getStatsByWoodType(int year) async {
     final batches = await getBatchesForYear(year);

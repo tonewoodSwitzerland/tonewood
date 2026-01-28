@@ -9,8 +9,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:tonewood/quotes/quote_model.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-
 import '../../services/icon_helper.dart';
+import '../../services/swiss_rounding.dart'; // NEU
 import '../../constants.dart';
 
 // Farben und Status aus der Hauptdatei importieren oder hier definieren
@@ -28,7 +28,8 @@ extension QuoteViewStatusX on QuoteViewStatus {
   Color get color => [QuoteColors.open, QuoteColors.accepted, QuoteColors.rejected, QuoteColors.expired][index];
 }
 
-class QuoteDetailsSheet extends StatelessWidget {
+// NEU: Von StatelessWidget zu StatefulWidget geändert
+class QuoteDetailsSheet extends StatefulWidget {
   final Quote quote;
   final Function(Quote) onConvertToOrder;
   final Function(Quote) onReject;
@@ -114,6 +115,33 @@ class QuoteDetailsSheet extends StatelessWidget {
     }
   }
 
+  @override
+  State<QuoteDetailsSheet> createState() => _QuoteDetailsSheetState();
+}
+
+class _QuoteDetailsSheetState extends State<QuoteDetailsSheet> {
+  // NEU: Rundungseinstellungen cachen
+  Map<String, bool> _roundingSettings = {'CHF': true, 'EUR': false, 'USD': false};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoundingSettings();
+  }
+
+  // NEU: Rundungseinstellungen laden
+  Future<void> _loadRoundingSettings() async {
+    final settings = await SwissRounding.loadRoundingSettings();
+    if (mounted) {
+      setState(() {
+        _roundingSettings = settings;
+      });
+    }
+  }
+
+  // Getter für einfachen Zugriff auf quote
+  Quote get quote => widget.quote;
+
   QuoteViewStatus get viewStatus {
     if (quote.status == QuoteStatus.accepted) return QuoteViewStatus.accepted;
     if (quote.status == QuoteStatus.rejected) return QuoteViewStatus.rejected;
@@ -123,12 +151,27 @@ class QuoteDetailsSheet extends StatelessWidget {
 
   bool get isOpen => viewStatus == QuoteViewStatus.open;
 
-  double _convertPrice(double priceInCHF) {
+  // NEU: Aktualisierte _convertPrice mit optionaler Rundung
+  double _convertPrice(double priceInCHF, {bool applyRounding = false}) {
     final currency = quote.metadata['currency'] ?? 'CHF';
-    if (currency == 'CHF') return priceInCHF;
-    final rates = quote.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
-    final rate = (rates[currency] as num?)?.toDouble() ?? 1.0;
-    return priceInCHF * rate;
+
+    double convertedPrice = priceInCHF;
+    if (currency != 'CHF') {
+      final rates = quote.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
+      final rate = (rates[currency] as num?)?.toDouble() ?? 1.0;
+      convertedPrice = priceInCHF * rate;
+    }
+
+    // Rundung nur anwenden wenn gewünscht (für Gesamtbeträge)
+    if (applyRounding && _roundingSettings[currency] == true) {
+      convertedPrice = SwissRounding.round(
+        convertedPrice,
+        currency: currency,
+        roundingSettings: _roundingSettings,
+      );
+    }
+
+    return convertedPrice;
   }
 
   String get _currencySymbol => quote.metadata['currency'] ?? 'CHF';
@@ -181,8 +224,6 @@ class QuoteDetailsSheet extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        // const SizedBox(width: 12),
-                        // _buildStatusChip(context),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -196,7 +237,6 @@ class QuoteDetailsSheet extends StatelessWidget {
                   ],
                 ),
               ),
-              // Quick Actions im Header
               _buildQuickActions(context),
               const SizedBox(width: 8),
               IconButton(
@@ -240,10 +280,10 @@ class QuoteDetailsSheet extends StatelessWidget {
       children: [
         _buildIconAction(context, Icons.history, 'history', 'Verlauf', () {
           Navigator.pop(context);
-          onShowHistory(quote);
+          widget.onShowHistory(quote);
         }),
-        _buildIconAction(context, Icons.picture_as_pdf, 'picture_as_pdf', 'PDF', () => onViewPdf(quote)),
-        _buildIconAction(context, Icons.share, 'share', 'Teilen', () => onShare(quote)),
+        _buildIconAction(context, Icons.picture_as_pdf, 'picture_as_pdf', 'PDF', () => widget.onViewPdf(quote)),
+        _buildIconAction(context, Icons.share, 'share', 'Teilen', () => widget.onShare(quote)),
       ],
     );
   }
@@ -272,7 +312,6 @@ class QuoteDetailsSheet extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Linke Spalte: Infos + Aktionen
         SizedBox(
           width: 320,
           child: SingleChildScrollView(
@@ -292,9 +331,7 @@ class QuoteDetailsSheet extends StatelessWidget {
             ),
           ),
         ),
-        // Vertikale Trennlinie
         Container(width: 1, color: Theme.of(context).dividerColor.withOpacity(0.3)),
-        // Rechte Spalte: Artikel
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
@@ -368,7 +405,7 @@ class QuoteDetailsSheet extends StatelessWidget {
           child: ElevatedButton.icon(
             onPressed: () {
               Navigator.pop(context);
-              onConvertToOrder(quote);
+              widget.onConvertToOrder(quote);
             },
             icon: getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon: Icons.shopping_cart, color: Colors.white),
             label: const Text('Auftrag erstellen', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
@@ -386,7 +423,7 @@ class QuoteDetailsSheet extends StatelessWidget {
           child: OutlinedButton.icon(
             onPressed: () {
               Navigator.pop(context);
-              onReject(quote);
+              widget.onReject(quote);
             },
             icon: getAdaptiveIcon(iconName: 'cancel', defaultIcon: Icons.cancel, color: QuoteColors.rejected),
             label: Text('Ablehnen', style: TextStyle(color: QuoteColors.rejected)),
@@ -403,7 +440,8 @@ class QuoteDetailsSheet extends StatelessWidget {
 
   // ===== INFO CARDS =====
   Widget _buildInfoCards(BuildContext context, {required bool isDesktop}) {
-    final total = _convertPrice((quote.calculations['total'] as num).toDouble());
+    // NEU: applyRounding: true für den Gesamtbetrag
+    final total = _convertPrice((quote.calculations['total'] as num).toDouble(), applyRounding: true);
 
     if (isDesktop) {
       return Column(
@@ -492,13 +530,13 @@ class QuoteDetailsSheet extends StatelessWidget {
           if (isOpen) ...[
             Expanded(child: _buildSecondaryButton(context, 'edit', Icons.edit, 'Bearbeiten', goldenColour, () {
               Navigator.pop(context);
-              onEdit(quote);
+              widget.onEdit(quote);
             })),
             const SizedBox(width: 8),
           ],
           Expanded(child: _buildSecondaryButton(context, 'content_copy', Icons.content_copy, 'Kopieren', Theme.of(context).colorScheme.primary, () {
             Navigator.pop(context);
-            onCopy(quote);
+            widget.onCopy(quote);
           })),
         ],
       ),
@@ -619,6 +657,7 @@ class QuoteDetailsSheet extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                 ),
                 const SizedBox(height: 4),
+                // Einzelpreise OHNE Rundung
                 Text(
                   '${qty.toStringAsFixed(0)} × $_currencySymbol ${_convertPrice(price).toStringAsFixed(2)}',
                   style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)),
@@ -633,6 +672,7 @@ class QuoteDetailsSheet extends StatelessWidget {
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
+              // Positionstotal OHNE Rundung (nur Gesamtsumme wird gerundet)
               isGratis ? 'GRATIS' : '$_currencySymbol ${_convertPrice(total).toStringAsFixed(2)}',
               style: TextStyle(
                 fontWeight: FontWeight.bold,

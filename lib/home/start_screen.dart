@@ -1,4 +1,4 @@
-import 'package:feedback/feedback.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:get/get_utils/src/extensions/internacionalization.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -14,7 +14,7 @@ import '../constants.dart';
 import '../home/settings_form.dart';
 import '../home/warehouse_screen.dart';
 import '../production/product_management_screen.dart';
-import '../home/sales_screen.dart';
+import '../sales/sales_screen.dart';
 import '../production/production_batch_migration.dart';
 import '../services/icon_helper.dart';
 import '../user_management/app_drawer.dart';
@@ -24,7 +24,8 @@ import 'analytics_screen2.dart';
 
 class StartScreen extends StatefulWidget {
   static String id = 'start_screen';
-  const StartScreen({required Key key}) : super(key: key);
+  const StartScreen({super.key});
+
 
   @override
   StartScreenState createState() => StartScreenState();

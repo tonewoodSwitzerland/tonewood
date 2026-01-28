@@ -11,7 +11,6 @@ import 'package:get/get.dart';
 import '/../constants.dart';
 import 'authenticate/login_screen.dart';
 import '/../home/start_screen.dart';
-import 'package:feedback/feedback.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 //Future<void> main() async {
   // WidgetsFlutterBinding.ensureInitialized();
@@ -40,76 +39,73 @@ Future<void> main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
+  // Globaler Key für ScaffoldMessenger
+  static final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
+  GlobalKey<ScaffoldMessengerState>();
+
   @override
   Widget build(BuildContext context) {
     return FlutterSizer(
       builder: (context, orientation, screenType) {
-        return BetterFeedback(
-          child: GetMaterialApp(
-            debugShowCheckedModeBanner: false,
-            translations: LocalString(),
-            locale: _getLocaleBasedOnDeviceSettings(context),
-            // NEU: Füge localizationsDelegates hinzu
-            localizationsDelegates: const [
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-
-            // NEU: Füge supportedLocales hinzu
-            supportedLocales: const [
-              Locale('en', 'US'),
-              Locale('de', 'DE'),
-              Locale('de', 'CH'),
-              Locale('de', 'AT'),
-            ],
-            title: 'Tonewood Switzerland',
-            theme: ThemeData(
-              scaffoldBackgroundColor: Colors.white,
-              cardColor: Colors.white,
-              elevatedButtonTheme: ElevatedButtonThemeData(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black87,
-                ),
-              ),
-
-
-
-              textButtonTheme: TextButtonThemeData(
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.black87, textStyle: smallHeadline,
-                ),
-              ),
-              dialogTheme: const DialogThemeData(
+        return GetMaterialApp(
+          scaffoldMessengerKey: scaffoldMessengerKey,  // NEU hinzufügen
+          debugShowCheckedModeBanner: false,
+          translations: LocalString(),
+          locale: _getLocaleBasedOnDeviceSettings(context),
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('en', 'US'),
+            Locale('de', 'DE'),
+            Locale('de', 'CH'),
+            Locale('de', 'AT'),
+          ],
+          title: 'Tonewood Switzerland',
+          theme: ThemeData(
+            scaffoldBackgroundColor: Colors.white,
+            cardColor: Colors.white,
+            elevatedButtonTheme: ElevatedButtonThemeData(
+              style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
-                surfaceTintColor: Colors.transparent,
+                foregroundColor: Colors.black87,
               ),
-
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: primaryAppColor,
-                surface: Colors.white,
-              ),
-              useMaterial3: true,
             ),
-            initialRoute: LoginScreen.id,
-            routes: {
-              LoginScreen.id: (context) => const LoginScreen(),
-              RegistrationScreen.id: (context) => const RegistrationScreen(),
-              ForgetScreen.id: (context) => const ForgetScreen(),
-              StartScreen.id: (context) => StartScreen(key: UniqueKey(),),
-            },
-            onGenerateRoute: (settings) {
-              return MaterialPageRoute(
-                builder: (BuildContext context) => const LoginScreen(),
-              );
-            },
-            onUnknownRoute: (settings) {
-              return MaterialPageRoute(
-                builder: (context) => const LoginScreen(),
-              );
-            },
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.black87,
+                textStyle: smallHeadline,
+              ),
+            ),
+            dialogTheme: const DialogThemeData(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.transparent,
+            ),
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: primaryAppColor,
+              surface: Colors.white,
+            ),
+            useMaterial3: true,
           ),
+          initialRoute: LoginScreen.id,
+          routes: {
+            LoginScreen.id: (context) => const LoginScreen(),
+            RegistrationScreen.id: (context) => const RegistrationScreen(),
+            ForgetScreen.id: (context) => const ForgetScreen(),
+            StartScreen.id: (context) => StartScreen(),  // OHNE UniqueKey
+          },
+          onGenerateRoute: (settings) {
+            return MaterialPageRoute(
+              builder: (BuildContext context) => const LoginScreen(),
+            );
+          },
+          onUnknownRoute: (settings) {
+            return MaterialPageRoute(
+              builder: (context) => const LoginScreen(),
+            );
+          },
         );
       },
     );

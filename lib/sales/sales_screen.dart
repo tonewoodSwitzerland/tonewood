@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../customers/customer.dart';
+import '../customers/customer_cache_service.dart';
 import '../services/swiss_rounding.dart'; // Pfad anpassen je nach Projektstruktur
 
 import 'package:path_provider/path_provider.dart';
@@ -49,10 +50,11 @@ import '../services/fairs.dart';
 import 'package:csv/csv.dart';
 
 import '../services/icon_helper.dart';
-import 'barcode_scanner.dart';
-import 'currency_converter_sheet.dart';
+import '../home/barcode_scanner.dart';
+import '../home/currency_converter_sheet.dart';
 import '../customers/customer_selection.dart';
 import '../services/shipping_costs_manager.dart';
+import 'item_discount_dialog.dart';
 
 enum TaxOption {
   standard,  // Normales System mit Netto/Steuer/Brutto
@@ -128,6 +130,9 @@ Stream<QuerySnapshot> get _basketStream => FirebaseFirestore.instance
     _loadTemporaryTax();
     _loadDocumentLanguage();
 
+    CustomerCacheService.addOnCustomerUpdatedListener(_onCustomerUpdated);
+    CustomerCacheService.addOnCustomerDeletedListener(_onCustomerDeleted);
+
     if (widget.quoteToCopy != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _loadQuoteData(widget.quoteToCopy!);
@@ -136,6 +141,55 @@ Stream<QuerySnapshot> get _basketStream => FirebaseFirestore.instance
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _loadQuoteDataForEdit(widget.quoteToEdit!);
       });
+    }
+  }
+
+
+  Future<void> _onCustomerUpdated(Customer updatedCustomer) async {
+    print('🔔 _onCustomerUpdated aufgerufen für: ${updatedCustomer.id}');
+
+    final tempDocs = await FirebaseFirestore.instance
+        .collection('temporary_customer')
+        .limit(1)
+        .get();
+
+    print('🔔 tempDocs.docs.isEmpty: ${tempDocs.docs.isEmpty}');
+
+    if (tempDocs.docs.isNotEmpty) {
+      print('🔔 tempDocs.docs.first.id: ${tempDocs.docs.first.id}');
+      print('🔔 updatedCustomer.id: ${updatedCustomer.id}');
+      print('🔔 Sind gleich: ${tempDocs.docs.first.id == updatedCustomer.id}');
+    }
+
+    if (tempDocs.docs.isNotEmpty && tempDocs.docs.first.id == updatedCustomer.id) {
+      await _saveTemporaryCustomer(updatedCustomer);
+      print('🔔 Temporary Customer aktualisiert!');
+    } else {
+      print('🔔 Kein Match - temporary_customer nicht aktualisiert');
+    }
+  }
+  Future<void> _onCustomerDeleted(String customerId) async {
+    // Prüfe ob dieser Kunde der aktuelle temporary_customer ist
+    final tempDocs = await FirebaseFirestore.instance
+        .collection('temporary_customer')
+        .limit(1)
+        .get();
+
+    if (tempDocs.docs.isNotEmpty && tempDocs.docs.first.id == customerId) {
+      // Ja! → Lösche temporary_customer
+      await FirebaseFirestore.instance
+          .collection('temporary_customer')
+          .doc(customerId)
+          .delete();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ausgewählter Kunde wurde gelöscht'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     }
   }
 
@@ -446,7 +500,20 @@ return Scaffold(
         _shippingCostsConfiguredNotifier.value = true;
       }
 
+      // 7. Gesamtrabatt laden
+      if (quoteData['totalDiscount'] != null) {
+        final discountData = quoteData['totalDiscount'] as Map<String, dynamic>;
+        setState(() {
+          _totalDiscount = Discount(
+            percentage: (discountData['percentage'] as num?)?.toDouble() ?? 0.0,
+            absolute: (discountData['absolute'] as num?)?.toDouble() ?? 0.0,
+          );
+        });
+        await _saveTemporaryTotalDiscount();
+      }
+
       setState(() => isLoading = false);
+
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -615,6 +682,18 @@ return Scaffold(
             Map<String, dynamic>.from(quoteData['shippingCosts'])
         );
         _shippingCostsConfiguredNotifier.value = true;
+      }
+
+      // 7. NEU: Gesamtrabatt laden
+      if (quoteData['totalDiscount'] != null) {
+        final discountData = quoteData['totalDiscount'] as Map<String, dynamic>;
+        setState(() {
+          _totalDiscount = Discount(
+            percentage: (discountData['percentage'] as num?)?.toDouble() ?? 0.0,
+            absolute: (discountData['absolute'] as num?)?.toDouble() ?? 0.0,
+          );
+        });
+        await _saveTemporaryTotalDiscount();
       }
       setState(() => isLoading = false);
 
@@ -1621,245 +1700,235 @@ return Scaffold(
 
     showDialog(
       context: context,
-      builder: (context) => Dialog(
+      builder: (dialogContext) => Dialog(  // Verwende dialogContext
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: 600,
-            maxHeight: MediaQuery.of(context).size.height * 0.7,
+            maxHeight: MediaQuery.of(dialogContext).size.height * 0.7,
           ),
           child: Padding(
             padding: const EdgeInsets.all(24.0),
-            child: Scaffold(
-              resizeToAvoidBottomInset: false,
-              body: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'Messe',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: searchController,
-                    decoration: InputDecoration(
-                      labelText: 'Suchen',
-                      prefixIcon: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search,),
-                      ),
-                      border: const OutlineInputBorder(),
-                      filled: true,
-                      fillColor: Theme.of(context).colorScheme.surface,
+            // ENTFERNE Scaffold - verwende direkt Column
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'Messe',
+                      style: Theme.of(dialogContext).textTheme.headlineSmall,
                     ),
-                    onChanged: (value) {
-                      setState(() {});
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: searchController,
+                  decoration: InputDecoration(
+                    labelText: 'Suchen',
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
+                    ),
+                    border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Theme.of(dialogContext).colorScheme.surface,
+                  ),
+                  onChanged: (value) {
+                    // StatefulBuilder verwenden wenn nötig
+                  },
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('fairs')
+                        .where('endDate', isGreaterThanOrEqualTo: DateTime.now().toIso8601String())
+                        .orderBy('endDate')
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              getAdaptiveIcon(iconName: 'error', defaultIcon: Icons.error, size: 48),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Fehler beim Laden der Messen',
+                                style: TextStyle(
+                                  color: Theme.of(dialogContext).colorScheme.error,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      final fairs = snapshot.data?.docs
+                          .map((doc) => Fair.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+                          .toList() ?? [];
+
+                      final searchTerm = searchController.text.toLowerCase();
+                      final filteredFairs = fairs.where((fair) =>
+                      fair.name.toLowerCase().contains(searchTerm) ||
+                          fair.city.toLowerCase().contains(searchTerm) ||
+                          fair.country.toLowerCase().contains(searchTerm)
+                      ).toList();
+
+                      if (filteredFairs.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              getAdaptiveIcon(iconName: 'event_busy', defaultIcon: Icons.event_busy, size: 48),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Keine aktiven Messen gefunden',
+                                style: TextStyle(
+                                  color: Theme.of(dialogContext).colorScheme.outline,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      return StreamBuilder<Fair?>(
+                        stream: _temporaryFairStream,
+                        builder: (context, selectedSnapshot) {
+                          return ListView.builder(
+                            itemCount: filteredFairs.length,
+                            itemBuilder: (context, index) {
+                              final fair = filteredFairs[index];
+                              final isSelected = selectedSnapshot.data?.id == fair.id;
+
+                              return Card(
+                                elevation: isSelected ? 2 : 0,
+                                color: isSelected
+                                    ? Theme.of(dialogContext).colorScheme.primaryContainer
+                                    : null,
+                                margin: const EdgeInsets.only(bottom: 8),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: isSelected
+                                        ? Theme.of(dialogContext).colorScheme.primary
+                                        : Theme.of(dialogContext).colorScheme.surfaceContainerHighest,
+                                    child: getAdaptiveIcon(iconName: 'event', defaultIcon: Icons.event, size: 24),
+                                  ),
+                                  title: Text(
+                                    fair.name,
+                                    style: TextStyle(
+                                      fontWeight: isSelected ? FontWeight.bold : null,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    '${fair.city}, ${fair.country}\n'
+                                        '${DateFormat('dd.MM.yyyy').format(fair.startDate)} - '
+                                        '${DateFormat('dd.MM.yyyy').format(fair.endDate)}',
+                                  ),
+                                  isThreeLine: true,
+                                  onTap: () async {
+                                    try {
+                                      setState(() => selectedFair = fair);
+                                      await _saveTemporaryFair(fair);
+                                      if (mounted) {
+                                        Navigator.pop(dialogContext);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Messe ausgewählt'),
+                                            backgroundColor: Colors.green,
+                                          ),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      print('Fehler beim Speichern der Messe: $e');
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Fehler: $e'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      );
                     },
                   ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('fairs')
-                          .where('endDate', isGreaterThanOrEqualTo: DateTime.now().toIso8601String())
-                          .orderBy('endDate')
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        if (snapshot.hasError) {
-                          return Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                getAdaptiveIcon(iconName: 'error', defaultIcon: Icons.error,size: 48),
-
-                                const SizedBox(height: 16),
-                                Text(
-                                  'Fehler beim Laden der Messen',
-                                  style: TextStyle(
-                                    color: Theme.of(context).colorScheme.error,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
-                        }
-
-                        final fairs = snapshot.data?.docs
-                            .map((doc) => Fair.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-                            .toList() ?? [];
-
-                        final searchTerm = searchController.text.toLowerCase();
-                        final filteredFairs = fairs.where((fair) =>
-                        fair.name.toLowerCase().contains(searchTerm) ||
-                            fair.city.toLowerCase().contains(searchTerm) ||
-                            fair.country.toLowerCase().contains(searchTerm)
-                        ).toList();
-
-                        if (filteredFairs.isEmpty) {
-                          return Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                getAdaptiveIcon(iconName: 'event_busy', defaultIcon: Icons.event_busy,size: 48),
-
-                                const SizedBox(height: 16),
-                                Text(
-                                  'Keine aktiven Messen gefunden',
-                                  style: TextStyle(
-                                    color: Theme.of(context).colorScheme.outline,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-
-                        return StreamBuilder<Fair?>(
-                          stream: _temporaryFairStream,
-                          builder: (context, selectedSnapshot) {
-                            return ListView.builder(
-                              itemCount: filteredFairs.length,
-                              itemBuilder: (context, index) {
-                                final fair = filteredFairs[index];
-                                final isSelected = selectedSnapshot.data?.id == fair.id;
-
-                                return Card(
-                                  elevation: isSelected ? 2 : 0,
-                                  color: isSelected
-                                      ? Theme.of(context).colorScheme.primaryContainer
-                                      : null,
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  child: ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundColor: isSelected
-                                          ? Theme.of(context).colorScheme.primary
-                                          : Theme.of(context).colorScheme.surfaceContainerHighest,
-                                      child:   getAdaptiveIcon(iconName: 'event', defaultIcon: Icons.event,size: 48),
-
-                                    ),
-                                    title: Text(
-                                      fair.name,
-                                      style: TextStyle(
-                                        fontWeight: isSelected ? FontWeight.bold : null,
-                                      ),
-                                    ),
-                                    subtitle: Text(
-                                      '${fair.city}, ${fair.country}\n'
-                                          '${DateFormat('dd.MM.yyyy').format(fair.startDate)} - '
-                                          '${DateFormat('dd.MM.yyyy').format(fair.endDate)}',
-                                    ),
-                                    isThreeLine: true,
-                                    onTap: () async {
-                                      try {
-                                        setState(() => selectedFair = fair);
-                                        await _saveTemporaryFair(fair);
-                                        if (mounted) {
-                                          Navigator.pop(context);
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('Messe ausgewählt'),
-                                              backgroundColor: Colors.green,
-                                            ),
-                                          );
-                                        }
-                                      } catch (e) {
-                                        print('Fehler beim Speichern der Messe: $e');
-                                        if (mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Fehler: $e'),
-                                              backgroundColor: Colors.red,
-                                            ),
-                                          );
-                                        }
-                                      }
-                                    },
-                                  ),
-                                );
-                              },
-                            );
-                          },
+                ),
+                const SizedBox(height: 16),
+                Column(
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const FairManagementScreen(),
+                          ),
                         );
                       },
+                      icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings),
+                      label: const Text('Messen verwalten'),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  SafeArea(
-                    child: Column(
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const FairManagementScreen(),
-                              ),
-                            );
+                        TextButton(
+                          onPressed: () async {
+                            try {
+                              setState(() => selectedFair = null);
+                              await _clearTemporaryFair();
+                              if (mounted) {
+                                Navigator.pop(dialogContext);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Messe-Auswahl zurückgesetzt'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              print('Fehler beim Zurücksetzen der Messe: $e');
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Fehler: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
                           },
-                          icon:    getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
-
-                          label: const Text('Messen verwalten'),
-                        ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            TextButton(
-                              onPressed: () async {
-                                try {
-                                  setState(() => selectedFair = null);
-                                  await _clearTemporaryFair();
-                                  if (mounted) {
-                                    Navigator.pop(context);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Messe-Auswahl zurückgesetzt'),
-                                        backgroundColor: Colors.green,
-                                      ),
-                                    );
-                                  }
-                                } catch (e) {
-                                  print('Fehler beim Zurücksetzen der Messe: $e');
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Fehler: $e'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
-                              child: const Text('Keine Messe (Standard)'),
-                            ),
-
-                          ],
+                          child: const Text('Keine Messe (Standard)'),
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
   }
-
   Stream<CostCenter?> get _temporaryCostCenterStream => FirebaseFirestore.instance
       .collection('temporary_cost_center')
       .limit(1)
@@ -2069,178 +2138,169 @@ return Scaffold(
   void _showCostCenterSelection() {
     final searchController = TextEditingController();
 
-
     showDialog(
       context: context,
-      builder: (context) => Dialog(
+      builder: (dialogContext) => Dialog(  // Verwende dialogContext
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: 600,
-            maxHeight: MediaQuery.of(context).size.height * 0.7,
+            maxHeight: MediaQuery.of(dialogContext).size.height * 0.7,
           ),
           child: Padding(
             padding: const EdgeInsets.all(24.0),
-            child: Scaffold(
-              resizeToAvoidBottomInset: false,
-              body: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'Kostenstelle',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                       icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: searchController,
-                    decoration: InputDecoration(
-                      labelText: 'Suchen',
-                      prefixIcon:    Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search,),
-                      ),
-                      border: const OutlineInputBorder(),
-                      filled: true,
-                      fillColor: Theme.of(context).colorScheme.surface,
+            // ENTFERNE Scaffold - verwende direkt Column
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'Kostenstelle',
+                      style: Theme.of(dialogContext).textTheme.headlineSmall,
                     ),
-                    onChanged: (value) {
-                      setState(() {});
-                    },
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: searchController,
+                  decoration: InputDecoration(
+                    labelText: 'Suchen',
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
+                    ),
+                    border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Theme.of(dialogContext).colorScheme.surface,
                   ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('cost_centers')
-                          .orderBy('code')
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        if (snapshot.hasError) {
-                          return Center(
-                            child: Text('Fehler: ${snapshot.error}'),
-                          );
-                        }
+                  onChanged: (value) {
+                    // Für Suche - braucht StatefulBuilder wenn live-Suche gewünscht
+                  },
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('cost_centers')
+                        .orderBy('code')
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Text('Fehler: ${snapshot.error}'),
+                        );
+                      }
 
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
-                        }
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                        final costCenters = snapshot.data?.docs
-                            .map((doc) => CostCenter.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-                            .toList() ?? [];
+                      final costCenters = snapshot.data?.docs
+                          .map((doc) => CostCenter.fromMap(doc.data() as Map<String, dynamic>, doc.id))
+                          .toList() ?? [];
 
-                        final searchTerm = searchController.text.toLowerCase();
-                        final filteredCostCenters = costCenters.where((cc) =>
-                        cc.code.toLowerCase().contains(searchTerm) ||
-                            cc.name.toLowerCase().contains(searchTerm) ||
-                            cc.description.toLowerCase().contains(searchTerm)
-                        ).toList();
+                      final searchTerm = searchController.text.toLowerCase();
+                      final filteredCostCenters = costCenters.where((cc) =>
+                      cc.code.toLowerCase().contains(searchTerm) ||
+                          cc.name.toLowerCase().contains(searchTerm) ||
+                          cc.description.toLowerCase().contains(searchTerm)
+                      ).toList();
 
-                        if (filteredCostCenters.isEmpty) {
-                          return Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
+                      if (filteredCostCenters.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              getAdaptiveIcon(iconName: 'account_balance', defaultIcon: Icons.account_balance, size: 48),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Keine Kostenstellen gefunden',
+                                style: TextStyle(
+                                  color: Theme.of(dialogContext).colorScheme.outline,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
 
-                                   getAdaptiveIcon(iconName: 'account_balance', defaultIcon: Icons.account_balance,size: 48),
+                      return ListView.builder(
+                        itemCount: filteredCostCenters.length,
+                        itemBuilder: (context, index) {
+                          final costCenter = filteredCostCenters[index];
+                          final isSelected = selectedCostCenter?.id == costCenter.id;
 
-                                const SizedBox(height: 16),
-                                Text(
-                                  'Keine Kostenstellen gefunden',
+                          return Card(
+                            elevation: isSelected ? 2 : 0,
+                            color: isSelected
+                                ? Theme.of(dialogContext).colorScheme.primaryContainer
+                                : null,
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: isSelected
+                                    ? Theme.of(dialogContext).colorScheme.primary
+                                    : Theme.of(dialogContext).colorScheme.surfaceContainerHighest,
+                                child: Text(
+                                  costCenter.code.substring(0, 2),
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.outline,
+                                    color: isSelected
+                                        ? Theme.of(dialogContext).colorScheme.onPrimary
+                                        : Theme.of(dialogContext).colorScheme.onSurfaceVariant,
                                   ),
                                 ),
-                              ],
+                              ),
+                              title: Text(
+                                '${costCenter.code} - ${costCenter.name}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: isSelected ? FontWeight.bold : null,
+                                ),
+                              ),
+                              subtitle: Text(
+                                costCenter.description,
+                                style: TextStyle(fontSize: 12),
+                              ),
+                              onTap: () async {
+                                await _saveTemporaryCostCenter(costCenter);
+                                if (mounted) {
+                                  Navigator.pop(dialogContext);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Kostenstelle ausgewählt'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                }
+                              },
                             ),
                           );
-                        }
-
-                        return ListView.builder(
-                          itemCount: filteredCostCenters.length,
-                          itemBuilder: (context, index) {
-                            final costCenter = filteredCostCenters[index];
-                            final isSelected = selectedCostCenter?.id == costCenter.id;
-
-                            return Card(
-                              elevation: isSelected ? 2 : 0,
-                              color: isSelected
-                                  ? Theme.of(context).colorScheme.primaryContainer
-                                  : null,
-                              margin: const EdgeInsets.only(bottom: 8),
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: isSelected
-                                      ? Theme.of(context).colorScheme.primary
-                                      : Theme.of(context).colorScheme.surfaceContainerHighest,
-                                  child: Text(
-                                    costCenter.code.substring(0, 2),
-                                    style: TextStyle(
-                                      color: isSelected
-                                          ? Theme.of(context).colorScheme.onPrimary
-                                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                                title: Text(
-                                  '${costCenter.code} - ${costCenter.name}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: isSelected ? FontWeight.bold : null,
-                                  ),
-                                ),
-                                subtitle: Text(costCenter.description,style:TextStyle(
-                                  fontSize: 12,
-
-                                ),),
-                                onTap: () async {
-                                  await _saveTemporaryCostCenter(costCenter);
-                                  if (mounted) {
-                                    Navigator.pop(context);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Kostenstelle ausgewählt'),
-                                        backgroundColor: Colors.green,
-                                      ),
-                                    );
-                                  }
-                                },
-                              ),
-                            );
-                          },
-                        );
+                        },
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                        _showNewCostCenterDialog();
                       },
+                      icon: getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add),
+                      label: const Text('Neue Kostenstelle'),
                     ),
-                  ),
-                  SafeArea(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _showNewCostCenterDialog();
-                          },
-                          icon:    getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add,),
-
-                          label: const Text('Neue Kostenstelle'),
-                        ),
-
-                      ],
-                    ),
-                  ),
-
-                ],
-              ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
@@ -4526,6 +4586,7 @@ return Scaffold(
       return 0;
     }
   }
+
   void _showPriceEditDialog(String basketItemId, Map<String, dynamic> itemData) {
     bool densityLoaded = false;  // NEU
 
@@ -4555,7 +4616,10 @@ return Scaffold(
     }
 
     final priceController = TextEditingController(text: displayPrice.toStringAsFixed(2));
-
+    final partsController = TextEditingController(text: itemData['parts']?.toString() ?? '1');
+    final quantityController = TextEditingController(
+        text: itemData['quantity']?.toString() ?? '1'
+    );
     // Controller für die Maße - mit bestehenden Werten oder leer
     final lengthController = TextEditingController(
         text: itemData['custom_length']?.toString() ?? ''
@@ -4584,16 +4648,22 @@ return Scaffold(
     );
 
 
-    void calculateVolume() {
+    void calculateVolumeWithParts() {
       final length = double.tryParse(lengthController.text.replaceAll(',', '.')) ?? 0;
       final width = double.tryParse(widthController.text.replaceAll(',', '.')) ?? 0;
       final thickness = double.tryParse(thicknessController.text.replaceAll(',', '.')) ?? 0;
+      final parts = int.tryParse(partsController.text) ?? 1;
 
       if (length > 0 && width > 0 && thickness > 0) {
-        // mm → m: durch 1000 teilen, dann L × B × D
-        final volume = (length / 1000) * (width / 1000) * (thickness / 1000);
-        volumeController.text = volume.toStringAsFixed(7);
+        // Volumen pro Bauteil in m³
+        final volumePerPart = (length / 1000) * (width / 1000) * (thickness / 1000);
+        // Gesamtvolumen = Volumen pro Bauteil × Anzahl Bauteile
+        final totalVolume = volumePerPart * parts;
+        volumeController.text = totalVolume.toStringAsFixed(7);
       }
+    }
+    void calculateVolume() {
+      calculateVolumeWithParts();
     }
     // Variable um zu verfolgen ob Standardwerte gesetzt wurden
     bool standardValuesLoaded = false;
@@ -4715,11 +4785,51 @@ return Scaffold(
             style: TextStyle(color: Colors.green[700]),
             ),
             const SizedBox(height: 8),
-            Text('Menge: ${itemData['quantity']} ${itemData['unit'] ?? 'Stück'}'),
+              itemData['is_manual_product'] == true?SizedBox(width: 1,): Text('Menge: ${itemData['quantity']} ${itemData['unit'] ?? 'Stück'}'),
             ],
             ),
             ),
-            
+
+              // Menge anpassen - nur für manuelle Produkte
+              if (itemData['is_manual_product'] == true) ...[
+                const SizedBox(height: 24),
+
+                Text(
+                  'Menge anpassen',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                TextFormField(
+                  controller: quantityController,
+                  decoration: InputDecoration(
+                    labelText: 'Menge',
+                    suffixText: itemData['unit'] ?? 'Stück',
+                    border: const OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Theme.of(context).colorScheme.surface,
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: getAdaptiveIcon(iconName: 'numbers', defaultIcon: Icons.numbers),
+                    ),
+                    helperText: 'Manuelles Produkt - Menge änderbar',
+                  ),
+                  keyboardType: TextInputType.numberWithOptions(decimal: itemData['unit'] != 'Stück'),
+                  inputFormatters: [
+                    if (itemData['unit'] == 'Stück')
+                      FilteringTextInputFormatter.digitsOnly
+                    else
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,3}')),
+                  ],
+                  onChanged: (value) {
+                    setDialogState(() {});
+                  },
+                ),
+              ],
             const SizedBox(height: 24),
             
             // Preis anpassen
@@ -5119,26 +5229,29 @@ return Scaffold(
             const SizedBox(height: 24),
             
                           // Maße anpassen - JETZT MIT FutureBuilder für Standard-Volumen
-                          FutureBuilder<Map<String, dynamic>?>(
-                            future: _getStandardVolumeForItem(itemData),
-                            builder: (context, snapshot) {
-                              // Standardwerte nur einmal setzen
-                              if (snapshot.connectionState == ConnectionState.done &&
-                                  !standardValuesLoaded) {
-            
-                                WidgetsBinding.instance.addPostFrameCallback((_) {
-                                  // Setze vorhandene custom_volume oder Standard-Volumen
-                                  if (itemData['custom_volume'] != null) {
-                                    volumeController.text = itemData['custom_volume'].toString();
-                                  } else if (snapshot.hasData && snapshot.data != null) {
-                                    final standardVolume = snapshot.data!['volume'] ?? 0.0;
-                                    if (standardVolume > 0) {
-                                      volumeController.text = standardVolume.toStringAsFixed(7);
-                                    }
-                                  }
-                                  standardValuesLoaded = true;
-                                });
-                              }
+              FutureBuilder<Map<String, dynamic>?>(
+                future: _getStandardVolumeForItem(itemData),
+                builder: (context, volumeSnapshot) {
+
+                  // HIER die Änderung:
+                  // Setze Volumen einmalig - priorisiere gespeichertes volume_per_unit aus Basket
+                  if (volumeController.text.isEmpty) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      // Prüfe zuerst ob bereits ein angepasstes Volumen im Basket existiert
+                      if (itemData['volume_per_unit'] != null && (itemData['volume_per_unit'] as num) > 0) {
+                        volumeController.text = (itemData['volume_per_unit'] as num).toDouble().toStringAsFixed(7);
+                      }
+                      // Sonst Standard-Volumen verwenden (falls vorhanden)
+                      else if (volumeSnapshot.connectionState == ConnectionState.done &&
+                          volumeSnapshot.hasData &&
+                          volumeSnapshot.data != null) {
+                        final standardVolume = volumeSnapshot.data!['volume'] ?? 0.0;
+                        if (standardVolume > 0) {
+                          volumeController.text = standardVolume.toStringAsFixed(7);
+                        }
+                      }
+                    });
+                  }
             
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -5154,7 +5267,7 @@ return Scaffold(
                                         ),
                                       ),
                                       const SizedBox(width: 8),
-                                      if (snapshot.hasData && snapshot.data != null)
+                                      if (volumeSnapshot.hasData && volumeSnapshot.data != null)
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                           decoration: BoxDecoration(
@@ -5174,11 +5287,42 @@ return Scaffold(
                                   const SizedBox(height: 8),
 
                                   // NEU: Anzahl Bauteile (Info-Feld)
-                                  if (snapshot.connectionState == ConnectionState.done &&
-                                      snapshot.hasData &&
-                                     snapshot.data != null &&
-                                      snapshot.data!['parts'] != null) ...[
+                                  // Anzahl Bauteile - editierbar für manuelle Produkte, Info für normale
+                                  const SizedBox(height: 12),
+                                  if (itemData['is_manual_product'] == true) ...[
+                                    // Editierbares Feld für manuelle Produkte
+                                    TextFormField(
+                                      controller: partsController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Anzahl Bauteile pro Einheit',
+                                        border: const OutlineInputBorder(),
+                                        filled: true,
+                                        fillColor: Theme.of(context).colorScheme.surface,
+                                        prefixIcon: Padding(
+                                          padding: const EdgeInsets.all(8.0),
+                                          child: getAdaptiveIcon(
+                                            iconName: 'category',
+                                            defaultIcon: Icons.category,
+                                            size: 20,
+                                          ),
+                                        ),
+                                        helperText: 'z.B. 2 bei einem Set aus Decke und Boden',
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                      ],
+                                      onChanged: (value) {
+                                        calculateVolumeWithParts();
+                                        setDialogState(() {});
+                                      },
+                                    ),
                                     const SizedBox(height: 12),
+                                  ] else if (volumeSnapshot.connectionState == ConnectionState.done &&
+                                      volumeSnapshot.hasData &&
+                                      volumeSnapshot.data != null &&
+                                      volumeSnapshot.data!['parts'] != null) ...[
+                                    // Info-Anzeige für normale Produkte (bestehender Code)
                                     Container(
                                       padding: const EdgeInsets.all(12),
                                       decoration: BoxDecoration(
@@ -5211,7 +5355,7 @@ return Scaffold(
                                                 ),
                                                 const SizedBox(height: 4),
                                                 Text(
-                                                  '${snapshot.data!['parts']} Teile',
+                                                  '${volumeSnapshot.data!['parts']} Teile',
                                                   style: TextStyle(
                                                     fontSize: 14,
                                                     fontWeight: FontWeight.w600,
@@ -5315,9 +5459,11 @@ return Scaffold(
                                         padding: const EdgeInsets.all(8.0),
                                         child: getAdaptiveIcon(iconName: 'view_in_ar', defaultIcon:Icons.view_in_ar, size: 20),
                                       ),
-                                      helperText: snapshot.hasData && snapshot.data != null
+                                      helperText: itemData['volume_per_unit'] != null && (itemData['volume_per_unit'] as num) > 0
+                                          ? 'Angepasstes Volumen - kann weiter bearbeitet werden'
+                                          : (volumeSnapshot.hasData && volumeSnapshot.data != null
                                           ? 'Standardvolumen geladen - kann angepasst werden'
-                                          : 'Optional: Manuelles Volumen überschreibt berechneten Wert',
+                                          : 'Optional: Manuelles Volumen überschreibt berechneten Wert'),
                                     ),
                                     keyboardType: TextInputType.numberWithOptions(decimal: true),
                                     inputFormatters: [
@@ -5668,8 +5814,16 @@ return Scaffold(
                                     'custom_price_per_unit': priceInCHF,
                                     'is_price_customized': true,
                                   };
-            
-            
+
+                                  if (itemData['is_manual_product'] == true && quantityController.text.isNotEmpty) {
+                                    final quantity = itemData['unit'] == 'Stück'
+                                        ? int.tryParse(quantityController.text)
+                                        : double.tryParse(quantityController.text.replaceAll(',', '.'));
+                                    if (quantity != null && quantity > 0) {
+                                      updateData['quantity'] = quantity;
+                                    }
+                                  }
+
             if (!isService) {
                                   // Maße hinzufügen, wenn sie eingegeben wurden
                                   if (lengthController.text.isNotEmpty) {
@@ -5698,16 +5852,26 @@ return Scaffold(
                                   } else {
                                     updateData['custom_thickness'] = FieldValue.delete();
                                   }
-            
-                                  // Volumen hinzufügen
-                                  if (volumeController.text.isNotEmpty) {
-                                    final volume = double.tryParse(volumeController.text.replaceAll(',', '.'));
-                                    if (volume != null && volume > 0) {
-                                      updateData['custom_volume'] = volume;
+
+                                  // NEU: Anzahl Bauteile speichern (für manuelle Produkte)
+                                  if (itemData['is_manual_product'] == true && partsController.text.isNotEmpty) {
+                                    final parts = int.tryParse(partsController.text);
+                                    if (parts != null && parts > 0) {
+                                      updateData['parts'] = parts;
                                     }
-                                  } else {
-                                    updateData['custom_volume'] = FieldValue.delete();
                                   }
+                                  print("volumenCC:$volumeController");
+                                  // Volumen hinzufügen
+
+// Volumen hinzufügen
+              if (volumeController.text.isNotEmpty) {
+                final volume = double.tryParse(volumeController.text.replaceAll(',', '.'));
+                if (volume != null && volume > 0) {
+                  updateData['volume_per_unit'] = volume;
+                }
+              } else {
+                updateData['volume_per_unit'] = FieldValue.delete();
+              }
                                   if (customTariffController.text.trim().isNotEmpty) {
                                     updateData['custom_tariff_number'] = customTariffController.text.trim();
                                   } else {
@@ -5860,6 +6024,7 @@ return Scaffold(
         final parts = standardProduct['parts'];
         print("parts::$parts");
 
+        print("volumeInmm3:$mm3Volume");
         if (mm3Volume != null && mm3Volume > 0) {
           // Konvertiere mm³ zu m³
           final volumeInM3 = (mm3Volume as num).toDouble() / 1000000000.0;
@@ -6000,8 +6165,13 @@ return Scaffold(
         'density': productData['density'],
 
       // FSC-Status hinzufügen
+
       if (productData.containsKey('fsc_status') && productData['fsc_status'] != null)
         'fsc_status': productData['fsc_status'],
+
+// NEU hinzufügen:
+      if (productData.containsKey('parts') && productData['parts'] != null)
+        'parts': productData['parts'],
 
       // 🟢 NEU: Thermobehandlung-Status hinzufügen
       if (productData.containsKey('has_thermal_treatment'))
@@ -6295,7 +6465,34 @@ return Scaffold(
     }
     return null;
   }
+  void _updateVolumeFromDimensions(
+      TextEditingController lengthController,
+      TextEditingController widthController,
+      TextEditingController thicknessController,
+      TextEditingController volumeController,
+      ) {
+    // Parse Werte (mm)
+    final lengthText = lengthController.text.replaceAll(',', '.');
+    final widthText = widthController.text.replaceAll(',', '.');
+    final thicknessText = thicknessController.text.replaceAll(',', '.');
+
+    final length = double.tryParse(lengthText) ?? 0.0;
+    final width = double.tryParse(widthText) ?? 0.0;
+    final thickness = double.tryParse(thicknessText) ?? 0.0;
+
+    // Berechne Volumen nur wenn alle Werte > 0
+    if (length > 0 && width > 0 && thickness > 0) {
+      // mm³ zu m³: (mm/1000)³ = mm³ / 1.000.000.000
+      final volumeM3 = (length / 1000) * (width / 1000) * (thickness / 1000);
+      volumeController.text = volumeM3.toStringAsFixed(7);
+    }
+  }
+
+
   void _showQuantityDialog(String barcode, Map<String, dynamic> productData,{bool isOnlineShopItem = false}) {
+
+    int? loadedParts; // NEU: Variable für Parts
+
     quantityController.clear();
     // NEU: Bei Online-Shop-Items Menge auf 1 setzen
     if (isOnlineShopItem) {
@@ -6782,6 +6979,9 @@ return Scaffold(
                                         if (standardVolume > 0) {
                                           volumeController.text = standardVolume.toStringAsFixed(7);
                                         }
+                                        if (volumeSnapshot.data!['parts'] != null) {
+                                          loadedParts = volumeSnapshot.data!['parts'] as int;
+                                        }
                                       });
                                     }
 
@@ -6891,7 +7091,15 @@ return Scaffold(
                                                 ),
                                                 keyboardType: TextInputType.numberWithOptions(decimal: true),
                                                 onChanged: (value) {
-                                                  setState(() {});
+                                                  setState(() {
+                                                    // NEU: Volumen automatisch berechnen
+                                                    _updateVolumeFromDimensions(
+                                                      lengthController,
+                                                      widthController,
+                                                      thicknessController,
+                                                      volumeController,
+                                                    );
+                                                  });
                                                 },
                                               ),
                                             ),
@@ -6913,7 +7121,15 @@ return Scaffold(
                                                 ),
                                                 keyboardType: TextInputType.numberWithOptions(decimal: true),
                                                 onChanged: (value) {
-                                                  setState(() {});
+                                                  setState(() {
+                                                    // NEU: Volumen automatisch berechnen
+                                                    _updateVolumeFromDimensions(
+                                                      lengthController,
+                                                      widthController,
+                                                      thicknessController,
+                                                      volumeController,
+                                                    );
+                                                  });
                                                 },
                                               ),
                                             ),
@@ -6935,7 +7151,16 @@ return Scaffold(
                                           ),
                                           keyboardType: TextInputType.numberWithOptions(decimal: true),
                                           onChanged: (value) {
-                                            setState(() {});
+                                              setState(() {
+                                                print("hallo");
+                                                // NEU: Volumen automatisch berechnen
+                                                _updateVolumeFromDimensions(
+                                                  lengthController,
+                                                  widthController,
+                                                  thicknessController,
+                                                  volumeController,
+                                                );
+                                              });
                                           },
                                         ),
 
@@ -7312,6 +7537,15 @@ return Scaffold(
                                         updatedProductData['volume_per_unit'] =
                                             double.tryParse(volumeController.text.replaceAll(',', '.')) ?? 0.0;
                                       }
+
+// NEU: Parts hinzufügen
+                                      if (loadedParts != null && loadedParts! > 0) {
+                                        updatedProductData['parts'] = loadedParts;
+                                      }
+
+
+
+
                                       if (densityController.text.isNotEmpty) {
                                         updatedProductData['density'] = double.tryParse(densityController.text.replaceAll(',', '.')) ?? 0.0;
                                       }
@@ -7737,250 +7971,26 @@ Widget _buildSelectedProductInfo() {
   double get _vatRate => _vatRateNotifier.value;
   Discount _totalDiscount = const Discount();
   Map<String, Discount> _itemDiscounts = {};
-
-  void _showItemDiscountDialog(String itemId, double originalAmount) {
-    final percentageController = TextEditingController(
-        text: _itemDiscounts[itemId]?.percentage.toString() ?? '0.0'
-    );
-    final absoluteController = TextEditingController(
-        text: _itemDiscounts[itemId]?.absolute.toString() ?? '0.0'
-    );
-    final targetAmountController = TextEditingController();
-
-    // Flag um zu verhindern, dass Listener sich gegenseitig triggern
-    bool _isUpdating = false;
-
-    // Merke welches Feld zuletzt bearbeitet wurde
-    String _lastEdited = 'none';
-
-    // Listener für Prozent-Feld
-    percentageController.addListener(() {
-      if (_isUpdating) return;
-      _isUpdating = true;
-      _lastEdited = 'percentage';
-
-      final percentage = double.tryParse(percentageController.text) ?? 0;
-      final discount = originalAmount * (percentage / 100);
-      final newAmount = originalAmount - discount;
-
-      absoluteController.text = discount.toStringAsFixed(2);
-      targetAmountController.text = newAmount.toStringAsFixed(2);
-
-      _isUpdating = false;
-    });
-
-    // Listener für Absolut-Feld
-    absoluteController.addListener(() {
-      if (_isUpdating) return;
-      _isUpdating = true;
-      _lastEdited = 'absolute';
-
-      final absolute = double.tryParse(absoluteController.text) ?? 0;
-      final percentage = (absolute / originalAmount) * 100;
-      final newAmount = originalAmount - absolute;
-
-      percentageController.text = percentage.toStringAsFixed(2);
-      targetAmountController.text = newAmount.toStringAsFixed(2);
-
-      _isUpdating = false;
-    });
-
-    // Listener für Zielbetrag-Feld
-    targetAmountController.addListener(() {
-      if (_isUpdating) return;
-      _isUpdating = true;
-      _lastEdited = 'target';
-
-      final targetAmount = double.tryParse(targetAmountController.text) ?? originalAmount;
-      final discount = originalAmount - targetAmount;
-      final percentage = (discount / originalAmount) * 100;
-
-      absoluteController.text = discount.toStringAsFixed(2);
-      percentageController.text = percentage.toStringAsFixed(2);
-
-      _isUpdating = false;
-    });
-
-    // Initialisiere Zielbetrag basierend auf Original-Betrag
-    final initialDiscount = _itemDiscounts[itemId];
-    if (initialDiscount != null) {
-      // Prüfe welcher Wert gesetzt ist
-      if (initialDiscount.percentage > 0) {
-        _lastEdited = 'percentage';
-        final discount = originalAmount * (initialDiscount.percentage / 100);
-        targetAmountController.text = (originalAmount - discount).toStringAsFixed(2);
-      } else if (initialDiscount.absolute > 0) {
-        _lastEdited = 'absolute';
-        final discount = initialDiscount.absolute;
-        targetAmountController.text = (originalAmount - discount).toStringAsFixed(2);
-      } else {
-        targetAmountController.text = originalAmount.toStringAsFixed(2);
-      }
-    } else {
-      targetAmountController.text = originalAmount.toStringAsFixed(2);
-    }
-
-    showDialog(
+  void _showItemDiscountDialog(String itemId, double originalAmount) async {
+    final result = await showDialog<Discount>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Rabatt'),
-        content: ValueListenableBuilder<String>(
-          valueListenable: _currencyNotifier,
-          builder: (context, currency, child) {
-            return SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Aktueller Betrag
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Ursprungsbetrag:',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          _formatPrice(originalAmount),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Rabatt in Prozent
-                  TextFormField(
-                    controller: percentageController,
-                    decoration: const InputDecoration(
-                      labelText: 'Rabatt %',
-                      suffixText: '%',
-                      border: OutlineInputBorder(),
-                      helperText: 'Prozentuale Ermäßigung',
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Rabatt absolut
-                  TextFormField(
-                    controller: absoluteController,
-                    decoration: InputDecoration(
-                      labelText: 'Rabatt $currency',
-                      suffixText: currency,
-                      border: const OutlineInputBorder(),
-                      helperText: 'Absoluter Rabattbetrag',
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  const Divider(),
-                  const SizedBox(height: 12),
-
-                  // Zielbetrag (neuer Preis)
-                  TextFormField(
-                    controller: targetAmountController,
-                    decoration: InputDecoration(
-                      labelText: 'Neuer Betrag $currency',
-                      suffixText: currency,
-                      border: const OutlineInputBorder(),
-                      helperText: 'Gewünschter Endbetrag',
-                      filled: true,
-                      fillColor: Colors.green[50],
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
-                    ],
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              percentageController.dispose();
-              absoluteController.dispose();
-              targetAmountController.dispose();
-              Navigator.pop(context);
-            },
-            child: const Text('Abbrechen'),
-          ),
-          ValueListenableBuilder<String>(
-            valueListenable: _currencyNotifier,
-            builder: (context, currency, child) {
-              return ElevatedButton(
-                onPressed: () async {
-                  // Speichere NUR den Wert, der zuletzt bearbeitet wurde
-                  double percentageValue = 0.0;
-                  double absoluteValue = 0.0;
-
-                  if (_lastEdited == 'percentage') {
-                    percentageValue = double.tryParse(percentageController.text) ?? 0;
-                    absoluteValue = 0.0;
-                  } else {
-                    // Bei 'absolute' oder 'target' speichern wir den absoluten Wert
-                    absoluteValue = double.tryParse(absoluteController.text) ?? 0;
-                    if (currency != 'CHF') {
-                      absoluteValue = absoluteValue / _exchangeRates[currency]!;
-                    }
-                    percentageValue = 0.0;
-                  }
-
-                  setState(() {
-                    _itemDiscounts[itemId] = Discount(
-                      percentage: percentageValue,
-                      absolute: absoluteValue,
-                    );
-                  });
-
-                  await FirebaseFirestore.instance
-                      .collection('temporary_basket')
-                      .doc(itemId)
-                      .update({
-                    'discount': {
-                      'percentage': percentageValue,
-                      'absolute': absoluteValue,
-                    },
-                    'discount_timestamp': FieldValue.serverTimestamp(),
-                  });
-
-                  percentageController.dispose();
-                  absoluteController.dispose();
-                  targetAmountController.dispose();
-                  Navigator.pop(context);
-                },
-                child: const Text('Übernehmen'),
-              );
-            },
-          ),
-        ],
+      barrierDismissible: true,
+      builder: (context) => ItemDiscountDialog(
+        itemId: itemId,
+        originalAmount: originalAmount,
+        currentDiscount: _itemDiscounts[itemId],
+        currency: _selectedCurrency,
+        exchangeRates: _exchangeRates,
+        formatPrice: _formatPrice,
       ),
     );
-  }
 
+    // Nur lokalen Cache aktualisieren wenn ein Ergebnis zurückkommt
+    // KEIN setState - der StreamBuilder aktualisiert die UI
+    if (result != null) {
+      _itemDiscounts[itemId] = result;
+    }
+  }
   void _showTotalDiscountDialog() {
     bool distributeToItems = false; // Neue Variable am Anfang der Methode
     // Konvertiere den absoluten Wert von CHF in die aktuelle Währung für die Anzeige
@@ -8652,6 +8662,9 @@ Widget _buildSelectedProductInfo() {
 
 @override
 void dispose() {
+  CustomerCacheService.removeOnCustomerUpdatedListener(_onCustomerUpdated);
+  CustomerCacheService.removeOnCustomerDeletedListener(_onCustomerDeleted);
+
   _currencyNotifier.dispose();
   _exchangeRatesNotifier.dispose();
   _taxOptionNotifier.dispose();

@@ -19,6 +19,10 @@ class OrderDocumentPreviewManager {
     required OrderX order,
     required String documentType,
   }) async {
+    print('=== showDocumentPreview RECEIVED ===');
+    print('order.id: ${order.id}');
+    print('order.costCenter: ${order.costCenter}');
+    print('====================================');
     try {
       // Zeige Loading-Dialog
       showDialog(
@@ -89,8 +93,13 @@ class OrderDocumentPreviewManager {
   // Lade Auftragsdaten
   static Future<Map<String, dynamic>?> _loadOrderData(OrderX order) async {
     try {
-      // Lade zusätzliche Daten falls nötig
       final metadata = order.metadata;
+
+      // DEBUG
+      print('=== _loadOrderData DEBUG ===');
+      print('Order ID: ${order.id}');
+      print('Order costCenter: ${order.costCenter}');
+      print('Metadata: $metadata');
 
       // Lade Quote-Daten falls vorhanden
       Map<String, dynamic>? quoteData;
@@ -104,17 +113,21 @@ class OrderDocumentPreviewManager {
         }
       }
 
-      // Lade Kostenstelle falls in Quote
-      Map<String, dynamic>? costCenter;
-      if (quoteData != null && quoteData['costCenter'] != null) {
+      // CostCenter: Erst aus Order, dann Fallback auf Quote
+      Map<String, dynamic>? costCenter = order.costCenter;  // NEU: Direkt aus Order
+      if (costCenter == null && quoteData != null && quoteData['costCenter'] != null) {
         costCenter = quoteData['costCenter'];
       }
+      print('Final costCenter: $costCenter');
 
-      // Lade Messe falls in Quote
-      Map<String, dynamic>? fair;
-      if (quoteData != null && quoteData['fair'] != null) {
+      // Fair: Erst aus Metadata, dann aus Quote
+      Map<String, dynamic>? fair = metadata['fairData'] as Map<String, dynamic>?;
+      if (fair == null && quoteData != null && quoteData['fair'] != null) {
         fair = quoteData['fair'];
       }
+      print('Final fair: $fair');
+
+      print('=== END _loadOrderData DEBUG ===');
 
       return {
         'order': order,
@@ -131,7 +144,6 @@ class OrderDocumentPreviewManager {
       return null;
     }
   }
-
   // Preview für Angebot
   static Future<void> _showQuotePreview(
       BuildContext context,
@@ -591,6 +603,7 @@ class OrderDocumentPreviewManager {
 
       // NEU: Lade Verpackungsgewicht aus Packliste
       double packagingWeight = 0.0;
+      double packagingVolume = 0.0;
       int numberOfPackages = settings['number_of_packages'] ?? 1;
 
       try {
@@ -608,6 +621,15 @@ class OrderDocumentPreviewManager {
             numberOfPackages = packages.length;
             for (final package in packages) {
               packagingWeight += (package['tare_weight'] as num?)?.toDouble() ?? 0.0;
+
+              final width = (package['width'] as num?)?.toDouble() ?? 0.0;
+              final height = (package['height'] as num?)?.toDouble() ?? 0.0;
+              final length = (package['length'] as num?)?.toDouble() ?? 0.0;
+
+              // cm³ zu m³: dividiere durch 1.000.000 (10^6)
+
+              final volumeM3 = (width * height * length) / 1000000; // in m³
+              packagingVolume += volumeM3;
             }
           }
         }
@@ -618,7 +640,7 @@ class OrderDocumentPreviewManager {
       // Überschreibe mit Werten aus Packliste
       settings['number_of_packages'] = numberOfPackages;
       settings['packaging_weight'] = packagingWeight;
-
+      settings['packaging_volume'] = packagingVolume;
       return settings;
     } catch (e) {
       print('Fehler beim Laden der Tara-Einstellungen: $e');

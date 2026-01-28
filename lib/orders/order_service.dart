@@ -279,7 +279,7 @@ class OrderService {
 
         case 'lieferschein':
         case 'delivery note':
-          filePrefix = 'delivery-note';
+          filePrefix = 'delivery_note';
           pdfBytes = await DeliveryNoteGenerator.generateDeliveryNotePdf(
             items: orderData['items'],
             customerData: orderData['customer'],
@@ -297,7 +297,7 @@ class OrderService {
 
         case 'handelsrechnung':
         case 'commercial invoice':
-          filePrefix = 'commercial-invoice';
+          filePrefix = 'commercial_invoice';
           final taraSettings = metadata['taraSettings'] as Map<String, dynamic>? ?? {};
 
           pdfBytes = await CommercialInvoiceGenerator.generateCommercialInvoicePdf(
@@ -321,7 +321,7 @@ class OrderService {
 
         case 'packliste':
         case 'packing list':
-          filePrefix = 'packing-list';
+          filePrefix = 'packing_list';
           pdfBytes = await PackingListGenerator.generatePackingListPdf(
             language: language,
             packingListNumber: orderNumber,
