@@ -9,6 +9,22 @@ import 'base_pdf_generator.dart';
 
 class PackingListGenerator extends BasePdfGenerator {
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEU: Helper-Funktion für Spaltenausrichtung
+  // ═══════════════════════════════════════════════════════════════════════════
+  static pw.TextAlign _getTextAlign(String alignment) {
+    switch (alignment) {
+      case 'left':
+        return pw.TextAlign.left;
+      case 'center':
+        return pw.TextAlign.center;
+      case 'right':
+        return pw.TextAlign.right;
+      default:
+        return pw.TextAlign.left;
+    }
+  }
+
   // Erstelle eine neue Packliste-Nummer
   static Future<String> getNextPackingListNumber() async {
     try {
@@ -59,6 +75,9 @@ class PackingListGenerator extends BasePdfGenerator {
 
     // NEU: Lade Adress-Anzeigemodus
     final addressMode = await PdfSettingsHelper.getAddressDisplayMode('packing_list');
+
+    // NEU: Lade Spaltenausrichtungen
+    final columnAlignments = await PdfSettingsHelper.getColumnAlignments('packing_list');
 
     // Lade Packliste-Einstellungen
     Map<String, dynamic> packingSettings;
@@ -345,8 +364,8 @@ class PackingListGenerator extends BasePdfGenerator {
             content.add(_buildPackageHeader(package, language, i + 1, getTranslation));
             content.add(pw.SizedBox(height: 10));
 
-            // Paket-Tabelle - NEU: standardVolumeCache hinzugefügt
-            content.add(_buildPackageTable(package, packageItems, language, getTranslation, woodTypeCache, measurementsCache, standardVolumeCache));
+            // Paket-Tabelle - NEU: columnAlignments hinzugefügt
+            content.add(_buildPackageTable(package, packageItems, language, getTranslation, woodTypeCache, measurementsCache, standardVolumeCache, columnAlignments));
             content.add(pw.SizedBox(height: 20));
           }
 
@@ -441,6 +460,7 @@ class PackingListGenerator extends BasePdfGenerator {
       Map<String, Map<String, dynamic>> woodTypeCache,
       Map<String, Map<String, dynamic>> measurementsCache,
       Map<String, Map<String, dynamic>> standardVolumeCache,
+      Map<String, String> columnAlignments, // NEU: columnAlignments Parameter
       ) {
     double packageNetWeight = 0.0;
     double packageNetVolume = 0.0;
@@ -454,19 +474,30 @@ class PackingListGenerator extends BasePdfGenerator {
 
     final List<pw.TableRow> rows = [];
 
-    // Header-Zeile
+    // NEU: Ausrichtungen holen (Packing List hat eigene Spalten)
+    final productAlign = _getTextAlign(columnAlignments['product'] ?? 'left');
+    final qualityAlign = _getTextAlign(columnAlignments['quality'] ?? 'left');
+    final qtyAlign = _getTextAlign(columnAlignments['quantity'] ?? 'right');
+    final unitAlign = _getTextAlign(columnAlignments['unit'] ?? 'center');
+    // Packing List spezifische Spalten - verwende Standard-Defaults
+    final weightPcAlign = _getTextAlign(columnAlignments['weight_pc'] ?? 'right');
+    final volumePcAlign = _getTextAlign(columnAlignments['volume_pc'] ?? 'right');
+    final totalWeightAlign = _getTextAlign(columnAlignments['total_weight'] ?? 'right');
+    final totalVolumeAlign = _getTextAlign(columnAlignments['total_volume'] ?? 'right');
+
+    // Header-Zeile - NEU: mit align Parameter
     rows.add(
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: PdfColors.blueGrey50),
         children: [
-          BasePdfGenerator.buildHeaderCell(getTranslation('product'), 8),
-          BasePdfGenerator.buildHeaderCell(getTranslation('quality'), 8),
-          BasePdfGenerator.buildHeaderCell(getTranslation('qty'), 8, align: pw.TextAlign.left),
-          BasePdfGenerator.buildHeaderCell(getTranslation('unit'), 8),
-          BasePdfGenerator.buildHeaderCell(getTranslation('weight_pc'), 8, align: pw.TextAlign.left),
-          BasePdfGenerator.buildHeaderCell(getTranslation('volume_pc'), 8, align: pw.TextAlign.left),
-          BasePdfGenerator.buildHeaderCell(getTranslation('total_weight'), 8, align: pw.TextAlign.right),
-          BasePdfGenerator.buildHeaderCell(getTranslation('total_volume'), 8, align: pw.TextAlign.right),
+          BasePdfGenerator.buildHeaderCell(getTranslation('product'), 8, align: productAlign),
+          BasePdfGenerator.buildHeaderCell(getTranslation('quality'), 8, align: qualityAlign),
+          BasePdfGenerator.buildHeaderCell(getTranslation('qty'), 8, align: qtyAlign),
+          BasePdfGenerator.buildHeaderCell(getTranslation('unit'), 8, align: unitAlign),
+          BasePdfGenerator.buildHeaderCell(getTranslation('weight_pc'), 8, align: weightPcAlign),
+          BasePdfGenerator.buildHeaderCell(getTranslation('volume_pc'), 8, align: volumePcAlign),
+          BasePdfGenerator.buildHeaderCell(getTranslation('total_weight'), 8, align: totalWeightAlign),
+          BasePdfGenerator.buildHeaderCell(getTranslation('total_volume'), 8, align: totalVolumeAlign),
         ],
       ),
     );
@@ -593,19 +624,21 @@ class PackingListGenerator extends BasePdfGenerator {
 
       print("item:$item");
 
+      // NEU: Alle Zellen mit textAlign
       rows.add(
         pw.TableRow(
           children: [
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                  (language == 'EN' ? item['product_name_en'] : item['product_name']) ??
-                      (language == 'EN' ? item['part_name_en'] : item['part_name']) ??
-                      '',
-                  style: const pw.TextStyle(fontSize: 8)
+                (language == 'EN' ? item['product_name_en'] : item['product_name']) ??
+                    (language == 'EN' ? item['part_name_en'] : item['part_name']) ??
+                    '',
+                style: const pw.TextStyle(fontSize: 8),
+                textAlign: productAlign,
               ),
             ),
             BasePdfGenerator.buildContentCell(
-              pw.Text(quality, style: const pw.TextStyle(fontSize: 8)),
+              pw.Text(quality, style: const pw.TextStyle(fontSize: 8), textAlign: qualityAlign),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
@@ -613,38 +646,38 @@ class PackingListGenerator extends BasePdfGenerator {
                     ? quantity.toStringAsFixed(3)
                     : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
                 style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.left,
+                textAlign: qtyAlign,
               ),
             ),
             BasePdfGenerator.buildContentCell(
-              pw.Text(unit, style: const pw.TextStyle(fontSize: 8)),
+              pw.Text(unit, style: const pw.TextStyle(fontSize: 8), textAlign: unitAlign),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 weightPerPieceText,
                 style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.left,
+                textAlign: weightPcAlign,
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 volumePerPieceText,
                 style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.left,
+                textAlign: volumePcAlign,
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 '${totalWeight.toStringAsFixed(2)} kg',
                 style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.right,
+                textAlign: totalWeightAlign,
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 '${totalVolume.toStringAsFixed(4)} m³',
                 style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.right,
+                textAlign: totalVolumeAlign,
               ),
             ),
           ],
@@ -669,12 +702,12 @@ class PackingListGenerator extends BasePdfGenerator {
           BasePdfGenerator.buildContentCell(
             pw.Text('${packageNetWeight.toStringAsFixed(2)} kg',
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
-                textAlign: pw.TextAlign.right),
+                textAlign: totalWeightAlign),
           ),
           BasePdfGenerator.buildContentCell(
             pw.Text('${packageNetVolume.toStringAsFixed(4)} m³',
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
-                textAlign: pw.TextAlign.right),
+                textAlign: totalVolumeAlign),
           ),
         ],
       ),
@@ -696,12 +729,12 @@ class PackingListGenerator extends BasePdfGenerator {
           BasePdfGenerator.buildContentCell(
             pw.Text('${(packageNetWeight + tareWeight).toStringAsFixed(2)} kg',
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
-                textAlign: pw.TextAlign.right),
+                textAlign: totalWeightAlign),
           ),
           BasePdfGenerator.buildContentCell(
             pw.Text('${(packageNetVolume+grossVolume).toStringAsFixed(4)} m³',
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
-                textAlign: pw.TextAlign.right),
+                textAlign: totalVolumeAlign),
           ),
         ],
       ),

@@ -13,6 +13,149 @@ enum AddressDisplayMode {
   shippingOnly,   // Nur Lieferadresse
 }
 
+/// Enum für Spaltenausrichtung
+enum ColumnAlignment {
+  left,
+  center,
+  right,
+}
+
+/// Konstanten für PDF-Typen
+class PdfDocumentType {
+  static const String quote = 'quote';
+  static const String invoice = 'invoice';
+  static const String commercialInvoice = 'commercial_invoice';
+  static const String deliveryNote = 'delivery_note';
+  static const String packingList = 'packing_list';
+
+  static const List<String> all = [
+    quote,
+    invoice,
+    commercialInvoice,
+    deliveryNote,
+    packingList,
+  ];
+
+  static String getDisplayName(String type) {
+    switch (type) {
+      case quote:
+        return 'Offerte';
+      case invoice:
+        return 'Rechnung';
+      case commercialInvoice:
+        return 'Handelsrechnung';
+      case deliveryNote:
+        return 'Lieferschein';
+      case packingList:
+        return 'Packliste';
+      default:
+        return type;
+    }
+  }
+
+  static IconData getIcon(String type) {
+    switch (type) {
+      case quote:
+        return Icons.description;
+      case invoice:
+        return Icons.receipt_long;
+      case commercialInvoice:
+        return Icons.account_balance;
+      case deliveryNote:
+        return Icons.local_shipping;
+      case packingList:
+        return Icons.inventory_2;
+      default:
+        return Icons.article;
+    }
+  }
+}
+
+/// Spalten-Definitionen pro PDF-Typ
+class PdfColumnDefinitions {
+  /// Spalten für Offerte/Rechnung/Handelsrechnung (mit Preisen)
+  static const List<Map<String, String>> priceColumns = [
+    {'key': 'product', 'label_de': 'Produkt', 'label_en': 'Product'},
+    {'key': 'instrument', 'label_de': 'Instrument', 'label_en': 'Instrument'},
+    {'key': 'quality', 'label_de': 'Qualität', 'label_en': 'Quality'},
+    {'key': 'fsc', 'label_de': 'FSC®', 'label_en': 'FSC®'},
+    {'key': 'origin', 'label_de': 'Ursprung', 'label_en': 'Origin'},
+    {'key': 'thermal', 'label_de': '°C (Thermo)', 'label_en': '°C (Thermal)'},
+    {'key': 'dimensions', 'label_de': 'Masse', 'label_en': 'Dimensions'},
+    {'key': 'parts', 'label_de': 'Teile', 'label_en': 'Parts'},
+    {'key': 'quantity', 'label_de': 'Anzahl', 'label_en': 'Quantity'},
+    {'key': 'unit', 'label_de': 'Einheit', 'label_en': 'Unit'},
+    {'key': 'price_per_unit', 'label_de': 'Preis/Einheit', 'label_en': 'Price/Unit'},
+    {'key': 'total', 'label_de': 'Gesamt', 'label_en': 'Total'},
+    {'key': 'discount', 'label_de': 'Rabatt', 'label_en': 'Discount'},
+    {'key': 'net_total', 'label_de': 'Netto Gesamt', 'label_en': 'Net Total'},
+  ];
+
+  /// Spalten für Lieferschein (ohne Preise)
+  static const List<Map<String, String>> deliveryNoteColumns = [
+    {'key': 'product', 'label_de': 'Produkt', 'label_en': 'Product'},
+    {'key': 'instrument', 'label_de': 'Instrument', 'label_en': 'Instrument'},
+    {'key': 'quality', 'label_de': 'Qualität', 'label_en': 'Quality'},
+    {'key': 'fsc', 'label_de': 'FSC®', 'label_en': 'FSC®'},
+    {'key': 'origin', 'label_de': 'Ursprung', 'label_en': 'Origin'},
+    {'key': 'thermal', 'label_de': '°C (Thermo)', 'label_en': '°C (Thermal)'},
+    {'key': 'quantity', 'label_de': 'Anzahl', 'label_en': 'Quantity'},
+    {'key': 'unit', 'label_de': 'Einheit', 'label_en': 'Unit'},
+  ];
+
+  /// Spalten für Packliste (Gewicht/Volumen)
+  static const List<Map<String, String>> packingListColumns = [
+    {'key': 'product', 'label_de': 'Produkt', 'label_en': 'Product'},
+    {'key': 'quality', 'label_de': 'Qualität', 'label_en': 'Quality'},
+    {'key': 'quantity', 'label_de': 'Anzahl', 'label_en': 'Quantity'},
+    {'key': 'unit', 'label_de': 'Einheit', 'label_en': 'Unit'},
+    {'key': 'weight_pc', 'label_de': 'Gewicht/Stk', 'label_en': 'Weight/pc'},
+    {'key': 'volume_pc', 'label_de': 'Volumen/Stk', 'label_en': 'Volume/pc'},
+    {'key': 'total_weight', 'label_de': 'Gesamt Gewicht', 'label_en': 'Total Weight'},
+    {'key': 'total_volume', 'label_de': 'Gesamt Volumen', 'label_en': 'Total Volume'},
+  ];
+
+  static List<Map<String, String>> getColumnsForType(String documentType) {
+    switch (documentType) {
+      case PdfDocumentType.quote:
+      case PdfDocumentType.invoice:
+      case PdfDocumentType.commercialInvoice:
+        return priceColumns;
+      case PdfDocumentType.deliveryNote:
+        return deliveryNoteColumns;
+      case PdfDocumentType.packingList:
+        return packingListColumns;
+      default:
+        return priceColumns;
+    }
+  }
+
+  /// Standard-Ausrichtungen (typisch: Text links, Zahlen rechts)
+  static Map<String, ColumnAlignment> getDefaultAlignments(String documentType) {
+    final columns = getColumnsForType(documentType);
+    final Map<String, ColumnAlignment> defaults = {};
+
+    for (final col in columns) {
+      final key = col['key']!;
+      // Zahlen-Spalten standardmäßig rechts
+      if (['quantity', 'price_per_unit', 'total', 'discount', 'net_total',
+        'weight_pc', 'volume_pc', 'total_weight', 'total_volume'].contains(key)) {
+        defaults[key] = ColumnAlignment.right;
+      }
+      // Zentrierte Spalten
+      else if (['thermal', 'parts', 'unit'].contains(key)) {
+        defaults[key] = ColumnAlignment.center;
+      }
+      // Rest linksbündig
+      else {
+        defaults[key] = ColumnAlignment.left;
+      }
+    }
+
+    return defaults;
+  }
+}
+
 class PdfSettingsScreen extends StatefulWidget {
   const PdfSettingsScreen({Key? key}) : super(key: key);
 
@@ -20,27 +163,47 @@ class PdfSettingsScreen extends StatefulWidget {
   State<PdfSettingsScreen> createState() => _PdfSettingsScreenState();
 }
 
-class _PdfSettingsScreenState extends State<PdfSettingsScreen> {
+class _PdfSettingsScreenState extends State<PdfSettingsScreen> with SingleTickerProviderStateMixin {
   bool _isLoading = true;
 
   // Lieferschein Einstellungen
   double _deliveryNoteAddressEmailSpacing = 6.0;
 
-  // NEU: Adressanzeige-Einstellungen pro Dokumenttyp
+  // Adressanzeige-Einstellungen pro Dokumenttyp
   AddressDisplayMode _quoteAddressMode = AddressDisplayMode.both;
   AddressDisplayMode _invoiceAddressMode = AddressDisplayMode.both;
   AddressDisplayMode _commercialInvoiceAddressMode = AddressDisplayMode.both;
   AddressDisplayMode _deliveryNoteAddressMode = AddressDisplayMode.shippingOnly;
   AddressDisplayMode _packingListAddressMode = AddressDisplayMode.shippingOnly;
 
-  // NEU: Test-Kunde für Vorschau
+  // NEU: Spaltenausrichtungen pro PDF-Typ
+  Map<String, Map<String, ColumnAlignment>> _columnAlignments = {};
+
+  // Test-Kunde für Vorschau
   Customer? _testCustomer;
   bool _isLoadingCustomer = false;
+
+  // Tab-Controller für Spaltenausrichtung
+  late TabController _alignmentTabController;
 
   @override
   void initState() {
     super.initState();
+    _alignmentTabController = TabController(length: 5, vsync: this);
+    _initializeDefaultAlignments();
     _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    _alignmentTabController.dispose();
+    super.dispose();
+  }
+
+  void _initializeDefaultAlignments() {
+    for (final docType in PdfDocumentType.all) {
+      _columnAlignments[docType] = PdfColumnDefinitions.getDefaultAlignments(docType);
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -62,6 +225,19 @@ class _PdfSettingsScreenState extends State<PdfSettingsScreen> {
           _commercialInvoiceAddressMode = _parseAddressMode(data['commercial_invoice_address_mode']);
           _deliveryNoteAddressMode = _parseAddressMode(data['delivery_note_address_mode'], defaultMode: AddressDisplayMode.shippingOnly);
           _packingListAddressMode = _parseAddressMode(data['packing_list_address_mode'], defaultMode: AddressDisplayMode.shippingOnly);
+
+          // NEU: Spaltenausrichtungen laden
+          final savedAlignments = data['column_alignments'] as Map<String, dynamic>?;
+          if (savedAlignments != null) {
+            for (final docType in PdfDocumentType.all) {
+              final docAlignments = savedAlignments[docType] as Map<String, dynamic>?;
+              if (docAlignments != null) {
+                for (final entry in docAlignments.entries) {
+                  _columnAlignments[docType]?[entry.key] = _parseColumnAlignment(entry.value as String?);
+                }
+              }
+            }
+          }
         });
       }
     } catch (e) {
@@ -98,8 +274,42 @@ class _PdfSettingsScreenState extends State<PdfSettingsScreen> {
     }
   }
 
+  ColumnAlignment _parseColumnAlignment(String? value) {
+    if (value == null) return ColumnAlignment.left;
+    switch (value) {
+      case 'left':
+        return ColumnAlignment.left;
+      case 'center':
+        return ColumnAlignment.center;
+      case 'right':
+        return ColumnAlignment.right;
+      default:
+        return ColumnAlignment.left;
+    }
+  }
+
+  String _columnAlignmentToString(ColumnAlignment alignment) {
+    switch (alignment) {
+      case ColumnAlignment.left:
+        return 'left';
+      case ColumnAlignment.center:
+        return 'center';
+      case ColumnAlignment.right:
+        return 'right';
+    }
+  }
+
   Future<void> _saveSettings() async {
     try {
+      // Spaltenausrichtungen für Firebase vorbereiten
+      final Map<String, Map<String, String>> alignmentsForSave = {};
+      for (final docType in PdfDocumentType.all) {
+        alignmentsForSave[docType] = {};
+        _columnAlignments[docType]?.forEach((key, value) {
+          alignmentsForSave[docType]![key] = _columnAlignmentToString(value);
+        });
+      }
+
       await FirebaseFirestore.instance
           .collection('general_data')
           .doc('pdf_settings')
@@ -111,6 +321,8 @@ class _PdfSettingsScreenState extends State<PdfSettingsScreen> {
         'commercial_invoice_address_mode': _addressModeToString(_commercialInvoiceAddressMode),
         'delivery_note_address_mode': _addressModeToString(_deliveryNoteAddressMode),
         'packing_list_address_mode': _addressModeToString(_packingListAddressMode),
+        // NEU: Spaltenausrichtungen speichern
+        'column_alignments': alignmentsForSave,
         'updated_at': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
@@ -160,6 +372,18 @@ class _PdfSettingsScreenState extends State<PdfSettingsScreen> {
         _testCustomer = selected;
       });
     }
+  }
+
+  void _resetAlignmentsForType(String documentType) {
+    setState(() {
+      _columnAlignments[documentType] = PdfColumnDefinitions.getDefaultAlignments(documentType);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Ausrichtungen für ${PdfDocumentType.getDisplayName(documentType)} zurückgesetzt'),
+        backgroundColor: Colors.orange,
+      ),
+    );
   }
 
   @override
@@ -213,7 +437,7 @@ class _PdfSettingsScreenState extends State<PdfSettingsScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Hier kannst du die Abstände, Positionierungen und Adressanzeigen in den PDF-Dokumenten anpassen.',
+                      'Hier kannst du die Abstände, Positionierungen, Adressanzeigen und Spaltenausrichtungen in den PDF-Dokumenten anpassen.',
                       style: TextStyle(
                         fontSize: 13,
                         color: Theme.of(context).colorScheme.onPrimaryContainer,
@@ -226,7 +450,51 @@ class _PdfSettingsScreenState extends State<PdfSettingsScreen> {
 
             const SizedBox(height: 24),
 
-            // NEU: Adressanzeige-Einstellungen Sektion
+            // ═══════════════════════════════════════════════════════════
+            // NEU: Spaltenausrichtung Sektion
+            // ═══════════════════════════════════════════════════════════
+            _buildSectionHeader(
+              context,
+              'Spaltenausrichtung in PDFs',
+              Icons.format_align_left,
+            ),
+
+            const SizedBox(height: 8),
+
+            // Erklärungstext
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.lightbulb_outline, color: Colors.blue.shade700, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Lege fest, ob die Spalten in den PDF-Tabellen linksbündig, zentriert oder rechtsbündig dargestellt werden sollen. '
+                          'Typischerweise sind Texte linksbündig und Zahlen rechtsbündig.',
+                      style: TextStyle(fontSize: 12, color: Colors.blue.shade900),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Tabs für die verschiedenen PDF-Typen
+            _buildColumnAlignmentSection(context),
+
+            const SizedBox(height: 32),
+
+            // ═══════════════════════════════════════════════════════════
+            // Adressanzeige-Einstellungen Sektion (bestehend)
+            // ═══════════════════════════════════════════════════════════
             _buildSectionHeader(
               context,
               'Adressanzeige in PDFs',
@@ -291,8 +559,8 @@ class _PdfSettingsScreenState extends State<PdfSettingsScreen> {
               title: 'Lieferschein',
               icon: Icons.local_shipping,
               mode: _deliveryNoteAddressMode,
-              onChanged: null, // NEU: null = deaktiviert
-              disabledHint: 'Fenstertaschen-Layout', // NEU
+              onChanged: null, // deaktiviert
+              disabledHint: 'Fenstertaschen-Layout',
             ),
 
             _buildAddressModeCard(
@@ -353,6 +621,262 @@ class _PdfSettingsScreenState extends State<PdfSettingsScreen> {
       ),
     );
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEU: Spaltenausrichtung Widget
+  // ═══════════════════════════════════════════════════════════════════════════
+  Widget _buildColumnAlignmentSection(BuildContext context) {
+    return Card(
+      child: Column(
+        children: [
+          // Tab-Bar
+          Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+            ),
+            child: TabBar(
+              controller: _alignmentTabController,
+              isScrollable: true,
+              labelColor: Theme.of(context).colorScheme.primary,
+              unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+              indicatorColor: Theme.of(context).colorScheme.primary,
+              tabs: PdfDocumentType.all.map((type) {
+                return Tab(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(PdfDocumentType.getIcon(type), size: 18),
+                      const SizedBox(width: 6),
+                      Text(PdfDocumentType.getDisplayName(type)),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+
+          // Tab-Inhalt
+          SizedBox(
+            height: 450, // Feste Höhe für den Tab-Inhalt
+            child: TabBarView(
+              controller: _alignmentTabController,
+              children: PdfDocumentType.all.map((docType) {
+                return _buildAlignmentList(context, docType);
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAlignmentList(BuildContext context, String documentType) {
+    final columns = PdfColumnDefinitions.getColumnsForType(documentType);
+    final alignments = _columnAlignments[documentType] ?? {};
+
+    return Column(
+      children: [
+        // Reset-Button
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${columns.length} Spalten',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () => _resetAlignmentsForType(documentType),
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Auf Standard zurücksetzen'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.secondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+
+        // Spalten-Liste
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: columns.length,
+            separatorBuilder: (context, index) => const Divider(height: 1, indent: 16, endIndent: 16),
+            itemBuilder: (context, index) {
+              final column = columns[index];
+              final key = column['key']!;
+              final label = column['label_de']!;
+              final currentAlignment = alignments[key] ?? ColumnAlignment.left;
+
+              return _buildAlignmentRow(
+                context,
+                label: label,
+                columnKey: key,
+                documentType: documentType,
+                currentAlignment: currentAlignment,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAlignmentRow(
+      BuildContext context, {
+        required String label,
+        required String columnKey,
+        required String documentType,
+        required ColumnAlignment currentAlignment,
+      }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          // Spaltenname
+          Expanded(
+            flex: 2,
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Center(
+                    child: _getAlignmentIcon(currentAlignment, Theme.of(context).colorScheme.primary),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Ausrichtungs-Buttons (Toggle-Gruppe)
+          Expanded(
+            flex: 1,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildAlignmentToggleButton(
+                    context,
+                    alignment: ColumnAlignment.left,
+                    currentAlignment: currentAlignment,
+                    icon: Icons.format_align_left,
+                    isFirst: true,
+                    onTap: () => _setAlignment(documentType, columnKey, ColumnAlignment.left),
+                  ),
+                  _buildAlignmentToggleButton(
+                    context,
+                    alignment: ColumnAlignment.center,
+                    currentAlignment: currentAlignment,
+                    icon: Icons.format_align_center,
+                    onTap: () => _setAlignment(documentType, columnKey, ColumnAlignment.center),
+                  ),
+                  _buildAlignmentToggleButton(
+                    context,
+                    alignment: ColumnAlignment.right,
+                    currentAlignment: currentAlignment,
+                    icon: Icons.format_align_right,
+                    isLast: true,
+                    onTap: () => _setAlignment(documentType, columnKey, ColumnAlignment.right),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAlignmentToggleButton(
+      BuildContext context, {
+        required ColumnAlignment alignment,
+        required ColumnAlignment currentAlignment,
+        required IconData icon,
+        required VoidCallback onTap,
+        bool isFirst = false,
+        bool isLast = false,
+      }) {
+    final isSelected = alignment == currentAlignment;
+
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.horizontal(
+          left: isFirst ? const Radius.circular(7) : Radius.zero,
+          right: isLast ? const Radius.circular(7) : Radius.zero,
+        ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
+                : Colors.transparent,
+            borderRadius: BorderRadius.horizontal(
+              left: isFirst ? const Radius.circular(7) : Radius.zero,
+              right: isLast ? const Radius.circular(7) : Radius.zero,
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Icon _getAlignmentIcon(ColumnAlignment alignment, Color color) {
+    switch (alignment) {
+      case ColumnAlignment.left:
+        return Icon(Icons.format_align_left, size: 16, color: color);
+      case ColumnAlignment.center:
+        return Icon(Icons.format_align_center, size: 16, color: color);
+      case ColumnAlignment.right:
+        return Icon(Icons.format_align_right, size: 16, color: color);
+    }
+  }
+
+  void _setAlignment(String documentType, String columnKey, ColumnAlignment alignment) {
+    setState(() {
+      _columnAlignments[documentType] ??= {};
+      _columnAlignments[documentType]![columnKey] = alignment;
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Bestehende Widgets (leicht angepasst)
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Widget _buildAddressModeCard(
       BuildContext context, {
@@ -1218,5 +1742,78 @@ class PdfSettingsHelper {
   static Future<bool> shouldShowShippingOnly(String documentType) async {
     final mode = await getAddressDisplayMode(documentType);
     return mode == 'shipping_only';
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEU: Spaltenausrichtungs-Helper
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Lädt alle Spaltenausrichtungen für einen Dokumenttyp
+  static Future<Map<String, String>> getColumnAlignments(String documentType) async {
+    final settings = await loadPdfSettings();
+    final alignments = settings['column_alignments'] as Map<String, dynamic>?;
+
+    if (alignments == null || alignments[documentType] == null) {
+      // Standard-Werte zurückgeben
+      return _getDefaultAlignmentStrings(documentType);
+    }
+
+    final docAlignments = alignments[documentType] as Map<String, dynamic>;
+    return docAlignments.map((key, value) => MapEntry(key, value.toString()));
+  }
+
+  /// Gibt die Ausrichtung für eine spezifische Spalte zurück
+  static Future<String> getColumnAlignment(String documentType, String columnKey) async {
+    final alignments = await getColumnAlignments(documentType);
+    return alignments[columnKey] ?? _getDefaultAlignment(columnKey);
+  }
+
+  /// Konvertiert String-Ausrichtung zu pw.TextAlign
+  static dynamic toPdfTextAlign(String alignment) {
+    // Diese Funktion wird im Generator verwendet
+    // Rückgabe als String, da pw.TextAlign dort importiert wird
+    switch (alignment) {
+      case 'left':
+        return 'left';
+      case 'center':
+        return 'center';
+      case 'right':
+        return 'right';
+      default:
+        return 'left';
+    }
+  }
+
+  static Map<String, String> _getDefaultAlignmentStrings(String documentType) {
+    final Map<String, String> defaults = {};
+    List<String> columns;
+
+    if (documentType == 'delivery_note') {
+      columns = ['product', 'instrument', 'quality', 'fsc', 'origin', 'thermal', 'quantity', 'unit'];
+    } else if (documentType == 'packing_list') {
+      columns = ['product', 'quality', 'quantity', 'unit', 'weight_pc', 'volume_pc', 'total_weight', 'total_volume'];
+    } else {
+      columns = ['product', 'instrument', 'quality', 'fsc', 'origin', 'thermal', 'dimensions', 'parts', 'quantity', 'unit', 'price_per_unit', 'total', 'discount', 'net_total'];
+    }
+
+    for (final col in columns) {
+      defaults[col] = _getDefaultAlignment(col);
+    }
+
+    return defaults;
+  }
+
+  static String _getDefaultAlignment(String columnKey) {
+    // Zahlen-Spalten standardmäßig rechts
+    if (['quantity', 'price_per_unit', 'total', 'discount', 'net_total',
+      'weight_pc', 'volume_pc', 'total_weight', 'total_volume'].contains(columnKey)) {
+      return 'right';
+    }
+    // Zentrierte Spalten
+    if (['thermal', 'parts', 'unit'].contains(columnKey)) {
+      return 'center';
+    }
+    // Rest linksbündig
+    return 'left';
   }
 }

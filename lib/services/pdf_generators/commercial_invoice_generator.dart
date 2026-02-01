@@ -12,6 +12,22 @@ import '../additional_text_manager.dart';
 
 class CommercialInvoiceGenerator extends BasePdfGenerator {
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEU: Helper-Funktion für Spaltenausrichtung
+  // ═══════════════════════════════════════════════════════════════════════════
+  static pw.TextAlign _getTextAlign(String alignment) {
+    switch (alignment) {
+      case 'left':
+        return pw.TextAlign.left;
+      case 'center':
+        return pw.TextAlign.center;
+      case 'right':
+        return pw.TextAlign.right;
+      default:
+        return pw.TextAlign.left;
+    }
+  }
+
   // Erstelle eine neue Handelsrechnungs-Nummer
   static Future<String> getNextCommercialInvoiceNumber() async {
     try {
@@ -74,6 +90,10 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
     // NEU: Lade Adress-Anzeigemodus
     final addressMode = await PdfSettingsHelper.getAddressDisplayMode('commercial_invoice');
+
+    // NEU: Lade Spaltenausrichtungen
+    final columnAlignments = await PdfSettingsHelper.getColumnAlignments('commercial_invoice');
+
     // Gruppiere Items nach Zolltarifnummer
     // Ersetzen durch:
 // Items nach Typ trennen
@@ -139,8 +159,8 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                 logo: logo,
                 costCenter: null,
                 language: language,
-               // additionalReference:  invoiceNumber != null ? 'invoice_nr:$invoiceNumber' : null,
-               // secondaryReference: quoteNumber != null ? 'quote_nr:$quoteNumber' : null,
+                // additionalReference:  invoiceNumber != null ? 'invoice_nr:$invoiceNumber' : null,
+                // secondaryReference: quoteNumber != null ? 'quote_nr:$quoteNumber' : null,
 
               ),
               pw.SizedBox(height: 20),
@@ -175,11 +195,11 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
                     // Produkttabelle nur wenn Produkte vorhanden
                     if (productItems.isNotEmpty)
-                      _buildProductTable(groupedProductItems, currency, exchangeRates, language, taraSettings),
+                      _buildProductTable(groupedProductItems, currency, exchangeRates, language, taraSettings, columnAlignments),
 
                     // Dienstleistungstabelle nur wenn Dienstleistungen vorhanden
                     if (serviceItems.isNotEmpty)
-                      _buildServiceTable(serviceItems, currency, exchangeRates, language),
+                      _buildServiceTable(serviceItems, currency, exchangeRates, language, columnAlignments),
 
                     _buildTotalsSection(items, currency, exchangeRates, language, calculations),
 
@@ -822,16 +842,28 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     };
   }
 
-  // Nach der _buildProductTable Methode hinzufügen:
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEU: Service-Tabelle mit variablen Spaltenausrichtungen
+  // ═══════════════════════════════════════════════════════════════════════════
   static pw.Widget _buildServiceTable(
       List<Map<String, dynamic>> serviceItems,
       String currency,
       Map<String, double> exchangeRates,
-      String language) {
+      String language,
+      Map<String, String> columnAlignments) {
 
     if (serviceItems.isEmpty) return pw.SizedBox.shrink();
 
     final List<pw.TableRow> rows = [];
+
+    // NEU: Ausrichtungen holen
+    final tariffAlign = _getTextAlign(columnAlignments['tariff'] ?? 'left');
+    final productAlign = _getTextAlign(columnAlignments['product'] ?? 'left');
+    final descriptionAlign = _getTextAlign(columnAlignments['description'] ?? 'left');
+    final qtyAlign = _getTextAlign(columnAlignments['quantity'] ?? 'right');
+    final unitAlign = _getTextAlign(columnAlignments['unit'] ?? 'center');
+    final priceAlign = _getTextAlign(columnAlignments['price_per_unit'] ?? 'right');
+    final netTotalAlign = _getTextAlign(columnAlignments['net_total'] ?? 'right');
 
     // Header für Dienstleistungen
     rows.add(
@@ -839,19 +871,19 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         decoration: pw.BoxDecoration(color: PdfColors.blueGrey50),
         children: [
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Tariff No.' : 'Zolltarif', 8),
+              language == 'EN' ? 'Tariff No.' : 'Zolltarif', 8, align: tariffAlign),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Service' : 'Dienstleistung', 8),
+              language == 'EN' ? 'Service' : 'Dienstleistung', 8, align: productAlign),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Description' : 'Beschreibung', 8),
+              language == 'EN' ? 'Description' : 'Beschreibung', 8, align: descriptionAlign),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Qty' : 'Anz.', 8),
+              language == 'EN' ? 'Qty' : 'Anz.', 8, align: qtyAlign),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Unit' : 'Einh', 8),
+              language == 'EN' ? 'Unit' : 'Einh', 8, align: unitAlign),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Price/U' : 'Preis/E', 8, align: pw.TextAlign.left),
+              language == 'EN' ? 'Price/U' : 'Preis/E', 8, align: priceAlign),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Net Total' : 'Netto Gesamt', 8, align: pw.TextAlign.left),
+              language == 'EN' ? 'Net Total' : 'Netto Gesamt', 8, align: netTotalAlign),
         ],
       ),
     );
@@ -895,6 +927,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               pw.Text(
                 tariffNumber,
                 style: const pw.TextStyle(fontSize: 8),
+                textAlign: tariffAlign,
               ),
             ),
             BasePdfGenerator.buildContentCell(
@@ -903,6 +936,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                     ? (service['name_en']?.isNotEmpty == true ? service['name_en'] : service['name'] ?? 'Unnamed Service')
                     : (service['name'] ?? 'Unbenannte Dienstleistung'),
                 style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+                textAlign: productAlign,
               ),
             ),
             BasePdfGenerator.buildContentCell(
@@ -911,32 +945,35 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                     ? (service['description_en']?.isNotEmpty == true ? service['description_en'] : service['description'] ?? '')
                     : (service['description'] ?? ''),
                 style: const pw.TextStyle(fontSize: 8),
+                textAlign: descriptionAlign,
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 quantity.toStringAsFixed(0),
                 style: const pw.TextStyle(fontSize: 8),
+                textAlign: qtyAlign,
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                  language == 'EN' ? 'pcs' : 'Stk',
-                  style: const pw.TextStyle(fontSize: 8)
+                language == 'EN' ? 'pcs' : 'Stk',
+                style: const pw.TextStyle(fontSize: 8),
+                textAlign: unitAlign,
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 BasePdfGenerator.formatAmountOnly(pricePerUnit, currency, exchangeRates),
                 style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.left,
+                textAlign: priceAlign,
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
                 BasePdfGenerator.formatAmountOnly(total, currency, exchangeRates),
                 style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.left,
+                textAlign: netTotalAlign,
               ),
             ),
           ],
@@ -965,7 +1002,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             child: pw.Text(
               BasePdfGenerator.formatAmountOnly(totalAmount, currency, exchangeRates),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
-              textAlign: pw.TextAlign.left,
+              textAlign: netTotalAlign,
             ),
           ),
         ],
@@ -1001,17 +1038,34 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       ],
     );
   }
-// 2. ERSETZE die bestehende _buildProductTable Methode mit dieser:
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEU: Produkt-Tabelle mit variablen Spaltenausrichtungen
+  // ═══════════════════════════════════════════════════════════════════════════
   static pw.Widget _buildProductTable(
       Map<String, List<Map<String, dynamic>>> groupedItems,
       String currency,
       Map<String, double> exchangeRates,
       String language,
-      Map<String, dynamic>? taraSettings) {
+      Map<String, dynamic>? taraSettings,
+      Map<String, String> columnAlignments) {
 
     final List<pw.TableRow> rows = [];
     double totalVolume = 0.0;
     double totalWeight = 0.0;
+
+    // NEU: Ausrichtungen holen
+    final tariffAlign = _getTextAlign(columnAlignments['tariff'] ?? 'left');
+    final productAlign = _getTextAlign(columnAlignments['product'] ?? 'left');
+    final instrumentAlign = _getTextAlign(columnAlignments['instrument'] ?? 'left');
+    final qualityAlign = _getTextAlign(columnAlignments['quality'] ?? 'left');
+    final fscAlign = _getTextAlign(columnAlignments['fsc'] ?? 'left');
+    final originAlign = _getTextAlign(columnAlignments['origin'] ?? 'left');
+    final volumeAlign = _getTextAlign(columnAlignments['volume'] ?? 'right');
+    final qtyAlign = _getTextAlign(columnAlignments['quantity'] ?? 'right');
+    final unitAlign = _getTextAlign(columnAlignments['unit'] ?? 'center');
+    final priceAlign = _getTextAlign(columnAlignments['price_per_unit'] ?? 'right');
+    final netTotalAlign = _getTextAlign(columnAlignments['net_total'] ?? 'right');
 
     // Header-Zeile mit m³ statt Masse
     rows.add(
@@ -1019,32 +1073,25 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         decoration: pw.BoxDecoration(color: PdfColors.blueGrey50),
         children: [
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Tariff No.' : 'Zolltarif', 8),
+              language == 'EN' ? 'Tariff No.' : 'Zolltarif', 8, align: tariffAlign),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Product' : 'Produkt', 8),
+              language == 'EN' ? 'Product' : 'Produkt', 8, align: productAlign),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Instrument' : 'Instrument', 8),
-          // BasePdfGenerator.buildHeaderCell(
-          //     language == 'EN' ? 'Type' : 'Typ', 8),
+              language == 'EN' ? 'Instrument' : 'Instrument', 8, align: instrumentAlign),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Quality' : 'Qualität', 8),
-          BasePdfGenerator.buildHeaderCell('FSC®', 8),
+              language == 'EN' ? 'Quality' : 'Qualität', 8, align: qualityAlign),
+          BasePdfGenerator.buildHeaderCell('FSC®', 8, align: fscAlign),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Orig' : 'Urs', 8),
-          BasePdfGenerator.buildHeaderCell('m³', 8), // NEU: m³ statt Masse
+              language == 'EN' ? 'Orig' : 'Urs', 8, align: originAlign),
+          BasePdfGenerator.buildHeaderCell('m³', 8, align: volumeAlign),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Qty' : 'Menge', 8,),
+              language == 'EN' ? 'Qty' : 'Menge', 8, align: qtyAlign),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Unit' : 'Einh', 8),
+              language == 'EN' ? 'Unit' : 'Einh', 8, align: unitAlign),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Price/U' : 'Preis/E', 8, align: pw.TextAlign.left),
-          // BasePdfGenerator.buildHeaderCell(language == 'EN' ? 'Curr' : 'Wä', 8),
-          // BasePdfGenerator.buildHeaderCell(
-          //     language == 'EN' ? 'Total' : 'Betrag', 8, align: pw.TextAlign.left),
-          // BasePdfGenerator.buildHeaderCell(
-          //     language == 'EN' ? 'Disc.' : 'Rab.', 8, align: pw.TextAlign.left),
+              language == 'EN' ? 'Price/U' : 'Preis/E', 8, align: priceAlign),
           BasePdfGenerator.buildHeaderCell(
-              language == 'EN' ? 'Net Total' : 'Netto Gesamt', 8, align: pw.TextAlign.left),
+              language == 'EN' ? 'Net Total' : 'Netto Gesamt', 8, align: netTotalAlign),
         ],
       ),
     );
@@ -1083,6 +1130,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                   fontSize: 8,
                   color: PdfColors.blueGrey800,
                 ),
+                textAlign: tariffAlign,
               ),
             ),
             // Holzart-Beschreibung über mehrere Spalten
@@ -1100,7 +1148,6 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             // Leere Zellen
             ...List.generate(4, (index) => pw.SizedBox(height: 16)),
             // Zwischensumme m³
-            // Im Zolltarifnummer-Header:
             pw.Padding(
               padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               child: pw.Text(
@@ -1114,11 +1161,11 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                   fontSize: 8,
                   color: PdfColors.blueGrey800,
                 ),
-
+                textAlign: volumeAlign,
               ),
             ),
             // Restliche leere Zellen
-            ...List.generate(5, (index) => pw.SizedBox(height: 16)),
+            ...List.generate(4, (index) => pw.SizedBox(height: 16)),
           ],
         ),
       );
@@ -1169,48 +1216,68 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                 pw.Text('', style: const pw.TextStyle(fontSize: 8)), // Zolltarifnummer nur im Header
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
+                pw.Text(
+                  language == 'EN' ? item['part_name_en'] : item['part_name'] ?? '',
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: productAlign,
+                ),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(  language == 'EN' ?item['instrument_name_en']:item['instrument_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
-              ),
-              // BasePdfGenerator.buildContentCell(
-              //   pw.Text(  language == 'EN' ?item['part_name_en']:item['part_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
-              // ),
-              BasePdfGenerator.buildContentCell(
-                pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
+                pw.Text(
+                  language == 'EN' ? item['instrument_name_en'] : item['instrument_name'] ?? '',
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: instrumentAlign,
+                ),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(item['fsc_status'] ?? '', style: const pw.TextStyle(fontSize: 8)),
+                pw.Text(
+                  item['quality_name'] ?? '',
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: qualityAlign,
+                ),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text('CH', style: const pw.TextStyle(fontSize: 8)),
+                pw.Text(
+                  item['fsc_status'] ?? '',
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: fscAlign,
+                ),
+              ),
+              BasePdfGenerator.buildContentCell(
+                pw.Text(
+                  'CH',
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: originAlign,
+                ),
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
                   volumeM3 > 0 ? volumeM3.toStringAsFixed(5) : '', // Leer wenn 0
                   style: const pw.TextStyle(fontSize: 8),
-
+                  textAlign: volumeAlign,
                 ),
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
                   quantity.toStringAsFixed(3),
                   style: const pw.TextStyle(fontSize: 8),
-
+                  textAlign: qtyAlign,
                 ),
               ),
               BasePdfGenerator.buildContentCell(
-                pw.Text(unit, style: const pw.TextStyle(fontSize: 8)),
+                pw.Text(
+                  unit,
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: unitAlign,
+                ),
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
                   BasePdfGenerator.formatAmountOnly(pricePerUnit, currency, exchangeRates),
                   style: const pw.TextStyle(fontSize: 8),
-                  textAlign: pw.TextAlign.left,
+                  textAlign: priceAlign,
                 ),
               ),
-
               BasePdfGenerator.buildContentCell(
                 pw.Text(
                   BasePdfGenerator.formatAmountOnly(itemTotal, currency, exchangeRates),
@@ -1218,7 +1285,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                     fontSize: 8,
                     fontWeight: discountAmount > 0 ? pw.FontWeight.bold : null,
                   ),
-                  textAlign: pw.TextAlign.left,
+                  textAlign: netTotalAlign,
                 ),
               ),
             ],
@@ -1293,18 +1360,17 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             child: pw.Text(
               totalVolume.toStringAsFixed(5),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
-
+              textAlign: volumeAlign,
             ),
           ),
           ...List.generate(1, (index) => pw.SizedBox()),
           // Total Gewicht
-
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
               '${totalWeight.toStringAsFixed(2)} kg',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
-
+              textAlign: unitAlign,
             ),
           ),
           ...List.generate(1, (index) => pw.SizedBox()),
@@ -1314,7 +1380,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             child: pw.Text(
               BasePdfGenerator.formatAmountOnly(totalAmount, currency, exchangeRates),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
-              textAlign: pw.TextAlign.left,
+              textAlign: netTotalAlign,
             ),
           ),
         ],
@@ -1350,7 +1416,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             child: pw.Text(
               '${packagingVolume.toStringAsFixed(5)}',
               style: const pw.TextStyle(fontSize: 8),
-
+              textAlign: volumeAlign,
             ),
           ),
           ...List.generate(1, (index) => pw.SizedBox()),
@@ -1360,10 +1426,10 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             child: pw.Text(
               '${packagingWeight.toStringAsFixed(2)} kg',
               style: const pw.TextStyle(fontSize: 8),
-
+              textAlign: unitAlign,
             ),
           ),
-          ...List.generate(4, (index) => pw.SizedBox()),
+          ...List.generate(2, (index) => pw.SizedBox()),
         ],
       ),
     );
@@ -1391,7 +1457,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             child: pw.Text(
               totalGrossVolume.toStringAsFixed(5),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
-
+              textAlign: volumeAlign,
             ),
           ),
           ...List.generate(1, (index) => pw.SizedBox()),
@@ -1400,10 +1466,10 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             child: pw.Text(
               '${totalGrossWeight.toStringAsFixed(2)} kg',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
-
+              textAlign: unitAlign,
             ),
           ),
-          ...List.generate(3, (index) => pw.SizedBox()),
+          ...List.generate(2, (index) => pw.SizedBox()),
         ],
       ),
     );

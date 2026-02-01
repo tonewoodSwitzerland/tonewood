@@ -493,11 +493,16 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
       case 'Packliste':
         final packages = _settings['packing_list']['packages'] as List? ?? [];
         if (packages.isNotEmpty) {
+          // NEU: Filtere Dienstleistungen heraus
+          final filteredItems = widget.order.items
+              .where((item) => item['is_service'] != true)
+              .toList();
+
           // Berechne wie viele Produkte zugewiesen sind
           int totalAssigned = 0;
-          int totalProducts = widget.order.items.length;
+          int totalProducts = filteredItems.length;  // statt widget.order.items.length
 
-          for (final item in widget.order.items) {
+          for (final item in filteredItems) {  // statt widget.order.items
             final quantity = (item['quantity'] as num?)?.toDouble() ?? 0;
             final assigned = _getAssignedQuantityForOrder(item, packages.cast<Map<String, dynamic>>());
             if (assigned >= quantity) totalAssigned++;
@@ -2823,6 +2828,10 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
         }
       }
     }
+//Filtere Dienstleistungen aus den Order-Items heraus
+    final List<Map<String, dynamic>> filteredOrderItems = widget.order.items
+        .where((item) => item['is_service'] != true)
+        .toList();
 
 // Falls noch keine Pakete existieren, erstelle Paket 1
     if (packages.isEmpty) {
@@ -2949,7 +2958,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                         onPressed: () {
                                           _assignAllOrderItemsToPackage(
                                             packages.first, // Paket 1
-                                            widget.order.items,
+                                            filteredOrderItems,
                                             packages,
                                             setModalState,
                                           );
@@ -2977,7 +2986,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                ...widget.order.items.map((item) {
+                                ...filteredOrderItems.map((item) {
                                   final assignedQuantity = _getAssignedQuantityForOrder(item, packages);
                                   final totalQuantity = (item['quantity'] as num).toDouble();
                                   final remainingQuantity = totalQuantity - assignedQuantity;
@@ -3080,7 +3089,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                               context,
                               package,
                               index,
-                              widget.order.items,
+                              filteredOrderItems,
                               packages,
                               setModalState,
                               packageControllers, // NEU: Controller Map übergeben

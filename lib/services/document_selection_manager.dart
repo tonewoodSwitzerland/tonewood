@@ -649,6 +649,7 @@ class DocumentSelectionManager {
           .set({
         'validity_date': settings['validity_date'],
         'show_dimensions': settings['show_dimensions'],
+        'show_validity_addition': settings['show_validity_addition'],
         'timestamp': FieldValue.serverTimestamp(),
       });
     } catch (e) {

@@ -11,6 +11,22 @@ import '../additional_text_manager.dart';
 
 class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEU: Helper-Funktion für Spaltenausrichtung
+  // ═══════════════════════════════════════════════════════════════════════════
+  static pw.TextAlign _getTextAlign(String alignment) {
+    switch (alignment) {
+      case 'left':
+        return pw.TextAlign.left;
+      case 'center':
+        return pw.TextAlign.center;
+      case 'right':
+        return pw.TextAlign.right;
+      default:
+        return pw.TextAlign.left;
+    }
+  }
+
   // Erstelle eine neue Lieferschein-Nummer
   static Future<String> getNextDeliveryNoteNumber() async {
     try {
@@ -163,30 +179,42 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
     }
   }
 
-  // Produkttabelle (ohne Preise)
+  // Produkttabelle (ohne Preise) - NEU: mit columnAlignments Parameter
   static pw.Widget _buildProductTable(
       Map<String, List<Map<String, dynamic>>> groupedItems,
       String language,
       bool showThermalColumn,
+      Map<int, pw.FlexColumnWidth> columnWidths,
+      Map<String, String> columnAlignments,
       ) {
     final List<pw.TableRow> rows = [];
 
-    // Header-Zeile
+    // NEU: Ausrichtungen holen
+    final productAlign = _getTextAlign(columnAlignments['product'] ?? 'left');
+    final instrumentAlign = _getTextAlign(columnAlignments['instrument'] ?? 'left');
+    final qualityAlign = _getTextAlign(columnAlignments['quality'] ?? 'left');
+    final fscAlign = _getTextAlign(columnAlignments['fsc'] ?? 'left');
+    final originAlign = _getTextAlign(columnAlignments['origin'] ?? 'left');
+    final thermalAlign = _getTextAlign(columnAlignments['thermal'] ?? 'center');
+    final qtyAlign = _getTextAlign(columnAlignments['quantity'] ?? 'right');
+    final unitAlign = _getTextAlign(columnAlignments['unit'] ?? 'center');
+
+    // Header-Zeile - NEU: mit align Parameter
     final headerCells = <pw.Widget>[
-      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Product' : 'Produkt', 8),
-      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Instrument' : 'Instrument', 8),
-      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Quality' : 'Qualität', 8),
-      BaseDeliveryNotePdfGenerator.buildHeaderCell('FSC®', 8),
-      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Orig' : 'Urs', 8),
+      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Product' : 'Produkt', 8, align: productAlign),
+      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Instrument' : 'Instrument', 8, align: instrumentAlign),
+      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Quality' : 'Qualität', 8, align: qualityAlign),
+      BaseDeliveryNotePdfGenerator.buildHeaderCell('FSC®', 8, align: fscAlign),
+      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Orig' : 'Urs', 8, align: originAlign),
     ];
 
     if (showThermalColumn) {
-      headerCells.add(BaseDeliveryNotePdfGenerator.buildHeaderCell('°C', 8));
+      headerCells.add(BaseDeliveryNotePdfGenerator.buildHeaderCell('°C', 8, align: thermalAlign));
     }
 
     headerCells.addAll([
-      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Qty' : 'Anz.', 8, align: pw.TextAlign.left),
-      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Unit' : 'Einh', 8),
+      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Qty' : 'Anz.', 8, align: qtyAlign),
+      BaseDeliveryNotePdfGenerator.buildHeaderCell(language == 'EN' ? 'Unit' : 'Einh', 8, align: unitAlign),
     ]);
 
     rows.add(
@@ -231,29 +259,37 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
         }
 
         final contentCells = <pw.Widget>[
+          // Produkt - NEU: mit textAlign
           BaseDeliveryNotePdfGenerator.buildContentCell(
             pw.Text(
               language == 'EN' ? item['part_name_en'] ?? item['part_name'] ?? '' : item['part_name'] ?? '',
               style: const pw.TextStyle(fontSize: 8),
+              textAlign: productAlign,
             ),
           ),
+          // Instrument - NEU: mit textAlign
           BaseDeliveryNotePdfGenerator.buildContentCell(
             pw.Text(
               language == 'EN' ? item['instrument_name_en'] ?? item['instrument_name'] ?? '' : item['instrument_name'] ?? '',
               style: const pw.TextStyle(fontSize: 8),
+              textAlign: instrumentAlign,
             ),
           ),
+          // Qualität - NEU: mit textAlign
           BaseDeliveryNotePdfGenerator.buildContentCell(
-            pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
+            pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 8), textAlign: qualityAlign),
           ),
+          // FSC - NEU: mit textAlign
           BaseDeliveryNotePdfGenerator.buildContentCell(
-            pw.Text(item['fsc_status'] ?? '-', style: const pw.TextStyle(fontSize: 8)),
+            pw.Text(item['fsc_status'] ?? '-', style: const pw.TextStyle(fontSize: 8), textAlign: fscAlign),
           ),
+          // Ursprung - NEU: mit textAlign
           BaseDeliveryNotePdfGenerator.buildContentCell(
-            pw.Text('CH', style: const pw.TextStyle(fontSize: 8)),
+            pw.Text('CH', style: const pw.TextStyle(fontSize: 8), textAlign: originAlign),
           ),
         ];
 
+        // Thermobehandlung - NEU: mit textAlign
         if (showThermalColumn) {
           contentCells.add(
             BaseDeliveryNotePdfGenerator.buildContentCell(
@@ -262,12 +298,13 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
                     ? item['thermal_treatment_temperature'].toString()
                     : '',
                 style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.left,
+                textAlign: thermalAlign,
               ),
             ),
           );
         }
 
+        // Anzahl und Einheit - NEU: mit textAlign
         contentCells.addAll([
           BaseDeliveryNotePdfGenerator.buildContentCell(
             pw.Text(
@@ -275,11 +312,11 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
                   ? quantity.toStringAsFixed(3)
                   : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
               style: const pw.TextStyle(fontSize: 8),
-              textAlign: pw.TextAlign.left,
+              textAlign: qtyAlign,
             ),
           ),
           BaseDeliveryNotePdfGenerator.buildContentCell(
-            pw.Text(unit, style: const pw.TextStyle(fontSize: 8)),
+            pw.Text(unit, style: const pw.TextStyle(fontSize: 8), textAlign: unitAlign),
           ),
         ]);
 
@@ -290,13 +327,6 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
         );
       }
     });
-
-    // Optimierte Spaltenbreiten basierend auf Inhalt
-    final columnWidths = _calculateOptimalColumnWidths(
-      groupedItems,
-      language,
-      showThermalColumn,
-    );
 
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
@@ -394,6 +424,9 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
   }) async {
     final addressEmailSpacing = await PdfSettingsHelper.getDeliveryNoteAddressEmailSpacing();
 
+    // NEU: Lade Spaltenausrichtungen
+    final columnAlignments = await PdfSettingsHelper.getColumnAlignments('delivery_note');
+
     final pdf = pw.Document();
     final logo = await BaseDeliveryNotePdfGenerator.loadLogo();
 
@@ -405,6 +438,13 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
 
     // NEU: Prüfe ob °C-Spalte angezeigt werden soll
     final showThermalColumn = _hasAnyThermalTreatment(groupedItems);
+
+    // NEU: Berechne Spaltenbreiten
+    final columnWidths = _calculateOptimalColumnWidths(
+      groupedItems,
+      language,
+      showThermalColumn,
+    );
 
     final additionalTextsWidget = await _buildAdditionalTexts(language);
 
@@ -440,11 +480,11 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
 
               pw.SizedBox(height: 15),
 
-              // Produkttabelle mit dynamischer °C-Spalte
+              // Produkttabelle mit dynamischer °C-Spalte und Spaltenausrichtungen
               pw.Expanded(
                 child: pw.Column(
                   children: [
-                    _buildProductTable(groupedItems, language, showThermalColumn),
+                    _buildProductTable(groupedItems, language, showThermalColumn, columnWidths, columnAlignments),
                     pw.SizedBox(height: 10),
                     additionalTextsWidget,
                   ],

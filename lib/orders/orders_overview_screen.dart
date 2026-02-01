@@ -2735,7 +2735,7 @@ Status: ${order.status.displayName}
                     children: [
                       getAdaptiveIcon(
                           iconName: 'warning',
-                          defaultIcon:Icons.warning, color: Colors.orange, size: 20),
+                          defaultIcon: Icons.warning, color: Colors.orange, size: 20),
                       const SizedBox(width: 8),
                       const Text(
                         'Wichtiger Hinweis:',
@@ -2783,93 +2783,90 @@ Status: ${order.status.displayName}
           ),
         );
 
-
-
-
-
         final batch = FirebaseFirestore.instance.batch();
+        final user = FirebaseAuth.instance.currentUser;
 
-        // NEU: Wenn der Auftrag aus einem Angebot erstellt wurde,
-        // markiere das Angebot als "nachträglich storniert"
+        // Wenn der Auftrag aus einem Angebot erstellt wurde
         if (order.quoteId != null && order.quoteId!.isNotEmpty) {
           final quoteRef = FirebaseFirestore.instance
               .collection('quotes')
               .doc(order.quoteId);
 
-          batch.update(quoteRef, {
-            'isOrderCancelled': true,
-            'orderCancelledAt': FieldValue.serverTimestamp(),
-          });
+          final quoteDoc = await quoteRef.get();
 
+          if (quoteDoc.exists) {
+            batch.update(quoteRef, {
+              'isOrderCancelled': true,
+              'orderCancelledAt': FieldValue.serverTimestamp(),
+            });
 
-          print("quoteID:${order.quoteId}");
-          // Erstelle auch einen History-Eintrag im Angebot
-          final quoteHistoryRef = FirebaseFirestore.instance
-              .collection('quotes')
-              .doc(order.quoteId)
-              .collection('history')
-              .doc();
-          final user = FirebaseAuth.instance.currentUser;
-          batch.set(quoteHistoryRef, {
-            'timestamp': FieldValue.serverTimestamp(),
-            'user_id': user?.uid ?? 'unknown',
-            'user_email': user?.email ?? 'Unknown User',
-            'user_name': user?.email ?? 'Unknown',
-            'action': 'order_cancelled',
-            'order_number': order.orderNumber,
-            'reason': 'Zugehöriger Auftrag wurde storniert',
-          });
+            final quoteHistoryRef = FirebaseFirestore.instance
+                .collection('quotes')
+                .doc(order.quoteId)
+                .collection('history')
+                .doc();
+
+            batch.set(quoteHistoryRef, {
+              'timestamp': FieldValue.serverTimestamp(),
+              'user_id': user?.uid ?? 'unknown',
+              'user_email': user?.email ?? 'Unknown User',
+              'user_name': user?.email ?? 'Unknown',
+              'action': 'order_cancelled',
+              'order_number': order.orderNumber,
+              'reason': 'Zugehöriger Auftrag wurde storniert',
+            });
+          }
         }
 
-
-
-
+        // Items durchgehen - Inventar zurückbuchen
         for (final item in order.items) {
+          // Überspringe manuelle Produkte und Dienstleistungen
           if (item['is_manual_product'] == true) continue;
+          if (item['is_service'] == true) continue;
+
+          final productId = item['product_id'];
+          if (productId == null || productId.toString().isEmpty) continue;
 
           final inventoryRef = FirebaseFirestore.instance
               .collection('inventory')
-              .doc(item['product_id']);
+              .doc(productId);
 
-          batch.update(inventoryRef, {
-            'quantity': FieldValue.increment(item['quantity'] as double),
-            'last_modified': FieldValue.serverTimestamp(),
-          });
+          final inventoryDoc = await inventoryRef.get();
 
-          final stockEntryRef = FirebaseFirestore.instance
-              .collection('stock_entries')
-              .doc();
+          if (inventoryDoc.exists) {
+            final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
 
-          // Create History Entry for cancellation
-          final user = FirebaseAuth.instance.currentUser;
-          final historyRef = FirebaseFirestore.instance
-              .collection('orders')
-              .doc(order.id)
-              .collection('history')
-              .doc();
-
-          batch.set(historyRef, {
-            'timestamp': FieldValue.serverTimestamp(),
-            'user_id': user?.uid ?? 'unknown',
-            'user_email': user?.email ?? 'Unknown User',
-            'user_name': user?.email ?? 'Unknown',
-            'action': 'order_cancelled',
-            'reason': 'Manuell storniert - Reservierungen aufgehoben',
-            'changes': {
-              'field': 'status',
-              'old_value': order.status.name,
-              'new_value': OrderStatus.cancelled.name,
-              'old_display': order.status.displayName,
-              'new_display': OrderStatus.cancelled.displayName,
-            },
-          });
+            batch.update(inventoryRef, {
+              'quantity': FieldValue.increment(quantity),
+              'last_modified': FieldValue.serverTimestamp(),
+            });
+          }
         }
 
+        // History Entry für die Stornierung
+        final historyRef = FirebaseFirestore.instance
+            .collection('orders')
+            .doc(order.id)
+            .collection('history')
+            .doc();
 
+        batch.set(historyRef, {
+          'timestamp': FieldValue.serverTimestamp(),
+          'user_id': user?.uid ?? 'unknown',
+          'user_email': user?.email ?? 'Unknown User',
+          'user_name': user?.email ?? 'Unknown',
+          'action': 'order_cancelled',
+          'reason': 'Manuell storniert - Reservierungen aufgehoben',
+          'changes': {
+            'field': 'status',
+            'old_value': order.status.name,
+            'new_value': OrderStatus.cancelled.name,
+            'old_display': order.status.displayName,
+            'new_display': OrderStatus.cancelled.displayName,
+          },
+        });
 
-
-
-
+        // Order Status Update
         final orderRef = FirebaseFirestore.instance
             .collection('orders')
             .doc(order.id);
@@ -2912,7 +2909,6 @@ Status: ${order.status.displayName}
       }
     }
   }
-
   @override
   void dispose() {
     _filterSubscription?.cancel();

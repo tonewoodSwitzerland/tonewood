@@ -11,6 +11,23 @@ import '../additional_text_manager.dart';
 import '../swiss_rounding.dart';
 
 class InvoiceGenerator extends BasePdfGenerator {
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEU: Helper-Funktion für Spaltenausrichtung
+  // ═══════════════════════════════════════════════════════════════════════════
+  static pw.TextAlign _getTextAlign(String alignment) {
+    switch (alignment) {
+      case 'left':
+        return pw.TextAlign.left;
+      case 'center':
+        return pw.TextAlign.center;
+      case 'right':
+        return pw.TextAlign.right;
+      default:
+        return pw.TextAlign.left;
+    }
+  }
+
   // Erstelle eine neue Rechnungs-Nummer
   static Future<String> getNextInvoiceNumber() async {
     try {
@@ -71,8 +88,12 @@ class InvoiceGenerator extends BasePdfGenerator {
     final paymentDue = DateTime.now().add(Duration(days: paymentTermDays));
 
     final invoiceSettings = downPaymentSettings ?? await DocumentSelectionManager.loadInvoiceSettings();
-    // NEU: Lade Adress-Anzeigemodus
+    // Lade Adress-Anzeigemodus
     final addressMode = await PdfSettingsHelper.getAddressDisplayMode('invoice');
+
+    // NEU: Lade Spaltenausrichtungen
+    final columnAlignments = await PdfSettingsHelper.getColumnAlignments('invoice');
+
     DateTime invoiceDate = invoiceSettings['invoice_date'] ?? DateTime.now();
 
     final showDimensions = invoiceSettings['show_dimensions'] ?? false;
@@ -117,8 +138,8 @@ class InvoiceGenerator extends BasePdfGenerator {
     });
 
     //NEU: Parts-Spalte nur anzeigen wenn Dimensionen aktiv UND mindestens ein Item parts hat
-     final showPartsColumn = showDimensions && productItems.any((item) =>
-        item['parts'] != null && (item['parts'] as num? ?? 0) > 0);
+    final showPartsColumn = showDimensions && productItems.any((item) =>
+    item['parts'] != null && (item['parts'] as num? ?? 0) > 0);
 
     // Nur Produkte gruppieren (Dienstleistungen haben keine Holzart)
     final groupedProductItems = await _groupItemsByWoodType(productItems, language);
@@ -167,9 +188,6 @@ class InvoiceGenerator extends BasePdfGenerator {
                 logo: logo,
                 costCenter: costCenterCode,
                 language: language,
-              //  additionalReference: quoteNumber != null && quoteNumber.isNotEmpty
-              //      ? getTranslation('quote_reference')
-              //      : null,
               ),
               pw.SizedBox(height: 20),
 
@@ -215,12 +233,12 @@ class InvoiceGenerator extends BasePdfGenerator {
                           return [
                             // Produkttabelle nur wenn Produkte vorhanden
                             if (productItems.isNotEmpty)
-                              _buildProductTable(groupedProductItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths),
+                              _buildProductTable(groupedProductItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths, columnAlignments),
 
                             // Dienstleistungstabelle nur wenn Dienstleistungen vorhanden
                             if (serviceItems.isNotEmpty)
                               pw.SizedBox(height: 10),
-                              _buildServiceTable(serviceItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths),
+                            _buildServiceTable(serviceItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths, columnAlignments),
                           ];
                         })(),
                       ],
@@ -304,6 +322,7 @@ class InvoiceGenerator extends BasePdfGenerator {
       bool showDiscountColumn,
       bool showPartsColumn,
       Map<int, pw.FlexColumnWidth> columnWidths,
+      Map<String, String> columnAlignments, // NEU
       ) {
     if (serviceItems.isEmpty) return pw.SizedBox.shrink();
 
@@ -359,6 +378,14 @@ class InvoiceGenerator extends BasePdfGenerator {
 
     final List<pw.TableRow> rows = [];
 
+    // NEU: Ausrichtungen holen
+    final qtyAlign = _getTextAlign(columnAlignments['quantity'] ?? 'right');
+    final unitAlign = _getTextAlign(columnAlignments['unit'] ?? 'center');
+    final priceAlign = _getTextAlign(columnAlignments['price_per_unit'] ?? 'right');
+    final totalAlign = _getTextAlign(columnAlignments['total'] ?? 'right');
+    final discountAlign = _getTextAlign(columnAlignments['discount'] ?? 'right');
+    final netTotalAlign = _getTextAlign(columnAlignments['net_total'] ?? 'right');
+
     // Header
     final headerCells = <pw.Widget>[
       BasePdfGenerator.buildHeaderCell(
@@ -366,21 +393,21 @@ class InvoiceGenerator extends BasePdfGenerator {
       BasePdfGenerator.buildHeaderCell(
           language == 'EN' ? 'Description' : 'Beschreibung', 8),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Qty' : 'Anz.', 8, align: pw.TextAlign.left),
+          language == 'EN' ? 'Qty' : 'Anz.', 8, align: qtyAlign),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Unit' : 'Einh', 8),
+          language == 'EN' ? 'Unit' : 'Einh', 8, align: unitAlign),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Price/U' : 'Preis/E', 8, align: pw.TextAlign.left),
+          language == 'EN' ? 'Price/U' : 'Preis/E', 8, align: priceAlign),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Total' : 'Gesamt', 8, align: pw.TextAlign.left),
+          language == 'EN' ? 'Total' : 'Gesamt', 8, align: totalAlign),
     ];
 
     if (showDiscountColumn) {
       headerCells.addAll([
         BasePdfGenerator.buildHeaderCell(
-            language == 'EN' ? 'Disc.' : 'Rab.', 8, align: pw.TextAlign.left),
+            language == 'EN' ? 'Disc.' : 'Rab.', 8, align: discountAlign),
         BasePdfGenerator.buildHeaderCell(
-            language == 'EN' ? 'Net Total' : 'Netto Gesamt', 8, align: pw.TextAlign.left),
+            language == 'EN' ? 'Net Total' : 'Netto Gesamt', 8, align: netTotalAlign),
       ]);
     }
 
@@ -418,16 +445,16 @@ class InvoiceGenerator extends BasePdfGenerator {
           ),
         ),
         BasePdfGenerator.buildContentCell(
-          pw.Text(quantity.toStringAsFixed(0), style: const pw.TextStyle(fontSize: 8), textAlign: pw.TextAlign.left),
+          pw.Text(quantity.toStringAsFixed(0), style: const pw.TextStyle(fontSize: 8), textAlign: qtyAlign),
         ),
         BasePdfGenerator.buildContentCell(
-          pw.Text(language == 'EN' ? 'pcs' : 'Stk', style: const pw.TextStyle(fontSize: 8)),
+          pw.Text(language == 'EN' ? 'pcs' : 'Stk', style: const pw.TextStyle(fontSize: 8), textAlign: unitAlign),
         ),
         BasePdfGenerator.buildContentCell(
-          pw.Text(BasePdfGenerator.formatAmountOnly(pricePerUnit, currency, exchangeRates), style: const pw.TextStyle(fontSize: 8), textAlign: pw.TextAlign.left),
+          pw.Text(BasePdfGenerator.formatAmountOnly(pricePerUnit, currency, exchangeRates), style: const pw.TextStyle(fontSize: 8), textAlign: priceAlign),
         ),
         BasePdfGenerator.buildContentCell(
-          pw.Text(BasePdfGenerator.formatAmountOnly(total, currency, exchangeRates), style: pw.TextStyle(fontSize: 8), textAlign: pw.TextAlign.left),
+          pw.Text(BasePdfGenerator.formatAmountOnly(total, currency, exchangeRates), style: pw.TextStyle(fontSize: 8), textAlign: totalAlign),
         ),
       ];
 
@@ -435,7 +462,7 @@ class InvoiceGenerator extends BasePdfGenerator {
         rowCells.addAll([
           BasePdfGenerator.buildContentCell(pw.SizedBox()),  // Kein Rabatt für Services
           BasePdfGenerator.buildContentCell(
-            pw.Text(BasePdfGenerator.formatAmountOnly(total, currency, exchangeRates), style: const pw.TextStyle(fontSize: 8), textAlign: pw.TextAlign.left),
+            pw.Text(BasePdfGenerator.formatAmountOnly(total, currency, exchangeRates), style: const pw.TextStyle(fontSize: 8), textAlign: netTotalAlign),
           ),
         ]);
       }
@@ -455,6 +482,7 @@ class InvoiceGenerator extends BasePdfGenerator {
       ],
     );
   }
+
   /// Berechnet optimale Spaltenbreiten basierend auf Inhalt
   static Map<int, pw.FlexColumnWidth> _calculateOptimalColumnWidths(
       Map<String, List<Map<String, dynamic>>> groupedItems,
@@ -527,7 +555,7 @@ class InvoiceGenerator extends BasePdfGenerator {
     if (showDimensions) {
       widths[colIndex++] = pw.FlexColumnWidth(dimWidth);    // Masse
     }
-// NEU: Parts-Spalte
+    // NEU: Parts-Spalte
     if (showPartsColumn) {
       widths[colIndex++] = const pw.FlexColumnWidth(1.2);   // Teile
     }
@@ -556,58 +584,74 @@ class InvoiceGenerator extends BasePdfGenerator {
       bool showDiscountColumn,
       bool showPartsColumn,
       Map<int, pw.FlexColumnWidth> columnWidths,
+      Map<String, String> columnAlignments, // NEU
       ) {
     final List<pw.TableRow> rows = [];
+
+    // NEU: Ausrichtungen holen
+    final productAlign = _getTextAlign(columnAlignments['product'] ?? 'left');
+    final instrumentAlign = _getTextAlign(columnAlignments['instrument'] ?? 'left');
+    final qualityAlign = _getTextAlign(columnAlignments['quality'] ?? 'left');
+    final fscAlign = _getTextAlign(columnAlignments['fsc'] ?? 'left');
+    final originAlign = _getTextAlign(columnAlignments['origin'] ?? 'left');
+    final thermalAlign = _getTextAlign(columnAlignments['thermal'] ?? 'center');
+    final dimensionsAlign = _getTextAlign(columnAlignments['dimensions'] ?? 'left');
+    final partsAlign = _getTextAlign(columnAlignments['parts'] ?? 'center');
+    final qtyAlign = _getTextAlign(columnAlignments['quantity'] ?? 'right');
+    final unitAlign = _getTextAlign(columnAlignments['unit'] ?? 'center');
+    final priceAlign = _getTextAlign(columnAlignments['price_per_unit'] ?? 'right');
+    final totalAlign = _getTextAlign(columnAlignments['total'] ?? 'right');
+    final discountAlign = _getTextAlign(columnAlignments['discount'] ?? 'right');
+    final netTotalAlign = _getTextAlign(columnAlignments['net_total'] ?? 'right');
 
     // Header-Zeile
     final headerCells = <pw.Widget>[
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Product' : 'Produkt', 8),
+          language == 'EN' ? 'Product' : 'Produkt', 8, align: productAlign),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Instrument' : 'Instrument', 8),
+          language == 'EN' ? 'Instrument' : 'Instrument', 8, align: instrumentAlign),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Quality' : 'Qualität', 8),
-      BasePdfGenerator.buildHeaderCell('FSC®', 8),
+          language == 'EN' ? 'Quality' : 'Qualität', 8, align: qualityAlign),
+      BasePdfGenerator.buildHeaderCell('FSC®', 8, align: fscAlign),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Orig' : 'Urs', 8),
+          language == 'EN' ? 'Orig' : 'Urs', 8, align: originAlign),
     ];
 
     // Thermobehandlung nur wenn aktiviert
     if (showThermalColumn) {
-      headerCells.add(BasePdfGenerator.buildHeaderCell('°C', 8));
+      headerCells.add(BasePdfGenerator.buildHeaderCell('°C', 8, align: thermalAlign));
     }
 
-    // Masse nur wenn aktiviert
     // Masse nur wenn aktiviert
     if (showDimensions) {
       headerCells.add(BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Dimensions [mm]' : 'Masse [mm]', 8));
+          language == 'EN' ? 'Dimensions [mm]' : 'Masse [mm]', 8, align: dimensionsAlign));
     }
 
-// NEU: Parts-Spalte
+    // NEU: Parts-Spalte
     if (showPartsColumn) {
       headerCells.add(BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Parts' : 'Teile', 8, align: pw.TextAlign.center));
+          language == 'EN' ? 'Parts' : 'Teile', 8, align: partsAlign));
     }
 
     headerCells.addAll([
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Qty' : 'Anz.', 8, align: pw.TextAlign.left),
+          language == 'EN' ? 'Qty' : 'Anz.', 8, align: qtyAlign),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Unit' : 'Einh', 8),
+          language == 'EN' ? 'Unit' : 'Einh', 8, align: unitAlign),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Price/U' : 'Preis/E', 8, align: pw.TextAlign.left),
+          language == 'EN' ? 'Price/U' : 'Preis/E', 8, align: priceAlign),
       BasePdfGenerator.buildHeaderCell(
-          language == 'EN' ? 'Total' : 'Gesamt', 8, align: pw.TextAlign.left),
+          language == 'EN' ? 'Total' : 'Gesamt', 8, align: totalAlign),
     ]);
 
     // Rabatt und Netto nur wenn aktiviert
     if (showDiscountColumn) {
       headerCells.addAll([
         BasePdfGenerator.buildHeaderCell(
-            language == 'EN' ? 'Disc.' : 'Rab.', 8, align: pw.TextAlign.left),
+            language == 'EN' ? 'Disc.' : 'Rab.', 8, align: discountAlign),
         BasePdfGenerator.buildHeaderCell(
-            language == 'EN' ? 'Net Total' : 'Netto Gesamt', 8, align: pw.TextAlign.left),
+            language == 'EN' ? 'Net Total' : 'Netto Gesamt', 8, align: netTotalAlign),
       ]);
     }
 
@@ -705,7 +749,8 @@ class InvoiceGenerator extends BasePdfGenerator {
                     children: [
                       pw.Text(
                           language == 'EN' ? item['part_name_en'] : item['part_name'] ?? '',
-                          style: const pw.TextStyle(fontSize: 8)),
+                          style: const pw.TextStyle(fontSize: 8),
+                          textAlign: productAlign),
                       if (item['notes'] != null && item['notes'].toString().isNotEmpty)
                         pw.Text(
                           ' (${item['notes']})',
@@ -755,16 +800,16 @@ class InvoiceGenerator extends BasePdfGenerator {
           ),
           BasePdfGenerator.buildContentCell(
             pw.Text(language == 'EN' ? item['instrument_name_en'] : item['instrument_name'] ?? '',
-                style: const pw.TextStyle(fontSize: 8)),
+                style: const pw.TextStyle(fontSize: 8), textAlign: instrumentAlign),
           ),
           BasePdfGenerator.buildContentCell(
-            pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 8)),
+            pw.Text(item['quality_name'] ?? '', style: const pw.TextStyle(fontSize: 8), textAlign: qualityAlign),
           ),
           BasePdfGenerator.buildContentCell(
-            pw.Text(item['fsc_status'] ?? '', style: const pw.TextStyle(fontSize: 8)),
+            pw.Text(item['fsc_status'] ?? '', style: const pw.TextStyle(fontSize: 8), textAlign: fscAlign),
           ),
           BasePdfGenerator.buildContentCell(
-            pw.Text('CH', style: const pw.TextStyle(fontSize: 8)),
+            pw.Text('CH', style: const pw.TextStyle(fontSize: 8), textAlign: originAlign),
           ),
         ];
 
@@ -777,23 +822,22 @@ class InvoiceGenerator extends BasePdfGenerator {
                     ? item['thermal_treatment_temperature'].toString()
                     : '',
                 style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.center,
+                textAlign: thermalAlign,
               ),
             ),
           );
         }
 
         // Masse nur wenn aktiviert
-        // Masse nur wenn aktiviert
         if (showDimensions) {
           rowCells.add(
             BasePdfGenerator.buildContentCell(
-              pw.Text(dimensions, style: const pw.TextStyle(fontSize: 8)),
+              pw.Text(dimensions, style: const pw.TextStyle(fontSize: 8), textAlign: dimensionsAlign),
             ),
           );
         }
 
-// NEU: Parts-Spalte
+        // NEU: Parts-Spalte
         if (showPartsColumn) {
           final parts = (item['parts'] as num?)?.toInt() ?? 1;
           rowCells.add(
@@ -801,11 +845,12 @@ class InvoiceGenerator extends BasePdfGenerator {
               pw.Text(
                 (parts < 1 ? 1 : parts).toString(),
                 style: const pw.TextStyle(fontSize: 8),
-                textAlign: pw.TextAlign.center,
+                textAlign: partsAlign,
               ),
             ),
           );
         }
+
         rowCells.addAll([
           BasePdfGenerator.buildContentCell(
             pw.Text(
@@ -813,24 +858,24 @@ class InvoiceGenerator extends BasePdfGenerator {
                   ? quantity.toStringAsFixed(3)
                   : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
               style: const pw.TextStyle(fontSize: 8),
-              textAlign: pw.TextAlign.left,
+              textAlign: qtyAlign,
             ),
           ),
           BasePdfGenerator.buildContentCell(
-            pw.Text(unit, style: const pw.TextStyle(fontSize: 8)),
+            pw.Text(unit, style: const pw.TextStyle(fontSize: 8), textAlign: unitAlign),
           ),
           BasePdfGenerator.buildContentCell(
             pw.Text(
-             BasePdfGenerator.formatAmountOnly(pricePerUnit, currency, exchangeRates),
+              BasePdfGenerator.formatAmountOnly(pricePerUnit, currency, exchangeRates),
               style: const pw.TextStyle(fontSize: 8),
-              textAlign: pw.TextAlign.left,
+              textAlign: priceAlign,
             ),
           ),
           BasePdfGenerator.buildContentCell(
             pw.Text(
-             BasePdfGenerator.formatAmountOnly(quantity * pricePerUnit, currency, exchangeRates),
+              BasePdfGenerator.formatAmountOnly(quantity * pricePerUnit, currency, exchangeRates),
               style: const pw.TextStyle(fontSize: 8),
-              textAlign: pw.TextAlign.left,
+              textAlign: totalAlign,
             ),
           ),
         ]);
@@ -846,28 +891,25 @@ class InvoiceGenerator extends BasePdfGenerator {
                     pw.Text(
                       '${discount['percentage'].toStringAsFixed(2)}%',
                       style: const pw.TextStyle(fontSize: 8),
-                      textAlign: pw.TextAlign.left,
+                      textAlign: discountAlign,
                     ),
                   if (discount != null && (discount['absolute'] as num? ?? 0) > 0)
                     pw.Text(
-                     BasePdfGenerator.formatAmountOnly(
+                      BasePdfGenerator.formatAmountOnly(
                           (discount['absolute'] as num).toDouble(),
                           currency,
                           exchangeRates),
                       style: const pw.TextStyle(fontSize: 8),
-                      textAlign: pw.TextAlign.left,
+                      textAlign: discountAlign,
                     ),
                 ],
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-               BasePdfGenerator.formatAmountOnly(itemTotal, currency, exchangeRates),
-                style: pw.TextStyle(
-                  fontSize: 8,
-                  //fontWeight: discountAmount > 0 ? pw.FontWeight.bold : null,
-                ),
-                textAlign: pw.TextAlign.left,
+                BasePdfGenerator.formatAmountOnly(itemTotal, currency, exchangeRates),
+                style: pw.TextStyle(fontSize: 8),
+                textAlign: netTotalAlign,
               ),
             ),
           ]);
@@ -877,18 +919,18 @@ class InvoiceGenerator extends BasePdfGenerator {
       }
     });
 
-    final columnWidths = _calculateOptimalColumnWidths(
-      groupedItems,
-      language,
-      showDimensions,
-      showThermalColumn,
-      showDiscountColumn,
-      showPartsColumn
+    final calculatedColumnWidths = _calculateOptimalColumnWidths(
+        groupedItems,
+        language,
+        showDimensions,
+        showThermalColumn,
+        showDiscountColumn,
+        showPartsColumn
     );
 
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
-      columnWidths: columnWidths,
+      columnWidths: calculatedColumnWidths,
       children: rows,
     );
   }
@@ -1008,7 +1050,6 @@ class InvoiceGenerator extends BasePdfGenerator {
     }
 
     // Anzahlung berechnen
-    // Anzahlung berechnen
     final isFullPayment = downPaymentSettings?['is_full_payment'] ?? false;
 
     double downPaymentAmount = 0.0;
@@ -1031,7 +1072,7 @@ class InvoiceGenerator extends BasePdfGenerator {
           downPaymentReference = language == 'EN' ? 'Credit card' : 'Kreditkarte';
           break;
         case 'PAYPAL':
-          downPaymentReference = 'PayPal'; // Bleibt gleich in beiden Sprachen
+          downPaymentReference = 'PayPal';
           break;
         case 'custom':
           downPaymentReference = downPaymentSettings?['custom_payment_method'] ?? '';
@@ -1199,7 +1240,7 @@ class InvoiceGenerator extends BasePdfGenerator {
                     pw.Text(shippingCosts['deduction_2_text'], style: const pw.TextStyle(fontSize: 9)),
                     pw.Text(
                       '- ${BasePdfGenerator.formatCurrency(shippingCosts['deduction_2_amount'], currency, exchangeRates)}',
-                      style: const pw.TextStyle(fontSize: 9,),
+                      style: const pw.TextStyle(fontSize: 9),
                     ),
                   ],
                 ),
@@ -1212,7 +1253,7 @@ class InvoiceGenerator extends BasePdfGenerator {
                     pw.Text(shippingCosts['deduction_3_text'], style: const pw.TextStyle(fontSize: 9)),
                     pw.Text(
                       '- ${BasePdfGenerator.formatCurrency(shippingCosts['deduction_3_amount'], currency, exchangeRates)}',
-                      style: const pw.TextStyle(fontSize: 9, ),
+                      style: const pw.TextStyle(fontSize: 9),
                     ),
                   ],
                 ),
@@ -1285,9 +1326,9 @@ class InvoiceGenerator extends BasePdfGenerator {
                 ],
               ),
 
-              pw.SizedBox(height: 4),
-
+              // Rundungsdifferenz anzeigen (falls vorhanden)
               if (roundingSettings[currency] == true && roundingDifference != 0) ...[
+                pw.SizedBox(height: 4),
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
@@ -1298,14 +1339,14 @@ class InvoiceGenerator extends BasePdfGenerator {
                     pw.Text(
                       roundingDifference > 0
                           ? '+${BasePdfGenerator.formatCurrency(roundingDifference.abs() / (exchangeRates[currency] ?? 1.0), currency, exchangeRates)}'
-                          : '-${BasePdfGenerator.formatCurrency(roundingDifference.abs() / (exchangeRates[currency] ?? 1.0), currency, exchangeRates)}',   style: pw.TextStyle(
+                          : '-${BasePdfGenerator.formatCurrency(roundingDifference.abs() / (exchangeRates[currency] ?? 1.0), currency, exchangeRates)}',
+                      style: pw.TextStyle(
                         fontSize: 9,
                         color: roundingDifference > 0 ? PdfColors.green700 : PdfColors.orange800,
                       ),
                     ),
                   ],
                 ),
-                pw.SizedBox(height: 4),
               ],
 
               pw.Divider(color: PdfColors.blueGrey300),
@@ -1364,10 +1405,9 @@ class InvoiceGenerator extends BasePdfGenerator {
                 ),
               ],
 
-            ] else if (taxOption == 1) ...[  // TaxOption.noTax
+            ] else if (taxOption == 1) ...[
               pw.Divider(color: PdfColors.blueGrey300),
 
-              // Rundungsdifferenz anzeigen (falls vorhanden)
               if (roundingSettings[currency] == true && roundingDifference != 0) ...[
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -1398,7 +1438,7 @@ class InvoiceGenerator extends BasePdfGenerator {
                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                   ),
                   pw.Text(
-                    BasePdfGenerator.formatCurrency(totalWithTax, currency, exchangeRates),  // KORRIGIERT: totalWithTax statt netAmount
+                    BasePdfGenerator.formatCurrency(totalWithTax, currency, exchangeRates),
                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                   ),
                 ],
@@ -1444,10 +1484,9 @@ class InvoiceGenerator extends BasePdfGenerator {
                 ),
               ],
 
-            ] else ...[  // TaxOption.totalOnly
+            ] else ...[
               pw.Divider(color: PdfColors.blueGrey300),
 
-              // Rundungsdifferenz anzeigen (falls vorhanden)
               if (roundingSettings[currency] == true && roundingDifference != 0) ...[
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -1480,7 +1519,7 @@ class InvoiceGenerator extends BasePdfGenerator {
                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                   ),
                   pw.Text(
-                    BasePdfGenerator.formatCurrency(totalWithTax, currency, exchangeRates),  // Bereits korrekt
+                    BasePdfGenerator.formatCurrency(totalWithTax, currency, exchangeRates),
                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
                   ),
                 ],
