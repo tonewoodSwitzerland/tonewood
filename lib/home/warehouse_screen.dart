@@ -77,6 +77,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   String? _shopFilter; // null = alle, 'sold' = verkauft, 'available' = nicht verkauft
   bool _isOnlineShopView = false;
   String _activeSearchText = '';
+  String get _userId => FirebaseAuth.instance.currentUser!.uid;
+  DocumentReference get _filterDoc => FirebaseFirestore.instance
+      .collection('users')
+      .doc(_userId)
+      .collection('settings')
+      .doc('filter_settings');
 
   void _updateProductStream() {
     print('_updateProductStream aufgerufen');
@@ -245,9 +251,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
 
   void _loadSavedFilters() {
-    _filterSubscription = FirebaseFirestore.instance
-        .collection('general_data')
-        .doc('filter_settings')
+    _filterSubscription = _filterDoc
         .snapshots()
         .listen((snapshot) {
       if (snapshot.exists && mounted) {
@@ -304,10 +308,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     try {
       // Wenn Suchtext vorhanden, speichere nur diesen
       if (_activeSearchText.isNotEmpty) {
-        await FirebaseFirestore.instance
-            .collection('general_data')
-            .doc('filter_settings')
-            .set({
+        await _filterDoc.set({
           'searchText': _activeSearchText,
           'instrumentCodes': [],
           'partCodes': [],
@@ -318,10 +319,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         });
       } else {
         // Sonst speichere die manuellen Filter
-        await FirebaseFirestore.instance
-            .collection('general_data')
-            .doc('filter_settings')
-            .set({
+        await _filterDoc.set({
           'searchText': '',
           'instrumentCodes': selectedInstrumentCodes,
           'partCodes': selectedPartCodes,
@@ -349,10 +347,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     });
     _updateProductStream();
     try {
-      await FirebaseFirestore.instance
-          .collection('general_data')
-          .doc('filter_settings')
-          .delete();
+      await _filterDoc.delete();
     } catch (e) {
       print('Fehler beim Zurücksetzen der Filter: $e');
     }
@@ -526,11 +521,15 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         .map((snapshot) {
       return snapshot.docs.fold<double>(
         0,
-            (sum, doc) => sum + ((doc.data()['quantity'] as double).abs()), // abs() weil die Menge negativ gespeichert wird
+            (sum, doc) {
+          final qty = doc.data()['quantity'];
+          // Sichere Konvertierung: int ODER double → double
+          final qtyDouble = (qty is int) ? qty.toDouble() : (qty as double);
+          return sum + qtyDouble.abs();
+        },
       );
     });
   }
-
 
 
   Future<void> _showPriceChangeDialog(Map<String, dynamic> data) async {
@@ -2010,30 +2009,54 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
 // Fügen Sie diese neue Methode hinzu, die einen Stream zurückgibt
   Stream<double> _getAvailableQuantityStream(String shortBarcode) {
+    print('🔍 _getAvailableQuantityStream gestartet für: $shortBarcode');
+
     return FirebaseFirestore.instance
         .collection('inventory')
         .doc(shortBarcode)
         .snapshots()
         .asyncMap((inventoryDoc) async {
-      // Sichere Konvertierung des Bestands zu double
-      final stockValue = inventoryDoc.data()?['quantity'] ?? 0;
-      final stock = stockValue is int ? stockValue.toDouble() : (stockValue as double);
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      print('📦 DEBUG für Produkt: $shortBarcode');
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-      // Warenkorb-Menge abrufen
+      // 1. Inventory-Daten
+      final inventoryData = inventoryDoc.data();
+      print('📋 Inventory Doc exists: ${inventoryDoc.exists}');
+      print('📋 Inventory Data: $inventoryData');
+
+      final stockValue = inventoryData?['quantity'] ?? 0;
+      final stock = stockValue is int ? stockValue.toDouble() : (stockValue as double);
+      print('📊 Lagerbestand (quantity): $stock');
+
+      // Prüfe auch quantity_online_shop
+      final onlineShopQty = inventoryData?['quantity_online_shop'] ?? 0;
+      print('🛒 Online Shop Menge (quantity_online_shop): $onlineShopQty');
+
+      // 2. Warenkorb-Menge
       final cartSnapshot = await FirebaseFirestore.instance
           .collection('temporary_basket')
           .where('product_id', isEqualTo: shortBarcode)
           .get();
 
-      final cartQuantity = cartSnapshot.docs.fold<double>(
-        0,
-            (sum, doc) {
-          final qty = doc.data()['quantity'] ?? 0;
-          return sum + (qty is int ? qty.toDouble() : (qty as double));
-        },
-      );
+      print('\n🛒 WARENKORB:');
+      print('   Anzahl Einträge: ${cartSnapshot.docs.length}');
 
-      // Reservierte Menge aus stock_movements abrufen
+      double cartQuantity = 0;
+      for (var doc in cartSnapshot.docs) {
+        final data = doc.data();
+        final qty = data['quantity'] ?? 0;
+        final qtyDouble = qty is int ? qty.toDouble() : (qty as double);
+        print('   - Doc ID: ${doc.id}');
+        print('     quantity: $qty (als double: $qtyDouble)');
+        print('     product_name: ${data['product_name']}');
+        print('     is_online_shop_item: ${data['is_online_shop_item']}');
+        print('     online_shop_barcode: ${data['online_shop_barcode']}');
+        cartQuantity += qtyDouble;
+      }
+      print('   SUMME Warenkorb: $cartQuantity');
+
+      // 3. Reservierungen
       final reservedSnapshot = await FirebaseFirestore.instance
           .collection('stock_movements')
           .where('productId', isEqualTo: shortBarcode)
@@ -2041,19 +2064,37 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           .where('status', isEqualTo: 'reserved')
           .get();
 
-      final reservedQuantity = reservedSnapshot.docs.fold<double>(
-        0,
-            (sum, doc) {
-          final qty = doc.data()['quantity'] ?? 0;
-          final qtyDouble = qty is int ? qty.toDouble() : (qty as double);
-          return sum + qtyDouble.abs();
-        },
-      );
+      print('\n🔒 RESERVIERUNGEN:');
+      print('   Anzahl Einträge: ${reservedSnapshot.docs.length}');
 
-      return stock - cartQuantity - reservedQuantity;
+      double reservedQuantity = 0;
+      for (var doc in reservedSnapshot.docs) {
+        final data = doc.data();
+        final qty = data['quantity'] ?? 0;
+        final qtyDouble = qty is int ? qty.toDouble() : (qty as double);
+        print('   - Doc ID: ${doc.id}');
+        print('     quantity: $qty (abs: ${qtyDouble.abs()})');
+        print('     quoteId: ${data['quoteId']}');
+        print('     status: ${data['status']}');
+        print('     onlineShopBarcode: ${data['onlineShopBarcode']}');
+        reservedQuantity += qtyDouble.abs();
+      }
+      print('   SUMME Reservierungen: $reservedQuantity');
+
+      // 4. Berechnung
+      final available = stock - cartQuantity - reservedQuantity;
+
+      print('\n📊 BERECHNUNG:');
+      print('   Lagerbestand:    $stock');
+      print('   - Warenkorb:     $cartQuantity');
+      print('   - Reserviert:    $reservedQuantity');
+      print('   ─────────────────────────');
+      print('   = Verfügbar:     $available');
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+      return available;
     });
   }
-
 // Aktualisieren Sie die buildDetailSection Methode
   Widget _buildDetailSection({
     required String title,

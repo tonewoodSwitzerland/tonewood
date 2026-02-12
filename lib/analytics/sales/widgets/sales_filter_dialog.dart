@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../../components/filterCategory.dart';
+import '../../../services/countries.dart';
 import '../../../services/icon_helper.dart';
 import '../models/sales_filter.dart';
 
@@ -69,74 +70,95 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
                         ],
                       ),
                       child: Theme(
-                        data: ThemeData(dividerColor: Colors.transparent),
-                        child: Column(
-                          children: [
-                            buildFilterCategory(
-                              icon: Icons.calendar_today,
-                             iconName: 'calendar_today',
-                             title:  'Zeitraum',
-                              child:   _buildDateFilter(),
-                             hasActiveFilters:  tempFilter.timeRange != null || tempFilter.startDate != null,
-                            ),
-                            buildFilterCategory(
-                              icon:  Icons.savings,
-                              iconName: 'money_bag',
-                              title:     'Betrag',
-                              child:   _buildAmountFilter(),
-                              hasActiveFilters:   tempFilter.minAmount != null || tempFilter.maxAmount != null,
-                            ),
-                            buildFilterCategory(
-                              icon: Icons.event,
-                              iconName: 'event',
-                              title:    'Messe',
-                              child:   _buildFairFilter(),
-                              hasActiveFilters:    tempFilter.selectedFairs != null,
-                            ),
-                            buildFilterCategory(
-                              icon:  Icons.inventory,
-                              iconName: 'inventory',
-                              title:    'Artikel',
-                              child:    _buildProductFilter(),
-                              hasActiveFilters:    tempFilter.selectedProducts != null,
-                            ),
-                            buildFilterCategory(
-                              icon:   Icons.forest,
-                              iconName: 'forest',
-                              title:   'Holzart',
-                              child:  _buildWoodTypeFilter(),
-                              hasActiveFilters:    tempFilter.woodTypes?.isNotEmpty ?? false,
-                            ),
-                            buildFilterCategory(
-                              icon:  Icons.category,
-                              iconName: 'category',
-                              title:     'Bauteil',
-                              child:   _buildPartsFilter(),
-                              hasActiveFilters:   tempFilter.parts?.isNotEmpty ?? false,
-                            ),
-                            buildFilterCategory(
-                              icon:   Icons.music_note,
-                              iconName: 'music_note',
-                              title:   'Instrument',
-                              child:  _buildInstrumentFilter(),
-                              hasActiveFilters:    tempFilter.instruments?.isNotEmpty ?? false,
-                            ),
-                            buildFilterCategory(
-                            icon:   Icons.star,
-                              iconName: 'star',
-                              title:    'Qualität',
-                              child:    _buildQualityFilter(),
-                              hasActiveFilters:   tempFilter.qualities?.isNotEmpty ?? false,
-                            ),
-                            buildFilterCategory(
-                              icon:  Icons.person,
-                              iconName: 'person',
-                              title:    'Kunde',
-                             child: _buildCustomerFilter(),
-                              hasActiveFilters:   tempFilter.selectedCustomers != null,
-                            )
-                          ],
-                        )
+                          data: ThemeData(dividerColor: Colors.transparent),
+                          child: Column(
+                            children: [
+                              buildFilterCategory(
+                                icon: Icons.calendar_today,
+                                iconName: 'calendar_today',
+                                title:  'Zeitraum',
+                                child:   _buildDateFilter(),
+                                hasActiveFilters:  tempFilter.timeRange != null || tempFilter.startDate != null,
+                              ),
+                              buildFilterCategory(
+                                icon:  Icons.savings,
+                                iconName: 'money_bag',
+                                title:     'Betrag',
+                                child:   _buildAmountFilter(),
+                                hasActiveFilters:   tempFilter.minAmount != null || tempFilter.maxAmount != null,
+                              ),
+                              buildFilterCategory(
+                                icon: Icons.event,
+                                iconName: 'event',
+                                title:    'Messe',
+                                child:   _buildFairFilter(),
+                                hasActiveFilters:    tempFilter.selectedFairs != null,
+                              ),
+                              buildFilterCategory(
+                                icon:  Icons.inventory,
+                                iconName: 'inventory',
+                                title:    'Artikel',
+                                child:    _buildProductFilter(),
+                                hasActiveFilters:    tempFilter.selectedProducts != null,
+                              ),
+                              buildFilterCategory(
+                                icon:   Icons.forest,
+                                iconName: 'forest',
+                                title:   'Holzart',
+                                child:  _buildWoodTypeFilter(),
+                                hasActiveFilters:    tempFilter.woodTypes?.isNotEmpty ?? false,
+                              ),
+                              buildFilterCategory(
+                                icon:  Icons.category,
+                                iconName: 'category',
+                                title:     'Bauteil',
+                                child:   _buildPartsFilter(),
+                                hasActiveFilters:   tempFilter.parts?.isNotEmpty ?? false,
+                              ),
+                              buildFilterCategory(
+                                icon:   Icons.music_note,
+                                iconName: 'music_note',
+                                title:   'Instrument',
+                                child:  _buildInstrumentFilter(),
+                                hasActiveFilters:    tempFilter.instruments?.isNotEmpty ?? false,
+                              ),
+                              buildFilterCategory(
+                                icon:   Icons.star,
+                                iconName: 'star',
+                                title:    'Qualität',
+                                child:    _buildQualityFilter(),
+                                hasActiveFilters:   tempFilter.qualities?.isNotEmpty ?? false,
+                              ),
+                              buildFilterCategory(
+                                icon:  Icons.person,
+                                iconName: 'person',
+                                title:    'Kunde',
+                                child: _buildCustomerFilter(),
+                                hasActiveFilters:   tempFilter.selectedCustomers != null,
+                              ),
+                              buildFilterCategory(
+                                icon: Icons.account_balance_wallet,
+                                iconName: 'account_balance_wallet',
+                                title: 'Kostenstelle',
+                                child: _buildCostCenterFilter(),
+                                hasActiveFilters: tempFilter.costCenters?.isNotEmpty ?? false,
+                              ),
+                              buildFilterCategory(
+                                icon: Icons.storefront,
+                                iconName: 'storefront',
+                                title: 'Bestellart',
+                                child: _buildDistributionChannelFilter(),
+                                hasActiveFilters: tempFilter.distributionChannels?.isNotEmpty ?? false,
+                              ),
+                              buildFilterCategory(
+                                icon: Icons.public,
+                                iconName: 'public',
+                                title: 'Land',
+                                child: _buildCountryFilter(),
+                                hasActiveFilters: tempFilter.countries?.isNotEmpty ?? false,
+                              ),
+                            ],
+                          )
                       ),
                     ),
                   ],
@@ -232,6 +254,10 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
             ...tempFilter.instruments!.map(_buildInstrumentChip),
           if (tempFilter.selectedCustomers != null)
             _buildCustomerChips(),
+          if (tempFilter.costCenters?.isNotEmpty ?? false)
+            ...tempFilter.costCenters!.map(_buildCostCenterChip),
+          if (tempFilter.distributionChannels?.isNotEmpty ?? false)
+            ...tempFilter.distributionChannels!.map(_buildDistributionChannelChip),
         ],
       ),
     );
@@ -542,7 +568,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
           onChanged: (newSelection) {
             setState(() {
               tempFilter = tempFilter.copyWith(
-                selectedCustomers: newSelection
+                  selectedCustomers: newSelection
               );
             });
           },
@@ -600,11 +626,170 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
       },
     );
   }
+  Widget _buildCountryFilter() {
+    final allCountries = Countries.allCountries;
+    final selected = tempFilter.countries ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (selected.isNotEmpty) ...[
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: selected.map((code) {
+              final country = Countries.getCountryByCode(code);
+              return Chip(
+                backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
+                label: Text(country.name),
+                deleteIcon: getAdaptiveIcon(
+                    iconName: 'close', defaultIcon: Icons.close, size: 18),
+                onDeleted: () {
+                  setState(() {
+                    tempFilter = tempFilter.copyWith(
+                      countries: selected.where((c) => c != code).toList(),
+                    );
+                  });
+                },
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+        ],
+        _CountrySearchField(
+          selectedCodes: selected,
+          onChanged: (newSelection) {
+            setState(() {
+              tempFilter = tempFilter.copyWith(countries: newSelection);
+            });
+          },
+        ),
+      ],
+    );
+  }
 
 
 
 
 
+
+
+  Widget _buildCostCenterFilter() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('cost_centers')
+          .orderBy('code')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const CircularProgressIndicator();
+
+        // Nur aktive Kostenstellen anzeigen
+        final activeDocs = snapshot.data!.docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return data['isActive'] ?? true;
+        }).toList();
+
+        return _buildMultiSelectDropdown(
+          label: 'Kostenstelle auswählen',
+          options: activeDocs,
+          selectedValues: tempFilter.costCenters ?? [],
+          onChanged: (newSelection) {
+            setState(() {
+              tempFilter = tempFilter.copyWith(costCenters: newSelection);
+            });
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildCostCenterChip(String id) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('cost_centers')
+          .doc(id)
+          .snapshots(),
+      builder: (context, snapshot) {
+        String name = id;
+        if (snapshot.hasData && snapshot.data!.data() != null) {
+          final data = snapshot.data!.data() as Map<String, dynamic>;
+          final code = data['code'] ?? '';
+          final ccName = data['name'] ?? '';
+          name = code.isNotEmpty ? '$code - $ccName' : ccName;
+        }
+        return Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Chip(
+            backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
+            label: Text(name),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 18),
+            onDeleted: () {
+              setState(() {
+                tempFilter = tempFilter.copyWith(
+                  costCenters: tempFilter.costCenters?.where((c) => c != id).toList(),
+                );
+              });
+            },
+          ),
+        );
+      },
+    );
+  }
+
+
+
+  Widget _buildDistributionChannelFilter() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('distribution_channel')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const CircularProgressIndicator();
+
+        return _buildMultiSelectDropdown(
+          label: 'Bestellart auswählen',
+          options: snapshot.data!.docs,
+          selectedValues: tempFilter.distributionChannels ?? [],
+          onChanged: (newSelection) {
+            setState(() {
+              tempFilter = tempFilter.copyWith(distributionChannels: newSelection);
+            });
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDistributionChannelChip(String id) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('distribution_channel')
+          .doc(id)
+          .snapshots(),
+      builder: (context, snapshot) {
+        String name = id;
+        if (snapshot.hasData && snapshot.data!.data() != null) {
+          final data = snapshot.data!.data() as Map<String, dynamic>;
+          name = data['name'] ?? id;
+        }
+        return Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Chip(
+            backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
+            label: Text(name),
+            deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 18),
+            onDeleted: () {
+              setState(() {
+                tempFilter = tempFilter.copyWith(
+                  distributionChannels: tempFilter.distributionChannels?.where((c) => c != id).toList(),
+                );
+              });
+            },
+          ),
+        );
+      },
+    );
+  }
 
 
 
@@ -620,7 +805,10 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
         (tempFilter.woodTypes?.isNotEmpty ?? false) ||
         (tempFilter.qualities?.isNotEmpty ?? false) ||
         (tempFilter.parts?.isNotEmpty ?? false) ||
-        (tempFilter.instruments?.isNotEmpty ?? false);
+        (tempFilter.instruments?.isNotEmpty ?? false) ||
+        (tempFilter.costCenters?.isNotEmpty ?? false) ||
+        (tempFilter.countries?.isNotEmpty ?? false) ||
+        (tempFilter.distributionChannels?.isNotEmpty ?? false);
   }
 
   void _resetFilters() {
@@ -976,40 +1164,44 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
         color: Colors.white,
       ),
       child:
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            constraints: const BoxConstraints(maxHeight: 250),
-            child: ListView(
-              shrinkWrap: true,
-              children: options.map((option) {
-                final data = option.data() as Map<String, dynamic>;
-                final isSelected = selectedValues.contains(option.id);
+      Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        constraints: const BoxConstraints(maxHeight: 250),
+        child: ListView(
+          shrinkWrap: true,
+          children: options.map((option) {
+            final data = option.data() as Map<String, dynamic>;
+            final isSelected = selectedValues.contains(option.id);
 
-                final displayName = data['name'] as String? ??
-                    data['company'] as String? ??
-                    data['product_name'] as String? ??
-                    'Unbekannt';
+            final code = data['code'] as String?;
+            final rawName = data['name'] as String? ??
+                data['company'] as String? ??
+                data['product_name'] as String? ??
+                'Unbekannt';
+            final displayName = (code != null && code.isNotEmpty && data.containsKey('isActive'))
+                ? '$code - $rawName'
+                : rawName;
 
-                return CheckboxListTile(
-                  title: Text(displayName),
-                  value: isSelected,
-                  onChanged: (bool? checked) {
-                    if (checked == true) {
-                      // Zu bestehender Auswahl hinzufügen
-                      onChanged([...selectedValues, option.id]);
-                    } else {
-                      // Element aus Auswahl entfernen
-                      onChanged(
-                        selectedValues.where((id) => id != option.id).toList(),
-                      );
-                    }
-                  },
-                  activeColor: const Color(0xFF0F4A29),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                );
-              }).toList(),
-            ),
-          ),
+            return CheckboxListTile(
+              title: Text(displayName),
+              value: isSelected,
+              onChanged: (bool? checked) {
+                if (checked == true) {
+                  // Zu bestehender Auswahl hinzufügen
+                  onChanged([...selectedValues, option.id]);
+                } else {
+                  // Element aus Auswahl entfernen
+                  onChanged(
+                    selectedValues.where((id) => id != option.id).toList(),
+                  );
+                }
+              },
+              activeColor: const Color(0xFF0F4A29),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            );
+          }).toList(),
+        ),
+      ),
 
     );
   }
@@ -1028,3 +1220,111 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
     }
     return name;
   }}
+class _CountrySearchField extends StatefulWidget {
+  final List<String> selectedCodes;
+  final Function(List<String>) onChanged;
+
+  const _CountrySearchField({
+    required this.selectedCodes,
+    required this.onChanged,
+  });
+
+  @override
+  State<_CountrySearchField> createState() => _CountrySearchFieldState();
+}
+
+class _CountrySearchFieldState extends State<_CountrySearchField> {
+  final TextEditingController _searchController = TextEditingController();
+  List<Country> _filteredCountries = [];
+  bool _showResults = false;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearch(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        _filteredCountries = [];
+        _showResults = false;
+      } else {
+        _filteredCountries = Countries.searchCountriesByName(query)
+            .where((c) => !widget.selectedCodes.contains(c.code))
+            .toList();
+        _showResults = true;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            hintText: 'Land suchen...',
+            prefixIcon: const Icon(Icons.search),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+          onChanged: _onSearch,
+        ),
+        if (_showResults && _filteredCountries.isNotEmpty)
+          Container(
+            constraints: const BoxConstraints(maxHeight: 200),
+            margin: const EdgeInsets.only(top: 4),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey[300]!),
+              borderRadius: BorderRadius.circular(8),
+              color: Colors.white,
+            ),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _filteredCountries.length,
+              itemBuilder: (context, index) {
+                final country = _filteredCountries[index];
+                return ListTile(
+                  dense: true,
+                  title: Text(country.name),
+                  trailing: Text(country.code,
+                      style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                  onTap: () {
+                    widget.onChanged([...widget.selectedCodes, country.code]);
+                    _searchController.clear();
+                    setState(() {
+                      _showResults = false;
+                      _filteredCountries = [];
+                    });
+                  },
+                );
+              },
+            ),
+          ),
+        if (!_showResults && widget.selectedCodes.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: Countries.popularCountries.map((country) {
+                return ActionChip(
+                  label: Text(country.name,
+                      style: const TextStyle(fontSize: 12)),
+                  onPressed: () {
+                    widget
+                        .onChanged([...widget.selectedCodes, country.code]);
+                  },
+                );
+              }).toList(),
+            ),
+          ),
+      ],
+    );
+  }
+}

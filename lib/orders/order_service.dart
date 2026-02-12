@@ -49,39 +49,59 @@ class OrderService {
   }
 
 
+
+  // Konvertiere Angebot zu Auftrag
   // Konvertiere Angebot zu Auftrag
   static Future<OrderX> createOrderFromQuote(String quoteId) async {
     try {
-
-
       // Lade Angebot
       final quote = await QuoteService.getQuote(quoteId);
-
 
       if (quote == null) throw Exception('Angebot nicht gefunden');
 
       // Prüfe Verfügbarkeit nochmals
-      final availability = await QuoteService.checkAvailability(quote.items,  excludeQuoteId: quoteId );
+      final availability = await QuoteService.checkAvailability(quote.items, excludeQuoteId: quoteId);
+
+      // Sammle die benötigten Mengen pro Produkt (nur für normale Lagerprodukte)
+      final Map<String, double> requiredQuantities = {};
 
       for (final item in quote.items) {
         // Überspringe manuelle Produkte und Dienstleistungen
         if (item['is_manual_product'] == true || item['is_service'] == true) continue;
 
         final productId = item['product_id'] as String;
+        final quantity = (item['quantity'] as num).toDouble();
 
+        // Online-Shop-Items separat prüfen (nicht kumulieren)
+        if (item['is_online_shop_item'] == true) {
+          final barcode = item['online_shop_barcode'] as String;
+          final available = availability[barcode] ?? 0.0;
 
-        final quantityRaw = item['quantity'];
-        print('DEBUG: Raw quantity for $productId: $quantityRaw (${quantityRaw.runtimeType})');
+          if (available < 1) {
+            throw Exception(
+                'Das Online-Shop-Produkt "${item['product_name']}" ist nicht mehr verfügbar.'
+            );
+          }
+          continue; // Nicht zur kumulierten Prüfung hinzufügen
+        }
 
-        final required = quantityRaw is int ? quantityRaw.toDouble() : quantityRaw as double;
-        final availableRaw = availability[productId];
-        print('DEBUG: Available raw for $productId: $availableRaw (${availableRaw.runtimeType})');
+        // Normale Lagerprodukte: Addiere zur benötigten Menge (falls Produkt mehrfach vorkommt)
+        requiredQuantities[productId] = (requiredQuantities[productId] ?? 0.0) + quantity;
+      }
 
-        final available = availableRaw is int ? availableRaw?.toDouble() : (availableRaw ?? 0.0) as double;
+      // Prüfe ob genug Bestand für die kumulierten Mengen vorhanden ist (nur normale Produkte)
+      for (final entry in requiredQuantities.entries) {
+        final productId = entry.key;
+        final required = entry.value;
+        final available = availability[productId] ?? 0.0;
 
+        if (available < required) {
+          // Finde den Produktnamen für die Fehlermeldung
+          final item = quote.items.firstWhere(
+                (i) => i['product_id'] == productId && i['is_online_shop_item'] != true,
+            orElse: () => {'product_name': 'Unbekanntes Produkt'},
+          );
 
-
-        if (available! < required) {
           throw Exception(
               'Nicht genügend Bestand für ${item['product_name']}. '
                   'Benötigt: $required, Verfügbar: $available'
@@ -90,9 +110,8 @@ class OrderService {
       }
 
       // Generiere Auftragsnummer
-   ///   final orderNumber = await getNextOrderNumber();
-      ///Achtung auf wunsch von Tonewood am 12.12. angepasst // Angebotsnummer = Auftragsnummer!
-        final orderNumber = quote.quoteNumber;  // Spiegele die Angebotsnummer
+      /// Achtung auf wunsch von Tonewood am 12.12. angepasst // Angebotsnummer = Auftragsnummer!
+      final orderNumber = quote.quoteNumber;
       final orderId = 'O-$orderNumber';
 
       // Erstelle initialen Auftrag mit Quote-PDF
@@ -106,7 +125,7 @@ class OrderService {
       // Erstelle Auftrag
       final order = OrderX(
         id: orderId,
-       quoteNumber: quote.quoteNumber,
+        quoteNumber: quote.quoteNumber,
         orderNumber: orderNumber,
         status: OrderStatus.processing,
         quoteId: quoteId,
@@ -114,12 +133,11 @@ class OrderService {
         items: quote.items,
         calculations: quote.calculations,
         orderDate: DateTime.now(),
-
         documents: initialDocuments,
-          metadata: {
-            ...quote.metadata, // NEU: Übernehme ALLE metadata aus der Quote
-            'orderCreatedAt': DateTime.now().toIso8601String(),
-          },
+        metadata: {
+          ...quote.metadata,
+          'orderCreatedAt': DateTime.now().toIso8601String(),
+        },
       );
 
       // Wichtig: Wir müssen sicherstellen, dass costCenter und fair auch übertragen werden
@@ -133,12 +151,41 @@ class OrderService {
         orderData['fair'] = quote.fair;
       }
 
+      // Hole alle Reservierungen für dieses Angebot VOR der Transaktion
+      final reservations = await _firestore
+          .collection('stock_movements')
+          .where('quoteId', isEqualTo: quoteId)
+          .where('status', isEqualTo: StockMovementStatus.reserved.name)
+          .get();
+
+      print('📦 Gefundene Reservierungen für Quote $quoteId: ${reservations.docs.length}');
+
+      // Sammle reservierte Produkt-IDs und deren Mengen
+      final Map<String, double> reservedQuantities = {};
+      final Set<String> reservedProductIds = {};
+
+      for (final doc in reservations.docs) {
+        final data = doc.data();
+        final productId = data['productId'] as String?;
+        final quantity = data['quantity'];
+
+        if (productId != null && quantity != null) {
+          reservedProductIds.add(productId);
+          final qtyDouble = (quantity is int) ? quantity.toDouble() : (quantity as double);
+          // quantity ist negativ, also abs() für die Summe
+          reservedQuantities[productId] = (reservedQuantities[productId] ?? 0.0) + qtyDouble.abs();
+        }
+      }
+
+      print('📦 Reservierte Produkte: $reservedProductIds');
+      print('📦 Reservierte Mengen: $reservedQuantities');
+
       // Transaktion für atomare Operationen
       await _firestore.runTransaction((transaction) async {
         // Erstelle Auftrag mit allen Daten
         transaction.set(
           _firestore.collection('orders').doc(orderId),
-          orderData,  // Verwende orderData statt order.toMap()
+          orderData,
         );
 
         // Aktualisiere Angebot
@@ -151,45 +198,79 @@ class OrderService {
           },
         );
 
-        // Hole alle Reservierungen für dieses Angebot
-        final reservations = await _firestore
-            .collection('stock_movements')
-            .where('quoteId', isEqualTo: quoteId)
-            .where('status', isEqualTo: StockMovementStatus.reserved.name)
-            .get();
-
-        // Konvertiere Reservierungen zu Verkäufen
+        // Konvertiere Reservierungen zu Verkäufen UND reduziere Lagerbestand
         for (final doc in reservations.docs) {
+          final movementData = doc.data();
+
+          // Update Reservierung auf confirmed
           transaction.update(doc.reference, {
             'status': StockMovementStatus.confirmed.name,
             'type': StockMovementType.sale.name,
             'orderId': orderId,
+            'orderNumber': orderNumber,
             'confirmedAt': FieldValue.serverTimestamp(),
           });
+
+          // NEU: Lagerbestand für reservierte Produkte reduzieren
+          final productId = movementData['productId'] as String?;
+          final quantity = movementData['quantity'];
+
+          if (productId != null && quantity != null) {
+            final qtyDouble = (quantity is int) ? quantity.toDouble() : (quantity as double);
+
+            final inventoryRef = _firestore.collection('inventory').doc(productId);
+
+            // quantity ist negativ gespeichert (z.B. -5), also addieren wir es
+            // Das reduziert den Bestand
+            transaction.update(inventoryRef, {
+              'quantity': FieldValue.increment(qtyDouble),
+              'last_modified': FieldValue.serverTimestamp(),
+            });
+
+            print('📦 Lagerbestand reduziert (reserviert): $productId um ${qtyDouble.abs()}');
+          }
+
+          // NEU: Online-Shop Items als verkauft markieren
+          final onlineShopBarcode = movementData['onlineShopBarcode'] as String?;
+          if (onlineShopBarcode != null && productId != null) {
+            final onlineShopRef = _firestore.collection('onlineshop').doc(onlineShopBarcode);
+
+            transaction.update(onlineShopRef, {
+              'sold': true,
+              'sold_at': FieldValue.serverTimestamp(),
+              'order_id': orderId,
+              'order_number': orderNumber,
+              'in_cart': false,
+            });
+
+            // Online-Shop Menge im Inventory reduzieren
+            final inventoryRef = _firestore.collection('inventory').doc(productId);
+            transaction.update(inventoryRef, {
+              'quantity_online_shop': FieldValue.increment(-1),
+            });
+
+            print('🛒 Online-Shop Item als verkauft markiert: $onlineShopBarcode');
+          }
         }
 
-        // Aktualisiere Lagerbestände nur für reservierte Produkte
-        // (Nicht-reservierte Produkte müssen den Bestand abziehen)
-        final reservedProductIds = reservations.docs
-            .map((doc) => doc.data()['productId'] as String)
-            .toSet();
-
+        // Aktualisiere Lagerbestände für NICHT-reservierte Produkte
         for (final item in quote.items) {
           // Überspringe manuelle Produkte und Dienstleistungen
           if (item['is_manual_product'] == true || item['is_service'] == true) continue;
 
           final productId = item['product_id'] as String;
+          final itemQuantity = (item['quantity'] as num).toDouble();
 
           // Wenn das Produkt NICHT reserviert war, müssen wir den Bestand abziehen
           if (!reservedProductIds.contains(productId)) {
-            final inventoryRef = _firestore
-                .collection('inventory')
-                .doc(productId);
+            final inventoryRef = _firestore.collection('inventory').doc(productId);
 
             transaction.update(inventoryRef, {
-              'quantity': FieldValue.increment(-((item['quantity'] as num).toDouble())),
+              'quantity': FieldValue.increment(-itemQuantity),
               'last_modified': FieldValue.serverTimestamp(),
             });
+
+            print('📦 Lagerbestand reduziert (nicht reserviert): $productId um $itemQuantity');
 
             // Erstelle neuen Stock Movement für nicht-reservierte Produkte
             final movementRef = _firestore.collection('stock_movements').doc();
@@ -197,9 +278,10 @@ class OrderService {
               'id': movementRef.id,
               'type': StockMovementType.sale.name,
               'orderId': orderId,
+              'orderNumber': orderNumber,
               'quoteId': quoteId,
               'productId': productId,
-              'quantity': -((item['quantity'] as num).toDouble()),
+              'quantity': -itemQuantity,
               'status': StockMovementStatus.confirmed.name,
               'timestamp': FieldValue.serverTimestamp(),
               'confirmedAt': FieldValue.serverTimestamp(),
@@ -208,15 +290,14 @@ class OrderService {
         }
       });
 
-      print('Auftrag erfolgreich erstellt: $orderId');
+      print('✅ Auftrag erfolgreich erstellt: $orderId');
 
       return order;
     } catch (e) {
-      print('Fehler beim Erstellen des Auftrags: $e');
+      print('❌ Fehler beim Erstellen des Auftrags: $e');
       rethrow;
     }
   }
-
   // Generiere und speichere Auftragsdokument
 // Aktualisiere die generateOrderDocument Methode:
   static Future<String> generateOrderDocument({
@@ -429,7 +510,8 @@ class OrderService {
       String quoteId,
       Map<String, dynamic> additionalTexts,
       Map<String, dynamic> invoiceSettings,
-      ) async {
+      ) async
+  {
     try {
       // 1. Zuerst die Quote mit den Additional Texts aktualisieren
       await FirebaseFirestore.instance
@@ -454,13 +536,14 @@ class OrderService {
       final quote = Quote.fromFirestore(quoteDoc);
 
       // 3. Erstelle den Auftrag (die Additional Texts sind jetzt in der Quote gespeichert)
+      // HINWEIS: createOrderFromQuote kümmert sich jetzt um die Lagerbestandsreduzierung!
       final order = await createOrderFromQuote(quoteId);
+
       // DEBUG
       print('DEBUG createOrderFromQuoteWithConfig:');
       print('Order created with ID: ${order.id}');
       print('invoiceSettings: $invoiceSettings');
       print('is_full_payment: ${invoiceSettings['is_full_payment']}');
-
 
       // 4. Erstelle die Rechnung mit den Einstellungen aus der Quote
       // HIER IST DIE KORREKTUR: Konvertiere exchangeRates zu Map<String, double>
@@ -557,7 +640,7 @@ class OrderService {
 
       return order;
     } catch (e) {
-      print('Fehler beim Erstellen des Auftrags mit Konfiguration: $e');
+      print('❌ Fehler beim Erstellen des Auftrags mit Konfiguration: $e');
       rethrow;
     }
   }

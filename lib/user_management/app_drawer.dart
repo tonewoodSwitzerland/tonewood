@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import '../cost_center/cost_center_management_screen.dart';
 import '../customers/customer_selection.dart';
+import '../inventory/inventory_screen.dart';
 import '../services/icon_helper.dart';
 import '../user_management/permission_service.dart';
 import '../user_management/user_management_screen.dart';
@@ -140,8 +142,6 @@ class _AppDrawerState extends State<AppDrawer> {
     return ListView(
       padding: EdgeInsets.zero,
       children: [
-        // === BOTTOM NAV FEATURES (optional im Drawer zeigen) ===
-
         // === AUFTRÄGE & ANGEBOTE ===
         if (_permissions.hasAccess(userGroup, 'drawer_quotes') ||
             _permissions.hasAccess(userGroup, 'drawer_orders')) ...[
@@ -199,8 +199,16 @@ class _AppDrawerState extends State<AppDrawer> {
 
         // === EINSTELLUNGEN ===
         if (_permissions.hasAccess(userGroup, 'drawer_texts') ||
-            _permissions.hasAccess(userGroup, 'drawer_pdf')) ...[
+            _permissions.hasAccess(userGroup, 'drawer_pdf') ||
+            _permissions.hasAccess(userGroup, 'drawer_cost_centers')) ...[
           _buildSectionHeader('Einstellungen'),
+          if (_permissions.hasAccess(userGroup, 'drawer_cost_centers'))
+            _buildDrawerItem(
+              icon: Icons.account_balance_wallet,
+              iconName: 'account_balance_wallet',
+              title: 'Kostenstellen',
+              onTap: () => _navigateTo(context, const CostCenterManagementScreen()),
+            ),
           if (_permissions.hasAccess(userGroup, 'drawer_texts'))
             _buildDrawerItem(
               icon: Icons.text_fields,
@@ -234,6 +242,12 @@ class _AppDrawerState extends State<AppDrawer> {
             iconName: 'security',
             title: 'Berechtigungen',
             onTap: () => _navigateTo(context, const PermissionConfigScreen()),
+          ),
+          _buildDrawerItem(
+            icon: Icons.fact_check,
+            iconName: 'fact_check',
+            title: 'Inventur',
+            onTap: () => _navigateTo(context, const InventoryScreen()),
           ),
         ],
       ],

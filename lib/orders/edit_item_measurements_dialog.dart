@@ -67,7 +67,10 @@ class EditItemMeasurementsDialog {
           final volumePerPieceM3 = volumePerPieceMm3 / 1000000000;
           final totalVolumeDm3 = totalVolumeMm3 / 1000000;
           final totalVolumeM3 = totalVolumeMm3 / 1000000000;
-
+// Gewichtsberechnung
+          final density = (item['density'] as num?)?.toDouble() ?? 0;
+          final weightPerPiece = volumePerPieceM3 * density; // kg pro Stück
+          final totalWeight = weightPerPiece * quantity;
           return Padding(
             padding: EdgeInsets.only(
               bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -372,6 +375,17 @@ class EditItemMeasurementsDialog {
                             totalVolumeMm3: totalVolumeMm3,
                             totalVolumeDm3: totalVolumeDm3,
                             totalVolumeM3: totalVolumeM3,
+                          ),
+                          const SizedBox(height: 20),
+                          _buildWeightSection(
+                            context: context,
+                            hasValidDimensions: hasValidDimensions,
+                            density: density,
+                            weightPerPiece: weightPerPiece,
+                            totalWeight: totalWeight,
+                            quantity: quantity,
+                            volumePerPieceM3: volumePerPieceM3,
+                            unit: item['unit']?.toString() ?? 'Stück',
                           ),
 // NEU: Zolltarifnummer
                           const SizedBox(height: 20),
@@ -773,6 +787,161 @@ class EditItemMeasurementsDialog {
       ),
     );
   }
+  static Widget _buildWeightSection({
+    required BuildContext context,
+    required bool hasValidDimensions,
+    required double density,
+    required double weightPerPiece,
+    required double totalWeight,
+    required double quantity,
+    required double volumePerPieceM3,
+    required String unit,
+  }) {
+    final hasWeight = hasValidDimensions && density > 0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: hasWeight
+            ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2)
+            : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: hasWeight
+              ? Theme.of(context).colorScheme.primary.withOpacity(0.3)
+              : Theme.of(context).colorScheme.outline.withOpacity(0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              getAdaptiveIcon(
+                iconName: 'scale',
+                defaultIcon: Icons.scale,
+                size: 20,
+                color: hasWeight
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Gewichtsberechnung',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: hasWeight
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                ),
+              ),
+              const Spacer(),
+              if (hasWeight)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${density.toStringAsFixed(0)} kg/m³',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.green,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+
+          if (hasWeight) ...[
+            const SizedBox(height: 16),
+
+            // Formel
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${volumePerPieceM3.toStringAsFixed(7)} m³ × ${density.toStringAsFixed(0)} kg/m³',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Gewicht pro $unit:',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      Text(
+                        '${weightPerPiece.toStringAsFixed(3)} kg',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (quantity > 1) ...[
+                    const SizedBox(height: 8),
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Gesamtgewicht (${quantity.toStringAsFixed(quantity.truncateToDouble() == quantity ? 0 : 1)} Stk):',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          '${totalWeight.toStringAsFixed(2)} kg',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 16),
+            Center(
+              child: Text(
+                density <= 0
+                    ? 'Keine Dichte hinterlegt – Gewicht kann nicht berechnet werden'
+                    : 'Gib alle Maße ein, um das Gewicht zu berechnen',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
   static Widget _buildVolumeSection({
     required BuildContext context,
     required bool hasValidDimensions,
@@ -1048,10 +1217,10 @@ class EditItemMeasurementsDialog {
                     ),
                   ),
                   // Rows
-                  _buildVolumeTableRow(
-                      context, 'mm³', volumePerPieceMm3, totalVolumeMm3, 0),
-                  _buildVolumeTableRow(
-                      context, 'dm³', volumePerPieceDm3, totalVolumeDm3, 4),
+                  // _buildVolumeTableRow(
+                  //     context, 'mm³', volumePerPieceMm3, totalVolumeMm3, 0),
+                  // _buildVolumeTableRow(
+                  //     context, 'dm³', volumePerPieceDm3, totalVolumeDm3, 4),
                   _buildVolumeTableRow(
                       context, 'm³', volumePerPieceM3, totalVolumeM3, 6),
                 ],
@@ -1086,6 +1255,8 @@ class EditItemMeasurementsDialog {
               ),
             ),
           ],
+
+
         ],
       ),
     );

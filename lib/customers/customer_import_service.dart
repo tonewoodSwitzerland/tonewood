@@ -517,7 +517,7 @@ class CustomerImportService {
             ],
             const SizedBox(height: 16),
             const Text(
-              'Möchten Sie diese Kunden importieren?',
+              'Möchtest du diese Kunden importieren?',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ],

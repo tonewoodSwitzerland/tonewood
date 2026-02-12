@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:tonewood/services/pdf_generators/base_pdf_generator.dart';
 import '../pdf_settings_screen.dart';
 import '../product_sorting_manager.dart';
 import 'base_delivery_note_generator.dart';
@@ -328,10 +329,10 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
       }
     });
 
-    return pw.Table(
-      border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
+    return BasePdfGenerator.buildSplittableTable(
+      rows: rows,
       columnWidths: columnWidths,
-      children: rows,
+      border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
     );
   }
 
@@ -449,56 +450,67 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
     final additionalTextsWidget = await _buildAdditionalTexts(language);
 
     pdf.addPage(
-      pw.Page(
+      pw.MultiPage(
         margin: const pw.EdgeInsets.all(20),
-        build: (pw.Context context) {
+        header: (pw.Context context) {
+          if (context.pageNumber == 1) return pw.SizedBox.shrink();
           return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // HEADER mit Fenster-Layout
-              BaseDeliveryNotePdfGenerator.buildWindowHeader(
+              BasePdfGenerator.buildCompactHeader(
                 documentTitle: 'delivery_note',
                 documentNumber: deliveryNum,
-                date: DateTime.now(),
                 logo: logo,
-                customerData: customerData,
-                costCenter: costCenterCode,
-                invoiceNumber: invoiceNumber,
-                quoteNumber: quoteNumber,
-                language: language,
-                addressEmailSpacing: addressEmailSpacing,
-              ),
-
-              pw.SizedBox(height: 15),
-
-              // Datums-Box
-              BaseDeliveryNotePdfGenerator.buildDateBox(
-                deliveryDate: deliveryDate,
-                paymentDate: paymentDate,
+                pageNumber: context.pageNumber,
+                totalPages: context.pagesCount,
                 language: language,
               ),
-
-              pw.SizedBox(height: 15),
-
-              // Produkttabelle mit dynamischer °C-Spalte und Spaltenausrichtungen
-              pw.Expanded(
-                child: pw.Column(
-                  children: [
-                    _buildProductTable(groupedItems, language, showThermalColumn, columnWidths, columnAlignments),
-                    pw.SizedBox(height: 10),
-                    additionalTextsWidget,
-                  ],
-                ),
-              ),
-
-              // Footer
-              BaseDeliveryNotePdfGenerator.buildFooter(),
+              pw.SizedBox(height: 10),
             ],
           );
+        },
+        footer: (pw.Context context) => BaseDeliveryNotePdfGenerator.buildFooter(
+          pageNumber: context.pageNumber,
+          totalPages: context.pagesCount,
+          language: language,
+        ),
+        build: (pw.Context context) {
+          return [
+            // HEADER mit Fenster-Layout
+            BaseDeliveryNotePdfGenerator.buildWindowHeader(
+              documentTitle: 'delivery_note',
+              documentNumber: deliveryNum,
+              date: DateTime.now(),
+              logo: logo,
+              customerData: customerData,
+              costCenter: costCenterCode,
+              invoiceNumber: invoiceNumber,
+              quoteNumber: quoteNumber,
+              language: language,
+              addressEmailSpacing: addressEmailSpacing,
+            ),
+
+            pw.SizedBox(height: 15),
+
+            // Datums-Box
+            BaseDeliveryNotePdfGenerator.buildDateBox(
+              deliveryDate: deliveryDate,
+              paymentDate: paymentDate,
+              language: language,
+            ),
+
+            pw.SizedBox(height: 15),
+
+            // Produkttabelle mit dynamischer °C-Spalte und Spaltenausrichtungen
+            _buildProductTable(groupedItems, language, showThermalColumn, columnWidths, columnAlignments),
+
+            pw.SizedBox(height: 10),
+            additionalTextsWidget,
+          ];
         },
       ),
     );
 
     return pdf.save();
+
   }
 }

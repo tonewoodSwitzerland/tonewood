@@ -10,9 +10,7 @@ import '../countries.dart';
 import '../pdf_settings_screen.dart'; // NEU: Für PdfSettingsHelper
 
 abstract class BasePdfGenerator {
-  // Gemeinsame Formatierungslogik
   static String formatCurrency(dynamic amount, String currency, Map<String, double> exchangeRates) {
-    // Konvertiere sicher zu double
     double doubleAmount = 0.0;
     if (amount != null) {
       if (amount is num) {
@@ -22,13 +20,12 @@ abstract class BasePdfGenerator {
       }
     }
 
-    // Konvertiere Währung
     double convertedAmount = doubleAmount;
     if (currency != 'CHF' && exchangeRates.containsKey(currency)) {
       convertedAmount = doubleAmount * (exchangeRates[currency] ?? 1.0);
     }
 
-    return '$currency ${convertedAmount.toStringAsFixed(2)}';
+    return '$currency ${_formatWithThousands(convertedAmount)}';
   }
 
   /// Formatiert Betrag OHNE Währungszeichen (für Tabellen)
@@ -47,7 +44,31 @@ abstract class BasePdfGenerator {
       convertedAmount = doubleAmount * (exchangeRates[currency] ?? 1.0);
     }
 
-    return convertedAmount.toStringAsFixed(2);
+    return _formatWithThousands(convertedAmount);
+  }
+
+  /// Hilfsmethode: Zahl mit Tausender-Apostroph formatieren
+  /// 1234.56 → "1'234.56"
+  static String _formatWithThousands(double amount) {
+    final parts = amount.toStringAsFixed(2).split('.');
+    final intPart = parts[0];
+    final decPart = parts[1];
+
+    // Minuszeichen separat behandeln
+    final isNegative = intPart.startsWith('-');
+    final digits = isNegative ? intPart.substring(1) : intPart;
+
+    String formatted = '';
+    int count = 0;
+    for (int i = digits.length - 1; i >= 0; i--) {
+      if (count > 0 && count % 3 == 0) {
+        formatted = "'$formatted";
+      }
+      formatted = digits[i] + formatted;
+      count++;
+    }
+
+    return '${isNegative ? '-' : ''}$formatted.$decPart';
   }
 
   /// Währungshinweis-Widget für über Tabellen
@@ -110,7 +131,8 @@ abstract class BasePdfGenerator {
     String language = 'DE',
     String? additionalReference,
     String? secondaryReference,
-  }) {
+  })
+  {
     // Übersetzungsfunktion für Header
     String getHeaderTranslation(String key, String lang) {
       final translations = {
@@ -293,6 +315,83 @@ abstract class BasePdfGenerator {
         ),
         pw.Image(logo, width: 180),
       ],
+    );
+  }
+
+  static pw.Widget buildCompactHeader({
+    required String documentTitle,
+    required String documentNumber,
+    required pw.MemoryImage logo,
+    required int pageNumber,
+    required int totalPages,
+    String language = 'DE',
+  }) {
+    final pageLabel = language == 'EN'
+        ? 'Page $pageNumber / $totalPages'
+        : 'Seite $pageNumber / $totalPages';
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.only(bottom: 8),
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(
+          bottom: pw.BorderSide(color: PdfColors.blueGrey200, width: 0.5),
+        ),
+      ),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Row(
+            children: [
+              pw.Text(
+                documentTitle,
+                style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.blueGrey800,
+                ),
+              ),
+              pw.SizedBox(width: 12),
+              pw.Text(
+                documentNumber,
+                style: const pw.TextStyle(
+                  fontSize: 10,
+                  color: PdfColors.blueGrey600,
+                ),
+              ),
+              // pw.SizedBox(width: 20),
+              // pw.Text(
+              //   pageLabel,
+              //   style: const pw.TextStyle(
+              //     fontSize: 9,
+              //     color: PdfColors.blueGrey400,
+              //   ),
+              // ),
+            ],
+          ),
+          pw.Image(logo, width: 100),
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Seitenzahl-Widget (für Seite 1 im Header oder standalone)
+  // ═══════════════════════════════════════════════════════════════════════════
+  static pw.Widget buildPageNumber({
+    required int pageNumber,
+    required int totalPages,
+    String language = 'DE',
+  }) {
+    final pageLabel = language == 'EN'
+        ? 'Page $pageNumber / $totalPages'
+        : 'Seite $pageNumber / $totalPages';
+
+    return pw.Text(
+      pageLabel,
+      style: const pw.TextStyle(
+        fontSize: 9,
+        color: PdfColors.blueGrey400,
+      ),
     );
   }
 
@@ -921,7 +1020,7 @@ abstract class BasePdfGenerator {
   }
 
   // Gemeinsamer Footer
-  static pw.Widget buildFooter() {
+  static pw.Widget buildFooter({int? pageNumber, int? totalPages, String language = 'DE'}) {
     return pw.Container(
       padding: const pw.EdgeInsets.only(top: 8),
       decoration: const pw.BoxDecoration(
@@ -947,6 +1046,16 @@ abstract class BasePdfGenerator {
                   style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
             ],
           ),
+          if (pageNumber != null && totalPages != null)
+            pw.Text(
+              language == 'EN'
+                  ? 'Page $pageNumber / $totalPages'
+                  : 'Seite $pageNumber / $totalPages',
+              style: const pw.TextStyle(
+                fontSize: 8,
+                color: PdfColors.blueGrey400,
+              ),
+            ),
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
@@ -964,7 +1073,6 @@ abstract class BasePdfGenerator {
       ),
     );
   }
-
   static String getTranslation(String key, String language) {
     final translations = {
       'DE': {
@@ -1050,5 +1158,44 @@ abstract class BasePdfGenerator {
   static Future<pw.MemoryImage> loadLogo() async {
     final logoImage = await rootBundle.load('images/logo.png');
     return pw.MemoryImage(logoImage.buffer.asUint8List());
+  }
+  /// Erstellt eine Tabelle, die über Seitenumbrüche hinweg umbrechen kann.
+  /// Jede Row wird als eigene Mini-Tabelle gerendert, damit MultiPage
+  /// dazwischen umbrechen kann.
+  static pw.Widget buildSplittableTable({
+    required List<pw.TableRow> rows,
+    required Map<int, pw.TableColumnWidth> columnWidths,
+    pw.TableBorder? border,
+  }) {
+    if (rows.isEmpty) return pw.SizedBox.shrink();
+
+    final effectiveBorder = border ?? pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5);
+
+    final List<pw.Widget> tableWidgets = [];
+
+    for (int i = 0; i < rows.length; i++) {
+      final isFirst = i == 0;
+      final isLast = i == rows.length - 1;
+
+      tableWidgets.add(
+        pw.Table(
+          columnWidths: columnWidths,
+          border: pw.TableBorder(
+            left: effectiveBorder.left,
+            right: effectiveBorder.right,
+            top: isFirst ? effectiveBorder.top : effectiveBorder.horizontalInside,
+            bottom: isLast ? effectiveBorder.bottom : pw.BorderSide.none,
+            horizontalInside: effectiveBorder.horizontalInside,
+            verticalInside: effectiveBorder.verticalInside,
+          ),
+          children: [rows[i]],
+        ),
+      );
+    }
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: tableWidgets,
+    );
   }
 }

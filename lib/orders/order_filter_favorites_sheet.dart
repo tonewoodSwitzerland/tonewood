@@ -219,8 +219,6 @@ class _OrderFilterFavoritesBottomSheet extends StatelessWidget {
       parts.add('Status: $statusNames');
     }
 
-
-
     // Betrag
     if (filters['minAmount'] != null || filters['maxAmount'] != null) {
       final min = filters['minAmount']?.toString() ?? '';
@@ -235,15 +233,25 @@ class _OrderFilterFavoritesBottomSheet extends StatelessWidget {
       parts.add('Veranlagung vorhanden');
     }
 
+    // NEU: Datum
+    if (filters['dateFilterType'] == 'current_year') {
+      parts.add('Jahr: ${DateTime.now().year}');
+    } else if (filters['dateFilterType'] == 'current_month') {
+      final now = DateTime.now();
+      final monthNames = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+      parts.add('Monat: ${monthNames[now.month - 1]}');
+    } else if (filters['startDate'] != null || filters['endDate'] != null) {
+      parts.add('Zeitraum gefiltert');
+    }
+
     return parts.isEmpty ? 'Keine Filter aktiv' : parts.join(' • ');
   }
-
   Future<void> _deleteFavorite(BuildContext context, String favoriteId, String name) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Favorit löschen'),
-        content: Text('Möchten Sie den Favoriten "$name" wirklich löschen?'),
+        content: Text('Möchtest du den Favoriten "$name" wirklich löschen?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

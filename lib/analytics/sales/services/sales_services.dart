@@ -251,6 +251,17 @@ class SalesService {
   }
 
   bool _meetsCriteria(Map<String, dynamic> data, SalesFilter filter) {
+    // Stornierte Aufträge ausschließen
+    if (data['status'] == 'cancelled') return false;
+
+    // Länder-Filter
+    if (filter.countries != null && filter.countries!.isNotEmpty) {
+      final customer = data['customer'] as Map<String, dynamic>? ?? {};
+      final countryCode = customer['countryCode']?.toString() ??
+          customer['country']?.toString() ?? '';
+      if (!filter.countries!.contains(countryCode)) return false;
+    }
+
     return true;
   }
 

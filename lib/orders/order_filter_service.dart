@@ -15,7 +15,11 @@ class OrderFilterService {
       'maxAmount': null,
       'veranlagungStatus': null,
       'searchText': '',
-      'quickStatus': null,  // NEU: Für Schnellfilter-Buttons
+      'quickStatus': null,
+      // NEU: Datumsfilter
+      'dateFilterType': null,  // 'current_year', 'current_month', 'custom'
+      'startDate': null,
+      'endDate': null,
     };
   }
 
@@ -167,11 +171,71 @@ class OrderFilterService {
       }).toList();
     }
 
-    // NEU: Quick-Status Filter (für die Schnellfilter-Buttons)
+    // Quick-Status Filter (für die Schnellfilter-Buttons)
     final quickStatus = filters['quickStatus'] as String?;
     if (quickStatus != null && quickStatus.isNotEmpty) {
       filteredOrders = filteredOrders.where((order) {
         return order.status.name == quickStatus;
+      }).toList();
+    }
+
+    // NEU: Datumsfilter
+    final dateFilterType = filters['dateFilterType'] as String?;
+
+    // DateTime oder Timestamp konvertieren
+    DateTime? startDate;
+    DateTime? endDate;
+
+
+
+    if (filters['startDate'] != null) {
+      if (filters['startDate'] is Timestamp) {
+        startDate = (filters['startDate'] as Timestamp).toDate();
+      } else if (filters['startDate'] is DateTime) {
+        startDate = filters['startDate'] as DateTime;
+      }
+    }
+
+    if (filters['endDate'] != null) {
+      if (filters['endDate'] is Timestamp) {
+        endDate = (filters['endDate'] as Timestamp).toDate();
+      } else if (filters['endDate'] is DateTime) {
+        endDate = filters['endDate'] as DateTime;
+      }
+    }
+
+    // Filter anwenden wenn irgendein Datumskriterium aktiv ist
+    if (dateFilterType != null || startDate != null || endDate != null) {
+      filteredOrders = filteredOrders.where((order) {
+        final orderDate = order.orderDate;
+
+        // Schnellfilter
+        if (dateFilterType == 'current_year') {
+          return orderDate.year == DateTime.now().year;
+        } else if (dateFilterType == 'current_month') {
+          final now = DateTime.now();
+          return orderDate.year == now.year && orderDate.month == now.month;
+        }
+
+        // Custom Datumsbereich (wenn dateFilterType == 'custom' ODER wenn startDate/endDate gesetzt sind)
+        if (dateFilterType == 'custom' || startDate != null || endDate != null) {
+          if (startDate != null) {
+            final startOfDay = DateTime(startDate.year, startDate.month, startDate.day);
+            if (orderDate.isBefore(startOfDay)) {
+              return false;
+            }
+          }
+          if (endDate != null) {
+            // End of day für endDate
+            final endOfDay = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59);
+            if (orderDate.isAfter(endOfDay)) {
+              return false;
+            }
+          }
+          return true;
+        }
+
+        return true;
       }).toList();
     }
 
@@ -185,10 +249,13 @@ class OrderFilterService {
         filters['maxAmount'] != null ||
         filters['veranlagungStatus'] != null ||
         (filters['searchText'] ?? '').toString().isNotEmpty ||
-        (filters['quickStatus'] != null && filters['quickStatus'].toString().isNotEmpty);  // NEU
+        (filters['quickStatus'] != null && filters['quickStatus'].toString().isNotEmpty) ||
+        // NEU: Datumsfilter
+        filters['dateFilterType'] != null ||
+        filters['startDate'] != null ||
+        filters['endDate'] != null;
   }
 
-  // Helper: Erstelle Filter-Zusammenfassung für Anzeige
   static String getFilterSummary(Map<String, dynamic> filters) {
     final parts = <String>[];
 
@@ -210,19 +277,54 @@ class OrderFilterService {
     }
 
     if ((filters['searchText'] ?? '').toString().isNotEmpty) {
-      parts.add('Suche: "${filters['searchText']}"');
+      parts.add('Suche aktiv');
     }
 
-    // NEU: Quick-Filter in Zusammenfassung
-    final quickStatus = filters['quickStatus'] as String?;
-    if (quickStatus != null && quickStatus.isNotEmpty) {
-      final statusName = quickStatus == 'processing' ? 'In Bearbeitung' :
-      quickStatus == 'shipped' ? 'Versendet' : quickStatus;
-      parts.add('Schnellfilter: $statusName');
+    // NEU: Datumsfilter
+    if (filters['dateFilterType'] == 'current_year') {
+      parts.add('Aktuelles Jahr (${DateTime.now().year})');
+    } else if (filters['dateFilterType'] == 'current_month') {
+      final now = DateTime.now();
+      final monthNames = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+      parts.add('${monthNames[now.month - 1]} ${now.year}');
+    } else if (filters['startDate'] != null || filters['endDate'] != null) {
+      // DateTime oder Timestamp konvertieren
+      DateTime? start;
+      DateTime? end;
+
+      if (filters['startDate'] != null) {
+        if (filters['startDate'] is Timestamp) {
+          start = (filters['startDate'] as Timestamp).toDate();
+        } else if (filters['startDate'] is DateTime) {
+          start = filters['startDate'] as DateTime;
+        }
+      }
+
+      if (filters['endDate'] != null) {
+        if (filters['endDate'] is Timestamp) {
+          end = (filters['endDate'] as Timestamp).toDate();
+        } else if (filters['endDate'] is DateTime) {
+          end = filters['endDate'] as DateTime;
+        }
+      }
+
+      if (start != null && end != null) {
+        parts.add('${_formatDate(start)} - ${_formatDate(end)}');
+      } else if (start != null) {
+        parts.add('ab ${_formatDate(start)}');
+      } else if (end != null) {
+        parts.add('bis ${_formatDate(end)}');
+      }
     }
 
-    return parts.join(', ');
+    return parts.isEmpty ? 'Keine Filter aktiv' : parts.join(' • ');
   }
+
+  // Helper Methode für Datumsformatierung
+  static String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+  }
+
 }
 
 // Filter Dialog Widget
@@ -461,6 +563,141 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
                         ],
                       ),
                     ),
+                    const SizedBox(height: 24),
+
+                    // NEU: Datumsfilter
+                    // NEU: Datumsfilter
+                    _buildFilterSection(
+                      title: 'Auftragsdatum',
+                      icon: Icons.calendar_today,
+                      iconName: 'calendar_today',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Schnellfilter
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              ChoiceChip(
+                                label: const Text('Alle'),
+                                selected: _filters['dateFilterType'] == null,
+                                onSelected: (selected) {
+                                  setState(() {
+                                    _filters['dateFilterType'] = null;
+                                    _filters['startDate'] = null;
+                                    _filters['endDate'] = null;
+                                  });
+                                },
+                              ),
+                              ChoiceChip(
+                                label: Text('${DateTime.now().year}'),
+                                selected: _filters['dateFilterType'] == 'current_year',
+                                onSelected: (selected) {
+                                  setState(() {
+                                    _filters['dateFilterType'] = selected ? 'current_year' : null;
+                                    _filters['startDate'] = null;
+                                    _filters['endDate'] = null;
+                                  });
+                                },
+                              ),
+                              ChoiceChip(
+                                label: Text(_getCurrentMonthName()),
+                                selected: _filters['dateFilterType'] == 'current_month',
+                                onSelected: (selected) {
+                                  setState(() {
+                                    _filters['dateFilterType'] = selected ? 'current_month' : null;
+                                    _filters['startDate'] = null;
+                                    _filters['endDate'] = null;
+                                  });
+                                },
+                              ),
+                              ChoiceChip(
+                                label: const Text('Benutzerdefiniert'),
+                                selected: _filters['dateFilterType'] == 'custom',
+                                onSelected: (selected) {
+                                  setState(() {
+                                    _filters['dateFilterType'] = selected ? 'custom' : null;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+
+                          // Custom Datumsbereich
+                          if (_filters['dateFilterType'] == 'custom') ...[
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    icon: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
+                                    label: Text(
+                                      _filters['startDate'] != null
+                                          ? _formatDateDisplay(_getDateTime(_filters['startDate']))
+                                          : 'Von',
+                                    ),
+                                    onPressed: () async {
+                                      final date = await showDatePicker(
+                                        context: context,
+                                        initialDate: _getDateTime(_filters['startDate']) ?? DateTime.now(),
+                                        firstDate: DateTime(2020),
+                                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                                        locale: const Locale('de', 'DE'),
+                                      );
+                                      if (date != null) {
+                                        setState(() {
+                                          _filters['startDate'] = date;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    icon: getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
+                                    label: Text(
+                                      _filters['endDate'] != null
+                                          ? _formatDateDisplay(_getDateTime(_filters['endDate']))
+                                          : 'Bis',
+                                    ),
+                                    onPressed: () async {
+                                      final date = await showDatePicker(
+                                        context: context,
+                                        initialDate: _getDateTime(_filters['endDate']) ?? DateTime.now(),
+                                        firstDate: DateTime(2020),
+                                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                                        locale: const Locale('de', 'DE'),
+                                      );
+                                      if (date != null) {
+                                        setState(() {
+                                          _filters['endDate'] = date;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (_filters['startDate'] != null || _filters['endDate'] != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: TextButton.icon(
+                                  icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear),
+                                  label: const Text('Datum zurücksetzen'),
+                                  onPressed: () {
+                                    setState(() {
+                                      _filters['startDate'] = null;
+                                      _filters['endDate'] = null;
+                                    });
+                                  },
+                                ),
+                              ),
+                          ],
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -506,6 +743,23 @@ class _OrderFilterDialogState extends State<OrderFilterDialog> {
         ),
       ),
     );
+  }
+  String _getCurrentMonthName() {
+    final monthNames = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+    return monthNames[DateTime.now().month - 1];
+  }
+
+  DateTime? _getDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    return null;
+  }
+
+
+  String _formatDateDisplay(DateTime? date) {
+    if (date == null) return '';
+    return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
   }
 
   Widget _buildFilterSection({

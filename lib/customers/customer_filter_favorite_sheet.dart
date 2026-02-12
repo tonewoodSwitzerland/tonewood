@@ -264,7 +264,7 @@ class _CustomerFilterFavoritesBottomSheet extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Favorit löschen'),
-        content: Text('Möchten Sie den Favoriten "$name" wirklich löschen?'),
+        content: Text('Möchtest du den Favoriten "$name" wirklich löschen?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

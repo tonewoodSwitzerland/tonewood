@@ -11,8 +11,11 @@ import 'package:tonewood/home/warehouse_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../cost_center/cost_center.dart';
+import '../cost_center/cost_center_picker.dart';
 import '../customers/customer.dart';
 import '../customers/customer_cache_service.dart';
+import '../services/price_formatter.dart';
 import '../services/swiss_rounding.dart'; // Pfad anpassen je nach Projektstruktur
 
 import 'package:path_provider/path_provider.dart';
@@ -1114,7 +1117,7 @@ return Scaffold(
           ],
         ),
         content: const Text(
-          'Möchten Sie wirklich den gesamten Warenkorb und alle Einstellungen löschen?\n\n'
+          'Möchtest du wirklich den gesamten Warenkorb und alle Einstellungen löschen?\n\n'
               'Dies entfernt:\n'
               '• Alle Artikel im Warenkorb\n'
               '• Kundenauswahl\n'
@@ -1617,20 +1620,15 @@ return Scaffold(
   }
 
   String _formatPrice(double amount) {
-    // Konvertiere von CHF in die ausgewählte Währung
-    double convertedAmount = amount;
-
-    if (_selectedCurrency != 'CHF') {
-      convertedAmount = amount * _exchangeRates[_selectedCurrency]!;
-    }
-
-    return NumberFormat.currency(
-        locale: 'de_DE',
-        symbol: _selectedCurrency,
-        decimalDigits: 2
-    ).format(convertedAmount);
+    return PriceFormatter.format(
+      priceInCHF: amount,
+      currency: _selectedCurrency,
+      exchangeRates: _exchangeRates,
+      roundingSettings: _roundingSettings,
+      showCurrency: true,
+      showThousandsSeparator: true,
+    );
   }
-
   void _showCurrencyConverterDialog() {
     CurrencyConverterSheet.show(
       context,
@@ -2136,175 +2134,12 @@ return Scaffold(
   }
 
   void _showCostCenterSelection() {
-    final searchController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => Dialog(  // Verwende dialogContext
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 600,
-            maxHeight: MediaQuery.of(dialogContext).size.height * 0.7,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            // ENTFERNE Scaffold - verwende direkt Column
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'Kostenstelle',
-                      style: Theme.of(dialogContext).textTheme.headlineSmall,
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: searchController,
-                  decoration: InputDecoration(
-                    labelText: 'Suchen',
-                    prefixIcon: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
-                    ),
-                    border: const OutlineInputBorder(),
-                    filled: true,
-                    fillColor: Theme.of(dialogContext).colorScheme.surface,
-                  ),
-                  onChanged: (value) {
-                    // Für Suche - braucht StatefulBuilder wenn live-Suche gewünscht
-                  },
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('cost_centers')
-                        .orderBy('code')
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.hasError) {
-                        return Center(
-                          child: Text('Fehler: ${snapshot.error}'),
-                        );
-                      }
-
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-
-                      final costCenters = snapshot.data?.docs
-                          .map((doc) => CostCenter.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-                          .toList() ?? [];
-
-                      final searchTerm = searchController.text.toLowerCase();
-                      final filteredCostCenters = costCenters.where((cc) =>
-                      cc.code.toLowerCase().contains(searchTerm) ||
-                          cc.name.toLowerCase().contains(searchTerm) ||
-                          cc.description.toLowerCase().contains(searchTerm)
-                      ).toList();
-
-                      if (filteredCostCenters.isEmpty) {
-                        return Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              getAdaptiveIcon(iconName: 'account_balance', defaultIcon: Icons.account_balance, size: 48),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Keine Kostenstellen gefunden',
-                                style: TextStyle(
-                                  color: Theme.of(dialogContext).colorScheme.outline,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                      return ListView.builder(
-                        itemCount: filteredCostCenters.length,
-                        itemBuilder: (context, index) {
-                          final costCenter = filteredCostCenters[index];
-                          final isSelected = selectedCostCenter?.id == costCenter.id;
-
-                          return Card(
-                            elevation: isSelected ? 2 : 0,
-                            color: isSelected
-                                ? Theme.of(dialogContext).colorScheme.primaryContainer
-                                : null,
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: isSelected
-                                    ? Theme.of(dialogContext).colorScheme.primary
-                                    : Theme.of(dialogContext).colorScheme.surfaceContainerHighest,
-                                child: Text(
-                                  costCenter.code.substring(0, 2),
-                                  style: TextStyle(
-                                    color: isSelected
-                                        ? Theme.of(dialogContext).colorScheme.onPrimary
-                                        : Theme.of(dialogContext).colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ),
-                              title: Text(
-                                '${costCenter.code} - ${costCenter.name}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: isSelected ? FontWeight.bold : null,
-                                ),
-                              ),
-                              subtitle: Text(
-                                costCenter.description,
-                                style: TextStyle(fontSize: 12),
-                              ),
-                              onTap: () async {
-                                await _saveTemporaryCostCenter(costCenter);
-                                if (mounted) {
-                                  Navigator.pop(dialogContext);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Kostenstelle ausgewählt'),
-                                      backgroundColor: Colors.green,
-                                    ),
-                                  );
-                                }
-                              },
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(dialogContext);
-                        _showNewCostCenterDialog();
-                      },
-                      icon: getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add),
-                      label: const Text('Neue Kostenstelle'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    CostCenterPicker.show(
+      context,
+      selectedCostCenterId: selectedCostCenter?.id,
+      onSelected: (costCenter) async {
+        await _saveTemporaryCostCenter(costCenter);
+      },
     );
   }
   void _showNewCostCenterDialog() {
@@ -4778,12 +4613,13 @@ return Scaffold(
             ),
             ],
             const SizedBox(height: 8),
-            Text('Originalpreis: ${NumberFormat.currency(locale: 'de_CH', symbol: 'CHF').format(originalPrice)}'),
+              Text('Originalpreis: ${PriceFormatter.formatAmount(amount: originalPrice, currency: 'CHF', roundingSettings: _roundingSettings)}'),
             if (currentPriceInCHF != originalPrice)
-            Text(
-            'Aktueller Preis: ${NumberFormat.currency(locale: 'de_CH', symbol: 'CHF').format(currentPriceInCHF)}',
-            style: TextStyle(color: Colors.green[700]),
-            ),
+                Text(
+            'Aktueller Preis: ${PriceFormatter.formatAmount(amount: currentPriceInCHF, currency: 'CHF', roundingSettings: _roundingSettings)}',
+              style: TextStyle(color: Colors.green[700]),
+              ),
+            
             const SizedBox(height: 8),
               itemData['is_manual_product'] == true?SizedBox(width: 1,): Text('Menge: ${itemData['quantity']} ${itemData['unit'] ?? 'Stück'}'),
             ],
@@ -6339,7 +6175,7 @@ return Scaffold(
             ),
             const SizedBox(height: 16),
             Text(
-              'Möchten Sie diesen Artikel wirklich aus dem Warenkorb entfernen?',
+              'Möchtest du diesen Artikel wirklich aus dem Warenkorb entfernen?',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),

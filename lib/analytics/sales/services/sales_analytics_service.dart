@@ -8,15 +8,39 @@ import '../models/sales_analytics_models.dart';
 class SalesAnalyticsService {
   final _db = FirebaseFirestore.instance;
 
+  // Cache: Document-ID -> Name für distribution_channel
+  Map<String, String>? _distributionChannelNames;
+  // Cache: Document-ID -> Code für cost_centers
+  Map<String, String>? _costCenterCodes;
+
+  /// Lädt die Zuordnung Document-ID -> Name für Bestellarten
+  Future<void> _loadDistributionChannelNames() async {
+    final snapshot = await _db.collection('distribution_channel').get();
+    _distributionChannelNames = {};
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      _distributionChannelNames![doc.id] = data['name']?.toString() ?? '';
+    }
+  }
+
+  /// Lädt die Zuordnung Document-ID -> Code für Kostenstellen
+  Future<void> _loadCostCenterCodes() async {
+    final snapshot = await _db.collection('cost_centers').get();
+    _costCenterCodes = {};
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      _costCenterCodes![doc.id] = data['code']?.toString() ?? '';
+    }
+  }
+
   /// Haupt-Stream für alle Analytics-Daten
   Stream<SalesAnalytics> getAnalyticsStream(SalesFilter filter) {
     Query query = _db.collection('orders');
 
-    // Filter anwenden
+    // Serverseitige Filter anwenden (Firestore erlaubt nur einen whereIn)
     if (filter.selectedCustomers != null && filter.selectedCustomers!.isNotEmpty) {
       query = query.where('customer.id', whereIn: filter.selectedCustomers);
-    }
-    if (filter.selectedFairs != null && filter.selectedFairs!.isNotEmpty) {
+    } else if (filter.selectedFairs != null && filter.selectedFairs!.isNotEmpty) {
       query = query.where('fair.id', whereIn: filter.selectedFairs);
     }
 
@@ -34,6 +58,33 @@ class SalesAnalyticsService {
       final previousMonthStart = DateTime(now.year, now.month - 1, 1);
       final previousMonthEnd = DateTime(now.year, now.month, 0, 23, 59, 59);
 
+      // Zeitraum-Filter berechnen (aus timeRange oder startDate/endDate)
+      DateTime? filterStartDate = filter.startDate;
+      DateTime? filterEndDate = filter.endDate;
+
+      if (filter.timeRange != null) {
+        switch (filter.timeRange) {
+          case 'week':
+            filterStartDate = now.subtract(Duration(days: now.weekday - 1));
+            filterStartDate = DateTime(filterStartDate!.year, filterStartDate.month, filterStartDate.day);
+            filterEndDate = now;
+            break;
+          case 'month':
+            filterStartDate = DateTime(now.year, now.month, 1);
+            filterEndDate = now;
+            break;
+          case 'quarter':
+            final quarterMonth = ((now.month - 1) ~/ 3) * 3 + 1;
+            filterStartDate = DateTime(now.year, quarterMonth, 1);
+            filterEndDate = now;
+            break;
+          case 'year':
+            filterStartDate = DateTime(now.year, 1, 1);
+            filterEndDate = now;
+            break;
+        }
+      }
+
       // Aggregations-Variablen
       double totalRevenue = 0;
       double yearRevenue = 0;
@@ -42,7 +93,6 @@ class SalesAnalyticsService {
       double previousMonthRevenue = 0;
       int orderCount = 0;
 
-      // NEU: Monatliche Umsätze für die letzten 12 Monate
       Map<String, double> monthlyRevenue = {};
 
       int thermoItemCount = 0;
@@ -66,17 +116,95 @@ class SalesAnalyticsService {
         }
         if (orderDate == null) continue;
 
-        // Kunden- und Länder-Daten
+        // Stornierte Aufträge überspringen
+        if (data['status'] == 'cancelled') continue;
+
+        // ============================================================
+        // ORDER-LEVEL FILTER (clientseitig)
+        // ============================================================
+
+        // Zeitraum-Filter
+        if (filterStartDate != null && orderDate.isBefore(filterStartDate)) continue;
+        if (filterEndDate != null && orderDate.isAfter(
+            DateTime(filterEndDate.year, filterEndDate.month, filterEndDate.day, 23, 59, 59)
+        )) continue;
+
+        // Messe-Filter (clientseitig falls Kunde serverseitig gefiltert wird)
+        if (filter.selectedFairs != null && filter.selectedFairs!.isNotEmpty) {
+          if (filter.selectedCustomers != null && filter.selectedCustomers!.isNotEmpty) {
+            // Nur clientseitig prüfen wenn Kundenfilter serverseitig läuft
+            final fairData = data['fair'] as Map<String, dynamic>?;
+            final fairId = fairData?['id']?.toString();
+            if (fairId == null || !filter.selectedFairs!.contains(fairId)) continue;
+          }
+        }
+
+        // Kostenstellen-Filter
+        // Im Order wird costCenter als Map mit code/name gespeichert,
+        // im Filter stehen die Firestore Document-IDs aus der cost_centers Collection
+        if (filter.costCenters != null && filter.costCenters!.isNotEmpty) {
+          final costCenterData = data['costCenter'] as Map<String, dynamic>?;
+          if (costCenterData == null) continue;
+          final costCenterCode = costCenterData['code']?.toString() ?? '';
+          final costCenterId = costCenterData['id']?.toString() ?? '';
+          // Lade Cache falls nötig
+          if (_costCenterCodes == null) {
+            await _loadCostCenterCodes();
+          }
+          // Prüfe: Filter-DocID direkt, oder aufgelöster Code gegen gespeicherten Code
+          final matched = filter.costCenters!.any((filterDocId) {
+            final resolvedCode = _costCenterCodes?[filterDocId];
+            return filterDocId == costCenterId ||
+                filterDocId == costCenterCode ||
+                (resolvedCode != null && resolvedCode == costCenterCode);
+          });
+          if (!matched) continue;
+        }
+
+        // Bestellart-Filter (distributionChannel in metadata)
+        // Im Order wird nur metadata.distributionChannel.name gespeichert,
+        // im Filter stehen die Firestore Document-IDs aus der distribution_channel Collection
+        if (filter.distributionChannels != null && filter.distributionChannels!.isNotEmpty) {
+          final metadata = data['metadata'] as Map<String, dynamic>? ?? {};
+          final distChannel = metadata['distributionChannel'] as Map<String, dynamic>?;
+          if (distChannel == null) continue;
+          final channelName = distChannel['name']?.toString() ?? '';
+          final channelId = distChannel['id']?.toString() ?? '';
+          // Wir müssen die Filter-IDs gegen die gespeicherten Namen auflösen
+          // Da wir die Namen aus der DB brauchen, cachen wir sie
+          if (_distributionChannelNames == null) {
+            await _loadDistributionChannelNames();
+          }
+          // Prüfe: Filter-ID -> aufgelöster Name -> gegen gespeicherten Namen
+          final matched = filter.distributionChannels!.any((filterDocId) {
+            final resolvedName = _distributionChannelNames?[filterDocId];
+            return filterDocId == channelId ||
+                filterDocId == channelName ||
+                (resolvedName != null && resolvedName == channelName);
+          });
+          if (!matched) continue;
+        }
+
+        // Länder-Filter
+        if (filter.countries != null && filter.countries!.isNotEmpty) {
+          final customer = data['customer'] as Map<String, dynamic>? ?? {};
+          final countryCode = customer['countryCode']?.toString() ??
+              customer['country']?.toString() ?? '';
+          if (!filter.countries!.contains(countryCode)) continue;
+        }
+
+        // ============================================================
+        // ITEM-LEVEL VERARBEITUNG
+        // ============================================================
+
         final customer = data['customer'] as Map<String, dynamic>? ?? {};
         final countryCode = customer['countryCode']?.toString() ??
             customer['country']?.toString() ?? 'XX';
         final country = Countries.getCountryByCode(countryCode);
 
-        // Items verarbeiten
         final items = data['items'] as List<dynamic>? ?? [];
         if (items.isEmpty) continue;
 
-        // Prüfe Item-Filter
         bool hasMatchingItems = false;
         double orderRevenue = 0;
         int orderItemCount = 0;
@@ -84,7 +212,7 @@ class SalesAnalyticsService {
         for (var item in items) {
           final itemData = item as Map<String, dynamic>;
 
-          // Filter prüfen
+          // Item-Filter prüfen
           if (!_itemMatchesFilter(itemData, filter)) continue;
           hasMatchingItems = true;
 
@@ -172,7 +300,7 @@ class SalesAnalyticsService {
           previousMonthRevenue += orderRevenue;
         }
 
-        // NEU: Monatliche Umsätze aggregieren (letzte 24 Monate)
+        // Monatliche Umsätze aggregieren
         final monthKey = '${orderDate.year}-${orderDate.month.toString().padLeft(2, '0')}';
         monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] ?? 0) + orderRevenue;
 

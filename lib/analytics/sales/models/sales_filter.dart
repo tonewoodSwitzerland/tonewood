@@ -10,7 +10,10 @@ class SalesFilter {
   final List<String>? parts;
   final List<String>? qualities;
   final List<String>? selectedCustomers;
-  final List<String>? instruments;  // Neu hinzugefügt
+  final List<String>? instruments;
+  final List<String>? costCenters;
+  final List<String>? distributionChannels;
+  final List<String>? countries; // Länder-Filter (ISO-Codes, z.B. ['CH', 'DE'])
 
   SalesFilter({
     this.startDate,
@@ -24,7 +27,10 @@ class SalesFilter {
     this.parts,
     this.qualities,
     this.selectedCustomers,
-    this.instruments,  // Neu hinzugefügt
+    this.instruments,
+    this.costCenters,
+    this.distributionChannels,
+    this.countries,
   });
 
   Map<String, dynamic> toMap() {
@@ -41,7 +47,10 @@ class SalesFilter {
     if (parts?.isNotEmpty ?? false) map['parts'] = parts;
     if (qualities?.isNotEmpty ?? false) map['qualities'] = qualities;
     if (selectedCustomers != null) map['selectedCustomer'] = selectedCustomers;
-    if (instruments?.isNotEmpty ?? false) map['instruments'] = instruments;  // Neu hinzugefügt
+    if (instruments?.isNotEmpty ?? false) map['instruments'] = instruments;
+    if (costCenters?.isNotEmpty ?? false) map['costCenters'] = costCenters;
+    if (distributionChannels?.isNotEmpty ?? false) map['distributionChannels'] = distributionChannels;
+    if (countries?.isNotEmpty ?? false) map['countries'] = countries;
     return map;
   }
 
@@ -57,7 +66,10 @@ class SalesFilter {
     List<String>? parts,
     List<String>? qualities,
     List<String>? selectedCustomers,
-    List<String>? instruments,  // Neu hinzugefügt
+    List<String>? instruments,
+    List<String>? costCenters,
+    List<String>? distributionChannels,
+    List<String>? countries,
   }) {
     return SalesFilter(
       startDate: startDate ?? this.startDate,
@@ -71,7 +83,10 @@ class SalesFilter {
       parts: parts ?? this.parts,
       qualities: qualities ?? this.qualities,
       selectedCustomers: selectedCustomers ?? this.selectedCustomers,
-      instruments: instruments ?? this.instruments,  // Neu hinzugefügt
+      instruments: instruments ?? this.instruments,
+      costCenters: costCenters ?? this.costCenters,
+      distributionChannels: distributionChannels ?? this.distributionChannels,
+      countries: countries ?? this.countries,
     );
   }
 }

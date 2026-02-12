@@ -319,7 +319,7 @@ class _FilterFavoritesContentState extends State<_FilterFavoritesContent> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Favorit löschen?'),
-        content: Text('Möchten Sie "${name ?? 'diesen Favoriten'}" wirklich löschen?'),
+        content: Text('Möchtest du "${name ?? 'diesen Favoriten'}" wirklich löschen?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),

@@ -34,7 +34,7 @@ class _ServicesManagementScreenState extends State<ServicesManagementScreen> {
           ],
         ),
         content: const Text(
-          'Möchten Sie diese Dienstleistung wirklich löschen? '
+          'Möchtest du diese Dienstleistung wirklich löschen? '
               'Diese Aktion kann nicht rückgängig gemacht werden.',
         ),
         actions: [

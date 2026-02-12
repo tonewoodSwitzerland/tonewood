@@ -925,7 +925,7 @@ class _CombinedShipmentScreenState extends State<CombinedShipmentScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Sammellieferung löschen'),
-        content: const Text('Möchten Sie diese Sammellieferung wirklich löschen?'),
+        content: const Text('Möchtest du diese Sammellieferung wirklich löschen?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

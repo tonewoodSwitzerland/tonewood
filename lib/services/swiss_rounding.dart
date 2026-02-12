@@ -1,5 +1,5 @@
 // swiss_rounding.dart
-// Utility-Klasse für die Schweizer Rappenrundung
+// Utility-Klasse für die Schweizer Rappenrundung und Formatierung
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -53,6 +53,7 @@ class SwissRounding {
       };
     }
   }
+
   ///
   ///
   static double round(double amount, {
@@ -125,6 +126,7 @@ class SwissRounding {
 
     return result;
   }
+
   /// Berechnet die Differenz zwischen Original- und gerundetem Betrag
   ///
   /// [amount] Der Originalbetrag
@@ -199,6 +201,150 @@ class SwissRounding {
     return rounded.toStringAsFixed(2);
   }
 
+  /// Formatiert einen Betrag mit Tausendertrennzeichen
+  ///
+  /// Beispiele:
+  /// - 1234.56 → "1'234.56"
+  /// - 1234567.89 → "1'234'567.89"
+  /// - 12.34 → "12.34"
+  ///
+  /// [amount] Der zu formatierende Betrag
+  /// [decimals] Anzahl der Dezimalstellen (default: 2)
+  /// [separator] Das Tausendertrennzeichen (default: ')
+  /// [decimalSeparator] Das Dezimaltrennzeichen (default: .)
+  ///
+  /// Gibt den formatierten String zurück
+  static String formatWithThousandsSeparator(
+      double amount, {
+        int decimals = 2,
+        String separator = "'",
+        String decimalSeparator = '.',
+      }) {
+    // Runde auf die gewünschte Anzahl Dezimalstellen
+    final roundedAmount = double.parse(amount.toStringAsFixed(decimals));
+
+    // Trenne Ganzzahl und Dezimalteil
+    final parts = roundedAmount.toStringAsFixed(decimals).split('.');
+    final integerPart = parts[0];
+    final decimalPart = parts.length > 1 ? parts[1] : '';
+
+    // Füge Tausendertrennzeichen ein
+    String formattedInteger = '';
+    int count = 0;
+
+    // Von rechts nach links durch die Ganzzahl gehen
+    for (int i = integerPart.length - 1; i >= 0; i--) {
+      if (count > 0 && count % 3 == 0) {
+        formattedInteger = separator + formattedInteger;
+      }
+      formattedInteger = integerPart[i] + formattedInteger;
+      count++;
+    }
+
+    // Füge Dezimalteil hinzu wenn vorhanden
+    if (decimalPart.isNotEmpty) {
+      return formattedInteger + decimalSeparator + decimalPart;
+    }
+
+    return formattedInteger;
+  }
+
+  /// Formatiert einen Betrag mit Währung und Tausendertrennzeichen
+  ///
+  /// [amount] Der Betrag
+  /// [currency] Die Währung (CHF, EUR, USD, etc.)
+  /// [roundingSettings] Rundungseinstellungen (optional)
+  /// [showCurrency] Ob die Währung angezeigt werden soll (default: true)
+  /// [currencyPosition] Position der Währung: 'before' oder 'after' (default: 'before')
+  /// [separator] Das Tausendertrennzeichen (default: ')
+  ///
+  /// Gibt den formatierten String zurück
+  ///
+  /// Beispiele:
+  /// - formatCurrency(1234.56, 'CHF') → "CHF 1'234.56"
+  /// - formatCurrency(1234.56, 'EUR', currencyPosition: 'after') → "1'234.56 EUR"
+  static String formatCurrency(
+      double amount, {
+        required String currency,
+        Map<String, bool>? roundingSettings,
+        bool showCurrency = true,
+        String currencyPosition = 'before',
+        String separator = "'",
+      }) {
+    // Wende Rundung an wenn aktiviert
+    double finalAmount = amount;
+    if (roundingSettings != null) {
+      final isRoundingEnabled = roundingSettings[currency] ?? false;
+      if (isRoundingEnabled) {
+        finalAmount = round(amount, currency: currency, roundingSettings: roundingSettings);
+      }
+    } else if (currency == 'CHF') {
+      finalAmount = round(amount, currency: currency);
+    }
+
+    // Formatiere mit Tausendertrennzeichen
+    final formattedAmount = formatWithThousandsSeparator(
+      finalAmount,
+      separator: separator,
+    );
+
+    // Füge Währung hinzu
+    if (showCurrency) {
+      if (currencyPosition == 'after') {
+        return '$formattedAmount $currency';
+      } else {
+        return '$currency $formattedAmount';
+      }
+    }
+
+    return formattedAmount;
+  }
+
+  /// Formatiert einen Betrag komplett (mit Rundung, Währung und Tausendertrennzeichen)
+  ///
+  /// Dies ist eine Convenience-Methode die alle Formatierungen kombiniert
+  ///
+  /// [amount] Der Betrag
+  /// [currency] Die Währung
+  /// [roundingSettings] Rundungseinstellungen (optional)
+  /// [showCurrency] Währung anzeigen (default: true)
+  /// [showThousandsSeparator] Tausendertrennzeichen verwenden (default: true)
+  ///
+  /// Gibt den vollständig formatierten String zurück
+  static String format(
+      double amount, {
+        required String currency,
+        Map<String, bool>? roundingSettings,
+        bool showCurrency = true,
+        bool showThousandsSeparator = true,
+      }) {
+    if (showThousandsSeparator) {
+      return formatCurrency(
+        amount,
+        currency: currency,
+        roundingSettings: roundingSettings,
+        showCurrency: showCurrency,
+      );
+    } else {
+      // Ohne Tausendertrennzeichen
+      double finalAmount = amount;
+      if (roundingSettings != null) {
+        final isRoundingEnabled = roundingSettings[currency] ?? false;
+        if (isRoundingEnabled) {
+          finalAmount = round(amount, currency: currency, roundingSettings: roundingSettings);
+        }
+      } else if (currency == 'CHF') {
+        finalAmount = round(amount, currency: currency);
+      }
+
+      if (showCurrency) {
+        return '$currency ${finalAmount.toStringAsFixed(2)}';
+      } else {
+        return finalAmount.toStringAsFixed(2);
+      }
+    }
+  }
+
   /// Hilfsmethode zum Testen: Gibt detaillierte Rundungsinformationen zurück
   static Map<String, dynamic> getRoundingDetails(double amount, {String currency = 'CHF'}) {
     if (currency != 'CHF') {
@@ -245,6 +391,23 @@ class SwissRounding {
       'wouldRound': wouldRound(amount, currency: currency),
       'lastDigit': lastDigit,
       'rule': rule,
+    };
+  }
+
+  /// Formatierungs-Demo für Tests und Beispiele
+  ///
+  /// Gibt verschiedene Formatierungen eines Betrags zurück
+  static Map<String, String> getFormattingExamples(double amount, String currency) {
+    return {
+      'plain': amount.toStringAsFixed(2),
+      'withThousands': formatWithThousandsSeparator(amount),
+      'withCurrency': formatCurrency(amount, currency: currency),
+      'withRounding': format(amount, currency: currency),
+      'currencyAfter': formatCurrency(
+        amount,
+        currency: currency,
+        currencyPosition: 'after',
+      ),
     };
   }
 }

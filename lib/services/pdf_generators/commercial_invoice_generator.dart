@@ -118,7 +118,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     }
 
     final additionalTextsWidget = await _addInlineAdditionalTexts(language);
-    final standardTextsWidget = await _addCommercialInvoiceStandardTexts( language,
+    final standardTextsWidgets = await _addCommercialInvoiceStandardTexts( language,
         taraSettings: taraSettings,
         orderId: orderId);
     // Übersetzungsfunktion
@@ -144,75 +144,85 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       return translations[language]?[key] ?? translations['DE']?[key] ?? '';
     }
 
+
     pdf.addPage(
-      pw.Page(
+      pw.MultiPage(
         margin: const pw.EdgeInsets.all(20),
-        build: (pw.Context context) {
+        header: (pw.Context context) {
+          if (context.pageNumber == 1) return pw.SizedBox.shrink();
           return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // Header
-              BasePdfGenerator.buildHeader(
+              BasePdfGenerator.buildCompactHeader(
                 documentTitle: getTranslation('commercial_invoice'),
                 documentNumber: invoiceNum,
-                date: invoiceDate ?? DateTime.now(), // Verwende übergebenes Datum oder aktuelles
                 logo: logo,
-                costCenter: null,
+                pageNumber: context.pageNumber,
+                totalPages: context.pagesCount,
                 language: language,
-                // additionalReference:  invoiceNumber != null ? 'invoice_nr:$invoiceNumber' : null,
-                // secondaryReference: quoteNumber != null ? 'quote_nr:$quoteNumber' : null,
-
               ),
-              pw.SizedBox(height: 20),
-
-              // Kundenadresse
-              BasePdfGenerator.buildCustomerAddress(customerData, 'commercial_invoice', language: language, addressDisplayMode: addressMode),
-              pw.SizedBox(height: 15),
-
-
-              // Währungshinweis (falls nicht CHF UND showExchangeRateOnDocument aktiviert)
-              if (currency != 'CHF' && showExchangeRateOnDocument)
-                pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.amber50,
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                    border: pw.Border.all(color: PdfColors.amber200, width: 0.5),
-                  ),
-                  child: pw.Text(
-                    getTranslation('currency_note'),
-                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.amber900),
-                  ),
-                ),
-
-              pw.SizedBox(height: 15),
-
-              // Produkttabelle mit Zolltarifnummer-Gruppierung
-              pw.Expanded(
-                child: pw.Column(
-                  children: [
-                    BasePdfGenerator.buildCurrencyHint(currency, language),
-
-                    // Produkttabelle nur wenn Produkte vorhanden
-                    if (productItems.isNotEmpty)
-                      _buildProductTable(groupedProductItems, currency, exchangeRates, language, taraSettings, columnAlignments),
-
-                    // Dienstleistungstabelle nur wenn Dienstleistungen vorhanden
-                    if (serviceItems.isNotEmpty)
-                      _buildServiceTable(serviceItems, currency, exchangeRates, language, columnAlignments),
-
-                    _buildTotalsSection(items, currency, exchangeRates, language, calculations),
-
-
-                  ],
-                ),
-              ),
-              additionalTextsWidget,
-              standardTextsWidget,
-              // Footer
-              BasePdfGenerator.buildFooter(),
+              pw.SizedBox(height: 10),
             ],
           );
+        },
+        footer: (pw.Context context) => BasePdfGenerator.buildFooter(
+          pageNumber: context.pageNumber,
+          totalPages: context.pagesCount,
+          language: language,
+        ),
+        build: (pw.Context context) {
+          return [
+            // Header
+            BasePdfGenerator.buildHeader(
+              documentTitle: getTranslation('commercial_invoice'),
+              documentNumber: invoiceNum,
+              date: invoiceDate ?? DateTime.now(),
+              logo: logo,
+              costCenter: null,
+              language: language,
+            ),
+            pw.SizedBox(height: 20),
+
+            // Kundenadresse
+            BasePdfGenerator.buildCustomerAddress(customerData, 'commercial_invoice', language: language, addressDisplayMode: addressMode),
+            pw.SizedBox(height: 15),
+
+            // Währungshinweis (falls nicht CHF UND showExchangeRateOnDocument aktiviert)
+            if (currency != 'CHF' && showExchangeRateOnDocument)
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.amber50,
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                  border: pw.Border.all(color: PdfColors.amber200, width: 0.5),
+                ),
+                child: pw.Text(
+                  getTranslation('currency_note'),
+                  style: const pw.TextStyle(fontSize: 9, color: PdfColors.amber900),
+                ),
+              ),
+
+            pw.SizedBox(height: 15),
+
+            // Währungshinweis
+            BasePdfGenerator.buildCurrencyHint(currency, language),
+
+            // Produkttabelle nur wenn Produkte vorhanden
+            if (productItems.isNotEmpty)
+              _buildProductTable(groupedProductItems, currency, exchangeRates, language, taraSettings, columnAlignments),
+
+            // Dienstleistungstabelle nur wenn Dienstleistungen vorhanden
+            if (serviceItems.isNotEmpty)
+              _buildServiceTable(serviceItems, currency, exchangeRates, language, columnAlignments),
+
+            // Totals Section
+            _buildTotalsSection(items, currency, exchangeRates, language, calculations),
+
+            // Additional Texts
+            additionalTextsWidget,
+
+            // Standard Texts
+            ...standardTextsWidgets,
+          ];
         },
       ),
     );
@@ -221,7 +231,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
   }
 
 
-  static Future<pw.Widget> _addCommercialInvoiceStandardTexts(
+  static Future<List<pw.Widget>> _addCommercialInvoiceStandardTexts(
       String language,
       {Map<String, dynamic>? taraSettings, String? orderId}
       ) async {
@@ -255,7 +265,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           if (tempSettingsDoc.exists) {
             settings = tempSettingsDoc.data()!;
           } else {
-            return pw.SizedBox.shrink();
+            return [];
           }
         }
       } else {
@@ -264,12 +274,12 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             .doc('tara_settings')
             .get();
 
-        if (!tempSettingsDoc.exists) return pw.SizedBox.shrink();
+        if (!tempSettingsDoc.exists)return [];
         settings = tempSettingsDoc.data()!;
       }
 
       final List<pw.Widget> textWidgets = [];
-
+      final List<pw.Widget> originAndSignatureWidgets = [];
       // CITES
       if (settings['commercial_invoice_cites'] == true ||
           settings['cites'] == true) {
@@ -384,7 +394,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
       // Delivery Date
       if (settings['commercial_invoice_delivery_date'] == true) {
-        String dateValue = 'XXX';
+        String dateValue = '-';
 
         if (settings['commercial_invoice_delivery_date_value'] != null) {
           final rawValue = settings['commercial_invoice_delivery_date_value'];
@@ -469,108 +479,116 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       }
 
       // Origin Declaration (bleibt hervorgehoben)
-      if (settings['commercial_invoice_origin_declaration'] == true ||
-          settings['origin_declaration'] == true) {
-        final originText = AdditionalTextsManager.getTextContent(
-            {'selected': true, 'type': 'standard'},
-            'origin_declaration',
-            language: language
-        );
+      // Origin Declaration + Signature zusammen (damit sie auf der gleichen Seite bleiben)
 
-        if (originText.isNotEmpty) {
-          textWidgets.add(
-            pw.Container(
-              alignment: pw.Alignment.centerLeft,
-              margin: const pw.EdgeInsets.only(top: 8, bottom: 6),
-              padding: const pw.EdgeInsets.all(10),
-              decoration: pw.BoxDecoration(
+        // Origin Declaration
+        if (settings['commercial_invoice_origin_declaration'] == true ||
+            settings['origin_declaration'] == true) {
+          final originText = AdditionalTextsManager.getTextContent(
+              {'selected': true, 'type': 'standard'},
+              'origin_declaration',
+              language: language
+          );
 
-                border: pw.Border.all(color: PdfColors.blueGrey700, width: 0.5),
-                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-              ),
-              child: pw.Text(
-                originText,
-                style: pw.TextStyle(
-                  fontSize: 9,
-                  color: PdfColors.blueGrey700,
-                  fontWeight: pw.FontWeight.bold,
+          if (originText.isNotEmpty) {
+            originAndSignatureWidgets.add(
+              pw.Container(
+                alignment: pw.Alignment.centerLeft,
+                margin: const pw.EdgeInsets.only(top: 8, bottom: 6),
+                padding: const pw.EdgeInsets.all(10),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.blueGrey700, width: 0.5),
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                ),
+                child: pw.Text(
+                  originText,
+                  style: pw.TextStyle(
+                    fontSize: 9,
+                    color: PdfColors.blueGrey700,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                 ),
               ),
-            ),
-          );
+            );
+          }
         }
-      }
 
-      // Signature
-      if (settings['commercial_invoice_signature'] == true &&
-          settings['commercial_invoice_selected_signature'] != null) {
+        // Signature
+        if (settings['commercial_invoice_signature'] == true &&
+            settings['commercial_invoice_selected_signature'] != null) {
 
-        final signatureId = settings['commercial_invoice_selected_signature'] as String;
-        final signatureDoc = await FirebaseFirestore.instance
-            .collection('general_data')
-            .doc('signatures')
-            .collection('users')
-            .doc(signatureId)
-            .get();
+          final signatureId = settings['commercial_invoice_selected_signature'] as String;
+          final signatureDoc = await FirebaseFirestore.instance
+              .collection('general_data')
+              .doc('signatures')
+              .collection('users')
+              .doc(signatureId)
+              .get();
 
-        if (signatureDoc.exists) {
-          final signatureData = signatureDoc.data()!;
-          final signerName = signatureData['name'] as String;
+          if (signatureDoc.exists) {
+            final signatureData = signatureDoc.data()!;
+            final signerName = signatureData['name'] as String;
 
-          textWidgets.add(
-            pw.Container(
-              alignment: pw.Alignment.centerLeft,
-              margin: const pw.EdgeInsets.only(top: 16),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(
-                    language == 'EN' ? 'Signature:' : 'Signatur:',
-                    style: pw.TextStyle(
-                      fontSize: 9,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.blueGrey800,
+            originAndSignatureWidgets.add(
+              pw.Container(
+                alignment: pw.Alignment.centerLeft,
+                margin: const pw.EdgeInsets.only(top: 16),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      language == 'EN' ? 'Signature:' : 'Signatur:',
+                      style: pw.TextStyle(
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.blueGrey800,
+                      ),
                     ),
-                  ),
-                  pw.SizedBox(height: 6),
-                  pw.Text(
-                    signerName,
-                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
-                  ),
-                  pw.SizedBox(height: 25),
-                  pw.Container(
-                    width: 200,
-                    height: 1,
-                    color: PdfColors.blueGrey400,
-                  ),
-                  pw.SizedBox(height: 4),
-                  pw.Text(
-                    'Florinett AG, Tonewood Switzerland',
-                    style: const pw.TextStyle(fontSize: 8, color: PdfColors.blueGrey600),
-                  ),
-                  pw.SizedBox(height: 8),
-                ],
+                    pw.SizedBox(height: 6),
+                    pw.Text(
+                      signerName,
+                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
+                    ),
+                    pw.SizedBox(height: 25),
+                    pw.Container(
+                      width: 200,
+                      height: 1,
+                      color: PdfColors.blueGrey400,
+                    ),
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                      'Florinett AG, Tonewood Switzerland',
+                      style: const pw.TextStyle(fontSize: 8, color: PdfColors.blueGrey600),
+                    ),
+                    pw.SizedBox(height: 8),
+                  ],
+                ),
               ),
-            ),
-          );
+            );
+          }
         }
-      }
 
+      // Origin+Signature als ein Block mit fester Höhe – MultiPage kann das NICHT aufspalten
+      if (originAndSignatureWidgets.isNotEmpty) {
+        textWidgets.add(
+          pw.ConstrainedBox(
+            constraints: const pw.BoxConstraints(minHeight: 100),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              mainAxisSize: pw.MainAxisSize.min,
+              children: originAndSignatureWidgets,
+            ),
+          ),
+        );
+      }
       if (textWidgets.isEmpty) {
-        return pw.SizedBox.shrink();
+        return [];
       }
 
-      return pw.Container(
-        alignment: pw.Alignment.centerLeft,
-        margin: const pw.EdgeInsets.only(top: 8),
-        child: pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: textWidgets,
-        ),
-      );
+      return textWidgets;
     } catch (e) {
       print('Fehler beim Laden der Commercial Invoice Standardtexte: $e');
-      return pw.SizedBox.shrink();
+      return [];
     }
   }
 
@@ -753,6 +771,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
   }
 
   /// Fasst Items mit gleicher product_id zusammen (addiert Mengen)
+  /// Fasst Items mit gleicher product_id zusammen (addiert Mengen UND Rabatte)
   static List<Map<String, dynamic>> _consolidateItems(List<Map<String, dynamic>> items) {
     final Map<String, Map<String, dynamic>> consolidated = {};
 
@@ -766,11 +785,16 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       }
 
       if (consolidated.containsKey(productId)) {
-        // Existiert bereits: Menge addieren
+        // Existiert bereits: Menge UND Rabatt addieren
         final existing = consolidated[productId]!;
         final existingQty = (existing['quantity'] as num? ?? 0).toDouble();
         final newQty = (item['quantity'] as num? ?? 0).toDouble();
         existing['quantity'] = existingQty + newQty;
+
+        // Auch discount_amount addieren
+        final existingDiscount = (existing['discount_amount'] as num? ?? 0).toDouble();
+        final newDiscount = (item['discount_amount'] as num? ?? 0).toDouble();
+        existing['discount_amount'] = existingDiscount + newDiscount;
       } else {
         // Neues Item
         consolidated[productId] = Map<String, dynamic>.from(item);
@@ -891,7 +915,13 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     double totalAmount = 0.0;
 
     // Dienstleistungen hinzufügen
+    print('=== _buildServiceTable DEBUG ===');
+    print('serviceItems.length: ${serviceItems.length}');
     for (final service in serviceItems) {
+      print('Service: ${service.keys.toList()}');
+      print('  name: ${service['name']}');
+      print('  product_name: ${service['product_name']}');
+      print('  is_service: ${service['is_service']}');
       final quantity = (service['quantity'] as num? ?? 0).toDouble();
       final pricePerUnit = (service['custom_price_per_unit'] as num?) != null
           ? (service['custom_price_per_unit'] as num).toDouble()
@@ -1022,18 +1052,18 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           ),
         ),
         pw.SizedBox(height: 8),
-        pw.Table(
-          border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
+        BasePdfGenerator.buildSplittableTable(
+          rows: rows,
           columnWidths: {
-            0: const pw.FlexColumnWidth(2),    // Zolltarif (erste Spalte)
-            1: const pw.FlexColumnWidth(3),    // Dienstleistung
-            2: const pw.FlexColumnWidth(4),    // Beschreibung
-            3: const pw.FlexColumnWidth(1),    // Anzahl
-            4: const pw.FlexColumnWidth(1),    // Einheit
-            5: const pw.FlexColumnWidth(2),    // Preis/E
-            6: const pw.FlexColumnWidth(2),    // Netto Gesamt
+            0: const pw.FlexColumnWidth(2),
+            1: const pw.FlexColumnWidth(3),
+            2: const pw.FlexColumnWidth(4),
+            3: const pw.FlexColumnWidth(1),
+            4: const pw.FlexColumnWidth(1),
+            5: const pw.FlexColumnWidth(2),
+            6: const pw.FlexColumnWidth(2),
           },
-          children: rows,
+          border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
         ),
       ],
     );
@@ -1186,21 +1216,31 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             : (item['price_per_unit'] as num? ?? 0).toDouble();
 
         // Rabatt-Berechnung
-        final discount = item['discount'] as Map<String, dynamic>?;
+        // Rabatt-Berechnung
         final totalBeforeDiscount = quantity * pricePerUnit;
 
+// Rabatt: Verwende konsolidierten discount_amount falls vorhanden
         double discountAmount = 0.0;
-        if (discount != null && !isGratisartikel) { // Kein Rabatt auf Gratisartikel
-          final percentage = (discount['percentage'] as num? ?? 0).toDouble();
-          final absolute = (discount['absolute'] as num? ?? 0).toDouble();
+        if (!isGratisartikel) {
+          // Priorität 1: Bereits berechneter/konsolidierter discount_amount
+          if (item['discount_amount'] != null && (item['discount_amount'] as num) > 0) {
+            discountAmount = (item['discount_amount'] as num).toDouble();
+          }
+          // Priorität 2: Aus discount-Objekt berechnen (Fallback)
+          else {
+            final discount = item['discount'] as Map<String, dynamic>?;
+            if (discount != null) {
+              final percentage = (discount['percentage'] as num? ?? 0).toDouble();
+              final absolute = (discount['absolute'] as num? ?? 0).toDouble();
 
-          if (percentage > 0) {
-            discountAmount = totalBeforeDiscount * (percentage / 100);
-          } else if (absolute > 0) {
-            discountAmount = absolute;
+              if (percentage > 0) {
+                discountAmount = totalBeforeDiscount * (percentage / 100);
+              } else if (absolute > 0) {
+                discountAmount = absolute * quantity; // Bei absolutem Rabatt: pro Stück!
+              }
+            }
           }
         }
-
         final itemTotal = totalBeforeDiscount - discountAmount;
         final volumeM3 = (item['volume_m3'] as double? ?? 0.0);
 
@@ -1273,7 +1313,11 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
-                  BasePdfGenerator.formatAmountOnly(pricePerUnit, currency, exchangeRates),
+                  BasePdfGenerator.formatAmountOnly(
+                    quantity > 0 ? itemTotal / quantity : pricePerUnit,
+                    currency,
+                    exchangeRates,
+                  ),
                   style: const pw.TextStyle(fontSize: 8),
                   textAlign: priceAlign,
                 ),
@@ -1283,7 +1327,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                   BasePdfGenerator.formatAmountOnly(itemTotal, currency, exchangeRates),
                   style: pw.TextStyle(
                     fontSize: 8,
-                    fontWeight: discountAmount > 0 ? pw.FontWeight.bold : null,
+
                   ),
                   textAlign: netTotalAlign,
                 ),
@@ -1317,18 +1361,25 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             ? (item['custom_price_per_unit'] as num).toDouble()
             : (item['price_per_unit'] as num? ?? 0).toDouble();
         // Rabatt-Berechnung
-        final discount = item['discount'] as Map<String, dynamic>?;
+        // Rabatt-Berechnung
         final totalBeforeDiscount = quantity * pricePerUnit;
 
         double discountAmount = 0.0;
-        if (discount != null && !isGratisartikel) {
-          final percentage = (discount['percentage'] as num? ?? 0).toDouble();
-          final absolute = (discount['absolute'] as num? ?? 0).toDouble();
+        if (!isGratisartikel) {
+          if (item['discount_amount'] != null && (item['discount_amount'] as num) > 0) {
+            discountAmount = (item['discount_amount'] as num).toDouble();
+          } else {
+            final discount = item['discount'] as Map<String, dynamic>?;
+            if (discount != null) {
+              final percentage = (discount['percentage'] as num? ?? 0).toDouble();
+              final absolute = (discount['absolute'] as num? ?? 0).toDouble();
 
-          if (percentage > 0) {
-            discountAmount = totalBeforeDiscount * (percentage / 100);
-          } else if (absolute > 0) {
-            discountAmount = absolute;
+              if (percentage > 0) {
+                discountAmount = totalBeforeDiscount * (percentage / 100);
+              } else if (absolute > 0) {
+                discountAmount = absolute * quantity;
+              }
+            }
           }
         }
 
@@ -1480,10 +1531,10 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       language,
     );
 
-    return pw.Table(
-      border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
+    return BasePdfGenerator.buildSplittableTable(
+      rows: rows,
       columnWidths: columnWidths,
-      children: rows,
+      border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
     );
   }
 

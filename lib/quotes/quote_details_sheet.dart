@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/icon_helper.dart';
 import '../../services/swiss_rounding.dart'; // NEU
 import '../../constants.dart';
+import '../services/price_formatter.dart';
 
 // Farben und Status aus der Hauptdatei importieren oder hier definieren
 class QuoteColors {
@@ -151,28 +152,6 @@ class _QuoteDetailsSheetState extends State<QuoteDetailsSheet> {
 
   bool get isOpen => viewStatus == QuoteViewStatus.open;
 
-  // NEU: Aktualisierte _convertPrice mit optionaler Rundung
-  double _convertPrice(double priceInCHF, {bool applyRounding = false}) {
-    final currency = quote.metadata['currency'] ?? 'CHF';
-
-    double convertedPrice = priceInCHF;
-    if (currency != 'CHF') {
-      final rates = quote.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
-      final rate = (rates[currency] as num?)?.toDouble() ?? 1.0;
-      convertedPrice = priceInCHF * rate;
-    }
-
-    // Rundung nur anwenden wenn gewünscht (für Gesamtbeträge)
-    if (applyRounding && _roundingSettings[currency] == true) {
-      convertedPrice = SwissRounding.round(
-        convertedPrice,
-        currency: currency,
-        roundingSettings: _roundingSettings,
-      );
-    }
-
-    return convertedPrice;
-  }
 
   String get _currencySymbol => quote.metadata['currency'] ?? 'CHF';
 
@@ -441,15 +420,22 @@ class _QuoteDetailsSheetState extends State<QuoteDetailsSheet> {
   // ===== INFO CARDS =====
   Widget _buildInfoCards(BuildContext context, {required bool isDesktop}) {
     // NEU: applyRounding: true für den Gesamtbetrag
-    final total = _convertPrice((quote.calculations['total'] as num).toDouble(), applyRounding: true);
-
+    final total = PriceFormatter.convertPrice(
+      priceInCHF: (quote.calculations['total'] as num).toDouble(),
+      currency: quote.metadata['currency'] ?? 'CHF',
+      exchangeRates: quote.metadata['exchangeRates'] as Map<String, dynamic>?,
+      roundingSettings: _roundingSettings,
+    );
     if (isDesktop) {
       return Column(
         children: [
           _buildInfoCard(context, 'business', Icons.business, 'Kunde', _getCustomerName(), null),
           const SizedBox(height: 10),
-          _buildInfoCard(context, 'payments', Icons.payments, 'Betrag', '$_currencySymbol ${total.toStringAsFixed(2)}', QuoteColors.accepted),
-          const SizedBox(height: 10),
+          _buildInfoCard(context, 'payments', Icons.payments, 'Betrag', PriceFormatter.formatAmount(
+            amount: total,
+            currency: quote.metadata['currency'] ?? 'CHF',
+            roundingSettings: _roundingSettings,
+          ), QuoteColors.accepted),  const SizedBox(height: 10),
           _buildInfoCard(
             context, 'timer', Icons.timer, 'Gültig bis',
             DateFormat('dd.MM.yyyy').format(quote.validUntil),
@@ -659,7 +645,12 @@ class _QuoteDetailsSheetState extends State<QuoteDetailsSheet> {
                 const SizedBox(height: 4),
                 // Einzelpreise OHNE Rundung
                 Text(
-                  '${qty.toStringAsFixed(0)} × $_currencySymbol ${_convertPrice(price).toStringAsFixed(2)}',
+                  '${qty.toStringAsFixed(0)} × ${PriceFormatter.format(
+                    priceInCHF: price,
+                    currency: quote.metadata['currency'] ?? 'CHF',
+                    exchangeRates: quote.metadata['exchangeRates'] as Map<String, dynamic>?,
+                    roundingSettings: _roundingSettings,
+                  )}',
                   style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)),
                 ),
               ],
@@ -672,8 +663,12 @@ class _QuoteDetailsSheetState extends State<QuoteDetailsSheet> {
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
-              // Positionstotal OHNE Rundung (nur Gesamtsumme wird gerundet)
-              isGratis ? 'GRATIS' : '$_currencySymbol ${_convertPrice(total).toStringAsFixed(2)}',
+              isGratis ? 'GRATIS' : PriceFormatter.format(
+                priceInCHF: total,
+                currency: quote.metadata['currency'] ?? 'CHF',
+                exchangeRates: quote.metadata['exchangeRates'] as Map<String, dynamic>?,
+                roundingSettings: _roundingSettings,
+              ),
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 13,

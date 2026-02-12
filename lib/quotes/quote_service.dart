@@ -447,6 +447,7 @@ class QuoteService {
   }
 
 // Prüfe Verfügbarkeit (unter Berücksichtigung von Reservierungen)
+  // Prüfe Verfügbarkeit (unter Berücksichtigung von Reservierungen)
   static Future<Map<String, double>> checkAvailability(
       List<Map<String, dynamic>> items,
       {String? excludeQuoteId}
@@ -479,20 +480,20 @@ class QuoteService {
 
         if (!shopDoc.exists) {
           print('-> Produkt existiert nicht mehr');
-          availability[productId] = 0;
+          availability[onlineShopBarcode] = 0;
           continue;
         }
 
         if (shopDoc.data()?['sold'] == true) {
           print('-> Produkt bereits verkauft');
-          availability[productId] = 0;
+          availability[onlineShopBarcode] = 0;
           continue;
         }
 
         // 2. Prüfe ob im Warenkorb
         if (shopDoc.data()?['in_cart'] == true) {
           print('-> Produkt ist im Warenkorb');
-          availability[productId] = 0;
+          availability[onlineShopBarcode] = 0;
           continue;
         }
 
@@ -520,12 +521,12 @@ class QuoteService {
         }
 
         if (isReservedByOther) {
-          availability[productId] = 0;
+          availability[onlineShopBarcode] = 0;
         } else {
-          availability[productId] = 1; // Online-Shop-Item ist verfügbar (immer Menge 1)
+          availability[onlineShopBarcode] = 1;
         }
 
-        print('-> Verfügbar: ${availability[productId]}');
+        print('-> Verfügbar: ${availability[onlineShopBarcode]}');
         continue;
       }
 

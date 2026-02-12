@@ -213,6 +213,14 @@ class PermissionService {
       iconName: 'picture_as_pdf',
       defaultMinRole: 5,
     ),
+    FeatureDefinition(
+      id: 'drawer_cost_centers',
+      name: 'Kostenstellen',
+      description: 'Kostenstellenverwaltung im Drawer',
+      category: 'drawer_settings',
+      iconName: 'account_balance_wallet',
+      defaultMinRole: 5,
+    ),
     // AppBar
     FeatureDefinition(
       id: 'appbar_settings',

@@ -160,7 +160,7 @@ class QuoteGenerator extends BasePdfGenerator {
           'total_incl_vat': 'Gesamtbetrag inkl. MwSt',
         },
         'EN': {
-          'quote': 'QUOTE',
+          'quote': 'OFFER',
           'currency_note': 'All prices in $currency (Exchange rate: 1 CHF = ${exchangeRates[currency]!.toStringAsFixed(4)} $currency)',
           'validity_note': 'This offer is valid until ${DateFormat('MMMM dd, yyyy', 'en_US').format(validUntil)}.',
           'validity_note_addition':' If payment is not received by then, we will cancel the reservation.',
@@ -174,112 +174,132 @@ class QuoteGenerator extends BasePdfGenerator {
       return translations[language]?[key] ?? translations['DE']?[key] ?? '';
     }
 
+
     pdf.addPage(
-      pw.Page(
+      pw.MultiPage(
         margin: const pw.EdgeInsets.all(20),
-        build: (pw.Context context) {
+        header: (pw.Context context) {
+          // Seite 1: kein MultiPage-Header (wird im build gemacht)
+          if (context.pageNumber == 1) return pw.SizedBox.shrink();
+          // Seite 2+: kompakter Header
           return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // Header
-              BasePdfGenerator.buildHeader(
+              BasePdfGenerator.buildCompactHeader(
                 documentTitle: getTranslation('quote'),
                 documentNumber: quoteNum,
-                date: DateTime.now(),
                 logo: logo,
-                costCenter: costCenterCode,
+                pageNumber: context.pageNumber,
+                totalPages: context.pagesCount,
                 language: language,
               ),
-              pw.SizedBox(height: 20),
-
-              // Kundenadresse
-              BasePdfGenerator.buildCustomerAddress(customerData, 'quote', language: language, addressDisplayMode: addressMode),
-              pw.SizedBox(height: 15),
-
-              // Währungshinweis (falls nicht CHF UND showExchangeRateOnDocument aktiviert)
-              if (currency != 'CHF' && showExchangeRateOnDocument)
-                pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.amber50,
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                    border: pw.Border.all(color: PdfColors.amber200, width: 0.5),
-                  ),
-                  child: pw.Text(
-                    getTranslation('currency_note'),
-                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.amber900),
-                  ),
-                ),
-
-              pw.SizedBox(height: 15),
-
-              // Produkttabelle mit Holzart-Gruppierung
-              pw.Expanded(
-                child: pw.Column(
-                  children: [
-                    BasePdfGenerator.buildCurrencyHint(currency, language),
-
-                    // Erst Produkte
-                    if (productItems.isNotEmpty)
-
-                      _buildProductTable(groupedProductItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths, columnAlignments,),// Dann Dienstleistungen
-                    if (serviceItems.isNotEmpty)
-                      pw.SizedBox(height: 10),
-                      _buildServiceTable(
-                        serviceItems,
-                        currency,
-                        exchangeRates,
-                        language,
-                        showDimensions,      // NEU
-                        showThermalColumn,   // NEU
-                        showDiscountColumn,  // NEU
-                        showPartsColumn,     // NEU
-                        columnWidths,
-                        columnAlignments,
-                      ),  pw.SizedBox(height: 10),
-                    // Summen-Bereich
-                    _buildTotalsSection(items, currency, exchangeRates, language, shippingCosts, calculations,taxOption, vatRate, roundingSettings,),
-                    pw.SizedBox(height: 10),
-                    // Gültigkeitshinweis
-                    pw.Container(
-                      alignment: pw.Alignment.centerLeft,
-                      padding: const pw.EdgeInsets.all(8),
-                      decoration: pw.BoxDecoration(
-                        color: PdfColors.orange50,
-                        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                        border: pw.Border.all(color: PdfColors.orange200, width: 0.5),
-                      ),
-                      child: pw.Text(
-                        getTranslation('validity_note'),
-                        style: const pw.TextStyle(fontSize: 8, color: PdfColors.orange900),
-                      ),
-
-                    ),
-                    // NEU: Zusätzlicher Zahlungshinweis nur wenn aktiviert
-                    if (showValidityAddition) ...[
-                      pw.SizedBox(height: 4),
-                      pw.Text(
-                        getTranslation('validity_note_addition'),
-                        style: pw.TextStyle(
-                          fontSize: 8,
-                          color: PdfColors.orange900,
-                          fontWeight: pw.FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                    pw.SizedBox(height: 10),
-                    additionalTextsWidget,
-                  ],
-                ),
-              ),
-
-              // Footer - jetzt wirklich am Seitenende
-              BasePdfGenerator.buildFooter(),
+              pw.SizedBox(height: 10),
             ],
           );
         },
+        footer: (pw.Context context) => BasePdfGenerator.buildFooter(
+          pageNumber: context.pageNumber,
+          totalPages: context.pagesCount,
+          language: language,
+        ),
+        build: (pw.Context context) {
+          return [
+            // Header (voller Header nur auf Seite 1)
+            BasePdfGenerator.buildHeader(
+              documentTitle: getTranslation('quote'),
+              documentNumber: quoteNum,
+              date: DateTime.now(),
+              logo: logo,
+              costCenter: costCenterCode,
+              language: language,
+            ),
+            pw.SizedBox(height: 20),
+
+            // Kundenadresse
+            BasePdfGenerator.buildCustomerAddress(customerData, 'quote', language: language, addressDisplayMode: addressMode),
+            pw.SizedBox(height: 15),
+
+            // Währungshinweis (falls nicht CHF UND showExchangeRateOnDocument aktiviert)
+            if (currency != 'CHF' && showExchangeRateOnDocument)
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.amber50,
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                  border: pw.Border.all(color: PdfColors.amber200, width: 0.5),
+                ),
+                child: pw.Text(
+                  getTranslation('currency_note'),
+                  style: const pw.TextStyle(fontSize: 9, color: PdfColors.amber900),
+                ),
+              ),
+
+            pw.SizedBox(height: 15),
+
+            BasePdfGenerator.buildCurrencyHint(currency, language),
+
+            // Produkttabelle nur wenn Produkte vorhanden
+            if (productItems.isNotEmpty)
+              _buildProductTable(groupedProductItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths, columnAlignments),
+
+            // Dienstleistungstabelle nur wenn Dienstleistungen vorhanden
+            if (serviceItems.isNotEmpty)
+              pw.SizedBox(height: 10),
+            _buildServiceTable(
+              serviceItems,
+              currency,
+              exchangeRates,
+              language,
+              showDimensions,
+              showThermalColumn,
+              showDiscountColumn,
+              showPartsColumn,
+              columnWidths,
+              columnAlignments,
+            ),
+
+            pw.SizedBox(height: 10),
+
+            // Summen-Bereich
+            _buildTotalsSection(items, currency, exchangeRates, language, shippingCosts, calculations, taxOption, vatRate, roundingSettings),
+
+            pw.SizedBox(height: 10),
+
+            // Gültigkeitshinweis
+            pw.Container(
+              alignment: pw.Alignment.centerLeft,
+              padding: const pw.EdgeInsets.all(8),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.orange50,
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                border: pw.Border.all(color: PdfColors.orange200, width: 0.5),
+              ),
+              child: pw.Text(
+                getTranslation('validity_note'),
+                style: const pw.TextStyle(fontSize: 8, color: PdfColors.orange900),
+              ),
+            ),
+
+            // Zusätzlicher Zahlungshinweis nur wenn aktiviert
+            if (showValidityAddition) ...[
+              pw.SizedBox(height: 4),
+              pw.Text(
+                getTranslation('validity_note_addition'),
+                style: pw.TextStyle(
+                  fontSize: 8,
+                  color: PdfColors.orange900,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ],
+
+            pw.SizedBox(height: 10),
+            additionalTextsWidget,
+          ];
+        },
       ),
     );
+
+
 
     return pdf.save();
   }
@@ -456,10 +476,10 @@ class QuoteGenerator extends BasePdfGenerator {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.SizedBox(height: 8),
-        pw.Table(
+        BasePdfGenerator.buildSplittableTable(
+          rows: rows,
+          columnWidths: serviceColumnWidths,
           border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
-          columnWidths: serviceColumnWidths,  // Neue merged columnWidths!
-          children: rows,
         ),
       ],
     );
@@ -966,10 +986,10 @@ if (unit.toLowerCase() == 'stück') {
     });
 
 
-    return pw.Table(
-      border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
+    return BasePdfGenerator.buildSplittableTable(
+      rows: rows,
       columnWidths: columnWidths,
-      children: rows,
+      border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
     );
   }
 

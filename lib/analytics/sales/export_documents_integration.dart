@@ -46,7 +46,7 @@ class ExportDocumentsIntegration {
           title: const Text('Exportdokumente existieren bereits'),
           content: const Text(
               'Für diesen Beleg wurden bereits Exportdokumente erstellt. '
-                  'Möchten Sie neue Dokumente erstellen oder die bestehenden anzeigen?'
+                  'Möchtest du neue Dokumente erstellen oder die bestehenden anzeigen?'
           ),
           actions: [
             TextButton(

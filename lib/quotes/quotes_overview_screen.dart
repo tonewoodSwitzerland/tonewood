@@ -1,16 +1,19 @@
 import 'dart:async';
 
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:tonewood/quotes/quote_filter_service.dart';
 import 'package:tonewood/sales/sales_screen.dart';
 import 'package:tonewood/quotes/quote_details_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../orders/order_service.dart';
 import '../services/order_configuration_sheet.dart';
+import 'info_help_sheet.dart';
 import 'quote_model.dart';
 // Oben bei den Imports ergänzen:
 import '../constants.dart';
@@ -19,6 +22,7 @@ import '../services/icon_helper.dart';
 import '../services/pdf_generators/invoice_generator.dart';
 import '../services/preview_pdf_viewer_screen.dart';
 import '../services/swiss_rounding.dart';
+import '../services/price_formatter.dart';
 
 
 // Zentrale Farbdefinitionen für Angebote
@@ -65,17 +69,6 @@ extension QuoteViewStatusExtension on QuoteViewStatus {
   }
 }
 
-// double _convertPrice(num priceInCHF, Quote quote) {
-//   final price = priceInCHF.toDouble();
-//   final currency = quote.metadata['currency'] ?? 'CHF';
-//   if (currency == 'CHF') return price;
-//
-//   final exchangeRates = quote.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
-//   final rate = (exchangeRates[currency] as num?)?.toDouble() ?? 1.0;
-//   return price * rate;
-// }
-
-
 class QuotesOverviewScreen extends StatefulWidget {
   const QuotesOverviewScreen({Key? key}) : super(key: key);
 
@@ -88,15 +81,175 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSavedFilterSettings();
+    _loadFilters();
     _loadRoundingSettings();
   }
 
+  Future<void> _deleteQuote(Quote quote) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Angebot löschen'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Möchtest du das Angebot ${quote.quoteNumber} unwiderruflich löschen?'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      getAdaptiveIcon(iconName: 'warning', defaultIcon: Icons.warning, color: Colors.red, size: 20),
+                      const SizedBox(width: 8),
+                      const Text('Was passiert:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '• Das Angebot wird vollständig gelöscht\n'
+                        '• Alle Reservierungen werden freigegeben\n'
+                        '• Das PDF wird aus dem Speicher entfernt\n'
+                        '• Der Verlauf wird gelöscht\n'
+                        '• Diese Aktion kann NICHT rückgängig gemacht werden',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Endgültig löschen'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      final batch = FirebaseFirestore.instance.batch();
+
+      // 1. Reservierungen stornieren
+      final reservations = await FirebaseFirestore.instance
+          .collection('stock_movements')
+          .where('quoteId', isEqualTo: quote.id)
+          .where('status', isEqualTo: 'reserved')
+          .get();
+
+      for (final doc in reservations.docs) {
+        batch.update(doc.reference, {
+          'status': 'cancelled',
+          'cancelled_at': FieldValue.serverTimestamp(),
+          'cancellation_reason': 'Angebot gelöscht',
+        });
+      }
+
+      // 2. History-Subcollection löschen
+      final historyDocs = await FirebaseFirestore.instance
+          .collection('quotes')
+          .doc(quote.id)
+          .collection('history')
+          .get();
+
+      for (final doc in historyDocs.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // 3. PDF aus Storage löschen
+      try {
+        final pdfRef = FirebaseStorage.instance
+            .ref()
+            .child('documents/quotes/${quote.quoteNumber}.pdf');
+        await pdfRef.delete();
+      } catch (e) {
+        print('PDF konnte nicht gelöscht werden (evtl. nicht vorhanden): $e');
+      }
+
+      // 4. Angebot-Dokument löschen
+      batch.delete(FirebaseFirestore.instance.collection('quotes').doc(quote.id));
+
+      await batch.commit();
+
+      if (mounted) {
+        Navigator.pop(context); // Loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Angebot ${quote.quoteNumber} wurde gelöscht'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Löschen: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  void _loadFilters() {
+    _filterSubscription = QuoteFilterService.loadSavedFilters().listen((filters) {
+      if (mounted) {
+        setState(() {
+          _activeFilters = filters;
+          _searchController.text = filters['searchText'] ?? '';
+          final quickStatus = filters['quickStatus'] as String?;
+          if (quickStatus != null) {
+            try {
+              _quickFilterStatus = QuoteViewStatus.values.firstWhere((s) => s.name == quickStatus);
+            } catch (_) {
+              _quickFilterStatus = null;
+            }
+          } else {
+            _quickFilterStatus = null;
+          }
+        });
+      }
+    });
+  }
+
   final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
-  QuoteViewStatus? _filterStatus;
+  Map<String, dynamic> _activeFilters = QuoteFilterService.createEmptyFilter();
+  StreamSubscription<Map<String, dynamic>>? _filterSubscription;
+  QuoteViewStatus? _quickFilterStatus;
+
+
   String _rejectionReason = '';
-  bool _hasUnsearchedChanges = false;
   Map<String, bool> _roundingSettings = {'CHF': true, 'EUR': false, 'USD': false};
 
 
@@ -107,85 +260,65 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Theme.of(context).colorScheme.surface,
-        title: const Text('Angebote', style: TextStyle(fontWeight: FontWeight.w600)),
+        title: Row(
+          children: [
+            const Text('Angebote', style: TextStyle(fontWeight: FontWeight.w600)),
+            if (QuoteFilterService.hasActiveFilters(_activeFilters))
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('quotes').snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) return const SizedBox.shrink();
+
+                  final allQuotes = snapshot.data!.docs
+                      .map((doc) => Quote.fromFirestore(doc))
+                      .toList();
+                  final filteredCount = QuoteFilterService.applyClientSideFilters(allQuotes, _activeFilters).length;
+
+                  return Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '$filteredCount gefiltert',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
         actions: [
+          // Info-Button
+          IconButton(
+            icon: getAdaptiveIcon(iconName: 'info_outline', defaultIcon: Icons.info_outline),
+            onPressed: () => InfoHelpSheet.showForQuotes(context),
+            tooltip: 'Hilfe & Info',
+          ),
           // Filter-Button
-          PopupMenuButton<dynamic>(
+          IconButton(
             icon: Badge(
-              isLabelVisible: _filterStatus != null,
+              isLabelVisible: QuoteFilterService.hasActiveFilters(_activeFilters),
               label: const Text('!'),
               child: getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list),
             ),
-            onSelected: (value) {
-              // 1. UI Status aktualisieren
-              if (value == 'clear_all') {
-                setState(() {
-                  _filterStatus = null;
-                });
-              } else if (value is QuoteViewStatus) {
-                setState(() {
-                  _filterStatus = value;
-                });
-              }
-
-              // 2. Einstellung speichern (NEU)
-              _saveFilterSettings(value);
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => QuoteFilterDialog(
+                  currentFilters: _activeFilters,
+                  onApply: (filters) {
+                    setState(() { _activeFilters = filters; });
+                    QuoteFilterService.saveFilters(filters);
+                  },
+                ),
+              );
             },
-            itemBuilder: (context) => [
-              if (_filterStatus != null)
-                 PopupMenuItem(
-                  value: 'clear_all',
-                  child: Row(
-                    children: [
-                      getAdaptiveIcon(
-                          iconName: 'clear',
-                          defaultIcon:Icons.clear, size: 20),
-                      SizedBox(width: 8),
-                      Text('Filter zurücksetzen'),
-                    ],
-                  ),
-                ),
-              if (_filterStatus != null)
-                const PopupMenuDivider(),
-              const PopupMenuItem(
-                value: null,
-                child: Text('Alle anzeigen'),
-              ),
-              ...QuoteViewStatus.values.map((status) => PopupMenuItem(
-                value: status,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: status.color,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(status.displayName),
-                  ],
-                ),
-              )),
-              PopupMenuItem(
-                value: 'cancelled_orders',
-                child: Row(
-                  children: [
-                    Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text('Nachträglich storniert'),
-                  ],
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -194,60 +327,77 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
           // Suchleiste
           Container(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child:  StatefulBuilder(
-        builder: (context, setSearchState) {
-      return TextField(
-        controller: _searchController,
-        style: const TextStyle(fontSize: 14),
-        decoration: InputDecoration(
-          hintText: 'Suche nach Kunde, Angebotsnummer...',
-          hintStyle: const TextStyle(fontSize: 14),
-          prefixIcon: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
-          suffixIcon: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_searchController.text.isNotEmpty)
-                IconButton(
-                  icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear, size: 20),
-                  onPressed: () {
-                    _searchController.clear();
-                    setSearchState(() {}); // Nur Suchfeld updaten
-                    setState(() {
-                      _searchQuery = '';
-                    });
+            child: StatefulBuilder(
+              builder: (context, setSearchState) {
+                return TextField(
+                  controller: _searchController,
+                  style: const TextStyle(fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Suche nach Kunde, Angebotsnummer...',
+                    hintStyle: const TextStyle(fontSize: 14),
+                    prefixIcon: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_searchController.text.isNotEmpty)
+                          IconButton(
+                            icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear, size: 20),
+                            onPressed: () {
+                              _searchController.clear();
+                              setSearchState(() {});
+                              // Suchtext in Filter zurücksetzen
+                              final updatedFilters = Map<String, dynamic>.from(_activeFilters);
+                              updatedFilters['searchText'] = '';
+                              setState(() {
+                                _activeFilters = updatedFilters;
+                              });
+                              QuoteFilterService.saveFilters(updatedFilters);
+                            },
+                          ),
+                        IconButton(
+                          icon: getAdaptiveIcon(
+                            iconName: 'search',
+                            defaultIcon: Icons.search,
+                            color: _searchController.text != (_activeFilters['searchText'] ?? '')
+                                ? Colors.orange
+                                : Theme.of(context).colorScheme.primary,
+                          ),
+                          onPressed: () {
+                            FocusScope.of(context).unfocus();
+                            // Suchtext in Filter speichern
+                            final updatedFilters = Map<String, dynamic>.from(_activeFilters);
+                            updatedFilters['searchText'] = _searchController.text;
+                            setState(() {
+                              _activeFilters = updatedFilters;
+                            });
+                            QuoteFilterService.saveFilters(updatedFilters);
+                          },
+                        ),
+                      ],
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                  onChanged: (value) {
+                    setSearchState(() {});
                   },
-                ),
-              IconButton(
-                icon: getAdaptiveIcon(
-                  iconName: 'search',
-                  defaultIcon: Icons.search,
-                  color: _searchController.text.toLowerCase() != _searchQuery
-                      ? Colors.orange
-                      : Theme.of(context).colorScheme.primary,
-                ),
-                onPressed: () {
-                  FocusScope.of(context).unfocus();
-                  setState(() {
-                    _searchQuery = _searchController.text.toLowerCase();
-                  });
-                },
-              ),
-            ],
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
-          filled: true,
-          fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        ),
-        onChanged: (value) {
-          setSearchState(() {}); // Nur Suchfeld-UI updaten, nicht die ganze Liste
-        },
-      );
-    },
-    ),
+                  onSubmitted: (value) {
+                    // Bei Enter auch speichern
+                    final updatedFilters = Map<String, dynamic>.from(_activeFilters);
+                    updatedFilters['searchText'] = value;
+                    setState(() {
+                      _activeFilters = updatedFilters;
+                    });
+                    QuoteFilterService.saveFilters(updatedFilters);
+                  },
+                );
+              },
+            ),
           ),
 
           // Kompakte Statistik-Karten
@@ -270,68 +420,100 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-
                 final quotes = snapshot.data!.docs
                     .map((doc) => Quote.fromFirestore(doc))
-                    .where((quote) {
-                  // Suchfilter - NUR wenn _searchQuery gesetzt ist (nach Button-Klick)
-                  if (_searchQuery.isNotEmpty) {
-                    final searchLower = _searchQuery; // Bereits lowercase
-                    final company = quote.customer['company']?.toString().toLowerCase() ?? '';
-                    final fullName = quote.customer['fullName']?.toString().toLowerCase() ?? '';
-                    final firstName = quote.customer['firstName']?.toString().toLowerCase() ?? '';
-                    final lastName = quote.customer['lastName']?.toString().toLowerCase() ?? '';
-
-                    return quote.quoteNumber.toLowerCase().contains(searchLower) ||
-                        company.contains(searchLower) ||
-                        fullName.contains(searchLower) ||
-                        firstName.contains(searchLower) ||
-                        lastName.contains(searchLower) ||
-                        '$firstName $lastName'.contains(searchLower);
-                  }
-                  return true;
-                })
-                    .where((quote) {
-                  // Status-Filter
-                  if (_filterStatus == null) return true;
-
-                  final viewStatus = _getViewStatus(quote);
-                  return viewStatus == _filterStatus;
-                })
                     .toList();
+                final filteredQuotes = QuoteFilterService.applyClientSideFilters(quotes, _activeFilters);
 
-                if (quotes.isEmpty) {
+                if (filteredQuotes.isEmpty) {
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         getAdaptiveIcon(
                           iconName: 'description',
-                          defaultIcon:
-                          Icons.description,
+                          defaultIcon: Icons.description,
                           size: 48,
                           color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'Keine Angebote gefunden',
+                          QuoteFilterService.hasActiveFilters(_activeFilters)
+                              ? 'Keine Angebote gefunden'
+                              : 'Noch keine Angebote vorhanden',
                           style: TextStyle(
                             fontSize: 16,
                             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                           ),
                         ),
+                        if (QuoteFilterService.hasActiveFilters(_activeFilters)) ...[
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear),
+                            label: const Text('Filter zurücksetzen'),
+                            onPressed: () async {
+                              await QuoteFilterService.resetFilters();
+                              _searchController.clear();
+                            },
+                          ),
+                        ],
                       ],
                     ),
                   );
                 }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: quotes.length,
-                  itemBuilder: (context, index) {
-                    final quote = quotes[index];
-                    return _buildCompactQuoteCard(quote);
-                  },
+                // Zeige aktive Filter
+                return Column(
+                  children: [
+                    if (QuoteFilterService.hasActiveFilters(_activeFilters))
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
+                                    getAdaptiveIcon(
+                                      iconName: 'filter_list',
+                                      defaultIcon: Icons.filter_list,
+                                      size: 16,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      QuoteFilterService.getFilterSummary(_activeFilters),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context).colorScheme.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () async {
+                                await QuoteFilterService.resetFilters();
+                                _searchController.clear();
+                              },
+                              child: const Text('Zurücksetzen', style: TextStyle(fontSize: 12)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: filteredQuotes.length,
+                        itemBuilder: (context, index) {
+                          final quote = filteredQuotes[index];
+                          return _buildCompactQuoteCard(quote);
+                        },
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
@@ -347,108 +529,31 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
       _roundingSettings = settings;
     });
   }
-  double _convertPrice(num priceInCHF, Quote quote) {
-    final price = priceInCHF.toDouble();
-    final currency = quote.metadata['currency'] ?? 'CHF';
 
-    double convertedPrice = price;
-    if (currency != 'CHF') {
-      final exchangeRates = quote.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
-      final rate = (exchangeRates[currency] as num?)?.toDouble() ?? 1.0;
-      convertedPrice = price * rate;
-    }
-
-    // Rundung anwenden
-    if (_roundingSettings[currency] == true) {
-      convertedPrice = SwissRounding.round(
-        convertedPrice,
-        currency: currency,
-        roundingSettings: _roundingSettings,
-      );
-    }
-
-    return convertedPrice;
-  }
-
-
-  // -- NEU: Funktion zum Laden aus Firestore --
-  Future<void> _loadSavedFilterSettings() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      // Wir speichern die Einstellungen unter users/{uid}/settings/quotes_overview
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('settings')
-          .doc('quotes_overview')
-          .get();
-
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data()!;
-        final savedStatusName = data['filter_status'] as String?;
-
-        if (savedStatusName != null) {
-          // Versuche, den String (z.B. 'open') zurück in das Enum zu wandeln
-          try {
-            final status = QuoteViewStatus.values.firstWhere(
-                  (e) => e.name == savedStatusName,
-            );
-            setState(() {
-              _filterStatus = status;
-            });
-          } catch (e) {
-            // Falls der gespeicherte Status ungültig ist, passiert nichts (bleibt null/alle)
-          }
-        } else {
-          // Wenn explizit null gespeichert war (für "Alle anzeigen")
-          setState(() {
-            _filterStatus = null;
-          });
-        }
-      }
-    } catch (e) {
-      debugPrint('Fehler beim Laden der Filtereinstellungen: $e');
-    }
-  }
-
-  // -- NEU: Funktion zum Speichern in Firestore --
-  Future<void> _saveFilterSettings(QuoteViewStatus? status) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('settings')
-          .doc('quotes_overview')
-          .set({
-        // Speichert den internen Namen (z.B. 'accepted') oder null
-        'filter_status': status?.name,
-        'updated_at': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Fehler beim Speichern der Filtereinstellungen: $e');
-    }
-  }
   Widget _buildCompactStatistics() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('quotes').snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const SizedBox(height: 60);
 
-        final quotes = snapshot.data!.docs
+        // Alle Angebote laden
+        final allQuotes = snapshot.data!.docs
             .map((doc) => Quote.fromFirestore(doc))
             .toList();
 
-        final openQuotes = quotes.where((q) {
+        // Filter anwenden (wichtig für Datumsfilter!)
+        final filteredQuotes = QuoteFilterService.applyClientSideFilters(
+            allQuotes,
+            _activeFilters
+        );
+
+        // Statistiken basierend auf gefilterten Angeboten
+        final openQuotes = filteredQuotes.where((q) {
           final viewStatus = _getViewStatus(q);
           return viewStatus == QuoteViewStatus.open;
         }).length;
 
-        final expiredQuotes = quotes.where((q) {
+        final expiredQuotes = filteredQuotes.where((q) {
           final viewStatus = _getViewStatus(q);
           return viewStatus == QuoteViewStatus.expired;
         }).length;
@@ -465,7 +570,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                   Icons.schedule,
                   'schedule',
                   QuoteColors.open,
-                  QuoteViewStatus.open, // Ziel-Status für Filter
+                  QuoteViewStatus.open,
                 ),
               ),
               const SizedBox(width: 8),
@@ -476,7 +581,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                   Icons.timer_off,
                   'timer_off',
                   QuoteColors.expired,
-                  QuoteViewStatus.expired, // Ziel-Status für Filter
+                  QuoteViewStatus.expired,
                 ),
               ),
             ],
@@ -487,27 +592,30 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
   }
 
   Widget _buildCompactStatCard(String title, String value, IconData icon, String iconName, Color color, QuoteViewStatus targetStatus) {
-    final bool isActive = _filterStatus == targetStatus;
+    // Prüfe ob dieser Status aktiv ist
+    final bool isActive = _quickFilterStatus == targetStatus;
 
     return GestureDetector(
       onTap: () {
+        // Toggle Filter
+        final newStatus = isActive ? null : targetStatus;
+
+        // Filter aktualisieren
+        final updatedFilters = Map<String, dynamic>.from(_activeFilters);
+        updatedFilters['quickStatus'] = newStatus?.name;
+
         setState(() {
-          // Wenn bereits aktiv, Filter aufheben, sonst setzen
-          final newStatus = isActive ? null : targetStatus;
-          setState(() {
-            _filterStatus = newStatus;
-          });
-
-          // NEU: Sofort speichern
-          _saveFilterSettings(newStatus);
-
+          _quickFilterStatus = newStatus;
+          _activeFilters = updatedFilters;
         });
+
+        // Speichern
+        QuoteFilterService.saveFilters(updatedFilters);
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          // Hintergrund wird kräftiger, wenn der Filter aktiv ist
           color: isActive ? color.withOpacity(0.2) : color.withOpacity(0.08),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
@@ -553,6 +661,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
       ),
     );
   }
+
   Stream<QuerySnapshot> _buildQuotesQuery() {
     Query query = FirebaseFirestore.instance.collection('quotes');
     return query.orderBy('createdAt', descending: true).snapshots();
@@ -671,8 +780,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                       children: [
                         getAdaptiveIcon(
                             iconName: 'business',
-                            defaultIcon:
-                            Icons.business,
+                            defaultIcon: Icons.business,
                             size: 14,
                             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)
                         ),
@@ -704,7 +812,11 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      '${quote.metadata['currency']} ${_convertPrice((quote.calculations['total'] as num).toDouble(), quote).toStringAsFixed(2)}',
+                      PriceFormatter.fromQuote(
+                        price: (quote.calculations['total'] as num).toDouble(),
+                        metadata: quote.metadata,
+                        roundingSettings: _roundingSettings,
+                      ),
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -722,8 +834,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                 children: [
                   getAdaptiveIcon(
                     iconName: 'timer',
-                    defaultIcon:
-                    Icons.timer,
+                    defaultIcon: Icons.timer,
                     size: 12,
                     color: viewStatus == QuoteViewStatus.expired
                         ? QuoteColors.expired
@@ -748,39 +859,46 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-
-                    _buildCompactActionButton(
-                      icon: Icons.content_copy,
-                      iconName:'content_copy',
-                      onPressed: () =>  _copyQuoteToNewQuote(quote),
-                      tooltip: 'Kopieren',
-                      color: goldenColour,
-                    ),
-                    const SizedBox(width: 4),
-                    _buildCompactActionButton(
+                  _buildCompactActionButton(
+                    icon: Icons.content_copy,
+                    iconName:'content_copy',
+                    onPressed: () =>  _copyQuoteToNewQuote(quote),
+                    tooltip: 'Kopieren',
+                    color: goldenColour,
+                  ),
+                  const SizedBox(width: 4),
+                  _buildCompactActionButton(
                       icon: Icons.edit,
                       iconName: 'edit',
                       onPressed: () => _editQuote(quote),
                       tooltip: 'Bearbeiten',
                       color: goldenColour
-                    ),
-                    const SizedBox(width: 4),
-                    _buildCompactActionButton(
-                      icon: Icons.shopping_cart,
-                      iconName:'shopping_cart',
-                      onPressed: () => _convertToOrder(quote),
-                      tooltip: 'Beauftragen',
-                      color: QuoteColors.accepted,
-                    ),
-                    const SizedBox(width: 4),
-                    _buildCompactActionButton(
-                      icon: Icons.cancel,
-                      iconName:'cancel',
-                      onPressed: () => _rejectQuote(quote),
-                      tooltip: 'Ablehnen',
-                      color: QuoteColors.rejected,
-                    ),
-                    const SizedBox(width: 4),
+                  ),
+                  const SizedBox(width: 4),
+                  _buildCompactActionButton(
+                    icon: Icons.shopping_cart,
+                    iconName:'shopping_cart',
+                    onPressed: () => _convertToOrder(quote),
+                    tooltip: 'Beauftragen',
+                    color: QuoteColors.accepted,
+                  ),
+                  const SizedBox(width: 4),
+                  _buildCompactActionButton(
+                    icon: Icons.cancel,
+                    iconName:'cancel',
+                    onPressed: () => _rejectQuote(quote),
+                    tooltip: 'Ablehnen',
+                    color: QuoteColors.rejected,
+                  ),
+                  const SizedBox(width: 4),
+                  _buildCompactActionButton(
+                    icon: Icons.delete_forever,
+                    iconName: 'delete_forever',
+                    onPressed: () => _deleteQuote(quote),
+                    tooltip: 'Löschen',
+                    color: Colors.red[800],
+                  ),
+                  const SizedBox(width: 4),
                   _buildCompactActionButton(
                     icon: Icons.history,
                     iconName:'history',
@@ -798,7 +916,6 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                   _buildCompactActionButton(
                     icon: Icons.share,
                     iconName:'share',
-
                     onPressed: () => _shareQuote(quote),
                     tooltip: 'Teilen',
                   ),
@@ -829,8 +946,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
             padding: const EdgeInsets.all(8),
             child:  getAdaptiveIcon(
               iconName: iconName,
-              defaultIcon:
-              icon,
+              defaultIcon: icon,
               size: 18,
               color: color ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
             ),
@@ -1081,7 +1197,6 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                         default:
                           icon = Icons.info;
                           iconName='info';
-
                           color = Colors.grey;
                           title = 'Änderung';
                           subtitle = action;
@@ -1174,8 +1289,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                   children: [
                     getAdaptiveIcon(
                       iconName: 'person',
-                      defaultIcon:
-                      Icons.person,
+                      defaultIcon: Icons.person,
                       size: 14,
                       color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                     ),
@@ -1325,8 +1439,6 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
           configResult['additionalTexts'] as Map<String, dynamic>,
           configResult['invoiceSettings'] as Map<String, dynamic>,
         );
-
-
 
         // History Entry wird automatisch durch OrderService erstellt
         final user = FirebaseAuth.instance.currentUser;
@@ -1865,6 +1977,7 @@ Status: ${_getViewStatus(quote).displayName}
       }
     }
   }
+
   Future<void> _createHistoryEntry(Quote quote, String action) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -1885,6 +1998,7 @@ Status: ${_getViewStatus(quote).displayName}
       print('Error creating history entry: $e');
     }
   }
+
   Future<void> _editQuote(Quote quote) async {
     // Prüfe ob das Angebot noch bearbeitbar ist
     if (quote.status != QuoteStatus.draft && quote.status != QuoteStatus.sent) {
@@ -2022,10 +2136,11 @@ Status: ${_getViewStatus(quote).displayName}
       }
     }
   }
+
   @override
   void dispose() {
+    _filterSubscription?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 }
-

@@ -1392,7 +1392,7 @@ Widget _buildPackageCard(
 
   // Berechne Nettogewicht
   double calculateNetWeight() {
-    print("Teeeees");
+
     double netWeight = 0.0;
     final packageItems = package['items'] as List<dynamic>? ?? [];
 print(packageItems);
@@ -1759,14 +1759,13 @@ print("yippiyeayeah");
 
                   const Divider(height: 12),
 
-                  // Bruttogewicht - entweder berechnet oder mit Eingabefeld
-                  if (package['manual_gross_weight_mode'] == true) ...[
-                    // Manueller Modus: Eingabefeld
-                    Row(
-                      children: [
-                        const Text('= Bruttogewicht:',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(width: 8),
+                  // Bruttogewicht - immer mit Eingabefeld
+                  Row(
+                    children: [
+                      const Text('= Bruttogewicht:',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 8),
+                      if (package['gross_weight'] != null)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
@@ -1775,13 +1774,98 @@ print("yippiyeayeah");
                           ),
                           child: Text('gemessen',
                               style: TextStyle(fontSize: 9, color: Colors.orange[700])),
+                        )
+                      else
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text('berechnet',
+                              style: TextStyle(fontSize: 9, color: Colors.green[700])),
                         ),
-                        const Spacer(),
-                        // Zurück zu automatisch
+                      const Spacer(),
+                      // Berechneter Wert als Referenz
+                      Text(
+                        '(berechnet: ${calculateGrossWeight().toStringAsFixed(2)} kg)',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 40,
+                          child: TextFormField(
+                            controller: grossWeightController,
+                            decoration: InputDecoration(
+                              hintText: 'Gewogenes Bruttogewicht',
+                              suffixText: 'kg',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              isDense: true,
+                            ),
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [
+                              TextInputFormatter.withFunction((oldValue, newValue) {
+                                return newValue.copyWith(
+                                  text: newValue.text.replaceAll(',', '.'),
+                                );
+                              }),
+                            ],
+                            onChanged: (value) {
+                              final grossWeight = double.tryParse(value.replaceAll(',', '.'));
+                              if (grossWeight != null && grossWeight > 0) {
+                                setModalState(() {
+                                  package['gross_weight'] = grossWeight;
+                                  // Tara = Brutto - Netto (auf 3 Nachkommastellen begrenzt)
+                                  final netWeight = calculateNetWeight();
+                                  final calculatedTara = grossWeight - netWeight;
+                                  final roundedTara = double.parse((calculatedTara > 0 ? calculatedTara : 0.0).toStringAsFixed(3));
+                                  package['tare_weight'] = roundedTara;
+                                  weightController.text = roundedTara.toStringAsFixed(2);
+                                });
+                              } else if (value.isEmpty) {
+                                // Feld geleert - zurück zu automatisch
+                                setModalState(() {
+                                  package['gross_weight'] = null;
+                                  // Tara zurücksetzen wenn Standardpaket
+                                  if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom') {
+                                    FirebaseFirestore.instance
+                                        .collection('standardized_packages')
+                                        .doc(selectedStandardPackageId)
+                                        .get()
+                                        .then((doc) {
+                                      if (doc.exists) {
+                                        final data = doc.data() as Map<String, dynamic>;
+                                        setModalState(() {
+                                          package['tare_weight'] = data['weight'] ?? 0.0;
+                                          weightController.text = package['tare_weight'].toString();
+                                        });
+                                      }
+                                    });
+                                  }
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Reset-Button nur wenn manueller Wert gesetzt
+                      if (package['gross_weight'] != null)
                         IconButton(
                           onPressed: () {
                             setModalState(() {
-                              package['manual_gross_weight_mode'] = false;
                               package['gross_weight'] = null;
                               grossWeightController.clear();
                               // Tara zurücksetzen wenn Standardpaket
@@ -1811,59 +1895,20 @@ print("yippiyeayeah");
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 40,
-                      child: TextFormField(
-                        controller: grossWeightController,
-                        decoration: InputDecoration(
-                          hintText: 'Gewogenes Bruttogewicht eingeben',
-                          suffixText: 'kg',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          isDense: true,
-                        ),
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [
-                          TextInputFormatter.withFunction((oldValue, newValue) {
-                            return newValue.copyWith(
-                              text: newValue.text.replaceAll(',', '.'),
-                            );
-                          }),
-                        ],
-                        onChanged: (value) {
-                          final grossWeight = double.tryParse(value.replaceAll(',', '.'));
-                          if (grossWeight != null && grossWeight > 0) {
-                            setModalState(() {
-                              package['gross_weight'] = grossWeight;
-                              // Tara = Brutto - Netto (auf 3 Nachkommastellen begrenzt)
-                              final netWeight = calculateNetWeight();
-                              final calculatedTara = grossWeight - netWeight;
-                              final roundedTara = double.parse((calculatedTara > 0 ? calculatedTara : 0.0).toStringAsFixed(3));
-                              package['tare_weight'] = roundedTara;
-                              weightController.text = roundedTara.toStringAsFixed(2);
-                            });
-                          }
-                        },
-                      ),
-                    ),
-                    if (package['gross_weight'] != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Tara wurde auf ${(package['tare_weight'] as num?)?.toStringAsFixed(2) ?? '0.00'} kg angepasst',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontStyle: FontStyle.italic,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
                     ],
-                  ] else ...[
+                  ),
+                  if (package['gross_weight'] != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Tara wurde auf ${(package['tare_weight'] as num?)?.toStringAsFixed(2) ?? '0.00'} kg angepasst',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontStyle: FontStyle.italic,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ]
+                  else ...[
                     // Automatischer Modus: Nur Anzeige + Button zum Wechseln
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -5604,28 +5649,70 @@ totalAmount = SwissRounding.round(
       }
     }
 
-// Falls noch keine Pakete existieren, erstelle Paket 1
     if (packages.isEmpty) {
-      final firstPackageId = DateTime.now().millisecondsSinceEpoch.toString(); // NEU: Eindeutige ID
+      final firstPackageId = DateTime.now().millisecondsSinceEpoch.toString();
+
+      // Lade Standardpaket aus Firestore (isDefault: true, Fallback: Karton)
+      String? defaultPackageId;
+      String defaultPackagingType = '';
+      String defaultPackagingTypeEn = '';
+      double defaultLength = 0.0;
+      double defaultWidth = 0.0;
+      double defaultHeight = 0.0;
+      double defaultWeight = 0.0;
+
+      try {
+        // Zuerst Standardpaket suchen (isDefault: true)
+        var defaultPackageQuery = await FirebaseFirestore.instance
+            .collection('standardized_packages')
+            .where('isDefault', isEqualTo: true)
+            .limit(1)
+            .get();
+
+        // Fallback auf "Karton" falls kein Standard definiert
+        if (defaultPackageQuery.docs.isEmpty) {
+          defaultPackageQuery = await FirebaseFirestore.instance
+              .collection('standardized_packages')
+              .where('name', isEqualTo: 'Karton')
+              .limit(1)
+              .get();
+        }
+
+        if (defaultPackageQuery.docs.isNotEmpty) {
+          final defaultDoc = defaultPackageQuery.docs.first;
+          final defaultData = defaultDoc.data();
+          defaultPackageId = defaultDoc.id;
+          defaultPackagingType = defaultData['name'] ?? '';
+          defaultPackagingTypeEn = defaultData['nameEn'] ?? '';
+          defaultLength = (defaultData['length'] as num?)?.toDouble() ?? 0.0;
+          defaultWidth = (defaultData['width'] as num?)?.toDouble() ?? 0.0;
+          defaultHeight = (defaultData['height'] as num?)?.toDouble() ?? 0.0;
+          defaultWeight = (defaultData['weight'] as num?)?.toDouble() ?? 0.0;
+        }
+      } catch (e) {
+        print('Fehler beim Laden des Standardpakets: $e');
+      }
+
       packages.add({
         'id': firstPackageId,
         'name': 'Packung 1',
-        'packaging_type': '',
-        'length': 0.0,
-        'width': 0.0,
-        'height': 0.0,
-        'tare_weight': 0.0,
+        'packaging_type': defaultPackagingType,
+        'packaging_type_en': defaultPackagingTypeEn,
+        'length': defaultLength,
+        'width': defaultWidth,
+        'height': defaultHeight,
+        'tare_weight': defaultWeight,
         'items': <Map<String, dynamic>>[],
-        'standard_package_id': null,
+        'standard_package_id': defaultPackageId,
         'gross_weight': null,
       });
 
-      // Controller für das erste Paket
+      // Controller für das erste Paket mit Standardwerten
       packageControllers[firstPackageId] = {
-        'length': TextEditingController(text: '0.0'),
-        'width': TextEditingController(text: '0.0'),
-        'height': TextEditingController(text: '0.0'),
-        'weight': TextEditingController(text: '0.0'),
+        'length': TextEditingController(text: defaultLength.toString()),
+        'width': TextEditingController(text: defaultWidth.toString()),
+        'height': TextEditingController(text: defaultHeight.toString()),
+        'weight': TextEditingController(text: defaultWeight.toStringAsFixed(2)),
         'custom_name': TextEditingController(text: ''),
         'gross_weight': TextEditingController(text: ''),
       };
@@ -5637,17 +5724,12 @@ totalAmount = SwissRounding.round(
           'length': TextEditingController(text: package['length'].toString()),
           'width': TextEditingController(text: package['width'].toString()),
           'height': TextEditingController(text: package['height'].toString()),
-          'weight': TextEditingController(
-              text: (package['tare_weight'] as num).toStringAsFixed(2)  // HIER ändern
-          ),
+          'weight': TextEditingController(text: package['tare_weight'].toString()),
           'custom_name': TextEditingController(text: package['packaging_type'] ?? ''),
-          'gross_weight': TextEditingController(
-              text: package['gross_weight'] != null ? package['gross_weight'].toString() : ''
-          ), // NEU: von Anfang an hinzufügen
+          'gross_weight': TextEditingController(text: package['gross_weight']?.toString() ?? ''),
         };
       }
     }
-
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -5840,35 +5922,76 @@ totalAmount = SwissRounding.round(
                               ),
                               const Spacer(),
                               ElevatedButton.icon(
-                                onPressed: () {
-                                  setDialogState(() {
-                                    final newPackageId = DateTime.now().millisecondsSinceEpoch.toString(); // NEU: Eindeutige ID
+                                onPressed: () async {
+                                  final newPackageId = DateTime.now().millisecondsSinceEpoch.toString();
 
-                                    // Erstelle Controller für das neue Paket
+                                  // Lade Standardpaket "Karton" aus Firestore
+                                  String? defaultPackageId;
+                                  String defaultPackagingType = '';
+                                  String defaultPackagingTypeEn = '';
+                                  double defaultLength = 0.0;
+                                  double defaultWidth = 0.0;
+                                  double defaultHeight = 0.0;
+                                  double defaultWeight = 0.0;
+
+                                  try {
+                                    // Zuerst Standardpaket suchen (isDefault: true)
+                                    var defaultPackageQuery = await FirebaseFirestore.instance
+                                        .collection('standardized_packages')
+                                        .where('isDefault', isEqualTo: true)
+                                        .limit(1)
+                                        .get();
+
+                                    // Fallback auf "Karton" falls kein Standard definiert
+                                    if (defaultPackageQuery.docs.isEmpty) {
+                                      defaultPackageQuery = await FirebaseFirestore.instance
+                                          .collection('standardized_packages')
+                                          .where('name', isEqualTo: 'Karton')
+                                          .limit(1)
+                                          .get();
+                                    }
+
+                                    if (defaultPackageQuery.docs.isNotEmpty) {
+                                      final defaultDoc = defaultPackageQuery.docs.first;
+                                      final defaultData = defaultDoc.data();
+                                      defaultPackageId = defaultDoc.id;
+                                      defaultPackagingType = defaultData['name'] ?? '';
+                                      defaultPackagingTypeEn = defaultData['nameEn'] ?? '';
+                                      defaultLength = (defaultData['length'] as num?)?.toDouble() ?? 0.0;
+                                      defaultWidth = (defaultData['width'] as num?)?.toDouble() ?? 0.0;
+                                      defaultHeight = (defaultData['height'] as num?)?.toDouble() ?? 0.0;
+                                      defaultWeight = (defaultData['weight'] as num?)?.toDouble() ?? 0.0;
+                                    }
+                                  } catch (e) {
+                                    print('Fehler beim Laden des Standardpakets: $e');
+                                  }
+                                  setDialogState(() {
+                                    // Erstelle Controller für das neue Paket mit Standardwerten
                                     packageControllers[newPackageId] = {
-                                      'length': TextEditingController(text: '0.0'),
-                                      'width': TextEditingController(text: '0.0'),
-                                      'height': TextEditingController(text: '0.0'),
-                                      'weight': TextEditingController(text: '0.0'),
+                                      'length': TextEditingController(text: defaultLength.toString()),
+                                      'width': TextEditingController(text: defaultWidth.toString()),
+                                      'height': TextEditingController(text: defaultHeight.toString()),
+                                      'weight': TextEditingController(text: defaultWeight.toStringAsFixed(2)),
                                       'custom_name': TextEditingController(text: ''),
                                       'gross_weight': TextEditingController(text: ''),
                                     };
 
                                     packages.add({
                                       'id': newPackageId,
-                                      'name': '${packages.length + 1}', // Name basiert auf aktueller Anzahl
-                                      'packaging_type': '',
-                                      'length': 0.0,
-                                      'width': 0.0,
-                                      'height': 0.0,
-                                      'tare_weight': 0.0,
+                                      'name': '${packages.length + 1}',
+                                      'packaging_type': defaultPackagingType,
+                                      'packaging_type_en': defaultPackagingTypeEn,
+                                      'length': defaultLength,
+                                      'width': defaultWidth,
+                                      'height': defaultHeight,
+                                      'tare_weight': defaultWeight,
                                       'items': <Map<String, dynamic>>[],
-                                      'standard_package_id': null,
+                                      'standard_package_id': defaultPackageId,
                                       'gross_weight': null,
                                     });
                                   });
                                 },
-                                icon: getAdaptiveIcon(iconName: 'add', defaultIcon:Icons.add, size: 16),
+                                icon: getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add, size: 16),
                                 label: const Text('Paket hinzufügen'),
                                 style: ElevatedButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

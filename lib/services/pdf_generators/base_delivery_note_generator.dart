@@ -22,7 +22,7 @@ abstract class BaseDeliveryNotePdfGenerator {
 
   // Konstanten für Fenster-Positionierung (in mm)
   static const double addressFieldWidth = 80.0;   // mm
-  static const double addressFieldHeight = 20.0;  // mm
+  static const double addressFieldHeight = 40.0;  // mm
   static const double addressFieldFromRight = 25.0; // mm vom rechten Rand
   static const double addressFieldFromTop = 50.0;   // mm von oben
 
@@ -168,31 +168,64 @@ abstract class BaseDeliveryNotePdfGenerator {
           // RECHTE SEITE: Adressfeld (exakt positioniert für Fenstertasche)
           // 50mm von oben, aber wir sind bereits im Content-Bereich (20mm Page-Margin)
           // Also: 50 - 20 = 30mm vom oberen Content-Rand
+          // RECHTE SEITE: Adressfeld + Kontakt im Fenstertaschen-Bereich
           pw.Positioned(
-            right: 5 * PdfPageFormat.mm, // 25mm vom Dokumentrand - 20mm Page-Margin = 5mm vom Content-Rand
-            top: 30 * PdfPageFormat.mm,  // 50mm von Dokumentoben - 20mm Page-Margin = 30mm
+            right: 5 * PdfPageFormat.mm,
+            top: 30 * PdfPageFormat.mm,
             child: pw.Container(
               width: addressFieldWidth * PdfPageFormat.mm,
               height: addressFieldHeight * PdfPageFormat.mm,
-              child: _buildAddressBox(customerData, language),
-            ),
-          ),
-
-          // Kontaktdaten unter dem Adressfeld
-          pw.Positioned(
-            right: 5 * PdfPageFormat.mm,
-            top: (30 + addressFieldHeight + 0) * PdfPageFormat.mm,
-            child: pw.Container(
-              width: addressFieldWidth * PdfPageFormat.mm,
-              child: _buildContactInfo(customerData, language, spacing: addressEmailSpacing),  // NEU
-
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                mainAxisSize: pw.MainAxisSize.min,
+                children: [
+                  // Adresse – nimmt so viel Platz wie nötig
+                  _buildAddressBox(customerData, language),
+                  // Manuell einstellbarer Abstand
+                  pw.SizedBox(height: addressEmailSpacing),
+                  // Kontaktdaten direkt inline (ohne _buildContactInfo wegen Expanded-Problem)
+                  ..._buildContactInfoWidgets(customerData, language),
+                ],
+              ),
             ),
           ),
         ],
       ),
     );
   }
+  /// Kontaktdaten als Widget-Liste (ohne Expanded, für Verwendung in Column mit fester Höhe)
+  static List<pw.Widget> _buildContactInfoWidgets(Map<String, dynamic> customerData, String language) {
+    final bool hasDifferentShippingAddress = customerData['hasDifferentShippingAddress'] == true;
 
+    final String? email = hasDifferentShippingAddress
+        ? customerData['shippingEmail']?.toString().trim()
+        : customerData['email']?.toString().trim();
+    final String? phone = hasDifferentShippingAddress
+        ? customerData['shippingPhone']?.toString().trim()
+        : customerData['phone1']?.toString().trim();
+
+    return [
+      if (email != null && email.isNotEmpty)
+        pw.Text(
+          '${getTranslation('email', language)} $email',
+          style: pw.TextStyle(
+            fontSize: 8,
+            color: PdfColors.blueGrey600,
+          ),
+        ),
+      if (phone != null && phone.isNotEmpty)
+        pw.Padding(
+          padding: const pw.EdgeInsets.only(top: 2),
+          child: pw.Text(
+            '${getTranslation('phone', language)} $phone',
+            style: pw.TextStyle(
+              fontSize: 8,
+              color: PdfColors.blueGrey600,
+            ),
+          ),
+        ),
+    ];
+  }
   /// Hilfs-Widget für Info-Zeilen im Header
   static pw.Widget _buildInfoRow(String label, String value, {bool isBold = false}) {
     return pw.Padding(
@@ -476,8 +509,7 @@ abstract class BaseDeliveryNotePdfGenerator {
     );
   }
 
-  /// Footer
-  static pw.Widget buildFooter() {
+  static pw.Widget buildFooter({int? pageNumber, int? totalPages, String language = 'DE'}) {
     return pw.Container(
       padding: const pw.EdgeInsets.only(top: 8),
       decoration: const pw.BoxDecoration(
@@ -503,6 +535,16 @@ abstract class BaseDeliveryNotePdfGenerator {
                   style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
             ],
           ),
+          if (pageNumber != null && totalPages != null)
+            pw.Text(
+              language == 'EN'
+                  ? 'Page $pageNumber / $totalPages'
+                  : 'Seite $pageNumber / $totalPages',
+              style: const pw.TextStyle(
+                fontSize: 8,
+                color: PdfColors.blueGrey400,
+              ),
+            ),
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [

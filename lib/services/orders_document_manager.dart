@@ -2834,29 +2834,73 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
         .toList();
 
 // Falls noch keine Pakete existieren, erstelle Paket 1
+    // Falls noch keine Pakete existieren, erstelle Paket 1 mit Standardpaket "Karton"
     if (packages.isEmpty) {
-      final firstPackageId = DateTime.now().millisecondsSinceEpoch.toString(); // NEU: Eindeutige ID
+      final firstPackageId = DateTime.now().millisecondsSinceEpoch.toString();
+
+      // Lade Standardpaket aus Firestore (isDefault: true, Fallback: Karton)
+      String? defaultPackageId;
+      String defaultPackagingType = '';
+      String defaultPackagingTypeEn = '';
+      double defaultLength = 0.0;
+      double defaultWidth = 0.0;
+      double defaultHeight = 0.0;
+      double defaultWeight = 0.0;
+
+      try {
+        // Zuerst Standardpaket suchen (isDefault: true)
+        var defaultPackageQuery = await FirebaseFirestore.instance
+            .collection('standardized_packages')
+            .where('isDefault', isEqualTo: true)
+            .limit(1)
+            .get();
+
+        // Fallback auf "Karton" falls kein Standard definiert
+        if (defaultPackageQuery.docs.isEmpty) {
+          defaultPackageQuery = await FirebaseFirestore.instance
+              .collection('standardized_packages')
+              .where('name', isEqualTo: 'Karton')
+              .limit(1)
+              .get();
+        }
+
+        if (defaultPackageQuery.docs.isNotEmpty) {
+          final defaultDoc = defaultPackageQuery.docs.first;
+          final defaultData = defaultDoc.data();
+          defaultPackageId = defaultDoc.id;
+          defaultPackagingType = defaultData['name'] ?? '';
+          defaultPackagingTypeEn = defaultData['nameEn'] ?? '';
+          defaultLength = (defaultData['length'] as num?)?.toDouble() ?? 0.0;
+          defaultWidth = (defaultData['width'] as num?)?.toDouble() ?? 0.0;
+          defaultHeight = (defaultData['height'] as num?)?.toDouble() ?? 0.0;
+          defaultWeight = (defaultData['weight'] as num?)?.toDouble() ?? 0.0;
+        }
+      } catch (e) {
+        print('Fehler beim Laden des Standardpakets: $e');
+      }
+
       packages.add({
         'id': firstPackageId,
         'name': 'Packung 1',
-        'packaging_type': '',
-        'length': 0.0,
-        'width': 0.0,
-        'height': 0.0,
-        'tare_weight': 0.0,
+        'packaging_type': defaultPackagingType,
+        'packaging_type_en': defaultPackagingTypeEn,
+        'length': defaultLength,
+        'width': defaultWidth,
+        'height': defaultHeight,
+        'tare_weight': defaultWeight,
         'items': <Map<String, dynamic>>[],
-        'standard_package_id': null,
+        'standard_package_id': defaultPackageId,
       });
 
-      // Controller für das erste Paket
+      // Controller für das erste Paket mit Standardwerten
       packageControllers[firstPackageId] = {
-        'length': TextEditingController(text: '0.0'),
-        'width': TextEditingController(text: '0.0'),
-        'height': TextEditingController(text: '0.0'),
-        'weight': TextEditingController(text: '0.0'),
+        'length': TextEditingController(text: defaultLength.toString()),
+        'width': TextEditingController(text: defaultWidth.toString()),
+        'height': TextEditingController(text: defaultHeight.toString()),
+        'weight': TextEditingController(text: defaultWeight.toStringAsFixed(2)),
         'custom_name': TextEditingController(text: ''),
       };
-    }else {
+    } else {
       // Initialisiere Controller für existierende Pakete
       for (final package in packages) {
         final packageId = package['id'] as String;
@@ -3040,33 +3084,75 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                               ),
                               const Spacer(),
                               ElevatedButton.icon(
-                                onPressed: () {
-                                  setModalState(() {
-                                    final newPackageId = DateTime.now().millisecondsSinceEpoch.toString(); // NEU: Eindeutige ID
+                                onPressed: () async {
+                                  final newPackageId = DateTime.now().millisecondsSinceEpoch.toString();
 
-                                    // Erstelle Controller für das neue Paket
+                                  // Lade Standardpaket "Karton" aus Firestore
+                                  String? defaultPackageId;
+                                  String defaultPackagingType = '';
+                                  String defaultPackagingTypeEn = '';
+                                  double defaultLength = 0.0;
+                                  double defaultWidth = 0.0;
+                                  double defaultHeight = 0.0;
+                                  double defaultWeight = 0.0;
+
+                                  try {
+                                    // Zuerst Standardpaket suchen, falls keins definiert ist, "Karton" als Fallback
+                                    var defaultPackageQuery = await FirebaseFirestore.instance
+                                        .collection('standardized_packages')
+                                        .where('isDefault', isEqualTo: true)
+                                        .limit(1)
+                                        .get();
+
+// Fallback auf "Karton" falls kein Standard definiert
+                                    if (defaultPackageQuery.docs.isEmpty) {
+                                      defaultPackageQuery = await FirebaseFirestore.instance
+                                          .collection('standardized_packages')
+                                          .where('name', isEqualTo: 'Karton')
+                                          .limit(1)
+                                          .get();
+                                    }
+
+                                    if (defaultPackageQuery.docs.isNotEmpty) {
+                                      final defaultDoc = defaultPackageQuery.docs.first;
+                                      final defaultData = defaultDoc.data();
+                                      defaultPackageId = defaultDoc.id;
+                                      defaultPackagingType = defaultData['name'] ?? '';
+                                      defaultPackagingTypeEn = defaultData['nameEn'] ?? '';
+                                      defaultLength = (defaultData['length'] as num?)?.toDouble() ?? 0.0;
+                                      defaultWidth = (defaultData['width'] as num?)?.toDouble() ?? 0.0;
+                                      defaultHeight = (defaultData['height'] as num?)?.toDouble() ?? 0.0;
+                                      defaultWeight = (defaultData['weight'] as num?)?.toDouble() ?? 0.0;
+                                    }
+                                  } catch (e) {
+                                    print('Fehler beim Laden des Standardpakets: $e');
+                                  }
+
+                                  setModalState(() {
+                                    // Erstelle Controller für das neue Paket mit Standardwerten
                                     packageControllers[newPackageId] = {
-                                      'length': TextEditingController(text: '0.0'),
-                                      'width': TextEditingController(text: '0.0'),
-                                      'height': TextEditingController(text: '0.0'),
-                                      'weight': TextEditingController(text: '0.0'),
+                                      'length': TextEditingController(text: defaultLength.toString()),
+                                      'width': TextEditingController(text: defaultWidth.toString()),
+                                      'height': TextEditingController(text: defaultHeight.toString()),
+                                      'weight': TextEditingController(text: defaultWeight.toStringAsFixed(2)),
                                       'custom_name': TextEditingController(text: ''),
                                     };
 
                                     packages.add({
                                       'id': newPackageId,
-                                      'name': '${packages.length + 1}', // Name basiert auf aktueller Anzahl
-                                      'packaging_type': '',
-                                      'length': 0.0,
-                                      'width': 0.0,
-                                      'height': 0.0,
-                                      'tare_weight': 0.0,
+                                      'name': '${packages.length + 1}',
+                                      'packaging_type': defaultPackagingType,
+                                      'packaging_type_en': defaultPackagingTypeEn,
+                                      'length': defaultLength,
+                                      'width': defaultWidth,
+                                      'height': defaultHeight,
+                                      'tare_weight': defaultWeight,
                                       'items': <Map<String, dynamic>>[],
-                                      'standard_package_id': null,
+                                      'standard_package_id': defaultPackageId,
                                     });
                                   });
                                 },
-                                icon:  getAdaptiveIcon(iconName: 'add', defaultIcon:Icons.add, size: 16),
+                                icon: getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add, size: 16),
                                 label: const Text('Paket hinzufügen'),
                                 style: ElevatedButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -3170,11 +3256,13 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
       if (_selection['Packliste'] == true) {
         final packagesRaw = _settings['packing_list']['packages'] as List<dynamic>? ?? [];
         final packages = packagesRaw.map((p) => Map<String, dynamic>.from(p as Map)).toList();
-
+final filteredItems = widget.order.items
+    .where((item) => item['is_service'] != true)
+    .toList();
         // Prüfe ob alle Produkte zugewiesen wurden
         final unassignedProducts = <String>[];
 
-        for (final item in widget.order.items) {
+        for (final item in filteredItems) {
           final productId = item['product_id'] as String? ?? '';
           final productName = item['product_name'] as String? ?? 'Unbekanntes Produkt';
           final totalQuantity = item['quantity'] as double? ?? 0;
@@ -3236,7 +3324,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                     ),
                     const SizedBox(height: 16),
                     const Text(
-                      'Möchten Sie trotzdem fortfahren?',
+                      'Möchtest du trotzdem fortfahren?',
                       style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 8),
@@ -3496,9 +3584,14 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
             'commercial_invoice_incoterms': settings['incoterms'],
             'commercial_invoice_selected_incoterms': settings['selected_incoterms'],
             'commercial_invoice_incoterms_freetexts': settings['incoterms_freetexts'],
-            'commercial_invoice_delivery_date': settings['delivery_date'],
-            'commercial_invoice_delivery_date_value': settings['delivery_date_value'],
-            'commercial_invoice_delivery_date_month_only': settings['delivery_date_month_only'],
+            // Wenn use_as_delivery_date aktiv, dann commercial_invoice_date als Lieferdatum verwenden
+            'commercial_invoice_delivery_date': settings['delivery_date'] == true || settings['use_as_delivery_date'] == true,
+            'commercial_invoice_delivery_date_value': settings['use_as_delivery_date'] == true
+                ? settings['commercial_invoice_date']
+                : settings['delivery_date_value'],
+            'commercial_invoice_delivery_date_month_only': settings['use_as_delivery_date'] == true
+                ? false  // Bei "als Lieferdatum übernehmen" volles Datum anzeigen
+                : (settings['delivery_date_month_only'] ?? false),
             'commercial_invoice_carrier': settings['carrier'],
             'commercial_invoice_carrier_text': settings['carrier_text'],
             'commercial_invoice_signature': settings['signature'],
@@ -4049,13 +4142,13 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                     const Divider(height: 12),
 
                     // Bruttogewicht - entweder berechnet oder mit Eingabefeld
-                    if (package['manual_gross_weight_mode'] == true) ...[
-                      // Manueller Modus: Eingabefeld
-                      Row(
-                        children: [
-                          const Text('= Bruttogewicht:',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                          const SizedBox(width: 8),
+                    // Bruttogewicht - immer mit Eingabefeld
+                    Row(
+                      children: [
+                        const Text('= Bruttogewicht:',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 8),
+                        if (package['gross_weight'] != null)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
@@ -4064,13 +4157,98 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                             ),
                             child: Text('gemessen',
                                 style: TextStyle(fontSize: 9, color: Colors.orange[700])),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text('berechnet',
+                                style: TextStyle(fontSize: 9, color: Colors.green[700])),
                           ),
-                          const Spacer(),
-                          // Zurück zu automatisch
+                        const Spacer(),
+                        // Berechneter Wert als Referenz
+                        Text(
+                          '(berechnet: ${calculateGrossWeight().toStringAsFixed(2)} kg)',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 40,
+                            child: TextFormField(
+                              controller: grossWeightController,
+                              decoration: InputDecoration(
+                                hintText: 'Gewogenes Bruttogewicht',
+                                suffixText: 'kg',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                isDense: true,
+                              ),
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              inputFormatters: [
+                                TextInputFormatter.withFunction((oldValue, newValue) {
+                                  return newValue.copyWith(
+                                    text: newValue.text.replaceAll(',', '.'),
+                                  );
+                                }),
+                              ],
+                              onChanged: (value) {
+                                final grossWeight = double.tryParse(value.replaceAll(',', '.'));
+                                if (grossWeight != null && grossWeight > 0) {
+                                  setModalState(() {
+                                    package['gross_weight'] = grossWeight;
+                                    // Tara = Brutto - Netto (auf 3 Nachkommastellen begrenzt)
+                                    final netWeight = calculateNetWeight();
+                                    final calculatedTara = grossWeight - netWeight;
+                                    final roundedTara = double.parse((calculatedTara > 0 ? calculatedTara : 0.0).toStringAsFixed(3));
+                                    package['tare_weight'] = roundedTara;
+                                    weightController.text = roundedTara.toStringAsFixed(2);
+                                  });
+                                } else if (value.isEmpty) {
+                                  // Feld geleert - zurück zu automatisch
+                                  setModalState(() {
+                                    package['gross_weight'] = null;
+                                    // Tara zurücksetzen wenn Standardpaket
+                                    if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom') {
+                                      FirebaseFirestore.instance
+                                          .collection('standardized_packages')
+                                          .doc(selectedStandardPackageId)
+                                          .get()
+                                          .then((doc) {
+                                        if (doc.exists) {
+                                          final data = doc.data() as Map<String, dynamic>;
+                                          setModalState(() {
+                                            package['tare_weight'] = data['weight'] ?? 0.0;
+                                            weightController.text = package['tare_weight'].toString();
+                                          });
+                                        }
+                                      });
+                                    }
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Reset-Button nur wenn manueller Wert gesetzt
+                        if (package['gross_weight'] != null)
                           IconButton(
                             onPressed: () {
                               setModalState(() {
-                                package['manual_gross_weight_mode'] = false;
                                 package['gross_weight'] = null;
                                 grossWeightController.clear();
                                 // Tara zurücksetzen wenn Standardpaket
@@ -4100,58 +4278,20 @@ double _getAssignedQuantityForOrder(Map<String, dynamic> item, List<Map<String, 
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 40,
-                        child: TextFormField(
-                          controller: grossWeightController,
-                          decoration: InputDecoration(
-                            hintText: 'Gewogenes Bruttogewicht eingeben',
-                            suffixText: 'kg',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            isDense: true,
-                          ),
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          inputFormatters: [
-                            TextInputFormatter.withFunction((oldValue, newValue) {
-                              return newValue.copyWith(
-                                text: newValue.text.replaceAll(',', '.'),
-                              );
-                            }),
-                          ],
-                          onChanged: (value) {
-                            final grossWeight = double.tryParse(value.replaceAll(',', '.'));
-                            if (grossWeight != null && grossWeight > 0) {
-                              setModalState(() {
-                                package['gross_weight'] = grossWeight;
-                                // Tara = Brutto - Netto (auf 3 Nachkommastellen begrenzt)
-                                final netWeight = calculateNetWeight();
-                                final calculatedTara = grossWeight - netWeight;
-                                final roundedTara = double.parse((calculatedTara > 0 ? calculatedTara : 0.0).toStringAsFixed(3));
-                                package['tare_weight'] = roundedTara;
-                                weightController.text = roundedTara.toStringAsFixed(2);
-                              });
-                            }
-                          },    ),
-                      ),
-                      if (package['gross_weight'] != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          'Tara wurde auf ${(package['tare_weight'] as num?)?.toStringAsFixed(2) ?? '0.00'} kg angepasst',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontStyle: FontStyle.italic,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
                       ],
-                    ] else ...[
+                    ),
+                    if (package['gross_weight'] != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Tara wurde auf ${(package['tare_weight'] as num?)?.toStringAsFixed(2) ?? '0.00'} kg angepasst',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ]
+                    else ...[
                       // Automatischer Modus: Nur Anzeige + Button zum Wechseln
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,

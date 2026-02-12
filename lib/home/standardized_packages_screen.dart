@@ -35,7 +35,23 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
             return const Center(child: CircularProgressIndicator());
           }
 
-          final packages = snapshot.data?.docs ?? [];
+          final packagesRaw = snapshot.data?.docs ?? [];
+
+// Sortiere: Standardpaket zuerst, dann alphabetisch
+          final packages = List<QueryDocumentSnapshot>.from(packagesRaw)
+            ..sort((a, b) {
+              final aData = a.data() as Map<String, dynamic>;
+              final bData = b.data() as Map<String, dynamic>;
+              final aIsDefault = aData['isDefault'] == true;
+              final bIsDefault = bData['isDefault'] == true;
+
+              if (aIsDefault && !bIsDefault) return -1;
+              if (!aIsDefault && bIsDefault) return 1;
+
+              final aName = (aData['name'] ?? '').toString().toLowerCase();
+              final bName = (bData['name'] ?? '').toString().toLowerCase();
+              return aName.compareTo(bName);
+            });
 
           if (packages.isEmpty) {
             return Center(
@@ -93,27 +109,59 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
     final width = data['width'] ?? 0.0;
     final height = data['height'] ?? 0.0;
     final weight = data['weight'] ?? 0.0;
+    final isDefault = data['isDefault'] == true;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
+      shape: isDefault
+          ? RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: Colors.amber.shade600,
+          width: 2,
+        ),
+      )
+          : null,
       child: ListTile(
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child:  getAdaptiveIcon(
-            iconName: 'inventory',
-            defaultIcon: Icons.inventory,
-            color: Theme.of(context).colorScheme.primary,
-          ),
+        leading: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isDefault
+                    ? Colors.amber.shade100
+                    : Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(
+                child: getAdaptiveIcon(
+                  iconName: isDefault ? 'star' : 'inventory',
+                  defaultIcon: isDefault ? Icons.star : Icons.inventory,
+                  color: isDefault ? Colors.amber.shade700 : Theme.of(context).colorScheme.primary,
+                  size: 22,
+                ),
+              ),
+            ),
+            if (isDefault) ...[
+              const SizedBox(height: 2),
+              Text(
+                'Standard',
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.amber.shade800,
+                ),
+              ),
+            ],
+          ],
         ),
         title: Text(
           data['name'] ?? 'Unbenannt',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
+
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -122,11 +170,16 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
               children: [
                 getAdaptiveIcon(
                     iconName: 'straighten',
-                    defaultIcon:Icons.straighten, size: 14, color: Colors.grey[600]),
+                    defaultIcon: Icons.straighten,
+                    size: 14,
+                    color: Colors.grey[600]),
                 const SizedBox(width: 4),
-                Text(
-                  '${length.toStringAsFixed(1)} × ${width.toStringAsFixed(1)} × ${height.toStringAsFixed(1)} cm',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                Flexible(
+                  child: Text(
+                    '${length.toStringAsFixed(1)} × ${width.toStringAsFixed(1)} × ${height.toStringAsFixed(1)} cm',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -135,7 +188,9 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
               children: [
                 getAdaptiveIcon(
                     iconName: 'scale',
-                    defaultIcon:Icons.scale, size: 14, color: Colors.grey[600]),
+                    defaultIcon: Icons.scale,
+                    size: 14,
+                    color: Colors.grey[600]),
                 const SizedBox(width: 4),
                 Text(
                   '${weight.toStringAsFixed(2)} kg',
@@ -143,24 +198,31 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
                 ),
               ],
             ),
-
           ],
         ),
         isThreeLine: true,
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Stern-Button für Standard setzen
             IconButton(
-              icon:  getAdaptiveIcon(
-                  iconName: 'edit',
-                  defaultIcon:Icons.edit, size: 20),
+              icon: getAdaptiveIcon(
+                iconName: isDefault ? 'star' : 'star_border',
+                defaultIcon: isDefault ? Icons.star : Icons.star_border,
+                size: 20,
+                color: isDefault ? Colors.amber.shade600 : Colors.grey,
+              ),
+              onPressed: () => _setAsDefault(packageId, data['name'], isDefault),
+              tooltip: isDefault ? 'Ist Standardpaket' : 'Als Standard setzen',
+            ),
+            IconButton(
+              icon: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit, size: 20),
               onPressed: () => _showPackageDialog(packageId, data),
               tooltip: 'Bearbeiten',
             ),
             IconButton(
-              icon:  getAdaptiveIcon(
-                  iconName: 'delete',
-                  defaultIcon:Icons.delete, size: 20, color: Colors.red),
+              icon: getAdaptiveIcon(
+                  iconName: 'delete', defaultIcon: Icons.delete, size: 20, color: Colors.red),
               onPressed: () => _showDeleteConfirmation(packageId, data['name']),
               tooltip: 'Löschen',
             ),
@@ -169,7 +231,101 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
       ),
     );
   }
+  Future<void> _setAsDefault(String packageId, String packageName, bool isCurrentlyDefault) async {
+    if (isCurrentlyDefault) {
+      // Bereits Standard - entfernen
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Standard entfernen'),
+          content: Text('Möchtest du "$packageName" als Standardpaket entfernen?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Abbrechen'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Entfernen'),
+            ),
+          ],
+        ),
+      );
 
+      if (confirm == true) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('standardized_packages')
+              .doc(packageId)
+              .update({'isDefault': false});
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Standardpaket wurde entfernt'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Fehler: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      }
+    } else {
+      // Als Standard setzen - zuerst alle anderen zurücksetzen
+      try {
+        // Batch-Update: Alle isDefault auf false setzen
+        final batch = FirebaseFirestore.instance.batch();
+        final allPackages = await FirebaseFirestore.instance
+            .collection('standardized_packages')
+            .where('isDefault', isEqualTo: true)
+            .get();
+
+        for (final doc in allPackages.docs) {
+          batch.update(doc.reference, {'isDefault': false});
+        }
+
+        // Dieses Paket als Standard setzen
+        batch.update(
+          FirebaseFirestore.instance.collection('standardized_packages').doc(packageId),
+          {'isDefault': true},
+        );
+
+        await batch.commit();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.star, color: Colors.amber.shade300, size: 20),
+                  const SizedBox(width: 8),
+                  Text('"$packageName" ist jetzt das Standardpaket'),
+                ],
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Fehler: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
   void _showPackageDialog(String? packageId, Map<String, dynamic>? packageData) {
     showModalBottomSheet(
       context: context,

@@ -173,126 +173,130 @@ class InvoiceGenerator extends BasePdfGenerator {
       return translations[language]?[key] ?? translations['DE']?[key] ?? '';
     }
 
+
     pdf.addPage(
-      pw.Page(
+      pw.MultiPage(
         margin: const pw.EdgeInsets.all(20),
-        build: (pw.Context context) {
+        header: (pw.Context context) {
+          if (context.pageNumber == 1) return pw.SizedBox.shrink();
           return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // Header
-              BasePdfGenerator.buildHeader(
+              BasePdfGenerator.buildCompactHeader(
                 documentTitle: getTranslation('invoice'),
                 documentNumber: invoiceNum,
-                date: invoiceDate,
                 logo: logo,
-                costCenter: costCenterCode,
+                pageNumber: context.pageNumber,
+                totalPages: context.pagesCount,
                 language: language,
               ),
-              pw.SizedBox(height: 20),
+              pw.SizedBox(height: 10),
+            ],
+          );
+        },
+        footer: (pw.Context context) => BasePdfGenerator.buildFooter(
+          pageNumber: context.pageNumber,
+          totalPages: context.pagesCount,
+          language: language,
+        ),
+        build: (pw.Context context) {
+          final columnWidths = _calculateOptimalColumnWidths(
+            groupedProductItems,
+            language,
+            showDimensions,
+            showThermalColumn,
+            showDiscountColumn,
+            showPartsColumn,
+          );
+          return [
+            // Header
+            BasePdfGenerator.buildHeader(
+              documentTitle: getTranslation('invoice'),
+              documentNumber: invoiceNum,
+              date: invoiceDate,
+              logo: logo,
+              costCenter: costCenterCode,
+              language: language,
+            ),
+            pw.SizedBox(height: 20),
 
-              // Kundenadresse
-              BasePdfGenerator.buildCustomerAddress(customerData, 'invoice', language: language, addressDisplayMode: addressMode),
-              pw.SizedBox(height: 15),
+            // Kundenadresse
+            BasePdfGenerator.buildCustomerAddress(customerData, 'invoice', language: language, addressDisplayMode: addressMode),
+            pw.SizedBox(height: 15),
 
-              // Währungshinweis (falls nicht CHF)
-              if (currency != 'CHF' && showExchangeRateOnDocument)
-                pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.amber50,
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                    border: pw.Border.all(color: PdfColors.amber200, width: 0.5),
-                  ),
-                  child: pw.Text(
-                    getTranslation('currency_note'),
-                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.amber900),
-                  ),
+            // Währungshinweis (falls nicht CHF)
+            if (currency != 'CHF' && showExchangeRateOnDocument)
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.amber50,
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                  border: pw.Border.all(color: PdfColors.amber200, width: 0.5),
                 ),
-
-              pw.SizedBox(height: 15),
-
-              // Produkttabelle mit Holzart-Gruppierung
-              pw.Expanded(
-                child:
-                pw.Column(
-                  children: [
-                    pw.Column(
-                      children: [
-                        BasePdfGenerator.buildCurrencyHint(currency, language),
-
-                        ...(() {
-                          final columnWidths = _calculateOptimalColumnWidths(
-                            groupedProductItems,
-                            language,
-                            showDimensions,
-                            showThermalColumn,
-                            showDiscountColumn,
-                            showPartsColumn,
-                          );
-                          return [
-                            // Produkttabelle nur wenn Produkte vorhanden
-                            if (productItems.isNotEmpty)
-                              _buildProductTable(groupedProductItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths, columnAlignments),
-
-                            // Dienstleistungstabelle nur wenn Dienstleistungen vorhanden
-                            if (serviceItems.isNotEmpty)
-                              pw.SizedBox(height: 10),
-                            _buildServiceTable(serviceItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths, columnAlignments),
-                          ];
-                        })(),
-                      ],
-                    ),
-                    pw.SizedBox(height: 10),
-                    // Summen-Bereich
-                    _buildTotalsSection(items, currency, exchangeRates, language, shippingCosts, calculations, taxOption, vatRate, downPaymentSettings, paymentDue, roundingSettings),
-
-                    pw.SizedBox(height: 10),
-                    // Zahlungshinweis
-                    if (!isFullPayment) ...[
-                      pw.Container(
-                        alignment: pw.Alignment.centerLeft,
-                        padding: const pw.EdgeInsets.all(8),
-                        decoration: pw.BoxDecoration(
-                          color: PdfColors.blue50,
-                          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                          border: pw.Border.all(color: PdfColors.blue200, width: 0.5),
-                        ),
-                        child: pw.Text(
-                          getTranslation('payment_note'),
-                          style: const pw.TextStyle(fontSize: 10, color: PdfColors.blue900),
-                        ),
-                      ),
-                    ] else ...[
-                      pw.Container(
-                        alignment: pw.Alignment.centerLeft,
-                        padding: const pw.EdgeInsets.all(8),
-                        decoration: pw.BoxDecoration(
-                          color: PdfColors.green50,
-                          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                          border: pw.Border.all(color: PdfColors.green200, width: 0.5),
-                        ),
-                        child: pw.Text(
-                          getTranslation('payment_note'),
-                          style: const pw.TextStyle(fontSize: 10, color: PdfColors.green900),
-                        ),
-                      ),
-                    ],
-
-                    pw.SizedBox(height: 10),
-                    additionalTextsWidget,
-                  ],
+                child: pw.Text(
+                  getTranslation('currency_note'),
+                  style: const pw.TextStyle(fontSize: 9, color: PdfColors.amber900),
                 ),
               ),
 
-              // Footer
-              BasePdfGenerator.buildFooter(),
+            pw.SizedBox(height: 15),
+
+            BasePdfGenerator.buildCurrencyHint(currency, language),
+
+            // Produkttabelle nur wenn Produkte vorhanden
+            if (productItems.isNotEmpty)
+              _buildProductTable(groupedProductItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths, columnAlignments),
+
+            // Dienstleistungstabelle nur wenn Dienstleistungen vorhanden
+            if (serviceItems.isNotEmpty)
+              pw.SizedBox(height: 10),
+            _buildServiceTable(serviceItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths, columnAlignments),
+
+            pw.SizedBox(height: 10),
+
+            // Summen-Bereich
+            _buildTotalsSection(items, currency, exchangeRates, language, shippingCosts, calculations, taxOption, vatRate, downPaymentSettings, paymentDue, roundingSettings),
+
+            pw.SizedBox(height: 10),
+
+            // Zahlungshinweis
+            if (!isFullPayment) ...[
+              pw.Container(
+                alignment: pw.Alignment.centerLeft,
+                padding: const pw.EdgeInsets.all(8),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.blue50,
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                  border: pw.Border.all(color: PdfColors.blue200, width: 0.5),
+                ),
+                child: pw.Text(
+                  getTranslation('payment_note'),
+                  style: const pw.TextStyle(fontSize: 10, color: PdfColors.blue900),
+                ),
+              ),
+            ] else ...[
+              pw.Container(
+                alignment: pw.Alignment.centerLeft,
+                padding: const pw.EdgeInsets.all(8),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.green50,
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                  border: pw.Border.all(color: PdfColors.green200, width: 0.5),
+                ),
+                child: pw.Text(
+                  getTranslation('payment_note'),
+                  style: const pw.TextStyle(fontSize: 10, color: PdfColors.green900),
+                ),
+              ),
             ],
-          );
+
+            pw.SizedBox(height: 10),
+            additionalTextsWidget,
+          ];
         },
       ),
     );
 
+    return pdf.save();
     return pdf.save();
   }
 
@@ -474,10 +478,10 @@ class InvoiceGenerator extends BasePdfGenerator {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.SizedBox(height: 8),
-        pw.Table(
+        BasePdfGenerator.buildSplittableTable(
+          rows: rows,
+          columnWidths: serviceColumnWidths,
           border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
-          columnWidths: serviceColumnWidths,  // Merged columnWidths!
-          children: rows,
         ),
       ],
     );
@@ -928,10 +932,10 @@ class InvoiceGenerator extends BasePdfGenerator {
         showPartsColumn
     );
 
-    return pw.Table(
-      border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
+    return BasePdfGenerator.buildSplittableTable(
+      rows: rows,
       columnWidths: calculatedColumnWidths,
-      children: rows,
+      border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
     );
   }
 

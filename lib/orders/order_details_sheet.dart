@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../services/icon_helper.dart';
 import '../../services/swiss_rounding.dart';
+import '../services/price_formatter.dart';
 import 'order_model.dart';
 
 class OrderColors {
@@ -178,26 +179,6 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
     }
   }
 
-  double _convertPrice(double priceInCHF, OrderX currentOrder) {
-    final currency = currentOrder.metadata?['currency'] ?? 'CHF';
-    double convertedPrice = priceInCHF;
-
-    if (currency != 'CHF') {
-      final rates = currentOrder.metadata?['exchangeRates'] as Map<String, dynamic>? ?? {};
-      final rate = (rates[currency] as num?)?.toDouble() ?? 1.0;
-      convertedPrice = priceInCHF * rate;
-    }
-
-    if (_roundingSettings[currency] == true) {
-      convertedPrice = SwissRounding.round(
-        convertedPrice,
-        currency: currency,
-        roundingSettings: _roundingSettings,
-      );
-    }
-
-    return convertedPrice;
-  }
 
   String _getCurrencySymbol(OrderX currentOrder) => currentOrder.metadata?['currency'] ?? 'CHF';
 
@@ -303,8 +284,8 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
                   ],
                 ),
               ),
-           //   _buildQuickActions(context, currentOrder),
-             // const SizedBox(width: 8),
+              //   _buildQuickActions(context, currentOrder),
+              // const SizedBox(width: 8),
               IconButton(
                 icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
                 onPressed: () => Navigator.pop(context),
@@ -340,7 +321,7 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
       mainAxisSize: MainAxisSize.min,
       children: [
         _buildIconAction(context, Icons.history, 'history', 'Verlauf', () {
-        //  Navigator.pop(context);
+          //  Navigator.pop(context);
           widget.onShowHistory(currentOrder);
         }),
         _buildIconAction(context, Icons.folder, 'folder', 'Dokumente', () {
@@ -465,7 +446,12 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
   }
 
   Widget _buildInfoCards(BuildContext context, OrderX currentOrder, {required bool isDesktop}) {
-    final total = _convertPrice((currentOrder.calculations['total'] as num).toDouble(), currentOrder);
+    final total = PriceFormatter.convertPrice(
+      priceInCHF: (currentOrder.calculations['total'] as num).toDouble(),
+      currency: currentOrder.metadata['currency'] ?? 'CHF',
+      exchangeRates: currentOrder.metadata['exchangeRates'] as Map<String, dynamic>?,
+      roundingSettings: _roundingSettings,
+    );
     final currencySymbol = _getCurrencySymbol(currentOrder);
 
     if (isDesktop) {
@@ -473,8 +459,11 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
         children: [
           _buildInfoCard(context, 'business', Icons.business, 'Kunde', _getCustomerName(currentOrder), null),
           const SizedBox(height: 10),
-          _buildInfoCard(context, 'payments', Icons.payments, 'Betrag', '$currencySymbol ${total.toStringAsFixed(2)}', OrderColors.delivered),
-          const SizedBox(height: 10),
+          _buildInfoCard(context, 'payments', Icons.payments, 'Betrag', PriceFormatter.formatAmount(
+            amount: total,
+            currency: currentOrder.metadata['currency'] ?? 'CHF',
+            roundingSettings: _roundingSettings,
+          ), OrderColors.delivered), const SizedBox(height: 10),
           _buildInfoCard(context, 'email', Icons.email, 'E-Mail', currentOrder.customer['email'] ?? '-', null),
         ],
       );
@@ -1339,15 +1328,90 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
       }
     }
 
+    void compareList(String field, List<dynamic>? orderValue, List<dynamic>? masterValue, String label) {
+      final oVal = (orderValue ?? []).where((e) => e.toString().trim().isNotEmpty).map((e) => e.toString().trim()).toList();
+      final mVal = (masterValue ?? []).where((e) => e.toString().trim().isNotEmpty).map((e) => e.toString().trim()).toList();
+      final oStr = oVal.join(', ');
+      final mStr = mVal.join(', ');
+      if (oStr != mStr) {
+        differences[field] = {
+          'label': label,
+          'order': oStr.isEmpty ? '(leer)' : oStr,
+          'master': mStr.isEmpty ? '(leer)' : mStr,
+        };
+      }
+    }
+
+    // === Rechnungsadresse ===
     compare('company', orderData['company'], masterData['company'], 'Firma');
     compare('firstName', orderData['firstName'], masterData['firstName'], 'Vorname');
     compare('lastName', orderData['lastName'], masterData['lastName'], 'Nachname');
     compare('street', orderData['street'], masterData['street'], 'Straße');
-    compare('zip', orderData['zip'], masterData['zip'], 'PLZ');
+    compare('houseNumber', orderData['houseNumber'], masterData['houseNumber'], 'Hausnummer');
+    compare('addressSupplement', orderData['addressSupplement'], masterData['addressSupplement'], 'Adresszusatz');
+    compareList('additionalAddressLines',
+        orderData['additionalAddressLines'] as List<dynamic>?,
+        masterData['additionalAddressLines'] as List<dynamic>?,
+        'Zusätzliche Adresszeilen');
+    compare('zipCode', orderData['zipCode'], masterData['zipCode'], 'PLZ');
     compare('city', orderData['city'], masterData['city'], 'Ort');
+    compare('province', orderData['province'], masterData['province'], 'Provinz');
     compare('country', orderData['country'], masterData['country'], 'Land');
     compare('email', orderData['email'], masterData['email'], 'E-Mail');
-    compare('phone', orderData['phone'], masterData['phone'], 'Telefon');
+    compare('phone1', orderData['phone1'], masterData['phone1'], 'Telefon 1');
+    compare('phone2', orderData['phone2'], masterData['phone2'], 'Telefon 2');
+    compare('vatNumber', orderData['vatNumber'], masterData['vatNumber'], 'MwSt-Nummer');
+    compare('eoriNumber', orderData['eoriNumber'], masterData['eoriNumber'], 'EORI-Nummer');
+
+    // === Lieferadresse ===
+    // Prüfe ob Kundenstamm eine abweichende Lieferadresse hat
+    final masterHasShipping = masterData['hasDifferentShippingAddress'] == true;
+    final orderHasShippingFlat = orderData['hasDifferentShippingAddress'] == true;
+    final orderHasShippingNested = orderData['shipping_address'] != null &&
+        (orderData['shipping_address'] is Map) &&
+        (orderData['shipping_address'] as Map).isNotEmpty;
+
+    if (masterHasShipping || orderHasShippingFlat || orderHasShippingNested) {
+      // Hole Order-Lieferadresse (flach oder verschachtelt)
+      String? getOrderShipping(String flatKey, String nestedKey) {
+        if (orderHasShippingFlat) return orderData[flatKey]?.toString();
+        if (orderHasShippingNested) return (orderData['shipping_address'] as Map)[nestedKey]?.toString();
+        return null;
+      }
+
+      compare('shippingCompany', getOrderShipping('shippingCompany', 'company'), masterData['shippingCompany'], 'Lieferadresse: Firma');
+      compare('shippingFirstName', getOrderShipping('shippingFirstName', 'firstName'), masterData['shippingFirstName'], 'Lieferadresse: Vorname');
+      compare('shippingLastName', getOrderShipping('shippingLastName', 'lastName'), masterData['shippingLastName'], 'Lieferadresse: Nachname');
+      compare('shippingStreet', getOrderShipping('shippingStreet', 'street'), masterData['shippingStreet'], 'Lieferadresse: Straße');
+      compare('shippingHouseNumber', getOrderShipping('shippingHouseNumber', 'houseNumber'), masterData['shippingHouseNumber'], 'Lieferadresse: Hausnummer');
+      compare('shippingZipCode', getOrderShipping('shippingZipCode', 'zipCode'), masterData['shippingZipCode'], 'Lieferadresse: PLZ');
+      compare('shippingCity', getOrderShipping('shippingCity', 'city'), masterData['shippingCity'], 'Lieferadresse: Ort');
+      compare('shippingProvince', getOrderShipping('shippingProvince', 'province'), masterData['shippingProvince'], 'Lieferadresse: Provinz');
+      compare('shippingCountry', getOrderShipping('shippingCountry', 'country'), masterData['shippingCountry'], 'Lieferadresse: Land');
+      compare('shippingPhone', getOrderShipping('shippingPhone', 'phone'), masterData['shippingPhone'], 'Lieferadresse: Telefon');
+      compare('shippingEmail', getOrderShipping('shippingEmail', 'email'), masterData['shippingEmail'], 'Lieferadresse: E-Mail');
+
+      // Zusätzliche Lieferadresszeilen
+      List<dynamic>? orderShippingLines;
+      if (orderHasShippingFlat) {
+        orderShippingLines = orderData['shippingAdditionalAddressLines'] as List<dynamic>?;
+      } else if (orderHasShippingNested) {
+        orderShippingLines = (orderData['shipping_address'] as Map)['additionalAddressLines'] as List<dynamic>?;
+      }
+      compareList('shippingAdditionalAddressLines',
+          orderShippingLines,
+          masterData['shippingAdditionalAddressLines'] as List<dynamic>?,
+          'Lieferadresse: Zusätzliche Zeilen');
+
+      // hasDifferentShippingAddress Flag
+      if ((orderHasShippingFlat || orderHasShippingNested) != masterHasShipping) {
+        differences['hasDifferentShippingAddress'] = {
+          'label': 'Abweichende Lieferadresse',
+          'order': (orderHasShippingFlat || orderHasShippingNested) ? 'Ja' : 'Nein',
+          'master': masterHasShipping ? 'Ja' : 'Nein',
+        };
+      }
+    }
 
     if (!mounted) return;
 
@@ -1539,7 +1603,17 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
         final updateData = <String, dynamic>{};
 
         for (final field in differences.keys) {
-          updateData['customer.$field'] = masterData[field] ?? '';
+          final masterValue = masterData[field];
+
+          // Für Lieferadresse: Wenn die Order verschachtelte Struktur hatte,
+          // auf flache Struktur umstellen
+          if (field == 'hasDifferentShippingAddress') {
+            updateData['customer.$field'] = masterData['hasDifferentShippingAddress'] ?? false;
+            // Verschachtelte shipping_address leeren falls vorhanden
+            updateData['customer.shipping_address'] = {};
+          } else {
+            updateData['customer.$field'] = masterValue ?? '';
+          }
         }
 
         await FirebaseFirestore.instance
@@ -1638,12 +1712,12 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
           Row(
             children: [
               Expanded(child: _buildSecondaryButton(context, 'folder', Icons.folder, 'Dokumente', Theme.of(context).colorScheme.primary, () {
-              //  Navigator.pop(context);
+                //  Navigator.pop(context);
                 widget.onViewDocuments(currentOrder);
               })),
               const SizedBox(width: 8),
               Expanded(child: _buildSecondaryButton(context, 'history', Icons.history, 'Verlauf', Theme.of(context).colorScheme.primary, () {
-              //  Navigator.pop(context);
+                //  Navigator.pop(context);
                 widget.onShowHistory(currentOrder);
               })),
             ],
@@ -1820,7 +1894,12 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${qty.toStringAsFixed(0)} × $currencySymbol ${_convertPrice(price, currentOrder).toStringAsFixed(2)}',
+                          '${qty.toStringAsFixed(0)} × ${PriceFormatter.format(
+                            priceInCHF: price,
+                            currency: currentOrder.metadata['currency'] ?? 'CHF',
+                            exchangeRates: currentOrder.metadata['exchangeRates'] as Map<String, dynamic>?,
+                            roundingSettings: _roundingSettings,
+                          )}',
                           style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)),
                         ),
                       ],
@@ -1833,7 +1912,12 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      isGratis ? 'GRATIS' : '$currencySymbol ${_convertPrice(total, currentOrder).toStringAsFixed(2)}',
+                      isGratis ? 'GRATIS' : PriceFormatter.format(
+                        priceInCHF: total,
+                        currency: currentOrder.metadata['currency'] ?? 'CHF',
+                        exchangeRates: currentOrder.metadata['exchangeRates'] as Map<String, dynamic>?,
+                        roundingSettings: _roundingSettings,
+                      ),
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,

@@ -9,6 +9,8 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../quotes/info_help_sheet.dart';
+import '../services/price_formatter.dart';
 import '../services/swiss_rounding.dart';
 import 'edit_item_measurements_dialog.dart';
 import 'order_details_sheet.dart';
@@ -87,7 +89,11 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
           ],
         ),
         actions: [
-
+          IconButton(
+            icon: getAdaptiveIcon(iconName: 'info_outline', defaultIcon: Icons.info_outline),
+            onPressed: () => InfoHelpSheet.showForOrders(context),
+            tooltip: 'Hilfe & Info',
+          ),
           // Filter-Button
           IconButton(
             icon: Badge(
@@ -258,7 +264,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                 child: Row(
                                   children: [
                                     getAdaptiveIcon(iconName: 'filter_list', defaultIcon:
-                                      Icons.filter_list,
+                                    Icons.filter_list,
                                       size: 16,
                                       color: Theme.of(context).colorScheme.primary,
                                     ),
@@ -366,12 +372,20 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const SizedBox(height: 60);
 
-        final orders = snapshot.data!.docs
+        // Alle Orders laden
+        final allOrders = snapshot.data!.docs
             .map((doc) => OrderX.fromFirestore(doc))
             .toList();
 
-        final processingOrders = orders.where((o) => o.status == OrderStatus.processing).length;
-        final shippedOrders = orders.where((o) => o.status == OrderStatus.shipped).length;
+        // Filter anwenden (wichtig für Datumsfilter!)
+        final filteredOrders = OrderFilterService.applyClientSideFilters(
+            allOrders,
+            _activeFilters
+        );
+
+        // Statistiken basierend auf gefilterten Orders
+        final processingOrders = filteredOrders.where((o) => o.status == OrderStatus.processing).length;
+        final shippedOrders = filteredOrders.where((o) => o.status == OrderStatus.shipped).length;
 
         return Container(
           height: 60,
@@ -690,7 +704,11 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      '${order.metadata?['currency'] ?? 'CHF'} ${_convertPrice((order.calculations['total'] as num? ?? 0).toDouble(), order).toStringAsFixed(2)}',
+                      PriceFormatter.fromOrder(
+                        price: (order.calculations['total'] as num? ?? 0).toDouble(),
+                        metadata: order.metadata,
+                        roundingSettings: _roundingSettings,
+                      ),
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -1514,7 +1532,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                   child: Row(
                     children: [
                       getAdaptiveIcon(iconName: 'assignment', defaultIcon:
-                        Icons.assignment,
+                      Icons.assignment,
                         color: _hasVeranlagungsnummer(order)
                             ? Colors.green
                             : Theme.of(context).colorScheme.primary,
@@ -1570,7 +1588,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                           children: [
                             Row(
                               children: [
-                                 getAdaptiveIcon(iconName: 'info', defaultIcon:Icons.info, color: Colors.blue[700], size: 20),
+                                getAdaptiveIcon(iconName: 'info', defaultIcon:Icons.info, color: Colors.blue[700], size: 20),
                                 const SizedBox(width: 8),
                                 const Text(
                                   'Information',
@@ -1583,7 +1601,11 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Warenwert: CHF ${_convertPrice((order.calculations['total'] as num? ?? 0).toDouble(), order).toStringAsFixed(2)}',
+                              'Warenwert: ${PriceFormatter.fromOrder(
+                                price: (order.calculations['total'] as num? ?? 0).toDouble(),
+                                metadata: order.metadata,
+                                roundingSettings: _roundingSettings,
+                              )}',
                               style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w500,
@@ -1616,9 +1638,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                         ),
                         child: Row(
                           children: [
-                          getAdaptiveIcon(iconName: _hasVeranlagungsnummer(order)?'check_circle':'warning', defaultIcon: _hasVeranlagungsnummer(order)
-                            ? Icons.check_circle
-                            : Icons.warning,
+                            getAdaptiveIcon(iconName: _hasVeranlagungsnummer(order)?'check_circle':'warning', defaultIcon: _hasVeranlagungsnummer(order)
+                                ? Icons.check_circle
+                                : Icons.warning,
 
                               color: _hasVeranlagungsnummer(order)
                                   ? Colors.green[700]
@@ -1690,7 +1712,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                           child: Row(
                             children: [
                               getAdaptiveIcon(iconName: 'picture_as_pdf', defaultIcon:
-                                Icons.picture_as_pdf,
+                              Icons.picture_as_pdf,
                                 size: 20,
                                 color: order.documents.containsKey('veranlagungsverfuegung_pdf')
                                     ? Colors.green
@@ -1732,7 +1754,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                           context: context,
                                           builder: (context) => AlertDialog(
                                             title: Text('PDF löschen'),
-                                            content: Text('Möchten Sie die Veranlagungsverfügung wirklich löschen?'),
+                                            content: Text('Möchtest du die Veranlagungsverfügung wirklich löschen?'),
                                             actions: [
                                               TextButton(
                                                 onPressed: () => Navigator.pop(context, false),
@@ -1955,7 +1977,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                             shape: BoxShape.circle,
                           ),
                           child:  getAdaptiveIcon(iconName: 'cloud_upload', defaultIcon:
-                            Icons.cloud_upload,
+                          Icons.cloud_upload,
                             size: 32,
                             color: Theme.of(context).colorScheme.primary,
                           ),
@@ -2381,7 +2403,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                   tooltip: 'Löschen',
                                 ),
                               if (!isDeletable)
-                               SizedBox(width: 20,)
+                                SizedBox(width: 20,)
                             ],
                           ),
                         ),
@@ -2399,7 +2421,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                     padding: const EdgeInsets.all(20),
                     child: ElevatedButton.icon(
                       onPressed: () async {
-                       // Navigator.pop(context); // Schließe zuerst das aktuelle Modal
+                        // Navigator.pop(context); // Schließe zuerst das aktuelle Modal
                         await OrderDocumentManager.showCreateDocumentsDialog(context, currentOrder);
                       },
                       icon:   getAdaptiveIcon(
@@ -2430,7 +2452,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Möchten Sie "${_getDocumentTypeName(docType)}" wirklich löschen?'),
+            Text('Möchtest du "${_getDocumentTypeName(docType)}" wirklich löschen?'),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -2710,8 +2732,9 @@ Status: ${order.status.displayName}
     await Share.share(orderInfo, subject: 'Auftrag ${order.orderNumber}');
   }
 
+
   Future<void> _releaseOrder(OrderX order) async {
-    final confirmed = await showDialog<bool>(
+    final action = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Auftrag stornieren'),
@@ -2719,7 +2742,7 @@ Status: ${order.status.displayName}
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Möchten Sie den Auftrag ${order.orderNumber} stornieren?'),
+            Text('Möchtest du den Auftrag ${order.orderNumber} stornieren?'),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -2745,10 +2768,41 @@ Status: ${order.status.displayName}
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    '• Alle Produktreservierungen werden aufgehoben\n'
-                        '• Die Produkte werden wieder für andere Aufträge verfügbar\n'
+                    '• Alle Produkte werden zurück ins Lager gebucht\n'
+                        '• Online-Shop Artikel werden wieder als verfügbar markiert\n'
                         '• Der Auftrag wird als storniert markiert\n'
                         '• Diese Aktion kann nicht rückgängig gemacht werden',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      getAdaptiveIcon(
+                          iconName: 'info',
+                          defaultIcon: Icons.info, color: Colors.blue, size: 20),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Info:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Wenn der Auftrag auch gelöscht werden soll, bitte "Stornieren und Löschen" klicken.',
                     style: TextStyle(fontSize: 12),
                   ),
                 ],
@@ -2758,22 +2812,31 @@ Status: ${order.status.displayName}
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context, null),
             child: const Text('Abbrechen'),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(context, 'cancel'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Stornieren'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, 'cancel_and_delete'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Stornieren'),
+            child: const Text('Stornieren & Löschen'),
           ),
         ],
       ),
     );
 
-    if (confirmed == true) {
+    if (action != null && (action == 'cancel' || action == 'cancel_and_delete')) {
+      final bool shouldDelete = action == 'cancel_and_delete';
       try {
         showDialog(
           context: context,
@@ -2786,7 +2849,127 @@ Status: ${order.status.displayName}
         final batch = FirebaseFirestore.instance.batch();
         final user = FirebaseAuth.instance.currentUser;
 
-        // Wenn der Auftrag aus einem Angebot erstellt wurde
+        // 1. Stock Movements für diesen Auftrag finden und stornieren
+        final stockMovements = await FirebaseFirestore.instance
+            .collection('stock_movements')
+            .where('orderId', isEqualTo: order.id)
+            .where('status', isEqualTo: 'confirmed')
+            .get();
+
+        print('📦 Gefundene Stock Movements für Stornierung: ${stockMovements.docs.length}');
+
+        for (final doc in stockMovements.docs) {
+          final movementData = doc.data();
+          final productId = movementData['productId'] as String?;
+          final quantity = movementData['quantity'];
+
+          if (productId != null && quantity != null) {
+            final qtyDouble = (quantity is int) ? quantity.toDouble() : (quantity as double);
+
+            // Stock Movement auf cancelled setzen
+            batch.update(doc.reference, {
+              'status': 'cancelled',
+              'cancelledAt': FieldValue.serverTimestamp(),
+              'cancellationReason': 'Order cancelled - returned to stock',
+            });
+
+            // Lagerbestand zurückbuchen (quantity ist negativ, daher abs)
+            final inventoryRef = FirebaseFirestore.instance
+                .collection('inventory')
+                .doc(productId);
+
+            batch.update(inventoryRef, {
+              'quantity': FieldValue.increment(qtyDouble.abs()),
+              'last_modified': FieldValue.serverTimestamp(),
+            });
+
+            print('📦 Lagerbestand zurückgebucht: $productId um ${qtyDouble.abs()}');
+          }
+
+          // Online-Shop Items
+          final onlineShopBarcode = movementData['onlineShopBarcode'] as String?;
+          if (onlineShopBarcode != null && onlineShopBarcode.isNotEmpty) {
+            final onlineShopRef = FirebaseFirestore.instance
+                .collection('onlineshop')
+                .doc(onlineShopBarcode);
+
+            batch.update(onlineShopRef, {
+              'sold': false,
+              'sold_at': FieldValue.delete(),
+              'order_id': FieldValue.delete(),
+              'order_number': FieldValue.delete(),
+              'in_cart': false,
+            });
+
+            // Online-Shop Menge im Inventory wieder erhöhen
+            final inventoryRef = FirebaseFirestore.instance
+                .collection('inventory')
+                .doc(productId);
+
+            batch.update(inventoryRef, {
+              'quantity_online_shop': FieldValue.increment(1),
+            });
+
+            print('🛒 Online-Shop Item wieder verfügbar: $onlineShopBarcode');
+          }
+        }
+
+        // 2. Falls keine Stock Movements gefunden wurden, fallback auf Items
+        // (für ältere Aufträge die vor dem Fix erstellt wurden)
+        if (stockMovements.docs.isEmpty) {
+          print('⚠️ Keine Stock Movements gefunden, verwende Fallback über Items');
+
+          for (final item in order.items) {
+            // Überspringe manuelle Produkte und Dienstleistungen
+            if (item['is_manual_product'] == true) continue;
+            if (item['is_service'] == true) continue;
+
+            final productId = item['product_id'];
+            if (productId == null || productId.toString().isEmpty) continue;
+
+            final inventoryRef = FirebaseFirestore.instance
+                .collection('inventory')
+                .doc(productId);
+
+            final inventoryDoc = await inventoryRef.get();
+
+            if (inventoryDoc.exists) {
+              final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+
+              batch.update(inventoryRef, {
+                'quantity': FieldValue.increment(quantity),
+                'last_modified': FieldValue.serverTimestamp(),
+              });
+
+              print('📦 Lagerbestand zurückgebucht (Fallback): $productId um $quantity');
+            }
+
+            // Online-Shop Items
+            if (item['is_online_shop_item'] == true && item['online_shop_barcode'] != null) {
+              final onlineShopBarcode = item['online_shop_barcode'] as String;
+
+              final onlineShopRef = FirebaseFirestore.instance
+                  .collection('onlineshop')
+                  .doc(onlineShopBarcode);
+
+              batch.update(onlineShopRef, {
+                'sold': false,
+                'sold_at': FieldValue.delete(),
+                'order_id': FieldValue.delete(),
+                'order_number': FieldValue.delete(),
+                'in_cart': false,
+              });
+
+              batch.update(inventoryRef, {
+                'quantity_online_shop': FieldValue.increment(1),
+              });
+
+              print('🛒 Online-Shop Item wieder verfügbar (Fallback): $onlineShopBarcode');
+            }
+          }
+        }
+
+        // 3. Wenn der Auftrag aus einem Angebot erstellt wurde
         if (order.quoteId != null && order.quoteId!.isNotEmpty) {
           final quoteRef = FirebaseFirestore.instance
               .collection('quotes')
@@ -2813,37 +2996,12 @@ Status: ${order.status.displayName}
               'user_name': user?.email ?? 'Unknown',
               'action': 'order_cancelled',
               'order_number': order.orderNumber,
-              'reason': 'Zugehöriger Auftrag wurde storniert',
+              'reason': 'Zugehöriger Auftrag wurde storniert - Produkte zurück ins Lager',
             });
           }
         }
 
-        // Items durchgehen - Inventar zurückbuchen
-        for (final item in order.items) {
-          // Überspringe manuelle Produkte und Dienstleistungen
-          if (item['is_manual_product'] == true) continue;
-          if (item['is_service'] == true) continue;
-
-          final productId = item['product_id'];
-          if (productId == null || productId.toString().isEmpty) continue;
-
-          final inventoryRef = FirebaseFirestore.instance
-              .collection('inventory')
-              .doc(productId);
-
-          final inventoryDoc = await inventoryRef.get();
-
-          if (inventoryDoc.exists) {
-            final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
-
-            batch.update(inventoryRef, {
-              'quantity': FieldValue.increment(quantity),
-              'last_modified': FieldValue.serverTimestamp(),
-            });
-          }
-        }
-
-        // History Entry für die Stornierung
+        // 4. History Entry für die Stornierung
         final historyRef = FirebaseFirestore.instance
             .collection('orders')
             .doc(order.id)
@@ -2856,7 +3014,8 @@ Status: ${order.status.displayName}
           'user_email': user?.email ?? 'Unknown User',
           'user_name': user?.email ?? 'Unknown',
           'action': 'order_cancelled',
-          'reason': 'Manuell storniert - Reservierungen aufgehoben',
+          'reason': 'Manuell storniert - Produkte zurück ins Lager gebucht',
+          'stock_movements_cancelled': stockMovements.docs.length,
           'changes': {
             'field': 'status',
             'old_value': order.status.name,
@@ -2866,16 +3025,59 @@ Status: ${order.status.displayName}
           },
         });
 
-        // Order Status Update
-        final orderRef = FirebaseFirestore.instance
-            .collection('orders')
-            .doc(order.id);
+        // 5. Lösche den Auftrag komplett, falls gewünscht
+        // 5. Lösche den Auftrag komplett, falls gewünscht
+        if (shouldDelete) {
+          // Lösche zuerst die History Collection (falls vorhanden)
+          try {
+            final historySnapshot = await FirebaseFirestore.instance
+                .collection('orders')
+                .doc(order.id)
+                .collection('history')
+                .get();
 
-        batch.update(orderRef, {
-          'status': OrderStatus.cancelled.name,
-          'cancelled_at': FieldValue.serverTimestamp(),
-          'cancellation_reason': 'Manuell storniert - Reservierungen aufgehoben',
-        });
+            for (final doc in historySnapshot.docs) {
+              batch.delete(doc.reference);
+            }
+            print('✅ History Collection gelöscht: ${historySnapshot.docs.length} Einträge');
+          } catch (e) {
+            print('⚠️ Fehler beim Löschen der History Collection (wird ignoriert): $e');
+          }
+
+          // Lösche alle Dokumente aus Firebase Storage (falls vorhanden)
+          try {
+            final storageRef = FirebaseStorage.instance
+                .ref()
+                .child('orders')
+                .child(order.id);
+
+            final listResult = await storageRef.listAll();
+            for (final item in listResult.items) {
+              await item.delete();
+            }
+            print('✅ Storage-Dateien gelöscht: ${listResult.items.length} Dateien');
+          } catch (e) {
+            print('⚠️ Fehler beim Löschen der Storage-Dateien (wird ignoriert): $e');
+          }
+
+          // Lösche den Auftrag selbst
+          final orderRef = FirebaseFirestore.instance
+              .collection('orders')
+              .doc(order.id);
+
+          batch.delete(orderRef);
+        } else {
+          // 6. Order Status Update (nur wenn nicht gelöscht wird)
+          final orderRef = FirebaseFirestore.instance
+              .collection('orders')
+              .doc(order.id);
+
+          batch.update(orderRef, {
+            'status': OrderStatus.cancelled.name,
+            'cancelled_at': FieldValue.serverTimestamp(),
+            'cancellation_reason': 'Manuell storniert - Produkte zurück ins Lager gebucht',
+          });
+        }
 
         await batch.commit();
 
@@ -2884,7 +3086,9 @@ Status: ${order.status.displayName}
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Auftrag ${order.orderNumber} wurde erfolgreich storniert'),
+              content: Text(shouldDelete
+                  ? 'Auftrag ${order.orderNumber} wurde erfolgreich storniert und gelöscht'
+                  : 'Auftrag ${order.orderNumber} wurde erfolgreich storniert'),
               backgroundColor: Colors.green,
               behavior: SnackBarBehavior.floating,
               margin: const EdgeInsets.all(8),
@@ -2896,13 +3100,25 @@ Status: ${order.status.displayName}
         if (mounted) {
           Navigator.pop(context);
 
+          String errorMessage = 'Fehler beim Stornieren des Auftrags: $e';
+
+          // Spezifische Fehlermeldungen für häufige Probleme
+          if (e.toString().contains('NOT_FOUND') || e.toString().contains('not found')) {
+            errorMessage = 'Auftrag konnte nicht gefunden werden. Möglicherweise wurde er bereits gelöscht.';
+          } else if (e.toString().contains('PERMISSION_DENIED')) {
+            errorMessage = 'Keine Berechtigung für diese Aktion. Bitte kontaktieren Sie einen Administrator.';
+          } else if (e.toString().contains('UNAVAILABLE')) {
+            errorMessage = 'Keine Verbindung zur Datenbank. Bitte überprüfen Sie Ihre Internetverbindung.';
+          }
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Fehler beim Stornieren des Auftrags: $e'),
+              content: Text(errorMessage),
               backgroundColor: Colors.red,
               behavior: SnackBarBehavior.floating,
               margin: const EdgeInsets.all(8),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              duration: const Duration(seconds: 5),
             ),
           );
         }
@@ -2914,31 +3130,6 @@ Status: ${order.status.displayName}
     _filterSubscription?.cancel();
     _searchController.dispose();
     super.dispose();
-  }
-
-  double _convertPrice(double priceInCHF, OrderX order) {
-    final currency = order.metadata['currency'] ?? 'CHF';
-
-    double convertedPrice = priceInCHF;
-
-    // Währungsumrechnung nur wenn nicht CHF
-    if (currency != 'CHF') {
-      final exchangeRates = order.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
-      final rate = (exchangeRates[currency] as num?)?.toDouble() ?? 1.0;
-      convertedPrice = priceInCHF * rate;
-    }
-
-    // Rundung anwenden (für alle Währungen inkl. CHF, wenn in Settings aktiviert)
-    if (_roundingSettings[currency] == true) {
-      convertedPrice = SwissRounding.round(
-        convertedPrice,
-        currency: currency,
-        roundingSettings: _roundingSettings,
-      );
-    }
-
-
-    return convertedPrice;
   }
 
 }

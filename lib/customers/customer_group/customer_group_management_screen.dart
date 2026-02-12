@@ -614,7 +614,7 @@ class _CustomerGroupManagementScreenState extends State<CustomerGroupManagementS
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Möchten Sie die Gruppe "${group.name}" wirklich löschen?'),
+            Text('Möchtest du die Gruppe "${group.name}" wirklich löschen?'),
             if (customerCount > 0) ...[
               const SizedBox(height: 12),
               Container(

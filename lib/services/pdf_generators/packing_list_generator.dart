@@ -327,13 +327,33 @@ class PackingListGenerator extends BasePdfGenerator {
       return pdf.save();
     }
 
-    // Ersetze den entsprechenden Teil in der generatePackingListPdf Methode:
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(20),
-        build: (pw.Context context) {  // Async entfernt
+        header: (pw.Context context) {
+          if (context.pageNumber == 1) return pw.SizedBox.shrink();
+          return pw.Column(
+            children: [
+              BasePdfGenerator.buildCompactHeader(
+                documentTitle: getTranslation('packing_list'),
+                documentNumber: packingNum,
+                logo: logo,
+                pageNumber: context.pageNumber,
+                totalPages: context.pagesCount,
+                language: language,
+              ),
+              pw.SizedBox(height: 10),
+            ],
+          );
+        },
+        footer: (pw.Context context) => BasePdfGenerator.buildFooter(
+          pageNumber: context.pageNumber,
+          totalPages: context.pagesCount,
+          language: language,
+        ),
+        build: (pw.Context context) { // Async entfernt
           final List<pw.Widget> content = [];
 
           // Header
@@ -371,9 +391,7 @@ class PackingListGenerator extends BasePdfGenerator {
 
           return content;
         },
-        footer: (pw.Context context) {
-          return BasePdfGenerator.buildFooter();
-        },
+
       ),
     );
     return pdf.save();
