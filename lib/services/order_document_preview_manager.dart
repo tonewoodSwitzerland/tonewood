@@ -11,9 +11,12 @@ import 'pdf_generators/delivery_note_generator.dart';
 import 'pdf_generators/packing_list_generator.dart';
 import 'preview_pdf_viewer_screen.dart';
 import 'shipping_costs_manager.dart';
+import '../services/icon_helper.dart';
 
 class OrderDocumentPreviewManager {
-  // Zeige Dokument-Preview für einen Auftrag
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HAUPT-METHODE: Zeige Dokument-Preview für einen Auftrag
+  // ═══════════════════════════════════════════════════════════════════════════
   static Future<void> showDocumentPreview({
     required BuildContext context,
     required OrderX order,
@@ -23,6 +26,685 @@ class OrderDocumentPreviewManager {
     print('order.id: ${order.id}');
     print('order.costCenter: ${order.costCenter}');
     print('====================================');
+    try {
+      // Prüfe ob Einzelversand aktiv ist und HR/LS betroffen
+      if (documentType == 'commercial_invoice_pdf' ||
+          documentType == 'Handelsrechnung' ||
+          documentType == 'delivery_note_pdf' ||
+          documentType == 'Lieferschein') {
+        final shipmentMode = await _getShipmentMode(order.id);
+
+        if (shipmentMode == 'per_shipment') {
+          // Einzelversand → Zeige Auswahl-Dialog für Versandgruppen
+          await _showShipmentGroupPreviewSelector(
+            context: context,
+            order: order,
+            documentType: documentType,
+          );
+          return;
+        }
+      }
+
+      // Standard: Einzelnes Dokument preview
+      await _showSingleDocumentPreview(
+        context: context,
+        order: order,
+        documentType: documentType,
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler bei der Preview: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EINZELVERSAND: Versandgruppen-Auswahl Dialog
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Lädt den Versandmodus aus der Packliste
+  static Future<String> _getShipmentMode(String orderId) async {
+    try {
+      final packingListDoc = await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(orderId)
+          .collection('packing_list')
+          .doc('settings')
+          .get();
+
+      if (packingListDoc.exists) {
+        return packingListDoc.data()?['shipment_mode'] as String? ?? 'total';
+      }
+    } catch (e) {
+      print('Fehler beim Laden des Versandmodus: $e');
+    }
+    return 'total';
+  }
+
+  /// Zeigt einen Dialog zur Auswahl der Versandgruppe für die Preview
+  /// Zeigt einen Dialog zur Auswahl der Versandgruppe für die Preview
+  static Future<void> _showShipmentGroupPreviewSelector({
+    required BuildContext context,
+    required OrderX order,
+    required String documentType,
+  }) async {
+    // Lade Pakete und gruppiere sie
+    final packages = await _loadPackages(order.id);
+    if (packages.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Keine Packstücke konfiguriert'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    final shipmentGroups = _groupPackagesByShipment(packages);
+    final sortedGroupNumbers = shipmentGroups.keys.toList()..sort();
+
+    final isCommercialInvoice = documentType == 'commercial_invoice_pdf' ||
+        documentType == 'Handelsrechnung';
+    final docLabel = isCommercialInvoice ? 'Handelsrechnung' : 'Lieferschein';
+
+    if (!context.mounted) return;
+
+    // NEU: Speichere den äußeren Context
+    final outerContext = context;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(sheetContext).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Drag Handle
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Theme.of(sheetContext).colorScheme.outline.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+              child: Row(
+                children: [
+                  getAdaptiveIcon(
+                    iconName: 'mail',
+                    defaultIcon: Icons.mail,
+                    color: Theme.of(sheetContext).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$docLabel Preview',
+                          style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Einzelversand: ${sortedGroupNumbers.length} Sendungen',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(sheetContext).colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(sheetContext),
+                    icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                  ),
+                ],
+              ),
+            ),
+
+            const Divider(height: 1),
+
+            // // Alle anzeigen Button
+            // if (sortedGroupNumbers.length > 1)
+            //   Padding(
+            //     padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+            //     child: SizedBox(
+            //       width: double.infinity,
+            //       child: OutlinedButton.icon(
+            //         onPressed: () async {
+            //           Navigator.pop(sheetContext);
+            //           await _showAllShipmentGroupPreviews(
+            //             context: outerContext,
+            //             order: order,
+            //             documentType: documentType,
+            //             shipmentGroups: shipmentGroups,
+            //             sortedGroupNumbers: sortedGroupNumbers,
+            //           );
+            //         },
+            //         icon: getAdaptiveIcon(
+            //           iconName: 'visibility',
+            //           defaultIcon: Icons.visibility,
+            //           size: 18,
+            //         ),
+            //         label: Text('Alle ${sortedGroupNumbers.length} $docLabel${sortedGroupNumbers.length > 1 ? 'en' : ''} nacheinander'),
+            //       ),
+            //     ),
+            //   ),
+
+            // Einzelne Versandgruppen
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+              itemCount: sortedGroupNumbers.length,
+              itemBuilder: (context, index) {
+                final groupNumber = sortedGroupNumbers[index];
+                final groupPackages = shipmentGroups[groupNumber]!;
+                final displayNumber = index + 1;
+
+                // Items in dieser Versandgruppe zählen
+                int itemCount = 0;
+                for (final pkg in groupPackages) {
+                  final items = pkg['items'] as List<dynamic>? ?? [];
+                  itemCount += items.length;
+                }
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    leading: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: _getShipmentGroupColor(groupNumber).withOpacity(0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          '$displayNumber',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: _getShipmentGroupColor(groupNumber),
+                          ),
+                        ),
+                      ),
+                    ),
+                    title: Text('$docLabel Sendung $displayNumber'),
+                    subtitle: Text(
+                      '${groupPackages.length} Paket${groupPackages.length > 1 ? 'e' : ''} • $itemCount Produkt${itemCount > 1 ? 'e' : ''}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    trailing: getAdaptiveIcon(
+                      iconName: 'chevron_right',
+                      defaultIcon: Icons.chevron_right,
+                    ),
+                    onTap: () async {
+                      Navigator.pop(sheetContext);
+                      await _showShipmentGroupPreview(
+                        context: outerContext,
+                        order: order,
+                        documentType: documentType,
+                        shipmentGroups: shipmentGroups,
+                        allOrderItems: order.items,
+                        groupNumber: groupNumber,
+                        displayNumber: displayNumber,
+                        totalGroups: sortedGroupNumbers.length,
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Zeigt alle Versandgruppen-Previews nacheinander
+  static Future<void> _showAllShipmentGroupPreviews({
+    required BuildContext context,
+    required OrderX order,
+    required String documentType,
+    required Map<int, List<Map<String, dynamic>>> shipmentGroups,
+    required List<int> sortedGroupNumbers,
+  }) async {
+    for (int i = 0; i < sortedGroupNumbers.length; i++) {
+      if (!context.mounted) return;
+
+      await _showShipmentGroupPreview(
+        context: context,
+        order: order,
+        documentType: documentType,
+        shipmentGroups: shipmentGroups,
+        allOrderItems: order.items,
+        groupNumber: sortedGroupNumbers[i],
+        displayNumber: i + 1,
+        totalGroups: sortedGroupNumbers.length,
+      );
+    }
+  }
+
+  /// Zeigt die Preview für eine einzelne Versandgruppe
+  static Future<void> _showShipmentGroupPreview({
+    required BuildContext context,
+    required OrderX order,
+    required String documentType,
+    required Map<int, List<Map<String, dynamic>>> shipmentGroups,
+    required List<Map<String, dynamic>> allOrderItems,
+    required int groupNumber,
+    required int displayNumber,
+    required int totalGroups,
+  }) async
+  {
+    try {
+      // Loading anzeigen
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      final orderData = await _loadOrderData(order);
+      if (orderData == null) {
+        if (context.mounted) Navigator.pop(context);
+        return;
+      }
+
+      final groupPackages = shipmentGroups[groupNumber]!;
+
+      // Items für diese Versandgruppe sammeln
+      final groupItems = _getItemsForShipmentGroup(groupPackages, allOrderItems);
+
+      // Anteilige Calculations
+      final totalSubtotal = _calculateSubtotal(allOrderItems);
+      final groupCalculations = _calculateProportionalDiscounts(
+        packageItems: groupItems,
+        totalSubtotal: totalSubtotal,
+        originalCalculations: orderData['calculations'] as Map<String, dynamic>?,
+      );
+
+      // Tara-Daten
+      final groupTaraData = _calculateGroupTaraData(groupPackages);
+
+      if (context.mounted) Navigator.pop(context); // Loading schließen
+
+      final isCommercialInvoice = documentType == 'commercial_invoice_pdf' ||
+          documentType == 'Handelsrechnung';
+
+      if (isCommercialInvoice) {
+        await _showShipmentCommercialInvoicePreview(
+          context: context,
+          orderData: orderData,
+          order: order,
+          groupItems: groupItems,
+          groupCalculations: groupCalculations,
+          groupTaraData: groupTaraData,
+          displayNumber: displayNumber,
+          totalGroups: totalGroups,
+        );
+      } else {
+        await _showShipmentDeliveryNotePreview(
+          context: context,
+          orderData: orderData,
+          order: order,
+          groupItems: groupItems,
+          displayNumber: displayNumber,
+          totalGroups: totalGroups,
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // Loading schließen falls noch offen
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler bei Preview Sendung $displayNumber: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Preview: Handelsrechnung für eine Versandgruppe
+  static Future<void> _showShipmentCommercialInvoicePreview({
+    required BuildContext context,
+    required Map<String, dynamic> orderData,
+    required OrderX order,
+    required List<Map<String, dynamic>> groupItems,
+    required Map<String, dynamic> groupCalculations,
+    required Map<String, dynamic> groupTaraData,
+    required int displayNumber,
+    required int totalGroups,
+  }) async {
+    final customer = orderData['customer'] as Map<String, dynamic>;
+    final language = orderData['metadata']?['language'] ?? customer['language'] ?? 'DE';
+    final metadata = orderData['metadata'] ?? {};
+
+    final rawExchangeRates = metadata['exchangeRates'] ?? {'CHF': 1.0};
+    final exchangeRates = <String, double>{};
+    rawExchangeRates.forEach((key, value) {
+      if (value is int) {
+        exchangeRates[key as String] = value.toDouble();
+      } else if (value is double) {
+        exchangeRates[key as String] = value;
+      } else {
+        exchangeRates[key as String] = 1.0;
+      }
+    });
+
+    final costCenterCode = orderData['costCenter']?['code'] ?? '00000';
+    final taraSettingsRaw = await _loadOrderTaraSettings(order.id);
+
+    final currency = taraSettingsRaw['commercial_invoice_currency'] ?? metadata['currency'] ?? 'CHF';
+
+    // Tara-Settings: Überschreibe mit Gruppen-Daten
+    final taraSettings = {
+      'number_of_packages': groupTaraData['number_of_packages'],
+      'packaging_weight': groupTaraData['packaging_weight'],
+      'packaging_volume': groupTaraData['packaging_volume'],
+      'commercial_invoice_date': taraSettingsRaw['commercial_invoice_date'],
+      'commercial_invoice_origin_declaration': taraSettingsRaw['commercial_invoice_origin_declaration'],
+      'commercial_invoice_cites': taraSettingsRaw['commercial_invoice_cites'],
+      'commercial_invoice_export_reason': taraSettingsRaw['commercial_invoice_export_reason'],
+      'commercial_invoice_export_reason_text': taraSettingsRaw['commercial_invoice_export_reason_text'],
+      'commercial_invoice_incoterms': taraSettingsRaw['commercial_invoice_incoterms'],
+      'commercial_invoice_selected_incoterms': taraSettingsRaw['commercial_invoice_selected_incoterms'],
+      'commercial_invoice_incoterms_freetexts': taraSettingsRaw['commercial_invoice_incoterms_freetexts'],
+      'commercial_invoice_delivery_date':
+      taraSettingsRaw['commercial_invoice_delivery_date'] == true ||
+          taraSettingsRaw['use_as_delivery_date'] == true,
+      'commercial_invoice_delivery_date_value': taraSettingsRaw['use_as_delivery_date'] == true
+          ? taraSettingsRaw['commercial_invoice_date']
+          : taraSettingsRaw['commercial_invoice_delivery_date_value'],
+      'commercial_invoice_delivery_date_month_only': taraSettingsRaw['use_as_delivery_date'] == true
+          ? false
+          : (taraSettingsRaw['commercial_invoice_delivery_date_month_only'] ?? false),
+      'commercial_invoice_carrier': taraSettingsRaw['commercial_invoice_carrier'],
+      'commercial_invoice_carrier_text': taraSettingsRaw['commercial_invoice_carrier_text'],
+      'commercial_invoice_signature': taraSettingsRaw['commercial_invoice_signature'],
+      'commercial_invoice_selected_signature': taraSettingsRaw['commercial_invoice_selected_signature'],
+    };
+
+    DateTime? invoiceDate;
+    if (taraSettingsRaw['commercial_invoice_date'] != null) {
+      final dateValue = taraSettingsRaw['commercial_invoice_date'];
+      if (dateValue is Timestamp) {
+        invoiceDate = dateValue.toDate();
+      } else if (dateValue is DateTime) {
+        invoiceDate = dateValue;
+      }
+    }
+
+    final rawVatRate = metadata['vatRate'] ?? 8.1;
+    final vatRate = (rawVatRate is int) ? rawVatRate.toDouble() : rawVatRate as double;
+    final taxOption = metadata['taxOption'] ?? 0;
+
+    final orderAdditionalTexts = metadata['additionalTexts'] as Map<String, dynamic>?;
+
+    final pdfBytes = await CommercialInvoiceGenerator.generateCommercialInvoicePdf(
+      items: groupItems,
+      customerData: customer,
+      fairData: orderData['fair'],
+      costCenterCode: costCenterCode,
+      currency: currency,
+      exchangeRates: exchangeRates,
+      language: language,
+      invoiceNumber: '${order.orderNumber}-CI-$displayNumber',
+      shippingCosts: null, // Keine Versandkosten auf Einzel-HR
+      calculations: groupCalculations,
+      taxOption: taxOption,
+      vatRate: vatRate,
+      taraSettings: taraSettings,
+      invoiceDate: invoiceDate,
+      additionalTexts: orderAdditionalTexts,
+    );
+
+    if (context.mounted) {
+      _openPdfViewer(
+        context,
+        pdfBytes,
+        'HR_${order.orderNumber}_Sendung_$displayNumber.pdf',
+      );
+    }
+  }
+
+  /// Preview: Lieferschein für eine Versandgruppe
+  static Future<void> _showShipmentDeliveryNotePreview({
+    required BuildContext context,
+    required Map<String, dynamic> orderData,
+    required OrderX order,
+    required List<Map<String, dynamic>> groupItems,
+    required int displayNumber,
+    required int totalGroups,
+  }) async {
+    final customer = orderData['customer'] as Map<String, dynamic>;
+    final language = orderData['metadata']?['language'] ?? customer['language'] ?? 'DE';
+    final metadata = orderData['metadata'] ?? {};
+    final currency = metadata['currency'] ?? 'CHF';
+    final exchangeRates = Map<String, double>.from(metadata['exchangeRates'] ?? {'CHF': 1.0});
+    final costCenterCode = orderData['costCenter']?['code'] ?? '00000';
+
+    final deliverySettings = await _loadOrderDeliverySettings(order.id);
+    final orderAdditionalTexts = metadata['additionalTexts'] as Map<String, dynamic>?;
+
+    final pdfBytes = await DeliveryNoteGenerator.generateDeliveryNotePdf(
+      items: groupItems,
+      customerData: customer,
+      fairData: orderData['fair'],
+      costCenterCode: costCenterCode,
+      currency: currency,
+      exchangeRates: exchangeRates,
+      language: language,
+      deliveryNoteNumber: '${order.orderNumber}-LS-$displayNumber',
+      deliveryDate: deliverySettings['delivery_date'],
+      paymentDate: deliverySettings['payment_date'],
+      additionalTexts: orderAdditionalTexts,
+    );
+
+    if (context.mounted) {
+      _openPdfViewer(
+        context,
+        pdfBytes,
+        'LS_${order.orderNumber}_Sendung_$displayNumber.pdf',
+      );
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HELPER: Items pro Versandgruppe (aus PostalDocumentService übernommen)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  static String _getItemKey(Map<String, dynamic> item) {
+    return item['basket_doc_id']?.toString() ?? '';
+  }
+
+  static List<Map<String, dynamic>> _loadPackagesSync(List<dynamic> rawPackages) {
+    return rawPackages.map((p) => Map<String, dynamic>.from(p as Map)).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> _loadPackages(String orderId) async {
+    try {
+      final packingListDoc = await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(orderId)
+          .collection('packing_list')
+          .doc('settings')
+          .get();
+
+      if (!packingListDoc.exists) return [];
+
+      final data = packingListDoc.data()!;
+      final packages = data['packages'] as List<dynamic>? ?? [];
+      return packages.map((p) => Map<String, dynamic>.from(p as Map)).toList();
+    } catch (e) {
+      print('Fehler beim Laden der Packages: $e');
+      return [];
+    }
+  }
+
+  static Map<int, List<Map<String, dynamic>>> _groupPackagesByShipment(
+      List<Map<String, dynamic>> packages,
+      ) {
+    final Map<int, List<Map<String, dynamic>>> groups = {};
+    for (int i = 0; i < packages.length; i++) {
+      final group = (packages[i]['shipment_group'] as num?)?.toInt() ?? (i + 1);
+      groups.putIfAbsent(group, () => []);
+      groups[group]!.add(packages[i]);
+    }
+    return groups;
+  }
+
+  static List<Map<String, dynamic>> _getItemsForShipmentGroup(
+      List<Map<String, dynamic>> groupPackages,
+      List<Map<String, dynamic>> allOrderItems,
+      ) {
+    final Map<String, Map<String, dynamic>> mergedItems = {};
+
+    for (final package in groupPackages) {
+      final packageItemsList = package['items'] as List<dynamic>? ?? [];
+
+      for (final pkgItem in packageItemsList) {
+        final pkgItemMap = Map<String, dynamic>.from(pkgItem as Map);
+        final pkgItemKey = _getItemKey(pkgItemMap);
+        final packageQuantity = (pkgItemMap['quantity'] as num?)?.toDouble() ?? 0.0;
+
+        if (packageQuantity <= 0) continue;
+
+        // Finde das entsprechende Order-Item per itemKey
+        final orderItem = allOrderItems.firstWhere(
+              (item) => _getItemKey(item) == pkgItemKey,
+          orElse: () => <String, dynamic>{},
+        );
+
+        if (orderItem.isEmpty) continue;
+
+        if (mergedItems.containsKey(pkgItemKey)) {
+          final existing = mergedItems[pkgItemKey]!;
+          final existingQty = (existing['quantity'] as num?)?.toDouble() ?? 0.0;
+          existing['quantity'] = existingQty + packageQuantity;
+
+          // Einzelrabatt addieren
+          final originalQuantity = (orderItem['quantity'] as num?)?.toDouble() ?? 1.0;
+          final originalDiscountAmount = (orderItem['discount_amount'] as num?)?.toDouble() ?? 0.0;
+          if (originalDiscountAmount > 0 && originalQuantity > 0) {
+            final discountPerUnit = originalDiscountAmount / originalQuantity;
+            final existingDiscount = (existing['discount_amount'] as num?)?.toDouble() ?? 0.0;
+            existing['discount_amount'] = existingDiscount + (discountPerUnit * packageQuantity);
+          }
+        } else {
+          final itemCopy = Map<String, dynamic>.from(orderItem);
+          itemCopy['quantity'] = packageQuantity;
+
+          // Einzelrabatt proportional anpassen
+          final originalQuantity = (orderItem['quantity'] as num?)?.toDouble() ?? 1.0;
+          final originalDiscountAmount = (orderItem['discount_amount'] as num?)?.toDouble() ?? 0.0;
+          if (originalDiscountAmount > 0 && originalQuantity > 0) {
+            final discountPerUnit = originalDiscountAmount / originalQuantity;
+            itemCopy['discount_amount'] = discountPerUnit * packageQuantity;
+          }
+
+          mergedItems[pkgItemKey] = itemCopy;
+        }
+      }
+    }
+
+    return mergedItems.values.toList();
+  }
+
+  static double _calculateSubtotal(List<Map<String, dynamic>> items) {
+    double subtotal = 0.0;
+    for (final item in items) {
+      if (item['is_service'] == true) continue;
+      if (item['is_gratisartikel'] == true) continue;
+      final quantity = (item['quantity'] as num? ?? 0).toDouble();
+      final pricePerUnit = (item['custom_price_per_unit'] as num?) != null
+          ? (item['custom_price_per_unit'] as num).toDouble()
+          : (item['price_per_unit'] as num? ?? 0).toDouble();
+      subtotal += quantity * pricePerUnit;
+    }
+    return subtotal;
+  }
+
+  static Map<String, dynamic> _calculateProportionalDiscounts({
+    required List<Map<String, dynamic>> packageItems,
+    required double totalSubtotal,
+    required Map<String, dynamic>? originalCalculations,
+  }) {
+    if (originalCalculations == null) return {};
+    final calculations = Map<String, dynamic>.from(originalCalculations);
+    final packageSubtotal = _calculateSubtotal(packageItems);
+    final proportion = totalSubtotal > 0 ? packageSubtotal / totalSubtotal : 0.0;
+    final totalDiscountAmount = (calculations['total_discount_amount'] as num?)?.toDouble() ?? 0.0;
+    if (totalDiscountAmount > 0) {
+      calculations['total_discount_amount'] = totalDiscountAmount * proportion;
+    }
+    return calculations;
+  }
+
+  static Map<String, dynamic> _calculateGroupTaraData(
+      List<Map<String, dynamic>> groupPackages,
+      ) {
+    double totalTareWeight = 0.0;
+    double totalVolume = 0.0;
+    for (final package in groupPackages) {
+      totalTareWeight += (package['tare_weight'] as num?)?.toDouble() ?? 0.0;
+      final width = (package['width'] as num?)?.toDouble() ?? 0.0;
+      final height = (package['height'] as num?)?.toDouble() ?? 0.0;
+      final length = (package['length'] as num?)?.toDouble() ?? 0.0;
+      totalVolume += (width * height * length) / 1000000;
+    }
+    return {
+      'number_of_packages': groupPackages.length,
+      'packaging_weight': totalTareWeight,
+      'packaging_volume': totalVolume,
+    };
+  }
+
+  /// Farbkodierung für Versandgruppen
+  static Color _getShipmentGroupColor(int group) {
+    const colors = [
+      Color(0xFF1976D2),
+      Color(0xFF388E3C),
+      Color(0xFFF57C00),
+      Color(0xFF7B1FA2),
+      Color(0xFFD32F2F),
+      Color(0xFF00838F),
+      Color(0xFF5D4037),
+      Color(0xFF455A64),
+      Color(0xFFC2185B),
+      Color(0xFF689F38),
+    ];
+    return colors[(group - 1) % colors.length];
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STANDARD PREVIEW (Gesamtversand, wie bisher)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  static Future<void> _showSingleDocumentPreview({
+    required BuildContext context,
+    required OrderX order,
+    required String documentType,
+  }) async {
     try {
       // Zeige Loading-Dialog
       showDialog(
@@ -79,7 +761,7 @@ class OrderDocumentPreviewManager {
       }
     } catch (e) {
       if (context.mounted) {
-        Navigator.pop(context); // Schließe Loading-Dialog falls noch offen
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Fehler bei der Preview: $e'),
@@ -90,16 +772,14 @@ class OrderDocumentPreviewManager {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BESTEHENDE METHODEN (unverändert)
+  // ═══════════════════════════════════════════════════════════════════════════
+
   // Lade Auftragsdaten
   static Future<Map<String, dynamic>?> _loadOrderData(OrderX order) async {
     try {
       final metadata = order.metadata;
-
-      // DEBUG
-      print('=== _loadOrderData DEBUG ===');
-      print('Order ID: ${order.id}');
-      print('Order costCenter: ${order.costCenter}');
-      print('Metadata: $metadata');
 
       // Lade Quote-Daten falls vorhanden
       Map<String, dynamic>? quoteData;
@@ -114,20 +794,16 @@ class OrderDocumentPreviewManager {
       }
 
       // CostCenter: Erst aus Order, dann Fallback auf Quote
-      Map<String, dynamic>? costCenter = order.costCenter;  // NEU: Direkt aus Order
+      Map<String, dynamic>? costCenter = order.costCenter;
       if (costCenter == null && quoteData != null && quoteData['costCenter'] != null) {
         costCenter = quoteData['costCenter'];
       }
-      print('Final costCenter: $costCenter');
 
       // Fair: Erst aus Metadata, dann aus Quote
       Map<String, dynamic>? fair = metadata['fairData'] as Map<String, dynamic>?;
       if (fair == null && quoteData != null && quoteData['fair'] != null) {
         fair = quoteData['fair'];
       }
-      print('Final fair: $fair');
-
-      print('=== END _loadOrderData DEBUG ===');
 
       return {
         'order': order,
@@ -144,6 +820,7 @@ class OrderDocumentPreviewManager {
       return null;
     }
   }
+
   // Preview für Angebot
   static Future<void> _showQuotePreview(
       BuildContext context,
@@ -152,10 +829,8 @@ class OrderDocumentPreviewManager {
       ) async {
     try {
       final customer = orderData['customer'] as Map<String, dynamic>;
-    final language = orderData['metadata']?['language'] ?? customer['language'] ?? 'DE';
+      final language = orderData['metadata']?['language'] ?? customer['language'] ?? 'DE';
       final metadata = orderData['metadata'] ?? {};
-
-      // Lade Versandkosten aus Order-Metadaten
       final shippingCosts = metadata['shippingCosts'] ?? {};
       final roundingSettings = await SwissRounding.loadRoundingSettings();
       final currency = metadata['currency'] ?? 'CHF';
@@ -186,6 +861,7 @@ class OrderDocumentPreviewManager {
       rethrow;
     }
   }
+
   static Future<Map<String, dynamic>> _loadOrderInvoiceSettings(String orderId) async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -215,43 +891,25 @@ class OrderDocumentPreviewManager {
       'down_payment_date': null,
     };
   }
+
   // Preview für Rechnung
-// Preview für Rechnung
   static Future<void> _showInvoicePreview(
       BuildContext context,
       Map<String, dynamic> orderData,
       OrderX order,
       ) async {
     try {
-      print('=== _showInvoicePreview DEBUG START ===');
-
       final customer = orderData['customer'] as Map<String, dynamic>;
-      print('Customer loaded: ${customer.keys.toList()}');
-
       final language = orderData['metadata']?['language'] ?? customer['language'] ?? 'DE';
-      print('Language: $language');
-
       final metadata = orderData['metadata'] ?? {};
-      print('Metadata keys: ${metadata.keys.toList()}');
-
       final shippingCosts = metadata['shippingCosts'] ?? {};
-      print('ShippingCosts: $shippingCosts');
-
       final currency = metadata['currency'] ?? 'CHF';
       final exchangeRates = Map<String, double>.from(metadata['exchangeRates'] ?? {'CHF': 1.0});
-      print('Currency: $currency, ExchangeRates: $exchangeRates');
-
       final costCenterCode = orderData['costCenter']?['code'] ?? '00000';
-      print('CostCenterCode: $costCenterCode');
 
-      // HIER RUFST DU DIE METHODE AUF:
       final invoiceSettings = await _loadOrderInvoiceSettings(order.id);
       final roundingSettings = await SwissRounding.loadRoundingSettings();
-      print('InvoiceSettings loaded: $invoiceSettings');
-
-      print('Calling InvoiceGenerator.generateInvoicePdf...');
-      print('Items count: ${orderData['items']?.length}');
-      print('Calculations: ${orderData['calculations']}');
+      final orderAdditionalTexts = metadata['additionalTexts'] as Map<String, dynamic>?;
 
       final pdfBytes = await InvoiceGenerator.generateInvoicePdf(
         items: orderData['items'],
@@ -269,236 +927,113 @@ class OrderDocumentPreviewManager {
         vatRate: (metadata['vatRate'] ?? 8.1).toDouble(),
         downPaymentSettings: invoiceSettings,
         roundingSettings: roundingSettings,
+        additionalTexts: orderAdditionalTexts,
       );
-
-      print('PDF generated successfully');
 
       if (context.mounted) {
         _openPdfViewer(context, pdfBytes, 'Rechnung_${order.orderNumber}.pdf');
       }
     } catch (e, stackTrace) {
-      print('=== ERROR DETAILS ===');
-      print('Error: $e');
-      print('Stack trace:');
-      print(stackTrace);
-      print('=== END ERROR ===');
+      print('Fehler bei Rechnung-Preview: $e\n$stackTrace');
       rethrow;
     }
   }
-  // Preview für Handelsrechnung
 
+  // Preview für Handelsrechnung (Gesamtversand)
   static Future<void> _showCommercialInvoicePreview(
       BuildContext context,
       Map<String, dynamic> orderData,
       OrderX order,
       ) async {
     try {
-      print('=== _showCommercialInvoicePreview DEBUG START ===');
-
       final customer = orderData['customer'] as Map<String, dynamic>;
-      print('Customer loaded: ${customer.keys.toList()}');
-
       final language = orderData['metadata']?['language'] ?? customer['language'] ?? 'DE';
-      print('Language: $language');
-
       final metadata = orderData['metadata'] ?? {};
-      print('Metadata keys: ${metadata.keys.toList()}');
-
-      // Debug shippingCosts
       final shippingCosts = metadata['shippingCosts'] ?? {};
-      print('ShippingCosts type: ${shippingCosts.runtimeType}');
-      print('ShippingCosts content: $shippingCosts');
-      if (shippingCosts is Map) {
-        shippingCosts.forEach((key, value) {
-          print('  $key: $value (${value.runtimeType})');
-        });
-      }
 
-
-
-      // Debug exchangeRates VOR der Konvertierung
       final rawExchangeRates = metadata['exchangeRates'] ?? {'CHF': 1.0};
-      print('Raw exchangeRates type: ${rawExchangeRates.runtimeType}');
-      print('Raw exchangeRates content: $rawExchangeRates');
-      if (rawExchangeRates is Map) {
-        rawExchangeRates.forEach((key, value) {
-          print('  $key: $value (${value.runtimeType})');
-        });
-      }
-
-      // Sichere Konvertierung
       final exchangeRates = <String, double>{};
       rawExchangeRates.forEach((key, value) {
-        print('Converting exchange rate $key: $value (${value.runtimeType})');
         if (value is int) {
           exchangeRates[key as String] = value.toDouble();
         } else if (value is double) {
           exchangeRates[key as String] = value;
         } else {
-          print('WARNING: Unexpected type for exchange rate $key: ${value.runtimeType}');
-          exchangeRates[key as String] = 1.0; // Fallback
+          exchangeRates[key as String] = 1.0;
         }
       });
-      print('Converted exchangeRates: $exchangeRates');
 
       final costCenterCode = orderData['costCenter']?['code'] ?? '00000';
-      print('CostCenterCode: $costCenterCode');
-
-      // Lade Tara-Einstellungen
-      print('Loading tara settings for order: ${order.id}');
       final taraSettings = await _loadOrderTaraSettings(order.id);
-      print('TaraSettings loaded: ${taraSettings.keys.toList()}');
-
       final currency = taraSettings['commercial_invoice_currency'] ?? metadata['currency'] ?? 'CHF';
 
-
-      // Debug Tara Settings
-      taraSettings.forEach((key, value) {
-        print('  $key: $value (${value.runtimeType})');
-      });
-
-      // Extrahiere das Datum
       DateTime? invoiceDate;
       if (taraSettings['commercial_invoice_date'] != null) {
         final dateValue = taraSettings['commercial_invoice_date'];
-        print('Date value type: ${dateValue.runtimeType}');
         if (dateValue is Timestamp) {
           invoiceDate = dateValue.toDate();
         } else if (dateValue is DateTime) {
           invoiceDate = dateValue;
         }
       }
-      print('Invoice date: $invoiceDate');
 
-      // Debug vatRate
       final rawVatRate = metadata['vatRate'] ?? 8.1;
-      print('Raw vatRate: $rawVatRate (${rawVatRate.runtimeType})');
       final vatRate = (rawVatRate is int) ? rawVatRate.toDouble() : rawVatRate as double;
-      print('Converted vatRate: $vatRate');
-
-      // Debug taxOption
       final taxOption = metadata['taxOption'] ?? 0;
-      print('TaxOption: $taxOption (${taxOption.runtimeType})');
 
-      // Debug calculations
-      print('Calculations type: ${orderData['calculations']?.runtimeType}');
-      print('Calculations content: ${orderData['calculations']}');
-      if (orderData['calculations'] is Map) {
-        (orderData['calculations'] as Map).forEach((key, value) {
-          print('  $key: $value (${value.runtimeType})');
-        });
-      }
-
-      // Debug items
-      print('Items count: ${orderData['items']?.length}');
-      if (orderData['items'] != null && (orderData['items'] as List).isNotEmpty) {
-        final firstItem = orderData['items'][0];
-        print('First item keys: ${firstItem.keys.toList()}');
-        firstItem.forEach((key, value) {
-          print('  $key: $value (${value.runtimeType})');
-        });
-      }
-
-      print('Calling CommercialInvoiceGenerator.generateCommercialInvoicePdf...');
+      final orderAdditionalTexts = metadata['additionalTexts'] as Map<String, dynamic>?;
 
       final pdfBytes = await CommercialInvoiceGenerator.generateCommercialInvoicePdf(
-          items: orderData['items'],
-          customerData: customer,
-          fairData: orderData['fair'],
-          costCenterCode: costCenterCode,
-          currency: currency,
-          exchangeRates: exchangeRates,
-          language: language,
-          invoiceNumber: '${order.orderNumber}-CI',
-          shippingCosts: shippingCosts,
-          calculations: orderData['calculations'],
-          taxOption: taxOption,
-          vatRate: vatRate,
-          taraSettings: taraSettings,
-          invoiceDate: invoiceDate
+        items: orderData['items'],
+        customerData: customer,
+        fairData: orderData['fair'],
+        costCenterCode: costCenterCode,
+        currency: currency,
+        exchangeRates: exchangeRates,
+        language: language,
+        invoiceNumber: '${order.orderNumber}-CI',
+        shippingCosts: shippingCosts,
+        calculations: orderData['calculations'],
+        taxOption: taxOption,
+        vatRate: vatRate,
+        taraSettings: taraSettings,
+        invoiceDate: invoiceDate,
+        additionalTexts: orderAdditionalTexts,
       );
-
-      print('PDF generated successfully');
 
       if (context.mounted) {
         _openPdfViewer(context, pdfBytes, 'Handelsrechnung_${order.orderNumber}.pdf');
       }
-
-      print('=== _showCommercialInvoicePreview DEBUG END ===');
     } catch (e, stackTrace) {
-      print('=== ERROR DETAILS ===');
-      print('Error: $e');
-      print('Stack trace:');
-      print(stackTrace);
-      print('=== END ERROR ===');
+      print('Fehler bei Handelsrechnung-Preview: $e\n$stackTrace');
       rethrow;
     }
   }
 
-  // Preview für Lieferschein
+  // Preview für Lieferschein (Gesamtversand)
   static Future<void> _showDeliveryNotePreview(
       BuildContext context,
       Map<String, dynamic> orderData,
       OrderX order,
       ) async {
     try {
-      print('=== DELIVERY NOTE PREVIEW DEBUG ===');
-      print('Order ID: ${order.id}');
-      print('Order Number: ${order.orderNumber}');
-
-      // Prüfe customer
       final customer = orderData['customer'] as Map<String, dynamic>?;
-      print('Customer exists: ${customer != null}');
-      if (customer != null) {
-        print('Customer keys: ${customer.keys.toList()}');
-      }
-
-
       final language = orderData['metadata']?['language'] ?? customer?['language'] ?? 'DE';
-      print('Language: $language');
-
-      // Prüfe metadata
       final metadata = orderData['metadata'] as Map<String, dynamic>?;
-      print('Metadata exists: ${metadata != null}');
-      if (metadata != null) {
-        print('Metadata keys: ${metadata.keys.toList()}');
-      }
-
       final currency = metadata?['currency'] ?? 'CHF';
-      print('Currency: $currency');
-
-      final exchangeRatesRaw = metadata?['exchangeRates'];
-      print('ExchangeRates raw: $exchangeRatesRaw');
-      print('ExchangeRates type: ${exchangeRatesRaw.runtimeType}');
-
-      final exchangeRates = Map<String, double>.from(exchangeRatesRaw ?? {'CHF': 1.0});
-      print('ExchangeRates converted: $exchangeRates');
-
-      // Prüfe costCenter
+      final exchangeRates = Map<String, double>.from(metadata?['exchangeRates'] ?? {'CHF': 1.0});
       final costCenter = orderData['costCenter'];
-      print('CostCenter exists: ${costCenter != null}');
       final costCenterCode = costCenter?['code'] ?? '00000';
-      print('CostCenterCode: $costCenterCode');
 
-      // Prüfe items
       final items = orderData['items'];
-      print('Items exists: ${items != null}');
-      print('Items count: ${items?.length}');
-
-      // Prüfe fair
       final fairData = orderData['fair'];
-      print('Fair data exists: ${fairData != null}');
 
-      // Lade Lieferschein-Einstellungen
-      print('Loading delivery settings...');
       final deliverySettings = await _loadOrderDeliverySettings(order.id);
-      print('Delivery settings: $deliverySettings');
-
-      print('Calling DeliveryNoteGenerator...');
+      final orderAdditionalTexts = orderData['metadata']?['additionalTexts'] as Map<String, dynamic>?;
 
       final pdfBytes = await DeliveryNoteGenerator.generateDeliveryNotePdf(
         items: items,
-        customerData: customer!,  // Hier könnte der Fehler sein
+        customerData: customer!,
         fairData: fairData,
         costCenterCode: costCenterCode,
         currency: currency,
@@ -507,25 +1042,19 @@ class OrderDocumentPreviewManager {
         deliveryNoteNumber: '${order.orderNumber}-LS',
         deliveryDate: deliverySettings['delivery_date'],
         paymentDate: deliverySettings['payment_date'],
+        additionalTexts: orderAdditionalTexts,
       );
-
-      print('PDF generated successfully');
 
       if (context.mounted) {
         _openPdfViewer(context, pdfBytes, 'Lieferschein_${order.orderNumber}.pdf');
       }
     } catch (e, stackTrace) {
-      print('=== DELIVERY NOTE ERROR ===');
-      print('Error: $e');
-      print('Stack trace:');
-      print(stackTrace);
-      print('=== END ERROR ===');
+      print('Fehler bei Lieferschein-Preview: $e\n$stackTrace');
       rethrow;
     }
   }
 
   // Preview für Packliste
-// Preview für Packliste
   static Future<void> _showPackingListPreview(
       BuildContext context,
       Map<String, dynamic> orderData,
@@ -533,10 +1062,9 @@ class OrderDocumentPreviewManager {
       ) async {
     try {
       final customer = orderData['customer'] as Map<String, dynamic>;
-    final language = orderData['metadata']?['language'] ?? customer['language'] ?? 'DE';
+      final language = orderData['metadata']?['language'] ?? customer['language'] ?? 'DE';
       final costCenterCode = orderData['costCenter']?['code'] ?? '00000';
 
-      // Lade Packlisten-Einstellungen direkt aus Firebase
       final packingListDoc = await FirebaseFirestore.instance
           .collection('orders')
           .doc(order.id)
@@ -545,7 +1073,6 @@ class OrderDocumentPreviewManager {
           .get();
 
       if (!packingListDoc.exists) {
-        // Zeige Nachricht, dass keine Packliste konfiguriert ist
         if (context.mounted) {
           showDialog(
             context: context,
@@ -573,7 +1100,7 @@ class OrderDocumentPreviewManager {
         customerData: customer,
         fairData: orderData['fair'],
         costCenterCode: costCenterCode,
-        orderId: order.id,  // Übergebe die Order ID
+        orderId: order.id,
       );
 
       if (context.mounted) {
@@ -585,10 +1112,12 @@ class OrderDocumentPreviewManager {
     }
   }
 
-// Ersetze die _loadOrderTaraSettings Methode:
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SETTINGS LADEN
+  // ═══════════════════════════════════════════════════════════════════════════
+
   static Future<Map<String, dynamic>> _loadOrderTaraSettings(String orderId) async {
     try {
-      // Lade order-spezifische Einstellungen
       final orderSettingsDoc = await FirebaseFirestore.instance
           .collection('orders')
           .doc(orderId)
@@ -601,7 +1130,7 @@ class OrderDocumentPreviewManager {
         settings = orderSettingsDoc.data() ?? {};
       }
 
-      // NEU: Lade Verpackungsgewicht aus Packliste
+      // Lade Verpackungsgewicht aus Packliste
       double packagingWeight = 0.0;
       double packagingVolume = 0.0;
       int numberOfPackages = settings['number_of_packages'] ?? 1;
@@ -621,14 +1150,10 @@ class OrderDocumentPreviewManager {
             numberOfPackages = packages.length;
             for (final package in packages) {
               packagingWeight += (package['tare_weight'] as num?)?.toDouble() ?? 0.0;
-
               final width = (package['width'] as num?)?.toDouble() ?? 0.0;
               final height = (package['height'] as num?)?.toDouble() ?? 0.0;
               final length = (package['length'] as num?)?.toDouble() ?? 0.0;
-
-              // cm³ zu m³: dividiere durch 1.000.000 (10^6)
-
-              final volumeM3 = (width * height * length) / 1000000; // in m³
+              final volumeM3 = (width * height * length) / 1000000;
               packagingVolume += volumeM3;
             }
           }
@@ -637,7 +1162,6 @@ class OrderDocumentPreviewManager {
         print('Fehler beim Laden des Verpackungsgewichts aus Packliste: $e');
       }
 
-      // Überschreibe mit Werten aus Packliste
       settings['number_of_packages'] = numberOfPackages;
       settings['packaging_weight'] = packagingWeight;
       settings['packaging_volume'] = packagingVolume;
@@ -675,8 +1199,6 @@ class OrderDocumentPreviewManager {
       return {'delivery_date': null, 'payment_date': null};
     }
   }
-
-
 
   // PDF Viewer öffnen
   static void _openPdfViewer(BuildContext context, Uint8List pdfBytes, String fileName) {

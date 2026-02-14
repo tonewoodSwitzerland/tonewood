@@ -296,7 +296,7 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
         actions: [
           // Info-Button
           IconButton(
-            icon: getAdaptiveIcon(iconName: 'info_outline', defaultIcon: Icons.info_outline),
+            icon: getAdaptiveIcon(iconName: 'info', defaultIcon: Icons.info),
             onPressed: () => InfoHelpSheet.showForQuotes(context),
             tooltip: 'Hilfe & Info',
           ),

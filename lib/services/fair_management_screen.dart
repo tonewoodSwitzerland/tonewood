@@ -380,7 +380,7 @@ class _FairFormSheetState extends State<FairFormSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Allgemeine Informationen
-                    _buildSectionTitle('Allgemeine Informationen', Icons.info_outline),
+                    _buildSectionTitle('Allgemeine Informationen', Icons.info),
                     const SizedBox(height: 12),
 
                     TextFormField(

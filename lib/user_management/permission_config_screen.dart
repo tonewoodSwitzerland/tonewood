@@ -290,7 +290,7 @@ class _RolesTab extends StatelessWidget {
               color: Colors.blue.shade50,
               child: Row(
                 children: [
-                  getAdaptiveIcon(iconName: 'info', defaultIcon: Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                  getAdaptiveIcon(iconName: 'info', defaultIcon: Icons.info, color: Colors.blue.shade700, size: 20),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(

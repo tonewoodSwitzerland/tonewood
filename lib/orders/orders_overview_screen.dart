@@ -90,7 +90,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
         ),
         actions: [
           IconButton(
-            icon: getAdaptiveIcon(iconName: 'info_outline', defaultIcon: Icons.info_outline),
+            icon: getAdaptiveIcon(iconName: 'info', defaultIcon: Icons.info),
             onPressed: () => InfoHelpSheet.showForOrders(context),
             tooltip: 'Hilfe & Info',
           ),
@@ -2131,6 +2131,15 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
 // In der _getDocumentTypeName Methode, füge diesen Fall hinzu:
 
   String _getDocumentTypeName(String docType) {
+    // Einzelversand-Dokumente: commercial_invoice_pdf_1, delivery_note_pdf_2 etc.
+    final shipmentMatch = RegExp(r'^(commercial_invoice_pdf|delivery_note_pdf)_(\d+)$').firstMatch(docType);
+    if (shipmentMatch != null) {
+      final baseType = shipmentMatch.group(1)!;
+      final number = shipmentMatch.group(2)!;
+      final baseName = baseType == 'commercial_invoice_pdf' ? 'Handelsrechnung' : 'Lieferschein';
+      return '$baseName (Sendung $number)';
+    }
+
     switch (docType) {
       case 'quote_pdf':
         return 'Angebot';
@@ -2142,13 +2151,12 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
         return 'Handelsrechnung';
       case 'packing_list_pdf':
         return 'Packliste';
-      case 'veranlagungsverfuegung_pdf':  // NEU
+      case 'veranlagungsverfuegung_pdf':
         return 'Veranlagungsverfügung Ausfuhr';
       default:
         return docType.replaceAll('_', ' ').replaceAll('-', ' ');
     }
   }
-
 
   Widget _buildHistoryEntry({
     required IconData icon,
@@ -2366,8 +2374,13 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
 
                       // Prüfe ob das Dokument löschbar ist
                       // Prüfe ob das Dokument löschbar ist
-                      final isDeletable = ['invoice_pdf','delivery-note_pdf', 'commercial-invoice_pdf', 'packing-list_pdf', 'delivery_note_pdf', 'commercial_invoice_pdf', 'packing_list_pdf']
-                          .contains(docType);
+                      final isDeletable = docType == 'invoice_pdf' ||
+                          docType.startsWith('delivery_note_pdf') ||
+                          docType.startsWith('commercial_invoice_pdf') ||
+                          docType.startsWith('packing_list_pdf') ||
+                          docType == 'delivery-note_pdf' ||
+                          docType == 'commercial-invoice_pdf' ||
+                          docType == 'packing-list_pdf';
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
@@ -2442,6 +2455,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
   }
 
 // Neue Methode zum Löschen von Dokumenten
+  // Neue Methode zum Löschen von Dokumenten
   Future<void> _deleteDocument(OrderX order, String docType) async {
     // Bestätigungsdialog
     final confirmed = await showDialog<bool>(
@@ -2466,10 +2480,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                 children: [
                   Row(
                     children: [
-
                       getAdaptiveIcon(
                           iconName: 'warning',
-                          defaultIcon:Icons.warning, color: Colors.orange, size: 20),
+                          defaultIcon: Icons.warning, color: Colors.orange, size: 20),
                       SizedBox(width: 8),
                       Text(
                         'Hinweis:',
@@ -2544,36 +2557,42 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
         });
 
         // 3. Lösche spezifische Einstellungen je nach Dokumenttyp
-        switch (docType) {
-          case 'packing_list_pdf':
-          // Lösche Packlisten-Einstellungen
-            final packingListRef = FirebaseFirestore.instance
-                .collection('orders')
-                .doc(order.id)
-                .collection('packing_list')
-                .doc('settings');
-            batch.delete(packingListRef);
-            break;
+        // Einzelversand-Dokumente (_1, _2 etc.): Nur PDF löschen, Settings behalten
+        if (docType.startsWith('commercial_invoice_pdf_') ||
+            docType.startsWith('delivery_note_pdf_')) {
+          // Einzel-Sendungsdokumente: Keine Settings löschen
+        } else {
+          switch (docType) {
+            case 'packing_list_pdf':
+            // Lösche Packlisten-Einstellungen
+              final packingListRef = FirebaseFirestore.instance
+                  .collection('orders')
+                  .doc(order.id)
+                  .collection('packing_list')
+                  .doc('settings');
+              batch.delete(packingListRef);
+              break;
 
-          case 'delivery_note_pdf':
-          // Lösche Lieferschein-Einstellungen (falls vorhanden)
-            final deliverySettingsRef = FirebaseFirestore.instance
-                .collection('orders')
-                .doc(order.id)
-                .collection('settings')
-                .doc('delivery_settings');
-            batch.delete(deliverySettingsRef);
-            break;
+            case 'delivery_note_pdf':
+            // Lösche Lieferschein-Einstellungen (falls vorhanden)
+              final deliverySettingsRef = FirebaseFirestore.instance
+                  .collection('orders')
+                  .doc(order.id)
+                  .collection('settings')
+                  .doc('delivery_settings');
+              batch.delete(deliverySettingsRef);
+              break;
 
-          case 'commercial_invoice_pdf':
-          // Lösche Handelsrechnung-Einstellungen (falls vorhanden)
-            final commercialSettingsRef = FirebaseFirestore.instance
-                .collection('orders')
-                .doc(order.id)
-                .collection('settings')
-                .doc('tara_settings');
-            batch.delete(commercialSettingsRef);
-            break;
+            case 'commercial_invoice_pdf':
+            // Lösche Handelsrechnung-Einstellungen (falls vorhanden)
+              final commercialSettingsRef = FirebaseFirestore.instance
+                  .collection('orders')
+                  .doc(order.id)
+                  .collection('settings')
+                  .doc('tara_settings');
+              batch.delete(commercialSettingsRef);
+              break;
+          }
         }
 
         // 4. Erstelle History-Eintrag
@@ -2627,7 +2646,6 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
       }
     }
   }
-
   Color _getDocumentTypeColor(String docType) {
     if (docType.contains('quote')) return Colors.blue;
     if (docType.contains('invoice')) return Colors.green;

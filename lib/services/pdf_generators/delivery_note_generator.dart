@@ -337,18 +337,50 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
   }
 
   // Zusatztexte
-  static Future<pw.Widget> _buildAdditionalTexts(String language) async {
+  static Future<pw.Widget> _buildAdditionalTexts(String language, Map<String, dynamic>? passedAdditionalTexts) async {
     try {
-      final additionalTexts = await AdditionalTextsManager.loadAdditionalTexts();
+      final additionalTexts = passedAdditionalTexts ?? await AdditionalTextsManager.loadAdditionalTexts();
+
+      // Migration: altes 'legend' Feld auf neue Felder mappen
+      if (additionalTexts.containsKey('legend') && !additionalTexts.containsKey('legend_origin')) {
+        final legendSelected = additionalTexts['legend']?['selected'] ?? false;
+        final legendType = additionalTexts['legend']?['type'] ?? 'standard';
+        final legendCustom = additionalTexts['legend']?['custom_text'] ?? '';
+        additionalTexts['legend_origin'] = {
+          'type': legendType,
+          'custom_text': legendCustom,
+          'selected': legendSelected,
+        };
+        additionalTexts['legend_temperature'] = {
+          'type': legendType,
+          'custom_text': '',
+          'selected': legendSelected,
+        };
+      }
+
       final List<pw.Widget> textWidgets = [];
 
-      if (additionalTexts['legend']?['selected'] == true) {
+// Legende (Ursprung + Temperatur)
+      final hasOrigin = additionalTexts['legend_origin']?['selected'] == true;
+      final hasTemperature = additionalTexts['legend_temperature']?['selected'] == true;
+
+      if (hasOrigin || hasTemperature) {
+        final parts = <String>[];
+        if (hasOrigin) {
+          parts.add(AdditionalTextsManager.getTextContent(
+              additionalTexts['legend_origin'], 'legend_origin', language: language));
+        }
+        if (hasTemperature) {
+          parts.add(AdditionalTextsManager.getTextContent(
+              additionalTexts['legend_temperature'], 'legend_temperature', language: language));
+        }
+        final prefix = language == 'EN' ? 'Legend: ' : 'Legende: ';
         textWidgets.add(
           pw.Container(
             alignment: pw.Alignment.centerLeft,
             margin: const pw.EdgeInsets.only(bottom: 3),
             child: pw.Text(
-              AdditionalTextsManager.getTextContent(additionalTexts['legend'], 'legend', language: language),
+              '$prefix${parts.join(", ")}',
               style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
             ),
           ),
@@ -408,6 +440,8 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
     }
   }
 
+
+
   /// HAUPTMETHODE: PDF generieren
   static Future<Uint8List> generateDeliveryNotePdf({
     required List<Map<String, dynamic>> items,
@@ -422,6 +456,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
     required String language,
     DateTime? deliveryDate,
     DateTime? paymentDate,
+    Map<String, dynamic>? additionalTexts,
   }) async {
     final addressEmailSpacing = await PdfSettingsHelper.getDeliveryNoteAddressEmailSpacing();
 
@@ -447,7 +482,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
       showThermalColumn,
     );
 
-    final additionalTextsWidget = await _buildAdditionalTexts(language);
+    final additionalTextsWidget = await _buildAdditionalTexts(language, additionalTexts);
 
     pdf.addPage(
       pw.MultiPage(

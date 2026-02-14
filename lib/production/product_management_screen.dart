@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:tonewood/home/production_screen.dart';
 import 'package:tonewood/analytics/roundwood/roundwood_entry_screen.dart';
-import 'package:tonewood/home/warehouse_screen.dart';
+import 'package:tonewood/warehouse/warehouse_screen.dart';
 import 'package:tonewood/production/roundwood_selection_dialog.dart';
 import 'package:tonewood/production/stamm_auswahl_sheet.dart';
 import 'package:tonewood/production/stamm_buchung_sheet.dart';
@@ -2708,7 +2708,7 @@ print("sB:$searchBarcode");
                   children: [
                     getAdaptiveIcon(
                       iconName: 'info',
-                      defaultIcon: Icons.info_outline,
+                      defaultIcon: Icons.info,
                       color: Colors.orange[700],
                       size: 20,
                     ),

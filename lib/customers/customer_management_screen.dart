@@ -422,16 +422,16 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                 ),
               ),
               const PopupMenuDivider(),
-              PopupMenuItem(
-                value: 'import',
-                child: Row(
-                  children: [
-                    getAdaptiveIcon(iconName: 'upload_file', defaultIcon: Icons.upload_file, size: 20),
-                    const SizedBox(width: 12),
-                    const Text('Kundenimport'),
-                  ],
-                ),
-              ),
+              // PopupMenuItem(
+              //   value: 'import',
+              //   child: Row(
+              //     children: [
+              //       getAdaptiveIcon(iconName: 'upload_file', defaultIcon: Icons.upload_file, size: 20),
+              //       const SizedBox(width: 12),
+              //       const Text('Kundenimport'),
+              //     ],
+              //   ),
+              // ),
               PopupMenuItem(
                 value: 'export',
                 child: Row(
@@ -458,9 +458,12 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
               decoration: InputDecoration(
                 hintText: 'Suchen',
                 hintStyle: const TextStyle(fontSize: 14),
-                prefixIcon: getAdaptiveIcon(
-                  iconName: 'search',
-                  defaultIcon: Icons.search,
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: getAdaptiveIcon(
+                    iconName: 'search',
+                    defaultIcon: Icons.search,
+                  ),
                 ),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
@@ -1312,7 +1315,7 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
                     child: Row(
                       children: [
                         Icon(
-                          Icons.info_outline,
+                          Icons.info,
                           size: 12,
                           color: Theme.of(context).colorScheme.primary,
                         ),

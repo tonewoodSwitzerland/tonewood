@@ -295,7 +295,7 @@ class _CostCenterFormContentState extends State<CostCenterFormContent> {
                   children: [
                     getAdaptiveIcon(
                       iconName: 'info',
-                      defaultIcon: Icons.info_outline,
+                      defaultIcon: Icons.info,
                       size: 16,
                       color: Theme.of(context).colorScheme.outline,
                     ),
@@ -676,7 +676,7 @@ class CostCenterDetailsContent extends StatelessWidget {
           // Metadaten
           _buildDetailCard(
             context,
-            icon: Icons.info_outline,
+            icon: Icons.info,
             title: 'Informationen',
             child: _buildDetailRow(
               context,

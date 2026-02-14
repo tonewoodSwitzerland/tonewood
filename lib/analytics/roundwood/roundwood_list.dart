@@ -39,7 +39,8 @@ class RoundwoodList extends StatefulWidget {
 
 class RoundwoodListState extends State<RoundwoodList> {
   bool _roundwoodSortAscending = false;
-
+  Map<String, String> _woodTypeNames = {};  // NEU
+  Map<String, String> _qualityNames = {};   // NEU
   /// Client-seitiger Filter für is_closed
   /// Firestore kann nicht auf "Feld existiert nicht ODER ist false" filtern
   List<QueryDocumentSnapshot> _applyClosedFilter(List<QueryDocumentSnapshot> docs) {
@@ -62,12 +63,137 @@ class RoundwoodListState extends State<RoundwoodList> {
       return isClosed != true;
     }).toList();
   }
+@override
+void initState() {
+  super.initState();
+  _loadNames(); // NEU
+}
+Future<void> _loadNames() async {
+  final woodSnap = await FirebaseFirestore.instance.collection('wood_types').get();
+  final qualSnap = await FirebaseFirestore.instance.collection('qualities').get();
+  if (mounted) {
+    setState(() {
+      for (final doc in woodSnap.docs) {
+        final data = doc.data();
+        _woodTypeNames[data['code'] as String? ?? doc.id] = data['name'] as String? ?? doc.id;
+      }
+      for (final doc in qualSnap.docs) {
+        final data = doc.data();
+        _qualityNames[data['code'] as String? ?? doc.id] = data['name'] as String? ?? doc.id;
+      }
+    });
+  }
+}
+// NEU: Filter-Chips Widget
+  Widget _buildActiveFilterChips() {
+    final filter = widget.filter;
+    if (filter.toMap().isEmpty) return const SizedBox.shrink();
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          if (filter.year != null)
+            _buildChip('Jahr: ${filter.year}', () {
+              widget.onFilterChanged(filter.copyWith(clearYear: true));
+            }),
+          if (filter.woodTypes?.isNotEmpty ?? false)
+            ...filter.woodTypes!.map((w) => _buildChip(
+              'Holz: ${_woodTypeNames[w] ?? w}',
+                  () {
+                final newList = filter.woodTypes!.where((x) => x != w).toList();
+                widget.onFilterChanged(filter.copyWith(
+                  woodTypes: newList.isEmpty ? null : newList,
+                  clearWoodTypes: newList.isEmpty,
+                ));
+              },
+            )),
+          if (filter.qualities?.isNotEmpty ?? false)
+            ...filter.qualities!.map((q) => _buildChip(
+              'Qualität: ${_qualityNames[q] ?? q}',
+                  () {
+                final newList = filter.qualities!.where((x) => x != q).toList();
+                widget.onFilterChanged(filter.copyWith(
+                  qualities: newList.isEmpty ? null : newList,
+                  clearQualities: newList.isEmpty,
+                ));
+              },
+            )),
+          if (filter.purposes?.isNotEmpty ?? false)
+            ...filter.purposes!.map((p) => _buildChip(
+              'Zweck: $p',
+                  () {
+                final newList = filter.purposes!.where((x) => x != p).toList();
+                widget.onFilterChanged(filter.copyWith(
+                  purposes: newList.isEmpty ? null : newList,
+                  clearPurposes: newList.isEmpty,
+                ));
+              },
+            )),
+          if (filter.origin != null)
+            _buildChip('Herkunft: ${filter.origin}', () {
+              widget.onFilterChanged(filter.copyWith(clearOrigin: true));
+            }),
+          if (filter.volumeMin != null || filter.volumeMax != null)
+            _buildChip(
+              'Volumen: ${filter.volumeMin ?? ''}–${filter.volumeMax ?? ''} m³',
+                  () => widget.onFilterChanged(filter.copyWith(clearVolume: true)),
+            ),
+          if (filter.timeRange != null)
+            _buildChip(
+              'Zeitraum: ${{
+                'week': 'Woche',
+                'month': 'Monat',
+                'quarter': 'Quartal',
+                'year': 'Jahr',
+              }[filter.timeRange] ?? filter.timeRange!}',
+                  () => widget.onFilterChanged(filter.copyWith(clearDates: true)),
+            ),
+          if (filter.startDate != null && filter.endDate != null)
+            _buildChip(
+              '${DateFormat('dd.MM.yy').format(filter.startDate!)} – ${DateFormat('dd.MM.yy').format(filter.endDate!)}',
+                  () => widget.onFilterChanged(filter.copyWith(clearDates: true)),
+            ),
+          if (filter.isMoonwood ?? false)
+            _buildChip('Mondholz', () {
+              widget.onFilterChanged(filter.copyWith(clearMoonwood: true));
+            }),
+          if (filter.isFSC ?? false)
+            _buildChip('FSC', () {
+              widget.onFilterChanged(filter.copyWith(clearFSC: true));
+            }),
+          if (filter.showClosed == false)
+            _buildChip('Abgeschlossene ausgeblendet', () {
+              widget.onFilterChanged(filter.copyWith(clearShowClosed: true));
+            }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChip(String label, VoidCallback onDelete) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Chip(
+        backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
+        label: Text(label, style: const TextStyle(fontSize: 12)),
+        deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 16),
+        onDeleted: onDelete,
+        deleteIconColor: const Color(0xFF0F4A29),
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         SizedBox(height: h * 0.01),
+        _buildActiveFilterChips(),
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: widget.service.getRoundwoodStream(widget.filter),

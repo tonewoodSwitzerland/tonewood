@@ -212,11 +212,11 @@ class StandardizedProductManagementScreenState extends State<StandardizedProduct
         actions: [
           // Debug-Button (nur für Entwicklung)
 
-          IconButton(
-            icon: getAdaptiveIcon(iconName: 'upload', defaultIcon: Icons.upload),
-            onPressed: () => StandardizedProductImportService.showImportDialog(context, _resetAndReload),
-            tooltip: 'Produkte importieren',
-          ),
+          // IconButton(
+          //   icon: getAdaptiveIcon(iconName: 'upload', defaultIcon: Icons.upload),
+          //   onPressed: () => StandardizedProductImportService.showImportDialog(context, _resetAndReload),
+          //   tooltip: 'Produkte importieren',
+          // ),
           IconButton(
             icon: getAdaptiveIcon(iconName: 'download', defaultIcon: Icons.download),
             onPressed: () => StandardizedProductExportService.exportProductsCsv(context),
@@ -236,7 +236,10 @@ class StandardizedProductManagementScreenState extends State<StandardizedProduct
                   controller: searchController,
                   decoration: InputDecoration(
                     labelText: 'Suchen (Artikelnr., Name, Instrument)',
-                    prefixIcon: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
+                    ),
                     suffixIcon: searchController.text.isNotEmpty
                         ? IconButton(
                       icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear),
@@ -257,7 +260,10 @@ class StandardizedProductManagementScreenState extends State<StandardizedProduct
                     value: _selectedInstrument,
                     decoration: InputDecoration(
                       labelText: 'Instrument filtern',
-                      prefixIcon: getAdaptiveIcon(iconName: 'music_note', defaultIcon: Icons.music_note),
+                      prefixIcon: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: getAdaptiveIcon(iconName: 'music_note', defaultIcon: Icons.music_note),
+                      ),
                       border: const OutlineInputBorder(),
                       filled: true,
                       fillColor: Theme.of(context).colorScheme.surface,
@@ -1441,7 +1447,7 @@ class _StandardizedProductDialogState extends State<StandardizedProductDialog> {
             children: [
               getAdaptiveIcon(
                 iconName: 'info',
-                defaultIcon: Icons.info_outline,
+                defaultIcon: Icons.info,
                 size: 16,
                 color: Theme.of(context).colorScheme.tertiary,
               ),

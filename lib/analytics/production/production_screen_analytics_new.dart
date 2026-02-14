@@ -1,18 +1,18 @@
-import 'dart:io';
+// lib/analytics/production/production_screen_analytics_new.dart
+//
+// Hauptscreen für Produktionsauswertung (Analytics).
+// Verwendet die neue flache production_batches Collection.
+// Export über den neuen ProductionExportService (Web + Mobile).
+
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:intl/intl.dart';
 import 'package:tonewood/production/production_batch_service.dart';
 
 import '../../constants.dart';
 import '../../services/icon_helper.dart';
+import 'services/production_export_service.dart';
+import '../../production/production_overview_new.dart';
+import '../../production/production_logs_view.dart';
 
-import 'production_overview_new.dart';
-import 'production_logs_view.dart';  // Neue Datei für Stämme-Ansicht
-
-/// Hauptscreen für Produktionsauswertung (Analytics)
-/// Verwendet die neue flache production_batches Collection
 class ProductionAnalyticsScreen extends StatefulWidget {
   final bool isDesktopLayout;
 
@@ -30,6 +30,7 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
   late TabController _tabController;
   final ProductionBatchService _service = ProductionBatchService();
   int _selectedYear = DateTime.now().year;
+  bool _isExporting = false;
 
   @override
   void initState() {
@@ -60,7 +61,6 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
           ),
           child: Row(
             children: [
-              // Tab Bar
               Expanded(
                 child: TabBar(
                   controller: _tabController,
@@ -92,7 +92,7 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
                   ],
                 ),
               ),
-              // Export Button (nur bei Stämme-Tab)
+              // Export Button (nur bei Stämme-Tab sichtbar)
               ListenableBuilder(
                 listenable: _tabController,
                 builder: (context, child) {
@@ -103,7 +103,16 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
                       ignoring: _tabController.index != 1,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: IconButton(
+                        child: _isExporting
+                            ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                            : IconButton(
                           onPressed: _showExportDialog,
                           icon: getAdaptiveIcon(iconName: 'download', defaultIcon: Icons.download),
                           tooltip: 'Exportieren',
@@ -122,10 +131,7 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
           child: TabBarView(
             controller: _tabController,
             children: [
-              // Übersicht Tab
               const ProductionOverviewNew(),
-
-              // Stämme Tab
               ProductionLogsView(
                 service: _service,
                 onYearChanged: (year) {
@@ -138,6 +144,10 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
       ],
     );
   }
+
+  // =============================================
+  // EXPORT DIALOG & METHODEN
+  // =============================================
 
   Future<void> _showExportDialog() async {
     showDialog(
@@ -191,10 +201,27 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
                 child: getAdaptiveIcon(iconName: 'picture_as_pdf', defaultIcon: Icons.picture_as_pdf, color: Colors.red),
               ),
               title: const Text('PDF Report'),
-              subtitle: const Text('Produktionsbericht als PDF'),
+              subtitle: const Text('Chargenliste mit Zusammenfassung'),
               onTap: () {
                 Navigator.pop(context);
                 _exportPdf();
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.deepPurple.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: getAdaptiveIcon(iconName: 'analytics', defaultIcon: Icons.analytics, color: Colors.deepPurple),
+              ),
+              title: const Text('PDF mit Analyse'),
+              subtitle: const Text('Chargenliste + Verteilungsanalyse'),
+              onTap: () {
+                Navigator.pop(context);
+                _exportPdf(includeAnalytics: true);
               },
             ),
           ],
@@ -210,77 +237,32 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
   }
 
   Future<void> _exportCsv() async {
+    setState(() => _isExporting = true);
     try {
       final batches = await _service.getBatchesForYear(_selectedYear);
-
-      // CSV Header
-      final lines = <String>[
-        'Datum;Produkt;Instrument;Bauteil;Holzart;Qualität;Menge;Einheit;Wert CHF;Stamm-Nr;Stamm-Jahr',
-      ];
-
-      // CSV Daten
-      for (final batch in batches) {
-        final date = batch['stock_entry_date'] != null
-            ? DateFormat('dd.MM.yyyy').format((batch['stock_entry_date'] as dynamic).toDate())
-            : '';
-
-        lines.add([
-          date,
-          '${batch['instrument_name']} ${batch['part_name']}',
-          batch['instrument_name'] ?? '',
-          batch['part_name'] ?? '',
-          batch['wood_name'] ?? '',
-          batch['quality_name'] ?? '',
-          batch['quantity']?.toString() ?? '0',
-          batch['unit'] ?? 'Stk',
-          batch['value']?.toString() ?? '0',
-          batch['roundwood_internal_number'] ?? '',
-          batch['roundwood_year']?.toString() ?? '',
-        ].join(';'));
-      }
-
-      final csv = lines.join('\n');
-      final fileName = 'Produktion_${_selectedYear}_${DateFormat('yyyyMMdd').format(DateTime.now())}.csv';
-      final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/$fileName');
-      await file.writeAsString(csv);
-
-      await Share.shareXFiles([XFile(file.path)], subject: fileName);
-
-      Future.delayed(const Duration(minutes: 1), () => file.delete());
-
-      if (mounted) {
-        AppToast.show(message: 'Export erfolgreich', height: h);
-      }
+      await ProductionExportService.exportCsv(batches);
+      if (mounted) AppToast.show(message: 'CSV Export erfolgreich', height: h);
     } catch (e) {
-      if (mounted) {
-        AppToast.show(message: 'Fehler beim Export: $e', height: h);
-      }
+      if (mounted) AppToast.show(message: 'Fehler beim Export: $e', height: h);
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
     }
   }
 
-  Future<void> _exportPdf() async {
-    // TODO: PDF Export implementieren
-    AppToast.show(message: 'PDF Export wird implementiert...', height: h);
-  }
-}
-
-// ============================================================
-// AnimatedBuilder Helper (falls nicht vorhanden)
-// ============================================================
-class AnimatedBuilder extends AnimatedWidget {
-  final Widget Function(BuildContext context, Widget? child) builder;
-  final Widget? child;
-
-  const AnimatedBuilder({
-    Key? key,
-    required Animation<double> animation,
-    required this.builder,
-    this.child,
-  }) : super(key: key, listenable: animation);
-
-  @override
-  Widget build(BuildContext context) {
-    return builder(context, child);
+  Future<void> _exportPdf({bool includeAnalytics = false}) async {
+    setState(() => _isExporting = true);
+    try {
+      final batches = await _service.getBatchesForYear(_selectedYear);
+      await ProductionExportService.exportPdf(
+        batches,
+        includeAnalytics: includeAnalytics,
+        activeFilters: {'years': [_selectedYear.toString()]},
+      );
+      if (mounted) AppToast.show(message: 'PDF Export erfolgreich', height: h);
+    } catch (e) {
+      if (mounted) AppToast.show(message: 'Fehler beim Export: $e', height: h);
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
   }
 }

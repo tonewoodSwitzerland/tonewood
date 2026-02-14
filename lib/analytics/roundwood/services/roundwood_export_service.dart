@@ -1,51 +1,56 @@
+// lib/analytics/roundwood/services/roundwood_export_service.dart
 
-import 'package:share_plus/share_plus.dart';
+import 'dart:typed_data';
 import 'package:intl/intl.dart';
 import '../models/roundwood_models.dart';
 import 'roundwood_pdf_service.dart';
 import 'roundwood_csv_service.dart';
 
+// Conditional imports für Web vs. Mobile
+// WICHTIG: Du brauchst die gleichen 3 Helper-Dateien wie beim Warehouse-Export.
+// Falls sie im selben Projekt unter warehouse/services/ liegen, importiere von dort:
+import '../../../warehouse/services/warehouse_export_helper_stub.dart'
+if (dart.library.html) '../../../warehouse/services/warehouse_export_helper_web.dart'
+if (dart.library.io) '../../../warehouse/services/warehouse_export_helper_mobile.dart';
+
 class RoundwoodExportService {
   static String _getFileName(String type) {
-    // Beispiel: "Rundholzliste_01.11.2023.pdf"
     return 'Rundholzliste_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.$type';
   }
 
-  static Future<void> sharePdf(List<RoundwoodItem> items) async {
-    try {
-      items.sort((a, b) => a.internalNumber.compareTo(b.internalNumber));
-      final pdfBytes = await RoundwoodPdfService.generatePdf(items);
-      final fileName = _getFileName('pdf');  // Stelle sicher, dass dieser Name verwendet wird
+  /// CSV Export - funktioniert auf Web und Mobile
+  static Future<void> exportCsv(List<RoundwoodItem> items) async {
+    items.sort((a, b) => a.internalNumber.compareTo(b.internalNumber));
 
-      await Share.shareXFiles(
-        [XFile.fromData(
-          pdfBytes,
-          name: fileName,  // Hier wird der Name explizit gesetzt
-          mimeType: 'application/pdf',
-        )],
-        subject: 'Rundholzliste ${DateFormat('dd.MM.yyyy').format(DateTime.now())}',
-      );
-    } catch (e) {
-      rethrow;
-    }
+    final csvBytes = await RoundwoodCsvService.generateCsv(items);
+    final fileName = _getFileName('csv');
+
+    await saveAndShareFile(
+      bytes: csvBytes,
+      fileName: fileName,
+      mimeType: 'text/csv',
+    );
   }
 
-  static Future<void> shareCsv(List<RoundwoodItem> items) async {
-    try {
-      items.sort((a, b) => a.internalNumber.compareTo(b.internalNumber));
-      final csvBytes = await RoundwoodCsvService.generateCsv(items);
-      final fileName = _getFileName('csv');  // Stelle sicher, dass dieser Name verwendet wird
+  /// PDF Export - funktioniert auf Web und Mobile
+  static Future<void> exportPdf(
+      List<RoundwoodItem> items, {
+        bool includeAnalytics = false,
+        Map<String, dynamic>? activeFilters,
+      }) async {
+    items.sort((a, b) => a.internalNumber.compareTo(b.internalNumber));
 
-      await Share.shareXFiles(
-        [XFile.fromData(
-          csvBytes,
-          name: fileName,  // Hier wird der Name explizit gesetzt
-          mimeType: 'text/csv',
-        )],
-        subject: 'Rundholzliste ${DateFormat('dd.MM.yyyy').format(DateTime.now())}',
-      );
-    } catch (e) {
-      rethrow;
-    }
+    final pdfBytes = await RoundwoodPdfService.generatePdf(
+      items,
+      includeAnalytics: includeAnalytics,
+      activeFilters: activeFilters,
+    );
+    final fileName = _getFileName('pdf');
+
+    await saveAndShareFile(
+      bytes: Uint8List.fromList(pdfBytes),
+      fileName: fileName,
+      mimeType: 'application/pdf',
+    );
   }
 }

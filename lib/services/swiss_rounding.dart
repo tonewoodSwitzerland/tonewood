@@ -37,14 +37,14 @@ class SwissRounding {
       }
 
       // Fallback zu Standard-Einstellungen
-      print('Keine Rundungseinstellungen in Firebase gefunden, verwende Standard-Werte');
+      //print('Keine Rundungseinstellungen in Firebase gefunden, verwende Standard-Werte');
       return {
         'CHF': true,  // Standard: CHF wird gerundet
         'EUR': false,
         'USD': false,
       };
     } catch (e) {
-      print('Fehler beim Laden der Rundungseinstellungen: $e');
+      //print('Fehler beim Laden der Rundungseinstellungen: $e');
       // Fallback zu Standard-Einstellungen
       return {
         'CHF': true,
@@ -62,10 +62,10 @@ class SwissRounding {
     bool forceRounding = false
   }) {
     // Debug-Ausgabe
-    print('=== Swiss Rounding Debug ===');
-    print('Original amount: $amount');
-    print('Amount * 100: ${amount * 100}');
-    print('Amount * 100 rounded: ${(amount * 100).round()}');
+    //print('=== Swiss Rounding Debug ===');
+    //print('Original amount: $amount');
+    //print('Amount * 100: ${amount * 100}');
+    //print('Amount * 100 rounded: ${(amount * 100).round()}');
 
     // Prüfe ob Rundung für diese Währung aktiviert ist
     if (roundingSettings != null) {
@@ -84,8 +84,8 @@ class SwissRounding {
     int totalRappen = (amount * 100).round();
     int lastDigit = totalRappen % 10;
 
-    print('Total Rappen: $totalRappen');
-    print('Last digit: $lastDigit');
+    //print('Total Rappen: $totalRappen');
+    //print('Last digit: $lastDigit');
 
     // Berechne die Anpassung basierend auf der letzten Ziffer
     int adjustedRappen;
@@ -94,35 +94,35 @@ class SwissRounding {
       case 2:
       // Abrunden auf .00
         adjustedRappen = totalRappen - lastDigit;
-        print('Case 1,2: Abrunden auf .00');
+        //print('Case 1,2: Abrunden auf .00');
         break;
       case 3:
       case 4:
       // Aufrunden auf .05
         adjustedRappen = totalRappen - lastDigit + 5;
-        print('Case 3,4: Aufrunden auf .05');
+        //print('Case 3,4: Aufrunden auf .05');
         break;
       case 6:
       case 7:
       // Abrunden auf .05
         adjustedRappen = totalRappen - lastDigit + 5;
-        print('Case 6,7: Abrunden auf .05');
+        //print('Case 6,7: Abrunden auf .05');
         break;
       case 8:
       case 9:
       // Aufrunden auf .10
         adjustedRappen = totalRappen - lastDigit + 10;
-        print('Case 8,9: Aufrunden auf .10');
+        //print('Case 8,9: Aufrunden auf .10');
         break;
       default:
       // 0 und 5 bleiben unverändert
         adjustedRappen = totalRappen;
-        print('Case 0,5: Keine Änderung');
+        //print('Case 0,5: Keine Änderung');
     }
 
     double result = adjustedRappen / 100.0;
-    print('Result: $result');
-    print('=== End Debug ===');
+    //print('Result: $result');
+    //print('=== End Debug ===');
 
     return result;
   }

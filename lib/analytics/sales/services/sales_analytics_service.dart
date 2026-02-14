@@ -8,12 +8,9 @@ import '../models/sales_analytics_models.dart';
 class SalesAnalyticsService {
   final _db = FirebaseFirestore.instance;
 
-  // Cache: Document-ID -> Name für distribution_channel
   Map<String, String>? _distributionChannelNames;
-  // Cache: Document-ID -> Code für cost_centers
   Map<String, String>? _costCenterCodes;
 
-  /// Lädt die Zuordnung Document-ID -> Name für Bestellarten
   Future<void> _loadDistributionChannelNames() async {
     final snapshot = await _db.collection('distribution_channel').get();
     _distributionChannelNames = {};
@@ -23,7 +20,6 @@ class SalesAnalyticsService {
     }
   }
 
-  /// Lädt die Zuordnung Document-ID -> Code für Kostenstellen
   Future<void> _loadCostCenterCodes() async {
     final snapshot = await _db.collection('cost_centers').get();
     _costCenterCodes = {};
@@ -37,7 +33,7 @@ class SalesAnalyticsService {
   Stream<SalesAnalytics> getAnalyticsStream(SalesFilter filter) {
     Query query = _db.collection('orders');
 
-    // Serverseitige Filter anwenden (Firestore erlaubt nur einen whereIn)
+    // Serverseitige Filter (Firestore erlaubt nur einen whereIn)
     if (filter.selectedCustomers != null && filter.selectedCustomers!.isNotEmpty) {
       query = query.where('customer.id', whereIn: filter.selectedCustomers);
     } else if (filter.selectedFairs != null && filter.selectedFairs!.isNotEmpty) {
@@ -58,7 +54,7 @@ class SalesAnalyticsService {
       final previousMonthStart = DateTime(now.year, now.month - 1, 1);
       final previousMonthEnd = DateTime(now.year, now.month, 0, 23, 59, 59);
 
-      // Zeitraum-Filter berechnen (aus timeRange oder startDate/endDate)
+      // Zeitraum-Filter berechnen
       DateTime? filterStartDate = filter.startDate;
       DateTime? filterEndDate = filter.endDate;
 
@@ -85,15 +81,23 @@ class SalesAnalyticsService {
         }
       }
 
-      // Aggregations-Variablen
+      // Aggregations-Variablen — Warenwert (subtotal)
       double totalRevenue = 0;
       double yearRevenue = 0;
       double monthRevenue = 0;
       double previousYearRevenue = 0;
       double previousMonthRevenue = 0;
-      int orderCount = 0;
-
       Map<String, double> monthlyRevenue = {};
+
+      // Aggregations-Variablen — Brutto/Gesamtbetrag (total)
+      double totalRevenueGross = 0;
+      double yearRevenueGross = 0;
+      double monthRevenueGross = 0;
+      double previousYearRevenueGross = 0;
+      double previousMonthRevenueGross = 0;
+      Map<String, double> monthlyRevenueGross = {};
+
+      int orderCount = 0;
 
       int thermoItemCount = 0;
       int totalItemCount = 0;
@@ -119,6 +123,9 @@ class SalesAnalyticsService {
         // Stornierte Aufträge überspringen
         if (data['status'] == 'cancelled') continue;
 
+        // FIX: Nur versendete Aufträge zählen
+        if (data['status'] != 'shipped') continue;
+
         // ============================================================
         // ORDER-LEVEL FILTER (clientseitig)
         // ============================================================
@@ -132,7 +139,6 @@ class SalesAnalyticsService {
         // Messe-Filter (clientseitig falls Kunde serverseitig gefiltert wird)
         if (filter.selectedFairs != null && filter.selectedFairs!.isNotEmpty) {
           if (filter.selectedCustomers != null && filter.selectedCustomers!.isNotEmpty) {
-            // Nur clientseitig prüfen wenn Kundenfilter serverseitig läuft
             final fairData = data['fair'] as Map<String, dynamic>?;
             final fairId = fairData?['id']?.toString();
             if (fairId == null || !filter.selectedFairs!.contains(fairId)) continue;
@@ -140,18 +146,14 @@ class SalesAnalyticsService {
         }
 
         // Kostenstellen-Filter
-        // Im Order wird costCenter als Map mit code/name gespeichert,
-        // im Filter stehen die Firestore Document-IDs aus der cost_centers Collection
         if (filter.costCenters != null && filter.costCenters!.isNotEmpty) {
           final costCenterData = data['costCenter'] as Map<String, dynamic>?;
           if (costCenterData == null) continue;
           final costCenterCode = costCenterData['code']?.toString() ?? '';
           final costCenterId = costCenterData['id']?.toString() ?? '';
-          // Lade Cache falls nötig
           if (_costCenterCodes == null) {
             await _loadCostCenterCodes();
           }
-          // Prüfe: Filter-DocID direkt, oder aufgelöster Code gegen gespeicherten Code
           final matched = filter.costCenters!.any((filterDocId) {
             final resolvedCode = _costCenterCodes?[filterDocId];
             return filterDocId == costCenterId ||
@@ -161,21 +163,16 @@ class SalesAnalyticsService {
           if (!matched) continue;
         }
 
-        // Bestellart-Filter (distributionChannel in metadata)
-        // Im Order wird nur metadata.distributionChannel.name gespeichert,
-        // im Filter stehen die Firestore Document-IDs aus der distribution_channel Collection
+        // Bestellart-Filter
         if (filter.distributionChannels != null && filter.distributionChannels!.isNotEmpty) {
           final metadata = data['metadata'] as Map<String, dynamic>? ?? {};
           final distChannel = metadata['distributionChannel'] as Map<String, dynamic>?;
           if (distChannel == null) continue;
           final channelName = distChannel['name']?.toString() ?? '';
           final channelId = distChannel['id']?.toString() ?? '';
-          // Wir müssen die Filter-IDs gegen die gespeicherten Namen auflösen
-          // Da wir die Namen aus der DB brauchen, cachen wir sie
           if (_distributionChannelNames == null) {
             await _loadDistributionChannelNames();
           }
-          // Prüfe: Filter-ID -> aufgelöster Name -> gegen gespeicherten Namen
           final matched = filter.distributionChannels!.any((filterDocId) {
             final resolvedName = _distributionChannelNames?[filterDocId];
             return filterDocId == channelId ||
@@ -205,8 +202,12 @@ class SalesAnalyticsService {
         final items = data['items'] as List<dynamic>? ?? [];
         if (items.isEmpty) continue;
 
+        // FIX: Umsatz aus calculations statt aus qty * price_per_unit
+        final calculations = data['calculations'] as Map<String, dynamic>? ?? {};
+        final orderSubtotal = (calculations['subtotal'] as num?)?.toDouble() ?? 0;
+        final orderTotal = (calculations['total'] as num?)?.toDouble() ?? 0;
+
         bool hasMatchingItems = false;
-        double orderRevenue = 0;
         int orderItemCount = 0;
 
         for (var item in items) {
@@ -219,6 +220,8 @@ class SalesAnalyticsService {
           final quantity = (itemData['quantity'] as num?)?.toInt() ?? 0;
           final pricePerUnit = (itemData['price_per_unit'] as num?)?.toDouble() ?? 0;
           final itemRevenue = quantity * pricePerUnit;
+          final volumePerUnit = (itemData['volume_per_unit'] as num?)?.toDouble() ?? 0;
+          final itemVolume = quantity * volumePerUnit; // m³ pro Item
 
           final woodCode = itemData['wood_code']?.toString() ?? '';
           final woodName = itemData['wood_name']?.toString() ?? 'Unbekannt';
@@ -228,7 +231,6 @@ class SalesAnalyticsService {
           final partName = itemData['part_name']?.toString() ?? 'Unbekannt';
           final hasThermal = itemData['has_thermal_treatment'] == true;
 
-          orderRevenue += itemRevenue;
           orderItemCount++;
           totalItemCount++;
 
@@ -238,7 +240,7 @@ class SalesAnalyticsService {
             thermoRevenue += itemRevenue;
           }
 
-          // Holzart-Stats
+          // Holzart-Stats — NEU: mit Volume
           if (woodCode.isNotEmpty) {
             if (!woodTypeStats.containsKey(woodCode)) {
               woodTypeStats[woodCode] = WoodTypeStats(
@@ -247,12 +249,14 @@ class SalesAnalyticsService {
                 revenue: 0,
                 itemCount: 0,
                 quantity: 0,
+                volume: 0,
               );
             }
             woodTypeStats[woodCode] = woodTypeStats[woodCode]!.copyWithAdded(
               addRevenue: itemRevenue,
               addItems: 1,
               addQuantity: quantity,
+              addVolume: itemVolume,
             );
           }
 
@@ -278,31 +282,37 @@ class SalesAnalyticsService {
 
         if (!hasMatchingItems) continue;
 
-        // Betrags-Filter prüfen
-        if (filter.minAmount != null && orderRevenue < filter.minAmount!) continue;
-        if (filter.maxAmount != null && orderRevenue > filter.maxAmount!) continue;
+        // Betrags-Filter auf Warenwert prüfen
+        if (filter.minAmount != null && orderSubtotal < filter.minAmount!) continue;
+        if (filter.maxAmount != null && orderSubtotal > filter.maxAmount!) continue;
 
-        // Order zählen
+        // Order zählen — mit BEIDEN Umsatz-Werten
         orderCount++;
-        totalRevenue += orderRevenue;
+        totalRevenue += orderSubtotal;
+        totalRevenueGross += orderTotal;
 
         // Zeitraum-Umsätze
         if (orderDate.isAfter(currentYearStart) || orderDate.isAtSameMomentAs(currentYearStart)) {
-          yearRevenue += orderRevenue;
+          yearRevenue += orderSubtotal;
+          yearRevenueGross += orderTotal;
         }
         if (orderDate.isAfter(currentMonthStart) || orderDate.isAtSameMomentAs(currentMonthStart)) {
-          monthRevenue += orderRevenue;
+          monthRevenue += orderSubtotal;
+          monthRevenueGross += orderTotal;
         }
         if (orderDate.isAfter(previousYearStart) && orderDate.isBefore(previousYearEnd)) {
-          previousYearRevenue += orderRevenue;
+          previousYearRevenue += orderSubtotal;
+          previousYearRevenueGross += orderTotal;
         }
         if (orderDate.isAfter(previousMonthStart) && orderDate.isBefore(previousMonthEnd)) {
-          previousMonthRevenue += orderRevenue;
+          previousMonthRevenue += orderSubtotal;
+          previousMonthRevenueGross += orderTotal;
         }
 
-        // Monatliche Umsätze aggregieren
+        // Monatliche Umsätze
         final monthKey = '${orderDate.year}-${orderDate.month.toString().padLeft(2, '0')}';
-        monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] ?? 0) + orderRevenue;
+        monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] ?? 0) + orderSubtotal;
+        monthlyRevenueGross[monthKey] = (monthlyRevenueGross[monthKey] ?? 0) + orderTotal;
 
         // Länder-Stats
         if (!countryStats.containsKey(countryCode)) {
@@ -310,12 +320,14 @@ class SalesAnalyticsService {
             countryCode: countryCode,
             countryName: country.name,
             revenue: 0,
+            revenueGross: 0,
             orderCount: 0,
             itemCount: 0,
           );
         }
         countryStats[countryCode] = countryStats[countryCode]!.copyWithAdded(
-          addRevenue: orderRevenue,
+          addRevenue: orderSubtotal,
+          addRevenueGross: orderTotal,
           addOrders: 1,
           addItems: orderItemCount,
         );
@@ -333,9 +345,16 @@ class SalesAnalyticsService {
           previousYearRevenue: previousYearRevenue,
           previousMonthRevenue: previousMonthRevenue,
           monthlyRevenue: monthlyRevenue,
+          totalRevenueGross: totalRevenueGross,
+          yearRevenueGross: yearRevenueGross,
+          monthRevenueGross: monthRevenueGross,
+          previousYearRevenueGross: previousYearRevenueGross,
+          previousMonthRevenueGross: previousMonthRevenueGross,
+          monthlyRevenueGross: monthlyRevenueGross,
         ),
         orderCount: orderCount,
         averageOrderValue: orderCount > 0 ? totalRevenue / orderCount : 0,
+        averageOrderValueGross: orderCount > 0 ? totalRevenueGross / orderCount : 0,
         thermoStats: ThermoStats(
           thermoItemCount: thermoItemCount,
           totalItemCount: totalItemCount,

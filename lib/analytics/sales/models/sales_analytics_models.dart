@@ -5,6 +5,7 @@ class SalesAnalytics {
   final RevenueStats revenue;
   final int orderCount;
   final double averageOrderValue;
+  final double averageOrderValueGross;
   final ThermoStats thermoStats;
   final Map<String, CountryStats> countryStats;
   final Map<String, WoodTypeStats> woodTypeStats;
@@ -14,6 +15,7 @@ class SalesAnalytics {
     required this.revenue,
     required this.orderCount,
     required this.averageOrderValue,
+    this.averageOrderValueGross = 0,
     required this.thermoStats,
     required this.countryStats,
     required this.woodTypeStats,
@@ -24,6 +26,7 @@ class SalesAnalytics {
     revenue: RevenueStats.empty(),
     orderCount: 0,
     averageOrderValue: 0,
+    averageOrderValueGross: 0,
     thermoStats: ThermoStats.empty(),
     countryStats: {},
     woodTypeStats: {},
@@ -32,13 +35,25 @@ class SalesAnalytics {
 }
 
 /// Umsatz-Statistiken
+/// Jeder Wert existiert in zwei Varianten:
+///   - "normal" = Warenwert / subtotal (reine Ware nach Rabatten)
+///   - "gross"  = Gesamtbetrag / total (inkl. Versand, MwSt, Zuschläge)
 class RevenueStats {
+  // --- Warenwert (subtotal) ---
   final double totalRevenue;
   final double yearRevenue;
   final double monthRevenue;
   final double previousYearRevenue;
   final double previousMonthRevenue;
-  final Map<String, double> monthlyRevenue; // NEU: Monatliche Umsätze
+  final Map<String, double> monthlyRevenue;
+
+  // --- Gesamtbetrag / Brutto (total) ---
+  final double totalRevenueGross;
+  final double yearRevenueGross;
+  final double monthRevenueGross;
+  final double previousYearRevenueGross;
+  final double previousMonthRevenueGross;
+  final Map<String, double> monthlyRevenueGross;
 
   RevenueStats({
     required this.totalRevenue,
@@ -47,6 +62,12 @@ class RevenueStats {
     required this.previousYearRevenue,
     required this.previousMonthRevenue,
     this.monthlyRevenue = const {},
+    this.totalRevenueGross = 0,
+    this.yearRevenueGross = 0,
+    this.monthRevenueGross = 0,
+    this.previousYearRevenueGross = 0,
+    this.previousMonthRevenueGross = 0,
+    this.monthlyRevenueGross = const {},
   });
 
   factory RevenueStats.empty() => RevenueStats(
@@ -56,18 +77,32 @@ class RevenueStats {
     previousYearRevenue: 0,
     previousMonthRevenue: 0,
     monthlyRevenue: {},
+    totalRevenueGross: 0,
+    yearRevenueGross: 0,
+    monthRevenueGross: 0,
+    previousYearRevenueGross: 0,
+    previousMonthRevenueGross: 0,
+    monthlyRevenueGross: {},
   );
 
-  /// Prozentuale Veränderung zum Vorjahr
   double get yearChangePercent {
     if (previousYearRevenue == 0) return 0;
     return ((yearRevenue - previousYearRevenue) / previousYearRevenue) * 100;
   }
 
-  /// Prozentuale Veränderung zum Vormonat
   double get monthChangePercent {
     if (previousMonthRevenue == 0) return 0;
     return ((monthRevenue - previousMonthRevenue) / previousMonthRevenue) * 100;
+  }
+
+  double get yearChangePercentGross {
+    if (previousYearRevenueGross == 0) return 0;
+    return ((yearRevenueGross - previousYearRevenueGross) / previousYearRevenueGross) * 100;
+  }
+
+  double get monthChangePercentGross {
+    if (previousMonthRevenueGross == 0) return 0;
+    return ((monthRevenueGross - previousMonthRevenueGross) / previousMonthRevenueGross) * 100;
   }
 }
 
@@ -92,13 +127,11 @@ class ThermoStats {
     totalRevenue: 0,
   );
 
-  /// Anteil Thermo-Artikel in Prozent
   double get itemSharePercent {
     if (totalItemCount == 0) return 0;
     return (thermoItemCount / totalItemCount) * 100;
   }
 
-  /// Anteil Thermo-Umsatz in Prozent
   double get revenueSharePercent {
     if (totalRevenue == 0) return 0;
     return (thermoRevenue / totalRevenue) * 100;
@@ -110,6 +143,7 @@ class CountryStats {
   final String countryCode;
   final String countryName;
   final double revenue;
+  final double revenueGross;
   final int orderCount;
   final int itemCount;
 
@@ -117,13 +151,14 @@ class CountryStats {
     required this.countryCode,
     required this.countryName,
     required this.revenue,
+    this.revenueGross = 0,
     required this.orderCount,
     required this.itemCount,
   });
 
-  /// Für die Aggregation
   CountryStats copyWithAdded({
     double addRevenue = 0,
+    double addRevenueGross = 0,
     int addOrders = 0,
     int addItems = 0,
   }) {
@@ -131,19 +166,21 @@ class CountryStats {
       countryCode: countryCode,
       countryName: countryName,
       revenue: revenue + addRevenue,
+      revenueGross: revenueGross + addRevenueGross,
       orderCount: orderCount + addOrders,
       itemCount: itemCount + addItems,
     );
   }
 }
 
-/// Holzart-Statistiken
+/// Holzart-Statistiken — mit volume (m³)
 class WoodTypeStats {
   final String woodCode;
   final String woodName;
   final double revenue;
   final int itemCount;
   final int quantity;
+  final double volume; // Gesamtvolumen in m³
 
   WoodTypeStats({
     required this.woodCode,
@@ -151,12 +188,14 @@ class WoodTypeStats {
     required this.revenue,
     required this.itemCount,
     required this.quantity,
+    this.volume = 0,
   });
 
   WoodTypeStats copyWithAdded({
     double addRevenue = 0,
     int addItems = 0,
     int addQuantity = 0,
+    double addVolume = 0,
   }) {
     return WoodTypeStats(
       woodCode: woodCode,
@@ -164,6 +203,7 @@ class WoodTypeStats {
       revenue: revenue + addRevenue,
       itemCount: itemCount + addItems,
       quantity: quantity + addQuantity,
+      volume: volume + addVolume,
     );
   }
 }
@@ -186,10 +226,7 @@ class ProductComboStats {
     required this.quantity,
   });
 
-  /// Kombinations-Key für Gruppierung
   String get comboKey => '${instrumentCode}_$partCode';
-
-  /// Anzeigename (z.B. "Steelstring Gitarre - Decke")
   String get displayName => '$instrumentName - $partName';
 
   ProductComboStats copyWithAdded({

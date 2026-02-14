@@ -22,7 +22,7 @@ class _CombinedShipmentScreenState extends State<CombinedShipmentScreen> {
           IconButton(
             icon: getAdaptiveIcon(
               iconName: 'info',
-              defaultIcon: Icons.info_outline,
+              defaultIcon: Icons.info,
             ),
             onPressed: _showInfoDialog,
           ),

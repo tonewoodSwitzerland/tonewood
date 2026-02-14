@@ -52,11 +52,11 @@ class OrderX {
   factory OrderX.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     // DEBUG
-    print('=== OrderX.fromFirestore DEBUG ===');
-    print('Doc ID: ${doc.id}');
-    print('Raw costCenter in data: ${data['costCenter']}');
-    print('Raw costCenter type: ${data['costCenter']?.runtimeType}');
-    print('==================================');
+    //print('=== OrderX.fromFirestore DEBUG ===');
+    //print('Doc ID: ${doc.id}');
+    //print('Raw costCenter in data: ${data['costCenter']}');
+    //print('Raw costCenter type: ${data['costCenter']?.runtimeType}');
+    //print('==================================');
     // Status-Migration: Alte Status auf neue mappen
     OrderStatus parseStatus(String? statusName) {
       switch (statusName) {

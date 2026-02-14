@@ -15,6 +15,7 @@ import 'package:tonewood/analytics/sales/widgets/sales_info_dialog.dart';
 import 'package:tonewood/analytics/sales/widgets/sales_filter_dialog.dart';
 
 import '../../../services/icon_helper.dart';
+import '../../../services/countries.dart';
 import '../../services/download_helper_web.dart';
 
 import 'models/sales_filter.dart';
@@ -52,7 +53,8 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
           (_currentFilter.qualities?.isNotEmpty ?? false) ||
           (_currentFilter.selectedCustomers?.isNotEmpty ?? false) ||
           (_currentFilter.costCenters?.isNotEmpty ?? false) ||
-          (_currentFilter.distributionChannels?.isNotEmpty ?? false);
+          (_currentFilter.distributionChannels?.isNotEmpty ?? false) ||
+          (_currentFilter.countries?.isNotEmpty ?? false);
 
   int _countActiveFilters() {
     int count = 0;
@@ -67,6 +69,7 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
     if (_currentFilter.selectedCustomers?.isNotEmpty ?? false) count++;
     if (_currentFilter.costCenters?.isNotEmpty ?? false) count++;
     if (_currentFilter.distributionChannels?.isNotEmpty ?? false) count++;
+    if (_currentFilter.countries?.isNotEmpty ?? false) count++;
     return count;
   }
 
@@ -476,27 +479,325 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
   }
 
   Widget _buildActiveFilterBar(ThemeData theme) {
+    const brandColor = Color(0xFF0F4A29);
+    final dateFormat = DateFormat('dd.MM.yyyy');
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F4A29).withOpacity(0.08),
-        border: Border(bottom: BorderSide(color: const Color(0xFF0F4A29).withOpacity(0.2))),
+        color: brandColor.withOpacity(0.06),
+        border: Border(bottom: BorderSide(color: brandColor.withOpacity(0.15))),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list, size: 16, color: const Color(0xFF0F4A29)),
-          const SizedBox(width: 6),
-          Text('${_countActiveFilters()} Filter aktiv',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F4A29))),
-          const Spacer(),
-          TextButton.icon(
-            onPressed: () => setState(() => _currentFilter = SalesFilter()),
-            icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 14, color: const Color(0xFF0F4A29)),
-            label: const Text('Zurücksetzen', style: TextStyle(fontSize: 12, color: Color(0xFF0F4A29))),
-            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          // Header-Zeile: Anzahl + Zurücksetzen
+          Row(
+            children: [
+              getAdaptiveIcon(iconName: 'filter_list', defaultIcon: Icons.filter_list, size: 16, color: brandColor),
+              const SizedBox(width: 6),
+              Text('${_countActiveFilters()} Filter aktiv',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: brandColor)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => setState(() => _currentFilter = SalesFilter()),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 14, color: brandColor),
+                    const SizedBox(width: 4),
+                    const Text('Alle zurücksetzen', style: TextStyle(fontSize: 11, color: brandColor)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+
+          // Chips
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _buildFilterChipsList(theme),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  List<Widget> _buildFilterChipsList(ThemeData theme) {
+    final chips = <Widget>[];
+    final dateFormat = DateFormat('dd.MM.yyyy');
+
+    // Zeitraum
+    if (_currentFilter.timeRange != null) {
+      String label;
+      switch (_currentFilter.timeRange) {
+        case 'week': label = 'Diese Woche'; break;
+        case 'month': label = 'Dieser Monat'; break;
+        case 'quarter': label = 'Dieses Quartal'; break;
+        case 'year': label = 'Dieses Jahr'; break;
+        default: label = _currentFilter.timeRange!;
+      }
+      chips.add(_buildFilterChip(
+        icon: Icons.calendar_today,
+        label: label,
+        onRemove: () => setState(() => _currentFilter = _currentFilter.copyWith(timeRange: null)),
+      ));
+    } else if (_currentFilter.startDate != null || _currentFilter.endDate != null) {
+      final start = _currentFilter.startDate != null ? dateFormat.format(_currentFilter.startDate!) : '...';
+      final end = _currentFilter.endDate != null ? dateFormat.format(_currentFilter.endDate!) : '...';
+      chips.add(_buildFilterChip(
+        icon: Icons.date_range,
+        label: '$start – $end',
+        onRemove: () => setState(() => _currentFilter = SalesFilter(
+          minAmount: _currentFilter.minAmount, maxAmount: _currentFilter.maxAmount,
+          selectedFairs: _currentFilter.selectedFairs, selectedProducts: _currentFilter.selectedProducts,
+          woodTypes: _currentFilter.woodTypes, parts: _currentFilter.parts,
+          instruments: _currentFilter.instruments, qualities: _currentFilter.qualities,
+          selectedCustomers: _currentFilter.selectedCustomers, costCenters: _currentFilter.costCenters,
+          distributionChannels: _currentFilter.distributionChannels, countries: _currentFilter.countries,
+        )),
+      ));
+    }
+
+    // Betrag
+    if (_currentFilter.minAmount != null || _currentFilter.maxAmount != null) {
+      String label;
+      if (_currentFilter.minAmount != null && _currentFilter.maxAmount != null) {
+        label = 'CHF ${_currentFilter.minAmount!.toStringAsFixed(0)} – ${_currentFilter.maxAmount!.toStringAsFixed(0)}';
+      } else if (_currentFilter.minAmount != null) {
+        label = 'ab CHF ${_currentFilter.minAmount!.toStringAsFixed(0)}';
+      } else {
+        label = 'bis CHF ${_currentFilter.maxAmount!.toStringAsFixed(0)}';
+      }
+      chips.add(_buildFilterChip(
+        icon: Icons.savings,
+        label: label,
+        onRemove: () => setState(() => _currentFilter = _currentFilter.copyWith(
+          minAmount: null, maxAmount: null,
+        )),
+      ));
+    }
+
+    // Länder
+    if (_currentFilter.countries?.isNotEmpty ?? false) {
+      for (final code in _currentFilter.countries!) {
+        final name = Countries.getCountryByCode(code).name;
+        chips.add(_buildFilterChip(
+          icon: Icons.public,
+          label: name,
+          onRemove: () => setState(() {
+            final updated = _currentFilter.countries!.where((c) => c != code).toList();
+            _currentFilter = _currentFilter.copyWith(countries: updated.isEmpty ? null : updated);
+          }),
+        ));
+      }
+    }
+
+    // Holzarten
+    if (_currentFilter.woodTypes?.isNotEmpty ?? false) {
+      for (final code in _currentFilter.woodTypes!) {
+        chips.add(_buildFirestoreChip(
+          collection: 'wood_types',
+          docId: code,
+          fallbackLabel: code,
+          icon: Icons.forest,
+          onRemove: () => setState(() {
+            final updated = _currentFilter.woodTypes!.where((w) => w != code).toList();
+            _currentFilter = _currentFilter.copyWith(woodTypes: updated.isEmpty ? null : updated);
+          }),
+        ));
+      }
+    }
+
+    // Qualitäten
+    if (_currentFilter.qualities?.isNotEmpty ?? false) {
+      for (final code in _currentFilter.qualities!) {
+        chips.add(_buildFirestoreChip(
+          collection: 'qualities',
+          docId: code,
+          fallbackLabel: code,
+          icon: Icons.star,
+          onRemove: () => setState(() {
+            final updated = _currentFilter.qualities!.where((q) => q != code).toList();
+            _currentFilter = _currentFilter.copyWith(qualities: updated.isEmpty ? null : updated);
+          }),
+        ));
+      }
+    }
+
+    // Instrumente
+    if (_currentFilter.instruments?.isNotEmpty ?? false) {
+      for (final code in _currentFilter.instruments!) {
+        chips.add(_buildFirestoreChip(
+          collection: 'instruments',
+          docId: code,
+          fallbackLabel: code,
+          icon: Icons.music_note,
+          onRemove: () => setState(() {
+            final updated = _currentFilter.instruments!.where((i) => i != code).toList();
+            _currentFilter = _currentFilter.copyWith(instruments: updated.isEmpty ? null : updated);
+          }),
+        ));
+      }
+    }
+
+    // Bauteile
+    if (_currentFilter.parts?.isNotEmpty ?? false) {
+      for (final code in _currentFilter.parts!) {
+        chips.add(_buildFirestoreChip(
+          collection: 'parts',
+          docId: code,
+          fallbackLabel: code,
+          icon: Icons.category,
+          onRemove: () => setState(() {
+            final updated = _currentFilter.parts!.where((p) => p != code).toList();
+            _currentFilter = _currentFilter.copyWith(parts: updated.isEmpty ? null : updated);
+          }),
+        ));
+      }
+    }
+
+    // Kostenstellen
+    if (_currentFilter.costCenters?.isNotEmpty ?? false) {
+      for (final id in _currentFilter.costCenters!) {
+        chips.add(_buildFirestoreChip(
+          collection: 'cost_centers',
+          docId: id,
+          nameField: 'code',
+          fallbackLabel: id,
+          icon: Icons.account_balance_wallet,
+          onRemove: () => setState(() {
+            final updated = _currentFilter.costCenters!.where((c) => c != id).toList();
+            _currentFilter = _currentFilter.copyWith(costCenters: updated.isEmpty ? null : updated);
+          }),
+        ));
+      }
+    }
+
+    // Bestellarten
+    if (_currentFilter.distributionChannels?.isNotEmpty ?? false) {
+      for (final id in _currentFilter.distributionChannels!) {
+        chips.add(_buildFirestoreChip(
+          collection: 'distribution_channel',
+          docId: id,
+          fallbackLabel: id,
+          icon: Icons.storefront,
+          onRemove: () => setState(() {
+            final updated = _currentFilter.distributionChannels!.where((d) => d != id).toList();
+            _currentFilter = _currentFilter.copyWith(distributionChannels: updated.isEmpty ? null : updated);
+          }),
+        ));
+      }
+    }
+
+    // Kunden
+    if (_currentFilter.selectedCustomers?.isNotEmpty ?? false) {
+      for (final id in _currentFilter.selectedCustomers!) {
+        chips.add(_buildFirestoreChip(
+          collection: 'customers',
+          docId: id,
+          nameField: 'company',
+          fallbackLabel: 'Kunde',
+          icon: Icons.person,
+          onRemove: () => setState(() {
+            final updated = _currentFilter.selectedCustomers!.where((c) => c != id).toList();
+            _currentFilter = _currentFilter.copyWith(selectedCustomers: updated.isEmpty ? null : updated);
+          }),
+        ));
+      }
+    }
+
+    // Messen
+    if (_currentFilter.selectedFairs?.isNotEmpty ?? false) {
+      for (final id in _currentFilter.selectedFairs!) {
+        chips.add(_buildFirestoreChip(
+          collection: 'fairs',
+          docId: id,
+          fallbackLabel: 'Messe',
+          icon: Icons.event,
+          onRemove: () => setState(() {
+            final updated = _currentFilter.selectedFairs!.where((f) => f != id).toList();
+            _currentFilter = _currentFilter.copyWith(selectedFairs: updated.isEmpty ? null : updated);
+          }),
+        ));
+      }
+    }
+
+    // Artikel
+    if (_currentFilter.selectedProducts?.isNotEmpty ?? false) {
+      for (final id in _currentFilter.selectedProducts!) {
+        chips.add(_buildFirestoreChip(
+          collection: 'inventory',
+          docId: id,
+          nameField: 'product_name',
+          fallbackLabel: 'Artikel',
+          icon: Icons.inventory,
+          onRemove: () => setState(() {
+            final updated = _currentFilter.selectedProducts!.where((p) => p != id).toList();
+            _currentFilter = _currentFilter.copyWith(selectedProducts: updated.isEmpty ? null : updated);
+          }),
+        ));
+      }
+    }
+
+    return chips;
+  }
+
+  /// Einzelner Filter-Chip mit Icon, Label und X-Button
+  Widget _buildFilterChip({
+    required IconData icon,
+    required String label,
+    required VoidCallback onRemove,
+  }) {
+    const brandColor = Color(0xFF0F4A29);
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: brandColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: brandColor.withOpacity(0.25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: brandColor),
+            const SizedBox(width: 4),
+            Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: brandColor)),
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: onRemove,
+              child: Icon(Icons.close, size: 13, color: brandColor.withOpacity(0.6)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Chip der den Namen aus Firestore lädt (für IDs wie Kunden, Messen, etc.)
+  Widget _buildFirestoreChip({
+    required String collection,
+    required String docId,
+    required String fallbackLabel,
+    required IconData icon,
+    required VoidCallback onRemove,
+    String nameField = 'name',
+  }) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection(collection).doc(docId).snapshots(),
+      builder: (context, snapshot) {
+        String label = fallbackLabel;
+        if (snapshot.hasData && snapshot.data?.data() != null) {
+          final data = snapshot.data!.data() as Map<String, dynamic>;
+          label = data[nameField]?.toString() ?? data['name']?.toString() ?? fallbackLabel;
+        }
+        return _buildFilterChip(icon: icon, label: label, onRemove: onRemove);
+      },
     );
   }
 
@@ -516,7 +817,7 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
             color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: getAdaptiveIcon(iconName: 'info', defaultIcon: Icons.info_outline, size: 20, color: theme.colorScheme.onSurfaceVariant),
+          child: getAdaptiveIcon(iconName: 'info', defaultIcon: Icons.info, size: 20, color: theme.colorScheme.onSurfaceVariant),
         ),
       ),
     );

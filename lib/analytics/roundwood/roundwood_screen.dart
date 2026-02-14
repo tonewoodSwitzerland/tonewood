@@ -1,12 +1,10 @@
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'package:intl/intl.dart';
 
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:tonewood/analytics/roundwood/services/roundwood_csv_service.dart';
-import 'package:tonewood/analytics/roundwood/services/roundwood_pdf_service.dart';
+import 'package:tonewood/analytics/roundwood/services/roundwood_export_service.dart';
 import 'package:tonewood/analytics/roundwood/widgets/roundwood_filter_dialog.dart';
 import '../../constants.dart';
 import '../../services/icon_helper.dart';
@@ -32,18 +30,34 @@ class RoundwoodScreenState extends State<RoundwoodScreen> with SingleTickerProvi
   late TabController _tabController;
   final RoundwoodService _service = RoundwoodService();
   RoundwoodFilter _activeFilter = RoundwoodFilter();
+Map<String, String> _woodTypeNames = {};
+  Map<String, String> _qualityNames = {};
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
-      if (_tabController.indexIsChanging) {
-        setState(() {});
+      if (_tabController.indexIsChanging) setState(() {});
+    });
+    _loadNames(); // NEU
+  }
+Future<void> _loadNames() async {
+  final woodSnap = await FirebaseFirestore.instance.collection('wood_types').get();
+  final qualSnap = await FirebaseFirestore.instance.collection('qualities').get();
+  if (mounted) {
+    setState(() {
+      for (final doc in woodSnap.docs) {
+        final data = doc.data();
+        _woodTypeNames[data['code'] as String? ?? doc.id] = data['name'] as String? ?? doc.id;
+      }
+      for (final doc in qualSnap.docs) {
+        final data = doc.data();
+        _qualityNames[data['code'] as String? ?? doc.id] = data['name'] as String? ?? doc.id;
       }
     });
   }
-
+}
   @override
   void dispose() {
     _tabController.dispose();
@@ -276,65 +290,64 @@ class RoundwoodScreenState extends State<RoundwoodScreen> with SingleTickerProvi
 
   Future<void> _exportPdf(List<RoundwoodItem> items, {required bool includeAnalytics}) async {
     try {
-      final fileName = 'Rundholzliste_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.pdf';
-      final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/$fileName');
+      // Filter-Info für das PDF zusammenbauen
+      final activeFilters = <String, dynamic>{};
 
-      // Generiere PDF mit Option für Analytics
-      final pdfBytes = await RoundwoodPdfService.generatePdf(
+      if (_activeFilter.timeRange != null) {
+        activeFilters['timeRange'] = _activeFilter.timeRange;
+      }
+      if (_activeFilter.startDate != null && _activeFilter.endDate != null) {
+        activeFilters['startDate'] = DateFormat('dd.MM.yyyy').format(_activeFilter.startDate!);
+        activeFilters['endDate'] = DateFormat('dd.MM.yyyy').format(_activeFilter.endDate!);
+      }
+      if (_activeFilter.year != null) {
+        activeFilters['year'] = _activeFilter.year;
+      }
+
+      if (_activeFilter.woodTypes?.isNotEmpty == true) {
+        activeFilters['woodTypes'] = _activeFilter.woodTypes!
+            .map((code) => _woodTypeNames[code] ?? code)
+            .toList();
+      }
+      if (_activeFilter.qualities?.isNotEmpty == true) {
+        activeFilters['qualities'] = _activeFilter.qualities!
+            .map((code) => _qualityNames[code] ?? code)
+            .toList();
+      }
+      if (_activeFilter.purposes?.isNotEmpty == true) {
+        activeFilters['purposes'] = _activeFilter.purposes;
+      }
+      if (_activeFilter.origin != null) {
+        activeFilters['origin'] = _activeFilter.origin;
+      }
+      if (_activeFilter.isMoonwood == true) {
+        activeFilters['isMoonwood'] = true;
+      }
+      if (_activeFilter.isFSC == true) {
+        activeFilters['isFSC'] = true;
+      }
+      if (_activeFilter.showClosed == true) {
+        activeFilters['showClosed'] = true;
+      }
+
+      await RoundwoodExportService.exportPdf(
         items,
         includeAnalytics: includeAnalytics,
+        activeFilters: activeFilters.isNotEmpty ? activeFilters : null,
       );
-
-      await file.writeAsBytes(pdfBytes);
 
       if (!mounted) return;
-
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        subject: fileName,
+      AppToast.show(
+        message: 'PDF ${includeAnalytics ? 'mit Analyse ' : ''}erfolgreich erstellt (${items.length} Einträge)',
+        height: h,
       );
-
-      Future.delayed(const Duration(minutes: 1), () => file.delete());
-      AppToast.show(message: 'PDF ${includeAnalytics ? 'mit Analyse ' : ''}erfolgreich erstellt', height: h);
-
-
     } catch (e) {
       if (!mounted) return;
       AppToast.show(message: 'Fehler beim Export: $e', height: h);
-
     }
   }
-// Hilfsmethoden zur Datenvorbereitung für die Analyse
-  Map<String, dynamic> _prepareWoodTypeData(List<RoundwoodItem> items) {
-    final woodTypeCount = <String, int>{};
-    for (var item in items) {
-      woodTypeCount[item.woodName] = (woodTypeCount[item.woodName] ?? 0) + 1;
-    }
-    return woodTypeCount;
-  }
 
-  Map<String, dynamic> _prepareQualityData(List<RoundwoodItem> items) {
-    final qualityCount = <String, int>{};
-    for (var item in items) {
-      qualityCount[item.qualityName] = (qualityCount[item.qualityName] ?? 0) + 1;
-    }
-    return qualityCount;
-  }
-
-  Map<String, dynamic> _prepareVolumeData(List<RoundwoodItem> items) {
-    items.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-    final volumeByDate = <String, double>{};
-    var runningTotal = 0.0;
-
-    for (var item in items) {
-      final dateStr = DateFormat('yyyy-MM-dd').format(item.timestamp);
-      runningTotal += item.volume;
-      volumeByDate[dateStr] = runningTotal;
-    }
-
-    return volumeByDate;
-  }
+// 4. ERSETZE die _exportCsv Methode mit:
 
   Future<void> _exportCsv() async {
     try {
@@ -343,28 +356,16 @@ class RoundwoodScreenState extends State<RoundwoodScreen> with SingleTickerProvi
           .map((doc) => RoundwoodItem.fromFirestore(doc))
           .toList();
 
-      final fileName = 'Rundholzliste_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.csv';
-      final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/$fileName');
+      await RoundwoodExportService.exportCsv(items);
 
-      final csvBytes = await RoundwoodCsvService.generateCsv(items);
-      await file.writeAsBytes(csvBytes);
-
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        subject: fileName,
+      if (!mounted) return;
+      AppToast.show(
+        message: 'CSV Export erfolgreich (${items.length} Einträge)',
+        height: h,
       );
-
-      Future.delayed(const Duration(minutes: 1), () => file.delete());
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim CSV-Export: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      if (!mounted) return;
+      AppToast.show(message: 'Fehler beim CSV-Export: $e', height: h);
     }
   }
 }

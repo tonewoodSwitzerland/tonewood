@@ -1,6 +1,8 @@
 
 import 'dart:async';
-import 'filter_favorites_sheet.dart';
+import 'package:tonewood/warehouse/services/warehouse_export_service.dart';
+
+import '../home/filter_favorites_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -14,7 +16,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../services/icon_helper.dart';
-import 'barcode_scanner.dart';
+import '../home/barcode_scanner.dart';
 
 class WarehouseScreen extends StatefulWidget {
   final bool isDialog;
@@ -59,7 +61,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   void initState() {
 
     super.initState();
-    print('WarehouseScreen initState - isDialog: ${widget.isDialog}, mode: ${widget.mode}');
+    //print('WarehouseScreen initState - isDialog: ${widget.isDialog}, mode: ${widget.mode}');
 
     _loadDropdownData();
     _loadSavedFilters();
@@ -85,13 +87,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       .doc('filter_settings');
 
   void _updateProductStream() {
-    print('_updateProductStream aufgerufen');
-    print('Aktive Filter: instruments=${selectedInstrumentCodes}, parts=${selectedPartCodes}');
+    //print('_updateProductStream aufgerufen');
+    //print('Aktive Filter: instruments=${selectedInstrumentCodes}, parts=${selectedPartCodes}');
     setState(() {
       _productStream = buildQuery().snapshots();
     });
   }
-// Neue Methoden in WarehouseScreenState:
 
   Future<void> _saveCurrentFilterAsFavorite() async {
     // Name Dialog zeigen
@@ -204,52 +205,6 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     );
   }
 
-
-
-
-
-
-
-
-
-
-
-
-  void _toggleQuickFilter() {
-    setState(() {
-      isQuickFilterActive = !isQuickFilterActive;
-     _searchController.clear();
-    _activeSearchText = '';
-      if (isQuickFilterActive) {
-        // Clear existing filters first
-        selectedInstrumentCodes.clear();
-        selectedPartCodes.clear();
-        selectedWoodCodes.clear();
-        selectedQualityCodes.clear();
-      // Add the instrument codes for quick filtering
-      selectedInstrumentCodes.addAll([
-        '10',  // Steelstring Gitarre
-        '11',  // Klassische Gitarre
-        '12',  // Parlor Gitarre
-        '16', // Bouzuki/Mandoline flach
-        '20', // Violine
-        '22', // Cello
-      ]);
-
-        // Add the part code for Decke
-        selectedPartCodes.add('10'); // Decke
-      } else {
-        // Clear all filters when deactivating
-        selectedInstrumentCodes.clear();
-        selectedPartCodes.clear();
-        selectedWoodCodes.clear();
-        selectedQualityCodes.clear();
-      }
-    });
-    _saveFilters();
-    _updateProductStream();
-  }
-
   void _loadSavedFilters() {
     _filterSubscription = _filterDoc
         .snapshots()
@@ -291,14 +246,14 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         });
 
         // DIESER TEIL FEHLT BEI IHNEN:
-        print('Filter geladen: instruments=${selectedInstrumentCodes}, parts=${selectedPartCodes}');
+        //print('Filter geladen: instruments=${selectedInstrumentCodes}, parts=${selectedPartCodes}');
         _updateProductStream(); // WICHTIG: Auch hier aufrufen!
 
       } else {
         setState(() {
           _isLoadingFilters = false;
         });
-        print("stellep");
+        //print("stellep");
         _updateProductStream();
       }
     });
@@ -330,33 +285,14 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         });
       }
     } catch (e) {
-      print('Fehler beim Speichern der Filter: $e');
-    }
-  }
-
-  Future<void> _resetFilters() async {
-    setState(() {
-     _searchController.clear();
-     _hasUnsearchedChanges = false;
-    _activeSearchText = ''; // NEU
-      selectedInstrumentCodes.clear();
-      selectedPartCodes.clear();
-      selectedWoodCodes.clear();
-      selectedQualityCodes.clear();
-      selectedUnit = null;
-    });
-    _updateProductStream();
-    try {
-      await _filterDoc.delete();
-    } catch (e) {
-      print('Fehler beim Zurücksetzen der Filter: $e');
+      //print('Fehler beim Speichern der Filter: $e');
     }
   }
 
   Future<double> _getAvailableQuantity(String shortBarcode) async {
     try {
 
-      print('Getting available quantity for: $shortBarcode'); // Debug
+      //print('Getting available quantity for: $shortBarcode'); // Debug
 
 
       // Aktuellen Bestand aus inventory collection abrufen
@@ -366,7 +302,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           .get();
 
       final currentStock = (inventoryDoc.data()?['quantity'] as num?)?.toDouble() ?? 0.0;
-      print('Current stock: $currentStock'); // Debug
+      //print('Current stock: $currentStock'); // Debug
 
       // Temporär gebuchte Menge abrufen
       final tempBasketDoc = await FirebaseFirestore.instance
@@ -393,11 +329,11 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       );
 
     final result = currentStock - cartQuantity - reservedQuantity;
-      print('Available quantity: $result'); // Debug
+      //print('Available quantity: $result'); // Debug
       return result;
     } catch (e) {
-      print('Fehler beim Abrufen der verfügbaren Menge: $e');
-      print('Stack trace: ${StackTrace.current}'); // Debug
+      //print('Fehler beim Abrufen der verfügbaren Menge: $e');
+      //print('Stack trace: ${StackTrace.current}'); // Debug
       return 0;
     }
   }
@@ -532,83 +468,6 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
 
 
-  Future<void> _showPriceChangeDialog(Map<String, dynamic> data) async {
-    final currentPrice = (data['price_CHF'] as num?)?.toInt() ?? 0;
-    final TextEditingController priceController = TextEditingController(
-      text: currentPrice.toString(),
-    );
-
-    final newPrice = await showDialog<int>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F4A29).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: getAdaptiveIcon(
-                iconName: 'edit',
-                defaultIcon: Icons.edit,
-                color: const Color(0xFF0F4A29),
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Text('Preis ändern'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Aktueller Preis: CHF $currentPrice',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: priceController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Neuer Preis',
-                suffixText: 'CHF',
-                border: const OutlineInputBorder(),
-                helperText: 'Nur ganze CHF-Beträge',
-              ),
-              autofocus: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Abbrechen'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final price = int.tryParse(priceController.text);
-              if (price != null && price > 0) {
-                Navigator.pop(context, price);
-              }
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF0F4A29),
-            ),
-            child: const Text('Speichern'),
-          ),
-        ],
-      ),
-    );
-
-    if (newPrice != null && newPrice != currentPrice) {
-      await _updateOnlineShopPrice(data, newPrice, currentPrice);
-    }
-  }
   Future<void> _updateOnlineShopPrice(Map<String, dynamic> data, int newPrice, int oldPrice) async {
     try {
       final updates = {
@@ -639,10 +498,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     }
   }
 
-
-
   void _showOnlineShopDetails(Map<String, dynamic> data) {
-    print(widget.isDialog);
+    //print(widget.isDialog);
     if (widget.mode == 'barcodePrinting' && widget.isDialog && widget.onBarcodeSelected != null) {
       widget.onBarcodeSelected!(data['barcode']);
       return;
@@ -1327,11 +1184,6 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     );
   }
 
-
-
-
-
-
   /// Prüft ob ein Online-Shop-Item bereits im Warenkorb oder in einem Angebot reserviert ist
   Future<Map<String, dynamic>> _checkOnlineShopItemAvailability(String onlineShopBarcode) async {
     // 1. Prüfe ob bereits im aktuellen Warenkorb
@@ -1480,7 +1332,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         ),
       );
     } catch (e) {
-      print('Fehler beim Entfernen aus dem Shop: $e');
+      //print('Fehler beim Entfernen aus dem Shop: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Fehler beim Entfernen: $e'),
@@ -1522,7 +1374,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         ),
       );
     } catch (e) {
-      print('Fehler beim Markieren als verkauft: $e');
+      //print('Fehler beim Markieren als verkauft: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Fehler beim Markieren: $e'),
@@ -1756,11 +1608,11 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                 future: _getAvailableQuantity(data['short_barcode']),
                                 builder: (context, snapshot) {
                                   // Debug-Ausgaben hinzufügen
-                                  print('FutureBuilder - ConnectionState: ${snapshot.connectionState}');
-                                  print('FutureBuilder - HasData: ${snapshot.hasData}');
-                                  print('FutureBuilder - Data: ${snapshot.data}');
-                                  print('FutureBuilder - Error: ${snapshot.error}');
-                                  print('FutureBuilder - short_barcode: ${data['short_barcode']}');
+                                  //print('FutureBuilder - ConnectionState: ${snapshot.connectionState}');
+                                  //print('FutureBuilder - HasData: ${snapshot.hasData}');
+                                  //print('FutureBuilder - Data: ${snapshot.data}');
+                                  //print('FutureBuilder - Error: ${snapshot.error}');
+                                  //print('FutureBuilder - short_barcode: ${data['short_barcode']}');
 
                                   return Container(
                                     padding: const EdgeInsets.all(12),
@@ -2009,29 +1861,29 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
 // Fügen Sie diese neue Methode hinzu, die einen Stream zurückgibt
   Stream<double> _getAvailableQuantityStream(String shortBarcode) {
-    print('🔍 _getAvailableQuantityStream gestartet für: $shortBarcode');
+    //print('🔍 _getAvailableQuantityStream gestartet für: $shortBarcode');
 
     return FirebaseFirestore.instance
         .collection('inventory')
         .doc(shortBarcode)
         .snapshots()
         .asyncMap((inventoryDoc) async {
-      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      print('📦 DEBUG für Produkt: $shortBarcode');
-      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      //print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      //print('📦 DEBUG für Produkt: $shortBarcode');
+      //print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       // 1. Inventory-Daten
       final inventoryData = inventoryDoc.data();
-      print('📋 Inventory Doc exists: ${inventoryDoc.exists}');
-      print('📋 Inventory Data: $inventoryData');
+      //print('📋 Inventory Doc exists: ${inventoryDoc.exists}');
+      //print('📋 Inventory Data: $inventoryData');
 
       final stockValue = inventoryData?['quantity'] ?? 0;
       final stock = stockValue is int ? stockValue.toDouble() : (stockValue as double);
-      print('📊 Lagerbestand (quantity): $stock');
+      //print('📊 Lagerbestand (quantity): $stock');
 
       // Prüfe auch quantity_online_shop
       final onlineShopQty = inventoryData?['quantity_online_shop'] ?? 0;
-      print('🛒 Online Shop Menge (quantity_online_shop): $onlineShopQty');
+      //print('🛒 Online Shop Menge (quantity_online_shop): $onlineShopQty');
 
       // 2. Warenkorb-Menge
       final cartSnapshot = await FirebaseFirestore.instance
@@ -2039,22 +1891,22 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           .where('product_id', isEqualTo: shortBarcode)
           .get();
 
-      print('\n🛒 WARENKORB:');
-      print('   Anzahl Einträge: ${cartSnapshot.docs.length}');
+      //print('\n🛒 WARENKORB:');
+      //print('   Anzahl Einträge: ${cartSnapshot.docs.length}');
 
       double cartQuantity = 0;
       for (var doc in cartSnapshot.docs) {
         final data = doc.data();
         final qty = data['quantity'] ?? 0;
         final qtyDouble = qty is int ? qty.toDouble() : (qty as double);
-        print('   - Doc ID: ${doc.id}');
-        print('     quantity: $qty (als double: $qtyDouble)');
-        print('     product_name: ${data['product_name']}');
-        print('     is_online_shop_item: ${data['is_online_shop_item']}');
-        print('     online_shop_barcode: ${data['online_shop_barcode']}');
+        //print('   - Doc ID: ${doc.id}');
+        //print('     quantity: $qty (als double: $qtyDouble)');
+        //print('     product_name: ${data['product_name']}');
+        //print('     is_online_shop_item: ${data['is_online_shop_item']}');
+        //print('     online_shop_barcode: ${data['online_shop_barcode']}');
         cartQuantity += qtyDouble;
       }
-      print('   SUMME Warenkorb: $cartQuantity');
+      //print('   SUMME Warenkorb: $cartQuantity');
 
       // 3. Reservierungen
       final reservedSnapshot = await FirebaseFirestore.instance
@@ -2064,33 +1916,33 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           .where('status', isEqualTo: 'reserved')
           .get();
 
-      print('\n🔒 RESERVIERUNGEN:');
-      print('   Anzahl Einträge: ${reservedSnapshot.docs.length}');
+      //print('\n🔒 RESERVIERUNGEN:');
+      //print('   Anzahl Einträge: ${reservedSnapshot.docs.length}');
 
       double reservedQuantity = 0;
       for (var doc in reservedSnapshot.docs) {
         final data = doc.data();
         final qty = data['quantity'] ?? 0;
         final qtyDouble = qty is int ? qty.toDouble() : (qty as double);
-        print('   - Doc ID: ${doc.id}');
-        print('     quantity: $qty (abs: ${qtyDouble.abs()})');
-        print('     quoteId: ${data['quoteId']}');
-        print('     status: ${data['status']}');
-        print('     onlineShopBarcode: ${data['onlineShopBarcode']}');
+        //print('   - Doc ID: ${doc.id}');
+        //print('     quantity: $qty (abs: ${qtyDouble.abs()})');
+        //print('     quoteId: ${data['quoteId']}');
+        //print('     status: ${data['status']}');
+        //print('     onlineShopBarcode: ${data['onlineShopBarcode']}');
         reservedQuantity += qtyDouble.abs();
       }
-      print('   SUMME Reservierungen: $reservedQuantity');
+      //print('   SUMME Reservierungen: $reservedQuantity');
 
       // 4. Berechnung
       final available = stock - cartQuantity - reservedQuantity;
 
-      print('\n📊 BERECHNUNG:');
-      print('   Lagerbestand:    $stock');
-      print('   - Warenkorb:     $cartQuantity');
-      print('   - Reserviert:    $reservedQuantity');
-      print('   ─────────────────────────');
-      print('   = Verfügbar:     $available');
-      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      //print('\n📊 BERECHNUNG:');
+      //print('   Lagerbestand:    $stock');
+      //print('   - Warenkorb:     $cartQuantity');
+      //print('   - Reserviert:    $reservedQuantity');
+      //print('   ─────────────────────────');
+      //print('   = Verfügbar:     $available');
+      //print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
       return available;
     });
@@ -2146,9 +1998,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   StreamBuilder<double>(
                     stream: _getAvailableQuantityStream(data['short_barcode']),
                     builder: (context, snapshot) {
-                      print('Snapshot state: ${snapshot.connectionState}'); // Debug
-                      print('Snapshot data: ${snapshot.data}'); // Debug
-                      print('Snapshot error: ${snapshot.error}');
+                      //print('Snapshot state: ${snapshot.connectionState}'); // Debug
+                      //print('Snapshot data: ${snapshot.data}'); // Debug
+                      //print('Snapshot error: ${snapshot.error}');
                       return Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -2344,26 +2196,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       ),
     );
   }
-  Widget _booleanRow(String label, bool? value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              '$label:',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-          Expanded(
-            child: Text(value == true ? 'Ja' : 'Nein'),
-          ),
-        ],
-      ),
-    );
-  }
+
   Future<void> _loadDropdownData() async {
     try {
       final instrumentsSnapshot = await FirebaseFirestore.instance
@@ -2393,7 +2226,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         });
       }
     } catch (e) {
-      print('Fehler beim Laden der Filterdaten: $e');
+      //print('Fehler beim Laden der Filterdaten: $e');
     }
   }
 
@@ -2501,12 +2334,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
 // Aktualisieren Sie die _buildProductList() Methode:
   Widget _buildProductList() {
-    print("test999");
+    //print("test999");
     return StreamBuilder<QuerySnapshot>(
       stream: _productStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          print(snapshot.error);
+          //print(snapshot.error);
           return  Center(child: Text('Ein Fehler ist aufgetreten: ${snapshot.error}'));
         }
 
@@ -2651,8 +2484,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                     child: InkWell(
                       borderRadius: BorderRadius.circular(12),
                       onTap: () {
-                        print("testXXX");
-                        print("test:$_isOnlineShopView");
+                        //print("testXXX");
+                        //print("test:$_isOnlineShopView");
                         if (_isOnlineShopView) {
                           _showOnlineShopDetails(data);
                         } else {
@@ -2892,10 +2725,13 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                               hintText: 'Suche nach Produkten...',
                               hintStyle: TextStyle(fontSize: 14),
                               prefixIcon:
-                              getAdaptiveIcon(iconName: 'search', defaultIcon:
-                                Icons.search,
-                                size: 20,
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: getAdaptiveIcon(iconName: 'search', defaultIcon:
+                                  Icons.search,
+                                  size: 20,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
                               ),
                               suffixIcon: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -3076,16 +2912,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: const Text(
-                  'Filter',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+
               Expanded(
                 child: _buildFilterSection(),
               ),
@@ -3326,15 +3153,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                 color: Color(0xFF0F4A29),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Verfeinere die Suche',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 24),
+
+            const SizedBox(height: 16),
 
             if (instruments != null) ...[
               _buildFilterCategory(
@@ -3502,12 +3322,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           leading: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xFF0F4A29).withValues(
-                  red: 15,    // 0x0F
-                  green: 74,  // 0x4A
-                  blue: 41,   // 0x29
-                  alpha: 0.1
-              ),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(8),
             ),
             child:getAdaptiveIcon(
@@ -3613,17 +3428,6 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     }
   }
 
-  Widget _buildFilterCheckbox(String label, bool value, Function(bool?) onChanged) {
-    return CheckboxListTile(
-      title: Text(label),
-      value: value,
-      onChanged: onChanged,
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-    );
-  }
-
-// Kombinierte Funktion zum Abrufen von Standardmaßen und Volumen
   // Kombinierte Funktion zum Abrufen von Standardmaßen, Volumen UND Parts
   Future<Map<String, dynamic>?> _getStandardMeasurementsAndVolume(Map<String, dynamic> productData) async {
     try {
@@ -3656,7 +3460,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
         // NEU: Extrahiere parts
         final parts = standardProduct['parts'] ?? 1;
-        print("parts: $parts");
+        //print("parts: $parts");
         measurements['parts'] = parts;
 
         // Extrahiere das Volumen
@@ -3669,14 +3473,14 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           measurements['volume'] = volumeInM3;
           measurements['volume_type'] = 'mm3';
           measurements['volume_original'] = mm3Volume;
-          print("volumeInM3 (aus mm³):$volumeInM3");
+          //print("volumeInM3 (aus mm³):$volumeInM3");
         } else if (dm3Volume != null && dm3Volume > 0) {
           // Konvertiere dm³ zu m³
           final volumeInM3 = (dm3Volume as num).toDouble() / 1000.0;
           measurements['volume'] = volumeInM3;
           measurements['volume_type'] = 'dm3';
           measurements['volume_original'] = dm3Volume;
-          print("volumeInM3 (aus dm³):$volumeInM3");
+          //print("volumeInM3 (aus dm³):$volumeInM3");
         }
 
         return measurements;
@@ -3684,7 +3488,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
       return null;
     } catch (e) {
-      print('Fehler beim Abrufen der Standardmaße und Volumen: $e');
+      //print('Fehler beim Abrufen der Standardmaße und Volumen: $e');
       return null;
     }
   }
@@ -4115,7 +3919,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         return (doc.data()!['density'] as num).toDouble();
       }
     } catch (e) {
-      print('Fehler beim Laden der Dichte: $e');
+      //print('Fehler beim Laden der Dichte: $e');
     }
     return null;
   }
@@ -4517,86 +4321,18 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     try {
       final query = buildQuery();
       final snapshot = await query.get();
-      final items = snapshot.docs.map((doc) => doc.data()).toList();
+      // Lokale Suchfilter anwenden
+      final filteredDocs = _filterBySearch(snapshot.docs);
+      final items = filteredDocs.map((doc) => doc.data() as Map<String, dynamic>).toList();
 
-      final fileName = _isOnlineShopView
-          ? 'Onlineshop_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.csv'
-          : 'Lagerbestand_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.csv';
-
-      final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/$fileName');
-
-      final StringBuffer csvContent = StringBuffer();
-
-      // Headers - unterschiedlich je nach Modus
-      final headers = _isOnlineShopView ? [
-        'Artikelnummer',
-        'Produkt',
-        'Instrument',
-        'Bauteil',
-        'Holzart',
-        'Qualität',
-        'Status',
-        'Preis CHF',
-        'Eingestellt am',
-        if (_shopFilter == 'sold') 'Verkauft am'
-      ] : [
-        'Artikelnummer',
-        'Produkt',
-        'Instrument',
-        'Bauteil',
-        'Holzart',
-        'Qualität',
-        'Bestand',
-        'Einheit',
-        'Preis CHF'
-      ];
-
-      csvContent.writeln(headers.join(';'));
-
-      // Data rows
-      for (final item in items) {
-        final row = _isOnlineShopView ? [
-          // Add apostrophe to force Excel to treat as text
-          "'${item['barcode']}",
-          item['product_name'],
-          '${item['instrument_name']} (${item['instrument_code']})',
-          '${item['part_name']} (${item['part_code']})',
-          '${item['wood_name']} (${item['wood_code']})',
-          '${item['quality_name']} (${item['quality_code']})',
-          item['sold'] == true ? 'Verkauft' : 'Im Shop',
-          NumberFormat.currency(locale: 'de_DE', symbol: 'CHF', decimalDigits: 2).format(item['price_CHF']),
-          item['created_at'] != null
-              ? DateFormat('dd.MM.yyyy HH:mm').format((item['created_at'] as Timestamp).toDate())
-              : '',
-          if (_shopFilter == 'sold' && item['sold_at'] != null)
-            DateFormat('dd.MM.yyyy HH:mm').format((item['sold_at'] as Timestamp).toDate())
-        ] : [
-          // Add apostrophe to force Excel to treat as text
-          "'${item['short_barcode']}",
-          item['product_name'],
-          '${item['instrument_name']} (${item['instrument_code']})',
-          '${item['part_name']} (${item['part_code']})',
-          '${item['wood_name']} (${item['wood_code']})',
-          '${item['quality_name']} (${item['quality_code']})',
-          item['quantity'].toString(),
-          item['unit'],
-          NumberFormat.currency(locale: 'de_DE', symbol: 'CHF', decimalDigits: 2).format(item['price_CHF'])
-        ];
-        csvContent.writeln(row.join(';'));
-      }
-
-      await file.writeAsBytes(csvContent.toString().codeUnits);
-
-      if (!mounted) return;
-
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        subject: fileName,
+      await WarehouseExportService.exportCsv(
+        items: items,
+        isOnlineShopView: _isOnlineShopView,
+        shopFilter: _shopFilter,
       );
 
-      Future.delayed(const Duration(minutes: 1), () => file.delete());
-      AppToast.show(message: 'Export erfolgreich', height: h);
+      if (!mounted) return;
+      AppToast.show(message: 'Export erfolgreich (${items.length} Einträge)', height: h);
     } catch (e) {
       if (!mounted) return;
       AppToast.show(message: 'Fehler beim Export: $e', height: h);
@@ -4604,130 +4340,57 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
 
   Future<void> _exportWarehousePdf() async {
+    if (!_hasActiveFilters()) {
+      if (!mounted) return;
+      AppToast.show(
+        message: 'PDF-Export nur mit aktivem Filter möglich. Bitte Filter setzen oder CSV verwenden.',
+        height: h,
+      );
+      return;
+    }
+
     try {
       final query = buildQuery();
       final snapshot = await query.get();
-      final items = snapshot.docs.map((doc) => doc.data()).toList();
+      final filteredDocs = _filterBySearch(snapshot.docs);
+      final items = filteredDocs.map((doc) => doc.data() as Map<String, dynamic>).toList();
 
-      final fileName = _isOnlineShopView
-          ? 'Onlineshop_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.pdf'
-          : 'Lagerbestand_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.pdf';
+      if (items.length > 500) {
+        if (!mounted) return;
+        AppToast.show(
+          message: 'Zu viele Einträge (${items.length}) für PDF. Bitte Filter einschränken oder CSV verwenden.',
+          height: h,
+        );
+        return;
+      }
 
-      final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/$fileName');
+      // Filter-Namen auflösen für die PDF-Anzeige
+      final activeFilters = <String, dynamic>{
+        'searchText': _activeSearchText,
+        'instruments': selectedInstrumentCodes
+            .map((c) => _getNameForCode(instruments, c))
+            .toList(),
+        'parts': selectedPartCodes
+            .map((c) => _getNameForCode(parts, c))
+            .toList(),
+        'woodTypes': selectedWoodCodes
+            .map((c) => _getNameForCode(woodTypes, c))
+            .toList(),
+        'qualities': selectedQualityCodes
+            .map((c) => _getNameForCode(qualities, c))
+            .toList(),
+        'unit': selectedUnit,
+      };
 
-      final pdf = pw.Document();
-
-      pdf.addPage(
-        pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          orientation: pw.PageOrientation.landscape,
-          build: (pw.Context context) => [
-            pw.Header(
-              level: 0,
-              child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(
-                    _isOnlineShopView ? 'Onlineshop Übersicht' : 'Lagerbestand Übersicht',
-                    style: pw.TextStyle(
-                      fontSize: 24,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
-                  ),
-                  pw.Text(
-                    'Stand: ${DateFormat('dd.MM.yyyy').format(DateTime.now())}',
-                    style: pw.TextStyle(
-                      fontSize: 14,
-                      color: PdfColors.grey700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            pw.SizedBox(height: 20),
-            pw.Table.fromTextArray(
-              headerStyle: pw.TextStyle(
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.black,
-              ),
-              headerDecoration: pw.BoxDecoration(
-                color: PdfColors.grey300,
-              ),
-              cellHeight: 30,
-              cellAlignments: {
-                0: pw.Alignment.centerLeft,
-                1: pw.Alignment.centerLeft,
-                2: pw.Alignment.centerLeft,
-                3: pw.Alignment.centerLeft,
-                4: pw.Alignment.centerLeft,
-                5: pw.Alignment.center,
-                6: pw.Alignment.centerRight,
-              },
-              headers: _isOnlineShopView ? [
-                'Artikelnummer',
-                'Produkt',
-                'Instrument',
-                'Holzart',
-                'Qualität',
-                'Status',
-                'Preis CHF',
-                'Eingestellt am',
-                if (_shopFilter == 'sold') 'Verkauft am'
-              ] : [
-                'Artikelnummer',
-                'Produkt',
-                'Instrument',
-                'Holzart',
-                'Qualität',
-                'Bestand',
-                'Preis CHF'
-              ],
-              data: items.map((item) => _isOnlineShopView ? [
-                item['barcode'],
-                item['product_name'],
-                '${item['instrument_name']} (${item['instrument_code']})',
-                '${item['wood_name']} (${item['wood_code']})',
-                '${item['quality_name']} (${item['quality_code']})',
-                item['sold'] == true ? 'Verkauft' : 'Im Shop',
-                NumberFormat.currency(locale: 'de_DE', symbol: 'CHF', decimalDigits: 2).format(item['price_CHF']),
-                item['created_at'] != null
-                    ? DateFormat('dd.MM.yyyy HH:mm').format((item['created_at'] as Timestamp).toDate())
-                    : '',
-                if (_shopFilter == 'sold' && item['sold_at'] != null)
-                  DateFormat('dd.MM.yyyy HH:mm').format((item['sold_at'] as Timestamp).toDate())
-              ] : [
-                item['short_barcode'],
-                item['product_name'],
-                '${item['instrument_name']} (${item['instrument_code']})',
-                '${item['wood_name']} (${item['wood_code']})',
-                '${item['quality_name']} (${item['quality_code']})',
-                '${item['quantity']} ${item['unit']}',
-                NumberFormat.currency(locale: 'de_DE', symbol: 'CHF', decimalDigits: 2).format(item['price_CHF']),
-              ]).toList(),
-            ),
-            pw.SizedBox(height: 20),
-            pw.Footer(
-              title: pw.Text(
-                'Seite ',
-                style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
-              ),
-            ),
-          ],
-        ),
+      await WarehouseExportService.exportPdf(
+        items: items,
+        isOnlineShopView: _isOnlineShopView,
+        shopFilter: _shopFilter,
+        activeFilters: activeFilters,
       );
-
-      await file.writeAsBytes(await pdf.save());
 
       if (!mounted) return;
-
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        subject: fileName,
-      );
-
-      Future.delayed(const Duration(minutes: 1), () => file.delete());
-      AppToast.show(message: 'Export erfolgreich', height: h);
+      AppToast.show(message: 'PDF Export erfolgreich (${items.length} Einträge)', height: h);
     } catch (e) {
       if (!mounted) return;
       AppToast.show(message: 'Fehler beim Export: $e', height: h);

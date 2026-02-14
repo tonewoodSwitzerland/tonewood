@@ -82,7 +82,7 @@ class _SalesInfoDesktopDialogState extends State<_SalesInfoDesktopDialog> {
             ),
             child: getAdaptiveIcon(
               iconName: 'info',
-              defaultIcon: Icons.info_outline,
+              defaultIcon: Icons.info,
               color: Colors.blue,
               size: 24,
             ),
@@ -214,7 +214,7 @@ class _SalesInfoBottomSheetState extends State<_SalesInfoBottomSheet> {
                       ),
                       child: getAdaptiveIcon(
                         iconName: 'info',
-                        defaultIcon: Icons.info_outline,
+                        defaultIcon: Icons.info,
                         color: Colors.blue,
                         size: 20,
                       ),

@@ -17,7 +17,6 @@ class SalesCsvService {
       List<Map<String, dynamic>> sales, {
         SalesFilter? filter,
       }) async {
-    // Wenn Filter vorhanden, Verkäufe filtern
     final filteredSales = filter != null ? _filterSales(sales, filter) : sales;
 
     final csvData = [
@@ -50,7 +49,6 @@ class SalesCsvService {
       final costCenter = sale['costCenter'] as Map<String, dynamic>?;
       final distChannel = metadata['distributionChannel'] as Map<String, dynamic>?;
 
-      // Datum
       DateTime? timestamp;
       final orderDateRaw = sale['orderDate'];
       if (orderDateRaw is Timestamp) {
@@ -80,7 +78,6 @@ class SalesCsvService {
       final distChannelStr = distChannel?['name'] ?? '';
 
       for (final item in items) {
-        // Stornierte überspringen
         if (sale['status'] == 'cancelled') continue;
 
         final quantity = (item['quantity'] as num?)?.toDouble() ?? 0;
@@ -120,23 +117,32 @@ class SalesCsvService {
   }
 
   // ============================================================
-  // 2) ANALYTICS-EXPORT: Zusammenfassung der aggregierten Daten
+  // 2) ANALYTICS-EXPORT: Zusammenfassung — NEU: Dual-Revenue + m³
   // ============================================================
 
   static List<int> generateAnalyticsSummary(SalesAnalytics analytics) {
     final buffer = StringBuffer();
 
-    // KPI-Übersicht
     buffer.writeln('Verkaufsanalyse - Zusammenfassung');
     buffer.writeln('Exportiert am;${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}');
     buffer.writeln('');
 
+    // Warenwert
+    buffer.writeln('Warenwert (netto Ware)');
     buffer.writeln('Kennzahl;Wert;Veränderung');
-    buffer.writeln('Umsatz ${DateTime.now().year};${analytics.revenue.yearRevenue.toStringAsFixed(2)};${_changeStr(analytics.revenue.yearChangePercent)}');
-    buffer.writeln('Umsatz ${_monthName(DateTime.now().month)};${analytics.revenue.monthRevenue.toStringAsFixed(2)};${_changeStr(analytics.revenue.monthChangePercent)}');
-    buffer.writeln('Vorjahresumsatz;${analytics.revenue.previousYearRevenue.toStringAsFixed(2)};');
+    buffer.writeln('Warenwert ${DateTime.now().year};${analytics.revenue.yearRevenue.toStringAsFixed(2)};${_changeStr(analytics.revenue.yearChangePercent)}');
+    buffer.writeln('Warenwert ${_monthName(DateTime.now().month)};${analytics.revenue.monthRevenue.toStringAsFixed(2)};${_changeStr(analytics.revenue.monthChangePercent)}');
+    buffer.writeln('Vorjahres-Warenwert;${analytics.revenue.previousYearRevenue.toStringAsFixed(2)};');
     buffer.writeln('Anzahl Aufträge;${analytics.orderCount};');
-    buffer.writeln('Durchschnittl. Auftragswert;${analytics.averageOrderValue.toStringAsFixed(2)};');
+    buffer.writeln('Ø Warenwert / Auftrag;${analytics.averageOrderValue.toStringAsFixed(2)};');
+    buffer.writeln('');
+
+    // Gesamtbetrag
+    buffer.writeln('Gesamtbetrag (inkl. Versand, MwSt)');
+    buffer.writeln('Kennzahl;Wert;Veränderung');
+    buffer.writeln('Gesamtbetrag ${DateTime.now().year};${analytics.revenue.yearRevenueGross.toStringAsFixed(2)};${_changeStr(analytics.revenue.yearChangePercentGross)}');
+    buffer.writeln('Gesamtbetrag ${_monthName(DateTime.now().month)};${analytics.revenue.monthRevenueGross.toStringAsFixed(2)};${_changeStr(analytics.revenue.monthChangePercentGross)}');
+    buffer.writeln('Ø Gesamtbetrag / Auftrag;${analytics.averageOrderValueGross.toStringAsFixed(2)};');
     buffer.writeln('');
 
     // Thermo
@@ -148,10 +154,12 @@ class SalesCsvService {
 
     // Monatliche Umsätze
     buffer.writeln('Monatliche Umsätze');
-    buffer.writeln('Monat;Umsatz CHF');
+    buffer.writeln('Monat;Warenwert CHF;Gesamtbetrag CHF');
     final sortedMonths = analytics.revenue.monthlyRevenue.keys.toList()..sort();
     for (final month in sortedMonths) {
-      buffer.writeln('${_formatMonthKey(month)};${analytics.revenue.monthlyRevenue[month]?.toStringAsFixed(2) ?? "0.00"}');
+      final subtotal = analytics.revenue.monthlyRevenue[month]?.toStringAsFixed(2) ?? '0.00';
+      final total = analytics.revenue.monthlyRevenueGross[month]?.toStringAsFixed(2) ?? '0.00';
+      buffer.writeln('${_formatMonthKey(month)};$subtotal;$total');
     }
     buffer.writeln('');
 
@@ -161,7 +169,7 @@ class SalesCsvService {
     final totalRevenue = countries.fold<double>(0, (sum, c) => sum + c.revenue);
 
     buffer.writeln('Umsatz nach Land');
-    buffer.writeln('Land;Ländercode;Umsatz CHF;Anteil;Aufträge;Artikel');
+    buffer.writeln('Land;Ländercode;Warenwert CHF;Anteil;Aufträge;Artikel');
     for (final c in countries) {
       final pct = totalRevenue > 0 ? (c.revenue / totalRevenue * 100).toStringAsFixed(1) : '0.0';
       buffer.writeln('${c.countryName};${c.countryCode};${c.revenue.toStringAsFixed(2)};$pct%;${c.orderCount};${c.itemCount}');
@@ -177,14 +185,15 @@ class SalesCsvService {
     }
     buffer.writeln('');
 
-    // Holzarten
+    // Holzarten — NEU: mit m³
     final woodTypes = analytics.woodTypeStats.values.toList()
       ..sort((a, b) => b.revenue.compareTo(a.revenue));
 
     buffer.writeln('Umsatz nach Holzart');
-    buffer.writeln('Holzart;Code;Stück;Umsatz CHF');
+    buffer.writeln('Holzart;Code;Stück;m³;Umsatz CHF');
     for (final w in woodTypes) {
-      buffer.writeln('${w.woodName};${w.woodCode};${w.quantity};${w.revenue.toStringAsFixed(2)}');
+      final volumeStr = w.volume > 0 ? w.volume.toStringAsFixed(4) : '0.0000';
+      buffer.writeln('${w.woodName};${w.woodCode};${w.quantity};$volumeStr;${w.revenue.toStringAsFixed(2)}');
     }
 
     return _addBom(buffer.toString());
@@ -194,13 +203,11 @@ class SalesCsvService {
   // HILFSFUNKTIONEN
   // ============================================================
 
-  /// UTF-8 BOM + Bytes für Excel-Kompatibilität
   static List<int> _addBom(String csv) {
     final bom = [0xEF, 0xBB, 0xBF];
     return bom + utf8.encode(csv);
   }
 
-  /// Escapet Semikolon und Anführungszeichen in CSV-Werten
   static String _escapeCsv(String value) {
     if (value.contains(';') || value.contains('"') || value.contains('\n')) {
       return '"${value.replaceAll('"', '""')}"';
@@ -226,11 +233,14 @@ class SalesCsvService {
     return '${short[m - 1]} ${parts[0]}';
   }
 
-  /// Filtert die Verkaufsliste nach allen aktiven Filtern
+  /// FIX: Filtert jetzt nur shipped Aufträge
   static List<Map<String, dynamic>> _filterSales(
       List<Map<String, dynamic>> sales, SalesFilter filter) {
     return sales.where((sale) {
       if (sale['status'] == 'cancelled') return false;
+
+      // FIX: Nur versendete Aufträge
+      if (sale['status'] != 'shipped') return false;
 
       // Zeitraum-Filter
       DateTime? orderDate;
@@ -322,12 +332,12 @@ class SalesCsvService {
         if (!hasMatch) return false;
       }
 
-      // Betrags-Filter
+      // Betrags-Filter — auf Warenwert (subtotal)
       if (filter.minAmount != null || filter.maxAmount != null) {
         final calculations = sale['calculations'] as Map<String, dynamic>? ?? {};
-        final total = (calculations['total'] as num?)?.toDouble() ?? 0;
-        if (filter.minAmount != null && total < filter.minAmount!) return false;
-        if (filter.maxAmount != null && total > filter.maxAmount!) return false;
+        final subtotal = (calculations['subtotal'] as num?)?.toDouble() ?? 0;
+        if (filter.minAmount != null && subtotal < filter.minAmount!) return false;
+        if (filter.maxAmount != null && subtotal > filter.maxAmount!) return false;
       }
 
       return true;

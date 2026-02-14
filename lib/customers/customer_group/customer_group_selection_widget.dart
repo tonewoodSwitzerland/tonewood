@@ -81,7 +81,7 @@ class _CustomerGroupSelectionWidgetState extends State<CustomerGroupSelectionWid
           children: [
             getAdaptiveIcon(
               iconName: 'info',
-              defaultIcon: Icons.info_outline,
+              defaultIcon: Icons.info,
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
             const SizedBox(width: 12),

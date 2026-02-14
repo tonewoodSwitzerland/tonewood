@@ -593,7 +593,7 @@ class _CustomerFilterBottomSheetState extends State<_CustomerFilterBottomSheet> 
                             children: [
                               getAdaptiveIcon(
                                 iconName: 'info',
-                                defaultIcon: Icons.info_outline,
+                                defaultIcon: Icons.info,
                                 size: 16,
                                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                               ),

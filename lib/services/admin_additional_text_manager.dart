@@ -15,7 +15,7 @@ class _AdminTextsEditorState extends State<AdminTextsEditor>
   late TabController _tabController;
 
   // Für Text-Editor Tab
-  String _selectedTextType = 'legend';
+  String _selectedTextType = 'legend_origin';
   String _selectedLanguage = 'DE';
   final _textController = TextEditingController();
   bool _isLoading = false;
@@ -28,7 +28,8 @@ class _AdminTextsEditorState extends State<AdminTextsEditor>
   bool _hasChanges = false;
 
   final Map<String, String> _textTypeNames = {
-    'legend': 'Legende',
+    'legend_origin': 'Ursprung (Legende)',
+    'legend_temperature': 'Temperatur (Legende)',
     'fsc': 'FSC-Zertifizierung',
     'natural_product': 'Naturprodukt',
     'bank_info': 'Bankverbindung',
@@ -38,7 +39,8 @@ class _AdminTextsEditorState extends State<AdminTextsEditor>
   };
 
   final Map<String, String> _textTypeDescriptions = {
-    'legend': 'Erklärung von Abkürzungen und Symbolen',
+    'legend_origin': 'Erklärung der Ursprungs-Abkürzung (Urs)',
+    'legend_temperature': 'Erklärung der Temperatur-Abkürzung (°C)',
     'fsc': 'Hinweis zur FSC-Zertifizierung',
     'natural_product': 'Hinweis zu natürlichen Materialeigenschaften',
     'bank_info': 'Angaben zur Zahlung',
@@ -48,7 +50,8 @@ class _AdminTextsEditorState extends State<AdminTextsEditor>
   };
 
   final Map<String, IconData> _textTypeIcons = {
-    'legend': Icons.info_outline,
+    'legend_origin': Icons.public,
+    'legend_temperature': Icons.thermostat,
     'fsc': Icons.eco,
     'natural_product': Icons.nature,
     'bank_info': Icons.account_balance,
@@ -290,7 +293,7 @@ class _AdminTextsEditorState extends State<AdminTextsEditor>
       return const Center(child: CircularProgressIndicator());
     }
 
-    final allTypes = ['legend', 'fsc', 'natural_product', 'bank_info',
+    final allTypes = ['legend_origin', 'legend_temperature', 'fsc', 'natural_product', 'bank_info',
       'origin_declaration', 'cites', 'free_text'];
 
     return Column(

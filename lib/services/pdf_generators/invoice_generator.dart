@@ -1014,20 +1014,49 @@ class InvoiceGenerator extends BasePdfGenerator {
     // MwSt-Berechnung
     double vatAmount = 0.0;
     double totalWithTax = netAmount;
+    double vatRoundingDifference = 0.0; // NEU: Rundungsdifferenz der MwSt
 
-    if (taxOption == 0) {
+    if (taxOption == 0) { // TaxOption.standard
       final netAmountRounded = double.parse(netAmount.toStringAsFixed(2));
       vatAmount = double.parse((netAmountRounded * (vatRate / 100)).toStringAsFixed(2));
-      totalWithTax = netAmountRounded + vatAmount;
+
+      // Brutto berechnen (ungerundet)
+      final rawTotal = netAmountRounded + vatAmount;
+
+      // Brutto auf 5 Rappen runden, Differenz in MwSt ausgleichen
+      if (roundingSettings[currency] == true) {
+        double rawTotalInDisplay = rawTotal;
+        if (currency != 'CHF') {
+          rawTotalInDisplay = rawTotal * (exchangeRates[currency] ?? 1.0);
+        }
+
+        final roundedTotalInDisplay = SwissRounding.round(
+          rawTotalInDisplay,
+          currency: currency,
+          roundingSettings: roundingSettings,
+        );
+
+        vatRoundingDifference = roundedTotalInDisplay - rawTotalInDisplay;
+
+        if (currency != 'CHF') {
+          final diffInCHF = vatRoundingDifference / (exchangeRates[currency] ?? 1.0);
+          vatAmount = vatAmount + diffInCHF;
+        } else {
+          vatAmount = vatAmount + vatRoundingDifference;
+        }
+
+        totalWithTax = netAmountRounded + vatAmount;
+      } else {
+        totalWithTax = rawTotal;
+      }
     } else {
       totalWithTax = double.parse(netAmount.toStringAsFixed(2));
     }
-
-    // Rundung anwenden
+    // Rundung anwenden (nur wenn MwSt NICHT extra ausgewiesen wird)
     double displayTotal = totalWithTax;
     double roundingDifference = 0.0;
 
-    if (roundingSettings[currency] == true) {
+    if (roundingSettings[currency] == true && taxOption != 0) {
       if (currency != 'CHF') {
         displayTotal = totalWithTax * (exchangeRates[currency] ?? 1.0);
       }
@@ -1320,38 +1349,28 @@ class InvoiceGenerator extends BasePdfGenerator {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Text(
-                    language == 'EN'
-                        ? 'VAT (${vatRate.toStringAsFixed(1)}%)'
-                        : 'MwSt (${vatRate.toStringAsFixed(1)}%)',
-                    style: const pw.TextStyle(fontSize: 9),
+                  // MwSt mit Rundungsdifferenz inline
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text(
+                        (language == 'EN'
+                            ? 'VAT (${vatRate.toStringAsFixed(1)}%)'
+                            : 'MwSt (${vatRate.toStringAsFixed(1)}%)')
+                            + (roundingSettings[currency] == true && vatRoundingDifference != 0
+                            ? '  (${language == 'EN' ? 'rounded' : 'gerundet'} ${vatRoundingDifference > 0 ? '+' : ''}${vatRoundingDifference.toStringAsFixed(2)})'
+                            : ''),
+                        style: const pw.TextStyle(fontSize: 9),
+                      ),
+
+                    ],
                   ),
                   pw.Text(BasePdfGenerator.formatCurrency(vatAmount, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
 
-              // Rundungsdifferenz anzeigen (falls vorhanden)
-              if (roundingSettings[currency] == true && roundingDifference != 0) ...[
-                pw.SizedBox(height: 4),
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text(
-                      language == 'EN' ? 'Rounding' : 'Rundung',
-                      style: const pw.TextStyle(fontSize: 9),
-                    ),
-                    pw.Text(
-                      roundingDifference > 0
-                          ? '+${BasePdfGenerator.formatCurrency(roundingDifference.abs() / (exchangeRates[currency] ?? 1.0), currency, exchangeRates)}'
-                          : '-${BasePdfGenerator.formatCurrency(roundingDifference.abs() / (exchangeRates[currency] ?? 1.0), currency, exchangeRates)}',
-                      style: pw.TextStyle(
-                        fontSize: 9,
-                        color: roundingDifference > 0 ? PdfColors.green700 : PdfColors.orange800,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              // Rundungsdifferenz als separate Zeile NUR wenn MwSt NICHT ausgewiesen (wird hier nicht mehr gebraucht)
+              // Bei taxOption == 0 wird die Rundung jetzt direkt in der MwSt-Zeile angezeigt
 
               pw.Divider(color: PdfColors.blueGrey300),
 
@@ -1580,46 +1599,47 @@ class InvoiceGenerator extends BasePdfGenerator {
       Map<String, dynamic>? additionalTexts,
       ) async {
     try {
-      final textsToUse = additionalTexts ?? {
-        'legend': {
-          'type': 'standard',
-          'custom_text': '',
-          'selected': true,
-        },
-        'fsc': {
-          'type': 'standard',
-          'custom_text': '',
-          'selected': false,
-        },
-        'natural_product': {
-          'type': 'standard',
-          'custom_text': '',
-          'selected': true,
-        },
-        'bank_info': {
-          'type': 'standard',
-          'custom_text': '',
-          'selected': true,
-        },
-        'free_text': {
-          'type': 'custom',
-          'custom_text': '',
-          'selected': false,
-        },
-      };
+      final textsToUse = additionalTexts ?? await AdditionalTextsManager.loadAdditionalTexts();
 
+      // Migration: altes 'legend' Feld auf neue Felder mappen
+      if (textsToUse.containsKey('legend') && !textsToUse.containsKey('legend_origin')) {
+        final legendSelected = textsToUse['legend']?['selected'] ?? false;
+        final legendType = textsToUse['legend']?['type'] ?? 'standard';
+        final legendCustom = textsToUse['legend']?['custom_text'] ?? '';
+        textsToUse['legend_origin'] = {
+          'type': legendType,
+          'custom_text': legendCustom,
+          'selected': legendSelected,
+        };
+        textsToUse['legend_temperature'] = {
+          'type': legendType,
+          'custom_text': '',
+          'selected': legendSelected,
+        };
+      }
       final List<pw.Widget> textWidgets = [];
 
-      if (textsToUse['legend']?['selected'] == true) {
+      // Legende (Ursprung + Temperatur)
+      final hasOrigin = textsToUse['legend_origin']?['selected'] == true;
+      final hasTemperature = textsToUse['legend_temperature']?['selected'] == true;
+
+      if (hasOrigin || hasTemperature) {
+        final parts = <String>[];
+        if (hasOrigin) {
+          parts.add(AdditionalTextsManager.getTextContent(
+              textsToUse['legend_origin'], 'legend_origin', language: language));
+        }
+        if (hasTemperature) {
+          parts.add(AdditionalTextsManager.getTextContent(
+              textsToUse['legend_temperature'], 'legend_temperature', language: language));
+        }
+        final prefix = language == 'EN' ? 'Legend: ' : 'Legende: ';
         textWidgets.add(
           pw.Container(
             alignment: pw.Alignment.centerLeft,
             margin: const pw.EdgeInsets.only(bottom: 3),
             child: pw.Text(
-              AdditionalTextsManager.getTextContent(
-                  textsToUse['legend'],
-                  'legend',
-                  language: language),
+              '$prefix${parts.join(", ")}',
               style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
               textAlign: pw.TextAlign.left,
             ),

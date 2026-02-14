@@ -76,7 +76,7 @@ class QuoteGenerator extends BasePdfGenerator {
     Map<String, dynamic>? calculations,
     required int taxOption,  // 0=standard, 1=noTax, 2=totalOnly
     required double vatRate,
-  DateTime? validityDate,
+    DateTime? validityDate,
   }) async {
     final pdf = pw.Document();
     final logo = await BasePdfGenerator.loadLogo();
@@ -632,8 +632,8 @@ class QuoteGenerator extends BasePdfGenerator {
       Map<String, double> exchangeRates,
       String language,
       bool showDimensions,
-  bool showThermalColumn,
-  bool showDiscountColumn,
+      bool showThermalColumn,
+      bool showDiscountColumn,
       bool showPartsColumn,
       Map<int, pw.FlexColumnWidth> columnWidths,
       Map<String, String> columnAlignments,
@@ -785,9 +785,9 @@ class QuoteGenerator extends BasePdfGenerator {
 
 
         String unit = item['unit'] ?? '';
-if (unit.toLowerCase() == 'stück') {
-  unit = language == 'EN' ? 'pcs' : 'Stk';
-}
+        if (unit.toLowerCase() == 'stück') {
+          unit = language == 'EN' ? 'pcs' : 'Stk';
+        }
 
         // Zeilen-Zellen erstellen
         final rowCells = <pw.Widget>[
@@ -880,7 +880,7 @@ if (unit.toLowerCase() == 'stück') {
                     ? item['thermal_treatment_temperature'].toString()
                     : '',
                 style: const pw.TextStyle(fontSize: 8),
-               textAlign: thermalAlign,
+                textAlign: thermalAlign,
               ),
             ),
           );
@@ -905,7 +905,7 @@ if (unit.toLowerCase() == 'stück') {
               pw.Text(
                 (parts < 1 ? 1 : parts).toString(),
                 style: const pw.TextStyle(fontSize: 8),
-              textAlign: partsAlign,
+                textAlign: partsAlign,
               ),
             ),
           );
@@ -918,7 +918,7 @@ if (unit.toLowerCase() == 'stück') {
                   ? quantity.toStringAsFixed(3)
                   : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
               style: const pw.TextStyle(fontSize: 8),
-            textAlign: qtyAlign,
+              textAlign: qtyAlign,
             ),
           ),
           BasePdfGenerator.buildContentCell(
@@ -926,14 +926,14 @@ if (unit.toLowerCase() == 'stück') {
           ),
           BasePdfGenerator.buildContentCell(
             pw.Text(
-             BasePdfGenerator.formatAmountOnly(pricePerUnit, currency, exchangeRates),
-              style: const pw.TextStyle(fontSize: 8),
-             textAlign: priceAlign
+                BasePdfGenerator.formatAmountOnly(pricePerUnit, currency, exchangeRates),
+                style: const pw.TextStyle(fontSize: 8),
+                textAlign: priceAlign
             ),
           ),
           BasePdfGenerator.buildContentCell(
             pw.Text(
-             BasePdfGenerator.formatAmountOnly(totalBeforeDiscount, currency, exchangeRates),
+              BasePdfGenerator.formatAmountOnly(totalBeforeDiscount, currency, exchangeRates),
               style: const pw.TextStyle(fontSize: 8),
               textAlign: discountAlign,
             ),
@@ -951,30 +951,30 @@ if (unit.toLowerCase() == 'stück') {
                 children: [
                   if (discount != null && (discount['percentage'] as num? ?? 0) > 0)
                     pw.Text(
-                      '${discount['percentage'].toStringAsFixed(2)}%',
-                      style: const pw.TextStyle(fontSize: 8),
-                      textAlign: discountAlign
+                        '${discount['percentage'].toStringAsFixed(2)}%',
+                        style: const pw.TextStyle(fontSize: 8),
+                        textAlign: discountAlign
                     ),
                   if (discount != null && (discount['absolute'] as num? ?? 0) > 0)
                     pw.Text(
-                     BasePdfGenerator.formatAmountOnly(
-                          (discount['absolute'] as num).toDouble(),
-                          currency,
-                          exchangeRates
-                      ),
-                      style: const pw.TextStyle(fontSize: 8),
-                      textAlign: netTotalAlign
+                        BasePdfGenerator.formatAmountOnly(
+                            (discount['absolute'] as num).toDouble(),
+                            currency,
+                            exchangeRates
+                        ),
+                        style: const pw.TextStyle(fontSize: 8),
+                        textAlign: netTotalAlign
                     ),
                 ],
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-               BasePdfGenerator.formatAmountOnly(itemTotal, currency, exchangeRates),
-                style: pw.TextStyle(
-                  fontSize: 8,
+                  BasePdfGenerator.formatAmountOnly(itemTotal, currency, exchangeRates),
+                  style: pw.TextStyle(
+                    fontSize: 8,
 
-                ),
+                  ),
                   textAlign: netTotalAlign
               ),
             ),
@@ -1049,31 +1049,52 @@ if (unit.toLowerCase() == 'stück') {
     final netAmount = afterDiscounts + plantCertificate + packagingCost + freightCost + totalSurcharges - totalDeductions;
 
     // MwSt-Berechnung basierend auf taxOption
-    // MwSt-Berechnung basierend auf taxOption
     double vatAmount = 0.0;
     double totalWithTax = netAmount;
+    double vatRoundingDifference = 0.0; // NEU: Rundungsdifferenz der MwSt
 
     if (taxOption == 0) { // TaxOption.standard
-      // NEU: Erst Nettobetrag auf 2 Nachkommastellen runden
       final netAmountRounded = double.parse(netAmount.toStringAsFixed(2));
-
-      // NEU: MwSt berechnen und auf 2 Nachkommastellen runden
       vatAmount = double.parse((netAmountRounded * (vatRate / 100)).toStringAsFixed(2));
 
-      // NEU: Total ist Summe der gerundeten Beträge
-      totalWithTax = netAmountRounded + vatAmount;
+      // Brutto berechnen (ungerundet)
+      final rawTotal = netAmountRounded + vatAmount;
+
+      // Brutto auf 5 Rappen runden, Differenz in MwSt ausgleichen
+      if (roundingSettings[currency] == true) {
+        double rawTotalInDisplay = rawTotal;
+        if (currency != 'CHF') {
+          rawTotalInDisplay = rawTotal * (exchangeRates[currency] ?? 1.0);
+        }
+
+        final roundedTotalInDisplay = SwissRounding.round(
+          rawTotalInDisplay,
+          currency: currency,
+          roundingSettings: roundingSettings,
+        );
+
+        vatRoundingDifference = roundedTotalInDisplay - rawTotalInDisplay;
+
+        if (currency != 'CHF') {
+          final diffInCHF = vatRoundingDifference / (exchangeRates[currency] ?? 1.0);
+          vatAmount = vatAmount + diffInCHF;
+        } else {
+          vatAmount = vatAmount + vatRoundingDifference;
+        }
+
+        totalWithTax = netAmountRounded + vatAmount;
+      } else {
+        totalWithTax = rawTotal;
+      }
     } else {
-      // Bei anderen Steueroptionen auch auf 2 Nachkommastellen runden
       totalWithTax = double.parse(netAmount.toStringAsFixed(2));
     }
-// Nach der Zeile: double totalWithTax = netAmount + vatAmount;
-
-// NEU: Rundung anwenden
+// NEU: Rundung nur wenn MwSt NICHT extra ausgewiesen wird
     double displayTotal = totalWithTax;
     double roundingDifference = 0.0;
 
-// Prüfe ob Rundung für diese Währung aktiviert ist
-    if (roundingSettings[currency] == true) {
+// Prüfe ob Rundung für diese Währung aktiviert ist (nur bei taxOption != 0)
+    if (roundingSettings[currency] == true && taxOption != 0) {
       // Konvertiere in Anzeigewährung
       if (currency != 'CHF') {
         displayTotal = totalWithTax * exchangeRates[currency]!;
@@ -1128,14 +1149,14 @@ if (unit.toLowerCase() == 'stück') {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-    pw.Row(
+                  pw.Row(
 
-    children: [
+                    children: [
 
-                  pw.Text(language == 'EN' ? 'Total discount' : 'Gesamtrabatt', style: const pw.TextStyle(fontSize: 9)),
-                  pw.Text(' (${(totalDiscountAmount/subtotal*100).toStringAsFixed(2)}%)', style: const pw.TextStyle(fontSize: 9)),
-    ],
-    ),
+                      pw.Text(language == 'EN' ? 'Total discount' : 'Gesamtrabatt', style: const pw.TextStyle(fontSize: 9)),
+                      pw.Text(' (${(totalDiscountAmount/subtotal*100).toStringAsFixed(2)}%)', style: const pw.TextStyle(fontSize: 9)),
+                    ],
+                  ),
                   pw.Text('- ${BasePdfGenerator.formatCurrency(totalDiscountAmount, currency, exchangeRates)}', style: const pw.TextStyle(fontSize: 9)),
                 ],
               ),
@@ -1340,14 +1361,18 @@ if (unit.toLowerCase() == 'stück') {
 
               pw.SizedBox(height: 4),
 
-              // MwSt
+              // MwSt mit Rundungsdifferenz inline
+              // MwSt mit Rundungsdifferenz inline
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   pw.Text(
-                    language == 'EN'
+                    (language == 'EN'
                         ? 'VAT (${vatRate.toStringAsFixed(1)}%)'
-                        : 'MwSt (${vatRate.toStringAsFixed(1)}%)',
+                        : 'MwSt (${vatRate.toStringAsFixed(1)}%)')
+                        + (roundingSettings[currency] == true && vatRoundingDifference != 0
+                        ? '  (${language == 'EN' ? 'rounded' : 'gerundet'} ${vatRoundingDifference > 0 ? '+' : ''}${vatRoundingDifference.toStringAsFixed(2)})'
+                        : ''),
                     style: const pw.TextStyle(fontSize: 9),
                   ),
                   pw.Text(BasePdfGenerator.formatCurrency(vatAmount, currency, exchangeRates), style: const pw.TextStyle(fontSize: 9)),
@@ -1355,28 +1380,7 @@ if (unit.toLowerCase() == 'stück') {
               ),
 
               pw.Divider(color: PdfColors.blueGrey300),
-// Rundungsdifferenz anzeigen (falls vorhanden)
-              if (roundingSettings[currency] == true && roundingDifference != 0) ...[
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text(
-                      language == 'EN' ? 'Rounding' : 'Rundung',
-                      style: const pw.TextStyle(fontSize: 9),
-                    ),
-                    pw.Text(
-                      roundingDifference > 0
-                          ? '+${BasePdfGenerator.formatCurrency(roundingDifference.abs() / exchangeRates[currency]!, currency, exchangeRates)}'
-                          : '-${BasePdfGenerator.formatCurrency(roundingDifference.abs() / exchangeRates[currency]!, currency, exchangeRates)}',
-                      style: pw.TextStyle(
-                        fontSize: 9,
-                        color: roundingDifference > 0 ? PdfColors.green700 : PdfColors.orange800,
-                      ),
-                    ),
-                  ],
-                ),
-                pw.SizedBox(height: 4),
-              ],
+              // Separate Rundungszeile entfällt bei taxOption == 0
               // Gesamtbetrag
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -1495,17 +1499,27 @@ if (unit.toLowerCase() == 'stück') {
       final List<pw.Widget> textWidgets = [];
 
       // Sammle alle ausgewählten Texte
-      if (additionalTexts['legend']?['selected'] == true) {
+      // Legende (Ursprung + Temperatur)
+      final hasOrigin = additionalTexts['legend_origin']?['selected'] == true;
+      final hasTemperature = additionalTexts['legend_temperature']?['selected'] == true;
+
+      if (hasOrigin || hasTemperature) {
+        final parts = <String>[];
+        if (hasOrigin) {
+          parts.add(AdditionalTextsManager.getTextContent(
+              additionalTexts['legend_origin'], 'legend_origin', language: language));
+        }
+        if (hasTemperature) {
+          parts.add(AdditionalTextsManager.getTextContent(
+              additionalTexts['legend_temperature'], 'legend_temperature', language: language));
+        }
+        final prefix = language == 'EN' ? 'Legend: ' : 'Legende: ';
         textWidgets.add(
           pw.Container(
             alignment: pw.Alignment.centerLeft,
             margin: const pw.EdgeInsets.only(bottom: 3),
             child: pw.Text(
-              AdditionalTextsManager.getTextContent(
-                  additionalTexts['legend'],
-                  'legend',
-                  language: language
-              ),
+              '$prefix${parts.join(", ")}',
               style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
               textAlign: pw.TextAlign.left,
             ),
@@ -1613,8 +1627,21 @@ if (unit.toLowerCase() == 'stück') {
       final List<String> textsToShow = [];
 
       // Legende
-      if (additionalTexts['legend']?['selected'] == true) {
-        textsToShow.add(AdditionalTextsManager.getTextContent(additionalTexts['legend'], 'legend'));
+      // Legende (Ursprung + Temperatur)
+      final hasOrigin = additionalTexts['legend_origin']?['selected'] == true;
+      final hasTemperature = additionalTexts['legend_temperature']?['selected'] == true;
+
+      if (hasOrigin || hasTemperature) {
+        final parts = <String>[];
+        if (hasOrigin) {
+          parts.add(AdditionalTextsManager.getTextContent(
+              additionalTexts['legend_origin'], 'legend_origin'));
+        }
+        if (hasTemperature) {
+          parts.add(AdditionalTextsManager.getTextContent(
+              additionalTexts['legend_temperature'], 'legend_temperature'));
+        }
+        textsToShow.add('Legende: ${parts.join(", ")}');
       }
 
       // FSC

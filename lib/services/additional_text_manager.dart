@@ -17,7 +17,8 @@ class AdditionalTextsManager {
 
   // NEU: Fallback Standard-Aktivierungen
   static const Map<String, bool> FALLBACK_DEFAULT_SELECTIONS = {
-    'legend': true,
+    'legend_origin': true,
+    'legend_temperature': true,
     'fsc': false,
     'natural_product': true,
     'bank_info': false,
@@ -36,7 +37,8 @@ class AdditionalTextsManager {
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         _cachedDefaultSelections = {
-          'legend': data['legend'] ?? true,
+          'legend_origin': data['legend_origin'] ?? true,
+          'legend_temperature': data['legend_temperature'] ?? true,
           'fsc': data['fsc'] ?? false,
           'natural_product': data['natural_product'] ?? true,
           'bank_info': data['bank_info'] ?? false,
@@ -121,7 +123,8 @@ class AdditionalTextsManager {
       if (snapshot.exists && snapshot.data() != null) {
         final data = snapshot.data()!;
         _cachedDefaultSelections = {
-          'legend': data['legend'] ?? true,
+          'legend_origin': data['legend_origin'] ?? true,
+          'legend_temperature': data['legend_temperature'] ?? true,
           'fsc': data['fsc'] ?? false,
           'natural_product': data['natural_product'] ?? true,
           'bank_info': data['bank_info'] ?? false,
@@ -153,13 +156,23 @@ class AdditionalTextsManager {
     },
   };
 
-  // Fallback-Texte (nur für den Fall, dass Firebase nicht erreichbar ist)
-  static const Map<String, Map<String, String>> FALLBACK_LEGEND_TEXT = {
+  // Fallback-Texte für Legende Ursprung
+  static const Map<String, Map<String, String>> FALLBACK_LEGEND_ORIGIN_TEXT = {
     'DE': {
-      'standard': 'Legende: Urs = Ursprung (ISO-Code Nation), °C = thermobehandelt (max. Temp. in °C)',
+      'standard': 'Urs = Ursprung (ISO-Code Nation)',
     },
     'EN': {
-      'standard': 'Legend: Orig = Origin (ISO country code), °C = heat treated (max. temp. in °C)',
+      'standard': 'Orig = Origin (ISO country code)',
+    },
+  };
+
+  // Fallback-Texte für Legende Temperatur
+  static const Map<String, Map<String, String>> FALLBACK_LEGEND_TEMPERATURE_TEXT = {
+    'DE': {
+      'standard': '°C = thermobehandelt (max. Temp. in °C)',
+    },
+    'EN': {
+      'standard': '°C = heat treated (max. temp. in °C)',
     },
   };
 
@@ -204,11 +217,12 @@ class AdditionalTextsManager {
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         _cachedDefaultTexts = {
-          'legend': _parseTextData(data['legend']),
+          'legend_origin': _parseTextData(data['legend_origin']),
+          'legend_temperature': _parseTextData(data['legend_temperature']),
           'fsc': _parseTextData(data['fsc']),
           'natural_product': _parseTextData(data['natural_product']),
           'bank_info': _parseTextData(data['bank_info']),
-          'origin_declaration': _parseTextData(data['origin_declaration']),  // NEU
+          'origin_declaration': _parseTextData(data['origin_declaration']),
           'cites': _parseTextData(data['cites']),
         };
         print('Standardtexte aus Firebase geladen');
@@ -249,12 +263,13 @@ class AdditionalTextsManager {
       await FirebaseFirestore.instance
           .doc(DEFAULT_TEXTS_PATH)
           .set({
-        'legend': FALLBACK_LEGEND_TEXT,
+        'legend_origin': FALLBACK_LEGEND_ORIGIN_TEXT,
+        'legend_temperature': FALLBACK_LEGEND_TEMPERATURE_TEXT,
         'fsc': FALLBACK_FSC_TEXT,
         'natural_product': FALLBACK_NATURAL_PRODUCT_TEXT,
         'bank_info': FALLBACK_BANK_INFO_TEXT,
-        'origin_declaration': FALLBACK_ORIGIN_DECLARATION_TEXT,  // NEU
-        'cites': FALLBACK_CITES_TEXT,  // NEU
+        'origin_declaration': FALLBACK_ORIGIN_DECLARATION_TEXT,
+        'cites': FALLBACK_CITES_TEXT,
         'last_updated': FieldValue.serverTimestamp(),
       });
 
@@ -304,17 +319,19 @@ class AdditionalTextsManager {
 
     // Fallback zu den hartcodierten Texten
     switch (textType) {
-      case 'legend':
-        return FALLBACK_LEGEND_TEXT;
+      case 'legend_origin':
+        return FALLBACK_LEGEND_ORIGIN_TEXT;
+      case 'legend_temperature':
+        return FALLBACK_LEGEND_TEMPERATURE_TEXT;
       case 'fsc':
         return FALLBACK_FSC_TEXT;
       case 'natural_product':
         return FALLBACK_NATURAL_PRODUCT_TEXT;
       case 'bank_info':
         return FALLBACK_BANK_INFO_TEXT;
-      case 'origin_declaration':  // NEU
+      case 'origin_declaration':
         return FALLBACK_ORIGIN_DECLARATION_TEXT;
-      case 'cites':  // NEU
+      case 'cites':
         return FALLBACK_CITES_TEXT;
 
       default:
@@ -331,7 +348,25 @@ class AdditionalTextsManager {
           .get();
 
       if (doc.exists && doc.data() != null) {
-        return doc.data()!;
+        final data = doc.data()!;
+        // Migration: altes 'legend' Feld auf neue Felder mappen
+        if (data.containsKey('legend') && !data.containsKey('legend_origin')) {
+          final legendSelected = data['legend']?['selected'] ?? false;
+          final legendType = data['legend']?['type'] ?? 'standard';
+          final legendCustom = data['legend']?['custom_text'] ?? '';
+          data['legend_origin'] = {
+            'type': legendType,
+            'custom_text': legendCustom,
+            'selected': legendSelected,
+          };
+          data['legend_temperature'] = {
+            'type': legendType,
+            'custom_text': '',
+            'selected': legendSelected,
+          };
+          data.remove('legend');
+        }
+        return data;
       }
     } catch (e) {
       print('Fehler beim Laden der Zusatztexte: $e');
@@ -341,10 +376,15 @@ class AdditionalTextsManager {
     final defaults = await loadDefaultSelections();
 
     return {
-      'legend': {
+      'legend_origin': {
         'type': 'standard',
         'custom_text': '',
-        'selected': defaults['legend'] ?? true,
+        'selected': defaults['legend_origin'] ?? true,
+      },
+      'legend_temperature': {
+        'type': 'standard',
+        'custom_text': '',
+        'selected': defaults['legend_temperature'] ?? true,
       },
       'fsc': {
         'type': 'standard',
@@ -426,7 +466,8 @@ class AdditionalTextsManager {
 
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
-        return data['legend']?['selected'] == true ||
+        return data['legend_origin']?['selected'] == true ||
+            data['legend_temperature']?['selected'] == true ||
             data['fsc']?['selected'] == true ||
             data['natural_product']?['selected'] == true ||
             data['bank_info']?['selected'] == true ||
@@ -467,11 +508,12 @@ class AdditionalTextsManager {
     final defaultTexts = getDefaultText(textType);
 
     switch (textType) {
-      case 'legend':
+      case 'legend_origin':
+      case 'legend_temperature':
       case 'fsc':
       case 'natural_product':
-    case 'origin_declaration':  // NEU
-    case 'cites':
+      case 'origin_declaration':
+      case 'cites':
         return defaultTexts[language]?['standard'] ?? defaultTexts['DE']?['standard'] ?? '';
       case 'bank_info':
         return defaultTexts[language]?[type] ?? defaultTexts['DE']?[type] ?? defaultTexts['DE']?['standard'] ?? '';
@@ -491,11 +533,12 @@ class AdditionalTextsManager {
       if (snapshot.exists && snapshot.data() != null) {
         final data = snapshot.data()!;
         _cachedDefaultTexts = {
-          'legend': _parseTextData(data['legend']),
+          'legend_origin': _parseTextData(data['legend_origin']),
+          'legend_temperature': _parseTextData(data['legend_temperature']),
           'fsc': _parseTextData(data['fsc']),
           'natural_product': _parseTextData(data['natural_product']),
           'bank_info': _parseTextData(data['bank_info']),
-          'origin_declaration': _parseTextData(data['origin_declaration']),  // NEU
+          'origin_declaration': _parseTextData(data['origin_declaration']),
           'cites': _parseTextData(data['cites'])
         };
         return data;
@@ -539,7 +582,8 @@ class AdditionalTextsManager {
         if (metadata.containsKey('additionalTexts')) {
           final additionalTexts = metadata['additionalTexts'] as Map<String, dynamic>;
 
-          return additionalTexts['legend']?['selected'] == true ||
+          return additionalTexts['legend_origin']?['selected'] == true ||
+              additionalTexts['legend_temperature']?['selected'] == true ||
               additionalTexts['fsc']?['selected'] == true ||
               additionalTexts['natural_product']?['selected'] == true ||
               additionalTexts['bank_info']?['selected'] == true ||
@@ -568,7 +612,12 @@ void showAdditionalTextsBottomSheet(BuildContext context, {
 
   // Der Rest der Funktion bleibt gleich...
   Map<String, dynamic> textConfig = {
-    'legend': {
+    'legend_origin': {
+      'type': 'standard',
+      'custom_text': '',
+      'selected': true,
+    },
+    'legend_temperature': {
       'type': 'standard',
       'custom_text': '',
       'selected': true,
@@ -601,7 +650,8 @@ void showAdditionalTextsBottomSheet(BuildContext context, {
   });
 
   // TextEditingController für Freitexte
-  final legendCustomController = TextEditingController();
+  final legendOriginCustomController = TextEditingController();
+  final legendTemperatureCustomController = TextEditingController();
   final fscCustomController = TextEditingController();
   final naturalProductCustomController = TextEditingController();
   final bankInfoCustomController = TextEditingController();
@@ -623,7 +673,8 @@ void showAdditionalTextsBottomSheet(BuildContext context, {
               };
 
               // Setze die Controller auf die geladenen Werte
-              legendCustomController.text = textConfig['legend']?['custom_text'] ?? '';
+              legendOriginCustomController.text = textConfig['legend_origin']?['custom_text'] ?? '';
+              legendTemperatureCustomController.text = textConfig['legend_temperature']?['custom_text'] ?? '';
               fscCustomController.text = textConfig['fsc']?['custom_text'] ?? '';
               naturalProductCustomController.text = textConfig['natural_product']?['custom_text'] ?? '';
               bankInfoCustomController.text = textConfig['bank_info']?['custom_text'] ?? '';
@@ -733,33 +784,59 @@ void showAdditionalTextsBottomSheet(BuildContext context, {
                   child: ListView(
                     padding: const EdgeInsets.all(20),
                     children: [
-                      // 1. Legende
+                      // 1. Legende Ursprung
                       _buildTextSection(
                         context,
-                        title: 'Legende',
-                        description: 'Text zur Erklärung von Abkürzungen und Symbolen',
-                        isSelected: textConfig['legend']['selected'] ?? true,
-                        currentType: textConfig['legend']['type'] ?? 'standard',
-                        customController: legendCustomController,
-                        standardText: AdditionalTextsManager.getDefaultText('legend')['DE']?['standard'] ?? '',
+                        title: 'Ursprung',
+                        description: 'Erklärung der Ursprungs-Abkürzung',
+                        isSelected: textConfig['legend_origin']['selected'] ?? true,
+                        currentType: textConfig['legend_origin']['type'] ?? 'standard',
+                        customController: legendOriginCustomController,
+                        standardText: AdditionalTextsManager.getDefaultText('legend_origin')['DE']?['standard'] ?? '',
                         onSelectionChanged: (value) {
                           setState(() {
-                            textConfig['legend']['selected'] = value;
+                            textConfig['legend_origin']['selected'] = value;
                           });
                         },
                         onTypeChanged: (value) {
                           setState(() {
-                            textConfig['legend']['type'] = value;
+                            textConfig['legend_origin']['type'] = value;
                           });
                         },
                         onCustomTextChanged: (value) {
-                          textConfig['legend']['custom_text'] = value;
+                          textConfig['legend_origin']['custom_text'] = value;
                         },
                       ),
 
                       const SizedBox(height: 24),
 
-                      // 2. FSC
+                      // 2. Legende Temperatur
+                      _buildTextSection(
+                        context,
+                        title: 'Temperatur',
+                        description: 'Erklärung der Temperatur-Abkürzung',
+                        isSelected: textConfig['legend_temperature']['selected'] ?? true,
+                        currentType: textConfig['legend_temperature']['type'] ?? 'standard',
+                        customController: legendTemperatureCustomController,
+                        standardText: AdditionalTextsManager.getDefaultText('legend_temperature')['DE']?['standard'] ?? '',
+                        onSelectionChanged: (value) {
+                          setState(() {
+                            textConfig['legend_temperature']['selected'] = value;
+                          });
+                        },
+                        onTypeChanged: (value) {
+                          setState(() {
+                            textConfig['legend_temperature']['type'] = value;
+                          });
+                        },
+                        onCustomTextChanged: (value) {
+                          textConfig['legend_temperature']['custom_text'] = value;
+                        },
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // 3. FSC
                       _buildTextSection(
                         context,
                         title: 'FSC-Zertifizierung',
@@ -785,7 +862,7 @@ void showAdditionalTextsBottomSheet(BuildContext context, {
 
                       const SizedBox(height: 24),
 
-                      // 3. Naturprodukt
+                      // 4. Naturprodukt
                       _buildTextSection(
                         context,
                         title: 'Naturprodukt',
@@ -811,7 +888,7 @@ void showAdditionalTextsBottomSheet(BuildContext context, {
 
                       const SizedBox(height: 24),
 
-                      // 4. Bankverbindung
+                      // 5. Bankverbindung
                       _buildTextSection(
                         context,
                         title: 'Bankverbindung',
@@ -842,7 +919,7 @@ void showAdditionalTextsBottomSheet(BuildContext context, {
 
                       const SizedBox(height: 24),
 
-                      // 5. Freitext
+                      // 6. Freitext
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -930,7 +1007,8 @@ void showAdditionalTextsBottomSheet(BuildContext context, {
                         ElevatedButton.icon(
                           onPressed: () async {
                             // Aktualisiere die custom_text Werte, falls nötig
-                            textConfig['legend']['custom_text'] = legendCustomController.text;
+                            textConfig['legend_origin']['custom_text'] = legendOriginCustomController.text;
+                            textConfig['legend_temperature']['custom_text'] = legendTemperatureCustomController.text;
                             textConfig['fsc']['custom_text'] = fscCustomController.text;
                             textConfig['natural_product']['custom_text'] = naturalProductCustomController.text;
                             textConfig['bank_info']['custom_text'] = bankInfoCustomController.text;
@@ -940,7 +1018,8 @@ void showAdditionalTextsBottomSheet(BuildContext context, {
                             await AdditionalTextsManager.saveAdditionalTexts(textConfig);
 
                             // Aktualisiere den Notifier
-                            final hasSelection = textConfig['legend']['selected'] == true ||
+                            final hasSelection = textConfig['legend_origin']['selected'] == true ||
+                                textConfig['legend_temperature']['selected'] == true ||
                                 textConfig['fsc']['selected'] == true ||
                                 textConfig['natural_product']['selected'] == true ||
                                 textConfig['bank_info']['selected'] == true ||

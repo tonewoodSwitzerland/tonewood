@@ -13,7 +13,6 @@ import '../../../services/countries.dart';
 class SalesPdfService {
 
   static String _formatCurrency(double value) {
-    // Tausendertrennzeichen: einfaches Hochkomma (')
     final isNegative = value < 0;
     final absValue = value.abs();
     final wholePart = absValue.toInt().toString().replaceAllMapped(
@@ -29,6 +28,8 @@ class SalesPdfService {
 
   // ============================================================
   // 1) DETAIL-LISTE: Einzelne Aufträge (Buchhaltung)
+  // FIX: MwSt/Total-Spalten entfernt, Land eingefügt
+  // FIX: Nur shipped, Warenwert (subtotal) als Basis
   // ============================================================
 
   static Future<Uint8List> generateSalesDetailList(
@@ -87,14 +88,14 @@ class SalesPdfService {
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
                     _buildSummaryItem('Anzahl Aufträge', stats['salesCount'].toString()),
-                    _buildSummaryItem('Gesamtumsatz', _formatCurrency(stats['totalRevenue'])),
+                    _buildSummaryItem('Warenwert', _formatCurrency(stats['totalSubtotal'])),
                   ],
                 ),
                 pw.SizedBox(height: 8),
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildSummaryItem('Durchschn. Bestellwert', _formatCurrency(stats['averageOrderValue'])),
+                    _buildSummaryItem('Gesamtbetrag', _formatCurrency(stats['totalRevenue'])),
                     _buildSummaryItem('Zeitraum', _getFilterTimeRange(filter)),
                   ],
                 ),
@@ -109,12 +110,12 @@ class SalesPdfService {
           if (_hasActiveFilter(filter))
             pw.SizedBox(height: 12),
 
-          // Tabelle
+          // Tabelle — FIX: MwSt/Total raus, Land nach Kunde eingefügt
           pw.Table.fromTextArray(
             headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
             cellStyle: const pw.TextStyle(fontSize: 7),
             headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
-            headers: ['Datum', 'Nr.', 'Kunde', 'Bestellart', 'Artikel', 'Netto', 'MwSt', 'Total CHF'],
+            headers: ['Datum', 'Nr.', 'Kunde', 'Land', 'Bestellart', 'Artikel', 'Netto CHF'],
             data: filteredSales.where((s) => s['status'] != 'cancelled').map((sale) {
               final items = (sale['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
               final calculations = sale['calculations'] as Map<String, dynamic>? ?? {};
@@ -126,15 +127,19 @@ class SalesPdfService {
               final od = sale['orderDate'];
               if (od is Timestamp) ts = od.toDate();
 
+              // Land aus Customer
+              final countryCode = customer['countryCode']?.toString() ??
+                  customer['country']?.toString() ?? '';
+              final country = Countries.getCountryByCode(countryCode);
+
               return [
                 ts != null ? DateFormat('dd.MM.yy').format(ts) : '-',
                 sale['orderNumber'] ?? sale['receipt_number'] ?? '-',
                 _getCustomerDisplayName(customer),
+                country.name.isNotEmpty ? country.name : countryCode,
                 distChannel?['name'] ?? '-',
                 '${items.length} Pos.',
-                _formatCurrency(((calculations['net_amount'] as num?) ?? 0).toDouble()),
-                _formatCurrency(((calculations['vat_amount'] as num?) ?? 0).toDouble()),
-                _formatCurrency(((calculations['total'] as num?) ?? 0).toDouble()),
+                _formatCurrency(((calculations['subtotal'] as num?) ?? 0).toDouble()),
               ];
             }).toList(),
             cellAlignments: {
@@ -142,10 +147,9 @@ class SalesPdfService {
               1: pw.Alignment.center,
               2: pw.Alignment.centerLeft,
               3: pw.Alignment.centerLeft,
-              4: pw.Alignment.centerRight,
+              4: pw.Alignment.centerLeft,
               5: pw.Alignment.centerRight,
               6: pw.Alignment.centerRight,
-              7: pw.Alignment.centerRight,
             },
           ),
         ],
@@ -197,7 +201,7 @@ class SalesPdfService {
   }
 
   // ============================================================
-  // SEITE 1: KPI-ÜBERSICHT
+  // SEITE 1: KPI-ÜBERSICHT — NEU: Warenwert + Gesamtbetrag
   // ============================================================
 
   static pw.Page _buildKpiPage(SalesAnalytics analytics, pw.MemoryImage? logo, SalesFilter? filter) {
@@ -216,22 +220,38 @@ class SalesPdfService {
               ..._buildFilterChips(filter),
             pw.SizedBox(height: 20),
 
-            // KPIs
-            pw.Text('Kennzahlen', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            // KPIs — Warenwert
+            pw.Text('Warenwert (netto Ware)', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 8),
             _buildDataTable(
               headers: ['Kennzahl', 'Wert', 'Veränderung'],
               widths: {0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(2), 2: const pw.FlexColumnWidth(2)},
               rows: [
-                ['Umsatz ${DateTime.now().year}', _formatCurrency(analytics.revenue.yearRevenue),
+                ['Warenwert ${DateTime.now().year}', _formatCurrency(analytics.revenue.yearRevenue),
                   '${_changeStr(analytics.revenue.yearChangePercent)} vs. Vorjahr'],
-                ['Umsatz ${_monthName(DateTime.now().month)}', _formatCurrency(analytics.revenue.monthRevenue),
+                ['Warenwert ${_monthName(DateTime.now().month)}', _formatCurrency(analytics.revenue.monthRevenue),
                   '${_changeStr(analytics.revenue.monthChangePercent)} vs. Vormonat'],
                 ['Anzahl Aufträge', analytics.orderCount.toString(), ''],
-                ['Durchschn. Auftragswert', _formatCurrency(analytics.averageOrderValue), ''],
+                ['Ø Warenwert / Auftrag', _formatCurrency(analytics.averageOrderValue), ''],
               ],
             ),
-            pw.SizedBox(height: 20),
+            pw.SizedBox(height: 16),
+
+            // KPIs — Gesamtbetrag
+            pw.Text('Gesamtbetrag (inkl. Versand, MwSt)', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 8),
+            _buildDataTable(
+              headers: ['Kennzahl', 'Wert', 'Veränderung'],
+              widths: {0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(2), 2: const pw.FlexColumnWidth(2)},
+              rows: [
+                ['Gesamtbetrag ${DateTime.now().year}', _formatCurrency(analytics.revenue.yearRevenueGross),
+                  '${_changeStr(analytics.revenue.yearChangePercentGross)} vs. Vorjahr'],
+                ['Gesamtbetrag ${_monthName(DateTime.now().month)}', _formatCurrency(analytics.revenue.monthRevenueGross),
+                  '${_changeStr(analytics.revenue.monthChangePercentGross)} vs. Vormonat'],
+                ['Ø Gesamtbetrag / Auftrag', _formatCurrency(analytics.averageOrderValueGross), ''],
+              ],
+            ),
+            pw.SizedBox(height: 16),
 
             // Thermo
             pw.Text('Thermobehandlung', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
@@ -246,10 +266,10 @@ class SalesPdfService {
                   _formatCurrency(analytics.thermoStats.thermoRevenue)],
               ],
             ),
-            pw.SizedBox(height: 20),
+            pw.SizedBox(height: 16),
 
             // Monatliche Umsätze
-            pw.Text('Monatliche Umsätze', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.Text('Monatliche Umsätze (Warenwert)', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 8),
             _buildMonthlyTable(analytics.revenue.monthlyRevenue),
 
@@ -262,7 +282,7 @@ class SalesPdfService {
   }
 
   // ============================================================
-  // SEITE 2: LÄNDER
+  // SEITE 2: LÄNDER — zeigt jetzt Warenwert
   // ============================================================
 
   static pw.Page _buildCountryPage(SalesAnalytics analytics, pw.MemoryImage? logo) {
@@ -282,7 +302,7 @@ class SalesPdfService {
             _buildHeader('Verkaufsanalyse - Länder', logo),
             pw.SizedBox(height: 4),
             pw.Text(
-              '${countries.length} Länder | $totalOrders Lieferungen | ${_formatCurrency(totalRevenue)}',
+              '${countries.length} Länder | $totalOrders Lieferungen | Warenwert: ${_formatCurrency(totalRevenue)}',
               style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
             ),
             pw.SizedBox(height: 16),
@@ -297,7 +317,7 @@ class SalesPdfService {
                 4: const pw.FlexColumnWidth(1),
               },
               children: [
-                _buildHeaderRow(['Land', 'Umsatz CHF', '%', 'Aufträge', 'Artikel']),
+                _buildHeaderRow(['Land', 'Warenwert CHF', '%', 'Aufträge', 'Artikel']),
                 ...countries.take(25).map((c) {
                   final pct = totalRevenue > 0 ? (c.revenue / totalRevenue * 100).toStringAsFixed(1) : '0.0';
                   return _buildRow([c.countryName, _formatCurrency(c.revenue), '$pct%',
@@ -330,7 +350,7 @@ class SalesPdfService {
   }
 
   // ============================================================
-  // SEITE 3: PRODUKTE
+  // SEITE 3: PRODUKTE — NEU: m³-Spalte bei Holzarten
   // ============================================================
 
   static pw.Page _buildProductPage(SalesAnalytics analytics, pw.MemoryImage? logo) {
@@ -369,7 +389,7 @@ class SalesPdfService {
             ),
             pw.SizedBox(height: 20),
 
-            // Holzarten
+            // Holzarten — NEU: mit m³-Spalte
             pw.Text('Umsatz nach Holzart', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 8),
             pw.Table(
@@ -377,14 +397,16 @@ class SalesPdfService {
               columnWidths: {
                 0: const pw.FlexColumnWidth(3),
                 1: const pw.FlexColumnWidth(1),
-                2: const pw.FlexColumnWidth(1),
-                3: const pw.FlexColumnWidth(2),
+                2: const pw.FlexColumnWidth(1.2),
+                3: const pw.FlexColumnWidth(1),
+                4: const pw.FlexColumnWidth(2),
               },
               children: [
-                _buildHeaderRow(['Holzart', 'Stück', '%', 'Umsatz CHF']),
+                _buildHeaderRow(['Holzart', 'Stück', 'm³', '%', 'Umsatz CHF']),
                 ...woodTypes.take(15).map((w) {
                   final pct = totalWoodRevenue > 0 ? (w.revenue / totalWoodRevenue * 100).toStringAsFixed(1) : '0.0';
-                  return _buildRow([w.woodName, w.quantity.toString(), '$pct%', _formatCurrency(w.revenue)]);
+                  final volumeStr = w.volume > 0 ? w.volume.toStringAsFixed(4) : '-';
+                  return _buildRow([w.woodName, w.quantity.toString(), volumeStr, '$pct%', _formatCurrency(w.revenue)]);
                 }),
               ],
             ),
@@ -401,11 +423,9 @@ class SalesPdfService {
   // SHARED WIDGETS
   // ============================================================
 
-  /// Baut die Filter-Chips als Wrap-Zeilen für die PDF-Anzeige
   static List<pw.Widget> _buildFilterChips(SalesFilter filter) {
     final chips = <String>[];
 
-    // Zeitraum
     if (filter.timeRange != null) {
       chips.add('Zeitraum: ${_getFilterTimeRange(filter)}');
     } else if (filter.startDate != null || filter.endDate != null) {
@@ -414,7 +434,6 @@ class SalesPdfService {
       chips.add('Zeitraum: $start – $end');
     }
 
-    // Betrag
     if (filter.minAmount != null && filter.maxAmount != null) {
       chips.add('Betrag: ${_formatCurrency(filter.minAmount!)} – ${_formatCurrency(filter.maxAmount!)}');
     } else if (filter.minAmount != null) {
@@ -423,7 +442,6 @@ class SalesPdfService {
       chips.add('Max. ${_formatCurrency(filter.maxAmount!)}');
     }
 
-    // Länder
     if (filter.countries != null && filter.countries!.isNotEmpty) {
       final names = filter.countries!
           .map((code) => Countries.getCountryByCode(code).name)
@@ -431,47 +449,38 @@ class SalesPdfService {
       chips.add('Land: ${names.join(', ')}');
     }
 
-    // Holzarten
     if (filter.woodTypes != null && filter.woodTypes!.isNotEmpty) {
       chips.add('Holzart: ${filter.woodTypes!.join(', ')}');
     }
 
-    // Qualitäten
     if (filter.qualities != null && filter.qualities!.isNotEmpty) {
       chips.add('Qualität: ${filter.qualities!.join(', ')}');
     }
 
-    // Instrumente
     if (filter.instruments != null && filter.instruments!.isNotEmpty) {
       chips.add('Instrument: ${filter.instruments!.join(', ')}');
     }
 
-    // Bauteile
     if (filter.parts != null && filter.parts!.isNotEmpty) {
       chips.add('Bauteil: ${filter.parts!.join(', ')}');
     }
 
-    // Kostenstellen
     if (filter.costCenters != null && filter.costCenters!.isNotEmpty) {
       chips.add('Kostenstelle: ${filter.costCenters!.join(', ')}');
     }
 
-    // Bestellart
     if (filter.distributionChannels != null && filter.distributionChannels!.isNotEmpty) {
       chips.add('Bestellart: ${filter.distributionChannels!.join(', ')}');
     }
 
-    // Kunden
     if (filter.selectedCustomers != null && filter.selectedCustomers!.isNotEmpty) {
       chips.add('${filter.selectedCustomers!.length} Kunde(n)');
     }
 
-    // Messen
     if (filter.selectedFairs != null && filter.selectedFairs!.isNotEmpty) {
       chips.add('${filter.selectedFairs!.length} Messe(n)');
     }
 
-    // Artikel
     if (filter.selectedProducts != null && filter.selectedProducts!.isNotEmpty) {
       chips.add('${filter.selectedProducts!.length} Artikel');
     }
@@ -569,7 +578,7 @@ class SalesPdfService {
       border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
       columnWidths: {0: const pw.FlexColumnWidth(2), 1: const pw.FlexColumnWidth(3)},
       children: [
-        _buildHeaderRow(['Monat', 'Umsatz CHF']),
+        _buildHeaderRow(['Monat', 'Warenwert CHF']),
         ...last12.map((k) => _buildRow([_formatMonthKey(k), _formatCurrency(monthlyRevenue[k] ?? 0)])),
       ],
     );
@@ -599,19 +608,23 @@ class SalesPdfService {
   // HILFSFUNKTIONEN
   // ============================================================
 
+  /// FIX: Berechnet jetzt sowohl subtotal (Warenwert) als auch total (Gesamtbetrag)
   static Map<String, dynamic> _calculateSalesStats(List<Map<String, dynamic>> sales) {
     double totalRevenue = 0;
+    double totalSubtotal = 0;
     int count = 0;
     for (var sale in sales) {
       if (sale['status'] == 'cancelled') continue;
       final calculations = sale['calculations'] as Map<String, dynamic>? ?? {};
       totalRevenue += (calculations['total'] as num?)?.toDouble() ?? 0;
+      totalSubtotal += (calculations['subtotal'] as num?)?.toDouble() ?? 0;
       count++;
     }
     return {
       'salesCount': count,
       'totalRevenue': totalRevenue,
-      'averageOrderValue': count == 0 ? 0.0 : totalRevenue / count,
+      'totalSubtotal': totalSubtotal,
+      'averageOrderValue': count == 0 ? 0.0 : totalSubtotal / count,
     };
   }
 
@@ -639,12 +652,15 @@ class SalesPdfService {
         (filter.countries?.isNotEmpty ?? false);
   }
 
-  /// Filtert die Verkaufsliste nach allen aktiven Filtern
+  /// FIX: Filtert jetzt nur shipped Aufträge
   static List<Map<String, dynamic>> _filterSales(
       List<Map<String, dynamic>> sales, SalesFilter filter) {
     return sales.where((sale) {
       // Stornierte überspringen
       if (sale['status'] == 'cancelled') return false;
+
+      // FIX: Nur versendete Aufträge
+      if (sale['status'] != 'shipped') return false;
 
       // Zeitraum-Filter
       DateTime? orderDate;
@@ -729,7 +745,7 @@ class SalesPdfService {
         if (!filter.distributionChannels!.any((f) => f == id || f == name)) return false;
       }
 
-      // Item-Level Filter (Holzart, Qualität, Instrument, Bauteil, Produkt)
+      // Item-Level Filter
       if (_hasItemLevelFilters(filter)) {
         final items = (sale['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
         final hasMatch = items.any((item) => _itemMatchesFilter(item, filter));
@@ -739,9 +755,9 @@ class SalesPdfService {
       // Betrags-Filter
       if (filter.minAmount != null || filter.maxAmount != null) {
         final calculations = sale['calculations'] as Map<String, dynamic>? ?? {};
-        final total = (calculations['total'] as num?)?.toDouble() ?? 0;
-        if (filter.minAmount != null && total < filter.minAmount!) return false;
-        if (filter.maxAmount != null && total > filter.maxAmount!) return false;
+        final subtotal = (calculations['subtotal'] as num?)?.toDouble() ?? 0;
+        if (filter.minAmount != null && subtotal < filter.minAmount!) return false;
+        if (filter.maxAmount != null && subtotal > filter.maxAmount!) return false;
       }
 
       return true;

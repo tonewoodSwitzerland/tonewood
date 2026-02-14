@@ -35,11 +35,8 @@ class SalesProductView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Top 10 Produkt-Kombinationen
               _buildTop10ProductCombos(context, analytics.topProductCombos),
               const SizedBox(height: 24),
-
-              // Umsatz nach Holzart
               _buildWoodTypeAnalysis(context, analytics.woodTypeStats),
             ],
           ),
@@ -111,7 +108,6 @@ class SalesProductView extends StatelessWidget {
             ),
             const SizedBox(height: 20),
 
-            // Top 10 Liste mit Balken
             ...List.generate(combos.length, (index) {
               final combo = combos[index];
               final barWidth = maxRevenue > 0 ? combo.revenue / maxRevenue : 0;
@@ -123,7 +119,6 @@ class SalesProductView extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        // Rang
                         Container(
                           width: 28,
                           height: 28,
@@ -143,7 +138,6 @@ class SalesProductView extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        // Name
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -165,7 +159,6 @@ class SalesProductView extends StatelessWidget {
                             ],
                           ),
                         ),
-                        // Umsatz
                         Text(
                           format.format(combo.revenue),
                           style: const TextStyle(
@@ -176,7 +169,6 @@ class SalesProductView extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    // Progress Bar
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: LinearProgressIndicator(
@@ -262,13 +254,11 @@ class SalesProductView extends StatelessWidget {
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Pie Chart
                       Expanded(
                         flex: 2,
                         child: _buildWoodTypePieChart(context, sortedWoodTypes, totalRevenue),
                       ),
                       const SizedBox(width: 24),
-                      // Liste
                       Expanded(
                         flex: 3,
                         child: _buildWoodTypeList(context, sortedWoodTypes, totalRevenue, format),
@@ -331,94 +321,179 @@ class SalesProductView extends StatelessWidget {
     );
   }
 
+  /// NEU: Holzart-Liste mit m³-Spalte
   Widget _buildWoodTypeList(BuildContext context, List<WoodTypeStats> woodTypes, double totalRevenue, NumberFormat format) {
     final theme = Theme.of(context);
     final topWoodTypes = woodTypes.take(10).toList();
 
     return Column(
-      children: List.generate(topWoodTypes.length, (index) {
-        final wood = topWoodTypes[index];
-        final percent = totalRevenue > 0 ? (wood.revenue / totalRevenue * 100) : 0;
-
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
+      children: [
+        // Header-Zeile
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
           child: Row(
             children: [
-              // Farbindikator
-              Container(
-                width: 14,
-                height: 14,
-                decoration: BoxDecoration(
-                  color: _getWoodColor(index),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 12),
-              // Name
+              const SizedBox(width: 26), // Platz für Farbindikator
               Expanded(
-                flex: 2,
+                flex: 3,
                 child: Text(
-                  wood.woodName,
-                  style: const TextStyle(fontSize: 13),
-                ),
-              ),
-              // Menge
-              Expanded(
-                child: Text(
-                  '${wood.quantity} Stk',
+                  'Holzart',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
-                  textAlign: TextAlign.right,
                 ),
               ),
-              // Prozent
               SizedBox(
                 width: 50,
                 child: Text(
-                  '${percent.toStringAsFixed(1)}%',
+                  'Stk',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                   textAlign: TextAlign.right,
                 ),
               ),
-              // Umsatz
+              SizedBox(
+                width: 65,
+                child: Text(
+                  'm³',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              SizedBox(
+                width: 45,
+                child: Text(
+                  '%',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
               SizedBox(
                 width: 90,
                 child: Text(
-                  format.format(wood.revenue),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                  'Umsatz',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                   textAlign: TextAlign.right,
                 ),
               ),
             ],
           ),
-        );
-      }),
+        ),
+        // Daten-Zeilen
+        ...List.generate(topWoodTypes.length, (index) {
+          final wood = topWoodTypes[index];
+          final percent = totalRevenue > 0 ? (wood.revenue / totalRevenue * 100) : 0;
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                // Farbindikator
+                Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: _getWoodColor(index),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Name
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    wood.woodName,
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+                // Menge
+                SizedBox(
+                  width: 50,
+                  child: Text(
+                    '${wood.quantity}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+                // NEU: m³
+                SizedBox(
+                  width: 65,
+                  child: Text(
+                    wood.volume > 0 ? wood.volume.toStringAsFixed(4) : '-',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+                // Prozent
+                SizedBox(
+                  width: 45,
+                  child: Text(
+                    '${percent.toStringAsFixed(1)}%',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+                // Umsatz
+                SizedBox(
+                  width: 90,
+                  child: Text(
+                    format.format(wood.revenue),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
     );
   }
 
   Color _getRankColor(int index) {
-    if (index == 0) return const Color(0xFFFFD700); // Gold
-    if (index == 1) return const Color(0xFFC0C0C0); // Silber
-    if (index == 2) return const Color(0xFFCD7F32); // Bronze
+    if (index == 0) return const Color(0xFFFFD700);
+    if (index == 1) return const Color(0xFFC0C0C0);
+    if (index == 2) return const Color(0xFFCD7F32);
     return Colors.indigo.withOpacity(0.7);
   }
 
   Color _getWoodColor(int index) {
     const colors = [
-      Color(0xFF8D6E63), // Braun
-      Color(0xFF6D4C41), // Dunkelbraun
-      Color(0xFFBCAAA4), // Hellbraun
-      Color(0xFF795548), // Mittelbraun
-      Color(0xFF5D4037), // Sehr dunkel
-      Color(0xFFA1887F), // Graubraun
+      Color(0xFF8D6E63),
+      Color(0xFF6D4C41),
+      Color(0xFFBCAAA4),
+      Color(0xFF795548),
+      Color(0xFF5D4037),
+      Color(0xFFA1887F),
     ];
     return colors[index % colors.length];
   }

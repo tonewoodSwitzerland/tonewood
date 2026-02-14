@@ -1081,7 +1081,7 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
             children: [
               getAdaptiveIcon(
                 iconName: 'info',
-                defaultIcon: Icons.info_outline,
+                defaultIcon: Icons.info,
                 color: const Color(0xFF0F4A29),
                 size: 20,
               ),
@@ -1512,7 +1512,7 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
                   children: [
                     getAdaptiveIcon(
                       iconName: 'info',
-                      defaultIcon: Icons.info_outline,
+                      defaultIcon: Icons.info,
                       color: Colors.orange[700],
                       size: 20,
                     ),
@@ -1831,7 +1831,7 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
                 children: [
                   getAdaptiveIcon(
                     iconName: 'info',
-                    defaultIcon: Icons.info_outline,
+                    defaultIcon: Icons.info,
                     color: Colors.orange[700],
                     size: 20,
                   ),

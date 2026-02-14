@@ -71,6 +71,7 @@
 //           runSpacing: 16,
 //           children: [
 //             ProductionStatsCard(
+//               iconName: 'timer',
 //               title: 'Durchschnittliche Zeit',
 //               value: '${stats['avg_time_between_batches'].toStringAsFixed(1)}h',
 //               icon: Icons.timer,
@@ -78,6 +79,7 @@
 //               subtitle: 'Zwischen Chargen',
 //             ),
 //             ProductionStatsCard(
+//               iconName: 'speed',
 //               title: 'Effizienz',
 //               value: '${(stats['avg_efficiency'] * 100).toStringAsFixed(1)}%',
 //               icon: Icons.speed,
@@ -85,6 +87,7 @@
 //               subtitle: 'Durchschnittlich',
 //             ),
 //             ProductionStatsCard(
+//               iconName: 'layers',
 //               title: 'Chargen',
 //               value: stats['total_batches'].toString(),
 //               icon: Icons.layers,

@@ -657,7 +657,7 @@ class EditItemMeasurementsDialog {
                 children: [
                   getAdaptiveIcon(
                     iconName: 'info',
-                    defaultIcon: Icons.info_outline,
+                    defaultIcon: Icons.info,
                     size: 16,
                     color: Colors.grey.shade600,
                   ),

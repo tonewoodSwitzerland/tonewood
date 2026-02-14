@@ -123,12 +123,14 @@ class _StandardizedPackagesScreenState extends State<StandardizedPackagesScreen>
       )
           : null,
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), // ← mehr Platz
+
         leading: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 30,
+              height: 30,
               decoration: BoxDecoration(
                 color: isDefault
                     ? Colors.amber.shade100

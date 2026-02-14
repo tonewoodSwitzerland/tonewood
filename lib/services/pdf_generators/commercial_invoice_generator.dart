@@ -77,7 +77,8 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     required int taxOption,
     required double vatRate,
     Map<String, dynamic>? taraSettings,
-    DateTime? invoiceDate
+    DateTime? invoiceDate,
+    Map<String, dynamic>? additionalTexts,
   }) async {
     final pdf = pw.Document();
     final logo = await BasePdfGenerator.loadLogo();
@@ -117,7 +118,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       print('Fehler beim Laden der Currency Settings: $e');
     }
 
-    final additionalTextsWidget = await _addInlineAdditionalTexts(language);
+    final additionalTextsWidget = await _addInlineAdditionalTexts(language, additionalTexts);
     final standardTextsWidgets = await _addCommercialInvoiceStandardTexts( language,
         taraSettings: taraSettings,
         orderId: orderId);
@@ -481,92 +482,92 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       // Origin Declaration (bleibt hervorgehoben)
       // Origin Declaration + Signature zusammen (damit sie auf der gleichen Seite bleiben)
 
-        // Origin Declaration
-        if (settings['commercial_invoice_origin_declaration'] == true ||
-            settings['origin_declaration'] == true) {
-          final originText = AdditionalTextsManager.getTextContent(
-              {'selected': true, 'type': 'standard'},
-              'origin_declaration',
-              language: language
+      // Origin Declaration
+      if (settings['commercial_invoice_origin_declaration'] == true ||
+          settings['origin_declaration'] == true) {
+        final originText = AdditionalTextsManager.getTextContent(
+            {'selected': true, 'type': 'standard'},
+            'origin_declaration',
+            language: language
+        );
+
+        if (originText.isNotEmpty) {
+          originAndSignatureWidgets.add(
+            pw.Container(
+              alignment: pw.Alignment.centerLeft,
+              margin: const pw.EdgeInsets.only(top: 8, bottom: 6),
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.blueGrey700, width: 0.5),
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+              ),
+              child: pw.Text(
+                originText,
+                style: pw.TextStyle(
+                  fontSize: 9,
+                  color: PdfColors.blueGrey700,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
           );
+        }
+      }
 
-          if (originText.isNotEmpty) {
-            originAndSignatureWidgets.add(
-              pw.Container(
-                alignment: pw.Alignment.centerLeft,
-                margin: const pw.EdgeInsets.only(top: 8, bottom: 6),
-                padding: const pw.EdgeInsets.all(10),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColors.blueGrey700, width: 0.5),
-                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                ),
-                child: pw.Text(
-                  originText,
-                  style: pw.TextStyle(
-                    fontSize: 9,
-                    color: PdfColors.blueGrey700,
-                    fontWeight: pw.FontWeight.bold,
+      // Signature
+      if (settings['commercial_invoice_signature'] == true &&
+          settings['commercial_invoice_selected_signature'] != null) {
+
+        final signatureId = settings['commercial_invoice_selected_signature'] as String;
+        final signatureDoc = await FirebaseFirestore.instance
+            .collection('general_data')
+            .doc('signatures')
+            .collection('users')
+            .doc(signatureId)
+            .get();
+
+        if (signatureDoc.exists) {
+          final signatureData = signatureDoc.data()!;
+          final signerName = signatureData['name'] as String;
+
+          originAndSignatureWidgets.add(
+            pw.Container(
+              alignment: pw.Alignment.centerLeft,
+              margin: const pw.EdgeInsets.only(top: 16),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    language == 'EN' ? 'Signature:' : 'Signatur:',
+                    style: pw.TextStyle(
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.blueGrey800,
+                    ),
                   ),
-                ),
+                  pw.SizedBox(height: 6),
+                  pw.Text(
+                    signerName,
+                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
+                  ),
+                  pw.SizedBox(height: 25),
+                  pw.Container(
+                    width: 200,
+                    height: 1,
+                    color: PdfColors.blueGrey400,
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.Text(
+                    'Florinett AG, Tonewood Switzerland',
+                    style: const pw.TextStyle(fontSize: 8, color: PdfColors.blueGrey600),
+                  ),
+                  pw.SizedBox(height: 8),
+                ],
               ),
-            );
-          }
+            ),
+          );
         }
-
-        // Signature
-        if (settings['commercial_invoice_signature'] == true &&
-            settings['commercial_invoice_selected_signature'] != null) {
-
-          final signatureId = settings['commercial_invoice_selected_signature'] as String;
-          final signatureDoc = await FirebaseFirestore.instance
-              .collection('general_data')
-              .doc('signatures')
-              .collection('users')
-              .doc(signatureId)
-              .get();
-
-          if (signatureDoc.exists) {
-            final signatureData = signatureDoc.data()!;
-            final signerName = signatureData['name'] as String;
-
-            originAndSignatureWidgets.add(
-              pw.Container(
-                alignment: pw.Alignment.centerLeft,
-                margin: const pw.EdgeInsets.only(top: 16),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      language == 'EN' ? 'Signature:' : 'Signatur:',
-                      style: pw.TextStyle(
-                        fontSize: 9,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.blueGrey800,
-                      ),
-                    ),
-                    pw.SizedBox(height: 6),
-                    pw.Text(
-                      signerName,
-                      style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
-                    ),
-                    pw.SizedBox(height: 25),
-                    pw.Container(
-                      width: 200,
-                      height: 1,
-                      color: PdfColors.blueGrey400,
-                    ),
-                    pw.SizedBox(height: 4),
-                    pw.Text(
-                      'Florinett AG, Tonewood Switzerland',
-                      style: const pw.TextStyle(fontSize: 8, color: PdfColors.blueGrey600),
-                    ),
-                    pw.SizedBox(height: 8),
-                  ],
-                ),
-              ),
-            );
-          }
-        }
+      }
 
       // Origin+Signature als ein Block mit fester Höhe – MultiPage kann das NICHT aufspalten
       if (originAndSignatureWidgets.isNotEmpty) {
@@ -1660,23 +1661,52 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     );
   }
 
-  static Future<pw.Widget> _addInlineAdditionalTexts(String language) async {
+  static Future<pw.Widget> _addInlineAdditionalTexts(String language, Map<String, dynamic>? passedAdditionalTexts) async {
     try {
-      final additionalTexts = await AdditionalTextsManager.loadAdditionalTexts();
+      // Nutze übergebene Texte, oder lade global als Fallback
+      final additionalTexts = passedAdditionalTexts ?? await AdditionalTextsManager.loadAdditionalTexts();
+
+      // Migration: altes 'legend' Feld auf neue Felder mappen
+      if (additionalTexts.containsKey('legend') && !additionalTexts.containsKey('legend_origin')) {
+        final legendSelected = additionalTexts['legend']?['selected'] ?? false;
+        final legendType = additionalTexts['legend']?['type'] ?? 'standard';
+        final legendCustom = additionalTexts['legend']?['custom_text'] ?? '';
+        additionalTexts['legend_origin'] = {
+          'type': legendType,
+          'custom_text': legendCustom,
+          'selected': legendSelected,
+        };
+        additionalTexts['legend_temperature'] = {
+          'type': legendType,
+          'custom_text': '',
+          'selected': legendSelected,
+        };
+      }
+
       final List<pw.Widget> textWidgets = [];
 
       // Legend
-      if (additionalTexts['legend']?['selected'] == true) {
+      // Legende (Ursprung + Temperatur)
+      final hasOrigin = additionalTexts['legend_origin']?['selected'] == true;
+      final hasTemperature = additionalTexts['legend_temperature']?['selected'] == true;
+
+      if (hasOrigin || hasTemperature) {
+        final parts = <String>[];
+        if (hasOrigin) {
+          parts.add(AdditionalTextsManager.getTextContent(
+              additionalTexts['legend_origin'], 'legend_origin', language: language));
+        }
+        if (hasTemperature) {
+          parts.add(AdditionalTextsManager.getTextContent(
+              additionalTexts['legend_temperature'], 'legend_temperature', language: language));
+        }
+        final prefix = language == 'EN' ? 'Legend: ' : 'Legende: ';
         textWidgets.add(
           pw.Container(
             alignment: pw.Alignment.centerLeft,
             margin: const pw.EdgeInsets.only(bottom: 6),
             child: pw.Text(
-              AdditionalTextsManager.getTextContent(
-                  additionalTexts['legend'],
-                  'legend',
-                  language: language
-              ),
+              '$prefix${parts.join(", ")}',
               style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
             ),
           ),

@@ -122,10 +122,13 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
         controller: _searchController,
         decoration: InputDecoration(
           hintText: 'Benutzer suchen...',
-          prefixIcon: getAdaptiveIcon(
-            iconName: 'search',
-            defaultIcon: Icons.search,
-            color: Colors.grey,
+          prefixIcon: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: getAdaptiveIcon(
+              iconName: 'search',
+              defaultIcon: Icons.search,
+              color: Colors.grey,
+            ),
           ),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
@@ -210,7 +213,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
         children: [
           getAdaptiveIcon(
             iconName: 'info',
-            defaultIcon: Icons.info_outline,
+            defaultIcon: Icons.info,
             color: Colors.blue.shade700,
             size: 20,
           ),

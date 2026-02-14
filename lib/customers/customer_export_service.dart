@@ -1,19 +1,24 @@
-import 'dart:io';
+// lib/customers/customer_export_service.dart
+
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:cross_file/cross_file.dart';
 import '../constants.dart';
 import 'customer.dart';
 import 'customer_group/customer_group_service.dart';
+
+// Gleiche Helper-Dateien wie beim Warehouse-Export verwenden!
+// Pfad ggf. anpassen je nach deiner Ordnerstruktur
+import '../warehouse/services/warehouse_export_helper_stub.dart'
+if (dart.library.html) '../warehouse/services/warehouse_export_helper_web.dart'
+if (dart.library.io) '../warehouse/services/warehouse_export_helper_mobile.dart';
 
 class CustomerExportService {
   static Future<void> exportCustomersCsv(BuildContext context) async {
     final allGroups = await CustomerGroupService.getAllGroups();
     final groupNames = {for (var g in allGroups) g.id: g.name};
-
 
     try {
       // Ladeanzeige
@@ -36,11 +41,11 @@ class CustomerExportService {
       final fileName =
           'Kundendatenbank_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.csv';
 
-      final tempDir = await getTemporaryDirectory();
-      final file = File('${tempDir.path}/$fileName');
-
+      // CSV aufbauen
       final StringBuffer csvContent = StringBuffer();
 
+      // BOM für Excel UTF-8 Erkennung
+      csvContent.write(String.fromCharCodes([0xFEFF]));
 
       final headers = [
         'ID',
@@ -74,12 +79,10 @@ class CustomerExportService {
         'Liefer-Telefon',
         'Liefer-E-Mail',
         'Kundengruppen',
-
       ];
 
       csvContent.writeln(headers.join(';'));
 
-      // Datensätze
       for (final customer in customers) {
         final row = [
           _escapeCsvField(customer.id),
@@ -113,24 +116,24 @@ class CustomerExportService {
           _escapeCsvField(customer.shippingPhone),
           _escapeCsvField(customer.shippingEmail),
           _escapeCsvField(
-              customer.customerGroupIds
-                  .map((id) => groupNames[id] ?? 'Unbekannt')
-                  .join(', ')
+            customer.customerGroupIds
+                .map((id) => groupNames[id] ?? 'Unbekannt')
+                .join(', '),
           ),
         ];
         csvContent.writeln(row.join(';'));
       }
 
-      await file.writeAsBytes(csvContent.toString().codeUnits);
-
+      // Dialog schließen
       Navigator.of(context, rootNavigator: true).pop();
 
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        subject: fileName,
+      // Plattformübergreifend speichern/teilen
+      final bytes = Uint8List.fromList(utf8.encode(csvContent.toString()));
+      await saveAndShareFile(
+        bytes: bytes,
+        fileName: fileName,
+        mimeType: 'text/csv',
       );
-
-      Future.delayed(const Duration(minutes: 1), () => file.delete());
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

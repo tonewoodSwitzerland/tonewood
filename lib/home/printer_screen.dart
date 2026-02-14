@@ -17,7 +17,7 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
-import 'package:tonewood/home/warehouse_screen.dart';
+import 'package:tonewood/warehouse/warehouse_screen.dart';
 import '../components/product_cart.dart';
 import '../constants.dart';
 import '../services/icon_helper.dart';

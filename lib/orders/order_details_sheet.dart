@@ -463,8 +463,21 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
             amount: total,
             currency: currentOrder.metadata['currency'] ?? 'CHF',
             roundingSettings: _roundingSettings,
-          ), OrderColors.delivered), const SizedBox(height: 10),
-          _buildInfoCard(context, 'email', Icons.email, 'E-Mail', currentOrder.customer['email'] ?? '-', null),
+          ), OrderColors.delivered),
+          const SizedBox(height: 10),
+          _buildEditableInfoCard(
+            context, 'email', Icons.email, 'E-Mail',
+            currentOrder.customer['email'] ?? '-',
+            null,
+            onEdit: () => _showEditContactDialog(context, currentOrder),
+          ),
+          const SizedBox(height: 10),
+          _buildEditableInfoCard(
+            context, 'phone', Icons.phone, 'Telefon',
+            currentOrder.customer['phone1'] ?? '-',
+            null,
+            onEdit: () => _showEditContactDialog(context, currentOrder),
+          ),
         ],
       );
     }
@@ -480,7 +493,299 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
         ),
         const SizedBox(height: 8),
         _buildInfoCard(context, 'business', Icons.business, 'Kunde', _getCustomerName(currentOrder), null),
+        const SizedBox(height: 8),
+        _buildContactInfoSection(context, currentOrder),
       ],
+    );
+  }
+
+  // ============================================================================
+  // Kontaktdaten-Sektion (Mobile) - E-Mail & Telefon bearbeitbar
+  // ============================================================================
+  Widget _buildContactInfoSection(BuildContext context, OrderX currentOrder) {
+    final email = currentOrder.customer['email']?.toString() ?? '';
+    final phone1 = currentOrder.customer['phone1']?.toString() ?? '';
+    final phone2 = currentOrder.customer['phone2']?.toString() ?? '';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: () => _showEditContactDialog(context, currentOrder),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (email.isNotEmpty) ...[
+                      Row(
+                        children: [
+                          getAdaptiveIcon(iconName: 'email', defaultIcon: Icons.email, size: 16, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(email, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis)),
+                        ],
+                      ),
+                    ],
+                    if (phone1.isNotEmpty) ...[
+                      if (email.isNotEmpty) const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          getAdaptiveIcon(iconName: 'phone', defaultIcon: Icons.phone, size: 16, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
+                          const SizedBox(width: 8),
+                          Text(phone1, style: const TextStyle(fontSize: 13)),
+                          if (phone2.isNotEmpty) ...[
+                            Text('  •  ', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3))),
+                            Text(phone2, style: const TextStyle(fontSize: 13)),
+                          ],
+                        ],
+                      ),
+                    ],
+                    if (email.isEmpty && phone1.isEmpty)
+                      Text('Keine Kontaktdaten', style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontStyle: FontStyle.italic)),
+                  ],
+                ),
+              ),
+              getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit, size: 16, color: Theme.of(context).colorScheme.primary.withOpacity(0.6)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================================
+  // Kontaktdaten bearbeiten Dialog (E-Mail, Telefon)
+  // ============================================================================
+  Future<void> _showEditContactDialog(BuildContext context, OrderX currentOrder) async {
+    final customer = currentOrder.customer;
+    final emailController = TextEditingController(text: customer['email']?.toString() ?? '');
+    final phone1Controller = TextEditingController(text: customer['phone1']?.toString() ?? '');
+    final phone2Controller = TextEditingController(text: customer['phone2']?.toString() ?? '');
+
+    final result = await showModalBottomSheet<Map<String, String>?>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        height: MediaQuery.of(context).size.height * 0.55,
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, -3)),
+          ],
+        ),
+        child: Column(
+          children: [
+            // Drag Handle
+            Padding(
+              padding: const EdgeInsets.only(top: 12, bottom: 8),
+              child: Container(
+                width: 50, height: 5,
+                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+            // Header
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: getAdaptiveIcon(iconName: 'contacts', defaultIcon: Icons.contacts, color: Theme.of(context).colorScheme.primary),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Kontaktdaten bearbeiten',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(color: Colors.grey.shade200, shape: BoxShape.circle),
+                      child: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // Content
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    _buildStyledTextField(context, emailController, 'E-Mail', 'email', Icons.email, keyboardType: TextInputType.emailAddress),
+                    const SizedBox(height: 16),
+                    _buildStyledTextField(context, phone1Controller, 'Telefon 1', 'phone', Icons.phone, keyboardType: TextInputType.phone),
+                    const SizedBox(height: 16),
+                    _buildStyledTextField(context, phone2Controller, 'Telefon 2', 'phone', Icons.phone, keyboardType: TextInputType.phone),
+                  ],
+                ),
+              ),
+            ),
+            // Actions
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      child: const Text('Abbrechen'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => Navigator.pop(context, {
+                        'email': emailController.text,
+                        'phone1': phone1Controller.text,
+                        'phone2': phone2Controller.text,
+                      }),
+                      icon: getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save, size: 18, color: Colors.white),
+                      label: const Text('Speichern'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null) {
+      try {
+        await FirebaseFirestore.instance.collection('orders').doc(currentOrder.id).update({
+          'customer.email': result['email'],
+          'customer.phone1': result['phone1'],
+          'customer.phone2': result['phone2'],
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(children: [
+                getAdaptiveIcon(iconName: 'check_circle', defaultIcon: Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 8),
+                const Text('Kontaktdaten aktualisiert'),
+              ]),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red));
+        }
+      }
+    }
+
+    emailController.dispose();
+    phone1Controller.dispose();
+    phone2Controller.dispose();
+  }
+
+  // ============================================================================
+  // Styled TextField Helper (wie in customer_selection)
+  // ============================================================================
+  Widget _buildStyledTextField(
+      BuildContext context,
+      TextEditingController controller,
+      String label,
+      String iconName,
+      IconData icon, {
+        TextInputType? keyboardType,
+        int maxLines = 1,
+      }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        filled: true,
+        fillColor: Colors.grey.shade50,
+        prefixIcon: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: getAdaptiveIcon(iconName: iconName, defaultIcon: icon, color: Colors.grey.shade600),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
+        ),
+      ),
+    );
+  }
+
+  // Editable Info Card mit Edit-Icon
+  Widget _buildEditableInfoCard(BuildContext context, String iconName, IconData icon, String label, String value, Color? color, {required VoidCallback onEdit}) {
+    return InkWell(
+      onTap: onEdit,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            getAdaptiveIcon(iconName: iconName, defaultIcon: icon, size: 20, color: color ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.6)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5))),
+                  Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: color), maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit, size: 16, color: Theme.of(context).colorScheme.primary.withOpacity(0.6)),
+          ],
+        ),
+      ),
     );
   }
 
@@ -490,9 +795,6 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
   Widget _buildAddressSection(BuildContext context, OrderX currentOrder) {
     final customer = currentOrder.customer;
 
-    // Prüfe beide möglichen Strukturen:
-    // 1. Verschachtelt: customer['shipping_address']['street']
-    // 2. Flach: customer['hasDifferentShippingAddress'] + customer['shippingStreet']
     final hasShippingAddressNested = customer['shipping_address'] != null &&
         (customer['shipping_address'] is Map) &&
         (customer['shipping_address'] as Map).isNotEmpty &&
@@ -510,40 +812,44 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
       ),
       child: Column(
         children: [
-          // Header mit Abgleich-Button
+          // Header mit Adressen-Titel
           Container(
             padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
             child: Row(
               children: [
-                getAdaptiveIcon(
-                  iconName: 'location_on',
-                  defaultIcon: Icons.location_on,
-                  size: 18,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Adressen',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: getAdaptiveIcon(
+                    iconName: 'location_on',
+                    defaultIcon: Icons.location_on,
+                    size: 18,
                     color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
-                const Spacer(),
-                TextButton.icon(
-                  onPressed: () => _showSyncAddressDialog(context, currentOrder),
-                  icon: getAdaptiveIcon(
-                    iconName: 'sync',
-                    defaultIcon: Icons.sync,
-                    size: 16,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Adressen',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
-                  label: const Text('Abgleichen', style: TextStyle(fontSize: 12)),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
+                ),
+
+                const SizedBox(width: 4),
+                // Abgleich-Button
+                _buildSmallActionButton(
+                  context,
+                  icon: 'sync',
+                  defaultIcon: Icons.sync,
+                  label: 'Abgleichen',
+                  onTap: () => _showSyncAddressDialog(context, currentOrder),
                 ),
               ],
             ),
@@ -575,6 +881,283 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
             onEdit: () => _showEditAddressDialog(context, currentOrder, 'shipping'),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSmallActionButton(BuildContext context, {
+    required String icon,
+    required IconData defaultIcon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              getAdaptiveIcon(iconName: icon, defaultIcon: defaultIcon, size: 14, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 4),
+              Text(label, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
+  // ============================================================================
+  // Quick-Edit Kundenstamm Dialog (Name, E-Mail, Telefon, Adresse)
+  // ============================================================================
+  Future<bool> _showCustomerMasterEditDialog(BuildContext context, String customerId, Map<String, dynamic> data) async {
+    final companyController = TextEditingController(text: data['company']?.toString() ?? '');
+    final firstNameController = TextEditingController(text: data['firstName']?.toString() ?? '');
+    final lastNameController = TextEditingController(text: data['lastName']?.toString() ?? '');
+    final emailController = TextEditingController(text: data['email']?.toString() ?? '');
+    final phone1Controller = TextEditingController(text: data['phone1']?.toString() ?? '');
+    final phone2Controller = TextEditingController(text: data['phone2']?.toString() ?? '');
+    final streetController = TextEditingController(text: data['street']?.toString() ?? '');
+    final houseNumberController = TextEditingController(text: data['houseNumber']?.toString() ?? '');
+    final zipCodeController = TextEditingController(text: data['zipCode']?.toString() ?? '');
+    final cityController = TextEditingController(text: data['city']?.toString() ?? '');
+    final countryController = TextEditingController(text: data['country']?.toString() ?? '');
+
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, -3))],
+          ),
+          child: Column(
+            children: [
+              // Drag Handle
+              Padding(
+                padding: const EdgeInsets.only(top: 12, bottom: 8),
+                child: Container(width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
+              ),
+              // Header
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: getAdaptiveIcon(iconName: 'edit_note', defaultIcon: Icons.edit_note, color: Colors.blue),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Kundenstamm bearbeiten',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: Colors.blue),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      icon: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(color: Colors.grey.shade200, shape: BoxShape.circle),
+                        child: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 18),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // Content
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    _buildSectionCard(context, title: 'Unternehmen', icon: 'business', defaultIcon: Icons.business, iconColor: Colors.blue, child: Column(
+                      children: [
+                        const SizedBox(height: 16),
+                        _buildStyledTextField(context, companyController, 'Firma', 'domain', Icons.domain),
+                      ],
+                    )),
+                    const SizedBox(height: 16),
+                    _buildSectionCard(context, title: 'Kontaktperson', icon: 'person', defaultIcon: Icons.person, iconColor: Colors.green, child: Column(
+                      children: [
+                        const SizedBox(height: 16),
+                        Row(children: [
+                          Expanded(child: _buildStyledTextField(context, firstNameController, 'Vorname', 'person', Icons.person)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildStyledTextField(context, lastNameController, 'Nachname', 'person', Icons.person)),
+                        ]),
+                      ],
+                    )),
+                    const SizedBox(height: 16),
+                    _buildSectionCard(context, title: 'Kontakt', icon: 'contacts', defaultIcon: Icons.contacts, iconColor: Colors.orange, child: Column(
+                      children: [
+                        const SizedBox(height: 16),
+                        _buildStyledTextField(context, emailController, 'E-Mail', 'email', Icons.email, keyboardType: TextInputType.emailAddress),
+                        const SizedBox(height: 12),
+                        _buildStyledTextField(context, phone1Controller, 'Telefon 1', 'phone', Icons.phone, keyboardType: TextInputType.phone),
+                        const SizedBox(height: 12),
+                        _buildStyledTextField(context, phone2Controller, 'Telefon 2', 'phone', Icons.phone, keyboardType: TextInputType.phone),
+                      ],
+                    )),
+                    const SizedBox(height: 16),
+                    _buildSectionCard(context, title: 'Adresse', icon: 'location_on', defaultIcon: Icons.location_on, iconColor: Colors.red, child: Column(
+                      children: [
+                        const SizedBox(height: 16),
+                        Row(children: [
+                          Expanded(flex: 3, child: _buildStyledTextField(context, streetController, 'Straße', 'home', Icons.home)),
+                          const SizedBox(width: 12),
+                          Expanded(flex: 1, child: _buildStyledTextField(context, houseNumberController, 'Nr.', 'tag', Icons.tag)),
+                        ]),
+                        const SizedBox(height: 12),
+                        Row(children: [
+                          SizedBox(width: 120, child: _buildStyledTextField(context, zipCodeController, 'PLZ', 'pin_drop', Icons.pin_drop)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildStyledTextField(context, cityController, 'Ort', 'location_city', Icons.location_city)),
+                        ]),
+                        const SizedBox(height: 12),
+                        _buildStyledTextField(context, countryController, 'Land', 'flag', Icons.flag),
+                      ],
+                    )),
+                  ],
+                ),
+              ),
+              // Actions
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+                ),
+                child: Row(children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      child: const Text('Abbrechen'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        try {
+                          await FirebaseFirestore.instance.collection('customers').doc(customerId).update({
+                            'company': companyController.text,
+                            'firstName': firstNameController.text,
+                            'lastName': lastNameController.text,
+                            'email': emailController.text,
+                            'phone1': phone1Controller.text,
+                            'phone2': phone2Controller.text,
+                            'street': streetController.text,
+                            'houseNumber': houseNumberController.text,
+                            'zipCode': zipCodeController.text,
+                            'city': cityController.text,
+                            'country': countryController.text,
+                          });
+                          Navigator.pop(context, true);
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
+                          );
+                        }
+                      },
+                      icon: getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save, size: 18, color: Colors.white),
+                      label: const Text('Speichern'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    companyController.dispose();
+    firstNameController.dispose();
+    lastNameController.dispose();
+    emailController.dispose();
+    phone1Controller.dispose();
+    phone2Controller.dispose();
+    streetController.dispose();
+    houseNumberController.dispose();
+    zipCodeController.dispose();
+    cityController.dispose();
+    countryController.dispose();
+
+    return result == true;
+  }
+
+  // ============================================================================
+  // Section Card (wie in customer_selection)
+  // ============================================================================
+  Widget _buildSectionCard(BuildContext context, {
+    required String title,
+    required String icon,
+    required IconData defaultIcon,
+    required Color iconColor,
+    required Widget child,
+  }) {
+    return Card(
+      elevation: 0.5,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: iconColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: getAdaptiveIcon(iconName: icon, defaultIcon: defaultIcon, color: iconColor, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).textTheme.titleLarge?.color,
+                  ),
+                ),
+              ],
+            ),
+            child,
+          ],
+        ),
       ),
     );
   }
@@ -800,16 +1383,17 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
     final provinceController = TextEditingController();
     final countryController = TextEditingController();
     final additionalLinesController = TextEditingController();
+    final shippingEmailController = TextEditingController();
+    final shippingPhoneController = TextEditingController();
     bool useIdenticalAddress = false;
 
     if (isBilling) {
-      // Rechnungsadresse - flache Struktur
       companyController.text = customer['company']?.toString() ?? '';
       firstNameController.text = customer['firstName']?.toString() ?? '';
       lastNameController.text = customer['lastName']?.toString() ?? '';
       streetController.text = customer['street']?.toString() ?? '';
       houseNumberController.text = customer['houseNumber']?.toString() ?? '';
-      zipController.text = customer['zipCode']?.toString() ?? '';  // KORRIGIERT: war 'zip'
+      zipController.text = customer['zipCode']?.toString() ?? '';
       cityController.text = customer['city']?.toString() ?? '';
       provinceController.text = customer['province']?.toString() ?? '';
       countryController.text = customer['country']?.toString() ?? '';
@@ -817,9 +1401,7 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
         final lines = customer['additionalAddressLines'] as List<dynamic>;
         additionalLinesController.text = lines.join('\n');
       }
-
     } else {
-      // Lieferadresse - prüfe ob flache oder verschachtelte Struktur
       final hasShippingNested = customer['shipping_address'] != null &&
           (customer['shipping_address'] is Map) &&
           customer['shipping_address']['street']?.toString().isNotEmpty == true;
@@ -830,7 +1412,6 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
       useIdenticalAddress = !hasShippingNested && !hasShippingFlat;
 
       if (hasShippingFlat) {
-        // Flache Struktur (vom Customer Model)
         companyController.text = customer['shippingCompany']?.toString() ?? '';
         firstNameController.text = customer['shippingFirstName']?.toString() ?? '';
         lastNameController.text = customer['shippingLastName']?.toString() ?? '';
@@ -840,12 +1421,13 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
         cityController.text = customer['shippingCity']?.toString() ?? '';
         provinceController.text = customer['shippingProvince']?.toString() ?? '';
         countryController.text = customer['shippingCountry']?.toString() ?? '';
+        shippingEmailController.text = customer['shippingEmail']?.toString() ?? '';
+        shippingPhoneController.text = customer['shippingPhone']?.toString() ?? '';
         if (customer['shippingAdditionalAddressLines'] != null) {
           final lines = customer['shippingAdditionalAddressLines'] as List<dynamic>;
           additionalLinesController.text = lines.join('\n');
         }
       } else if (hasShippingNested) {
-        // Verschachtelte Struktur
         final shipping = customer['shipping_address'] as Map<String, dynamic>;
         companyController.text = shipping['company']?.toString() ?? '';
         firstNameController.text = shipping['firstName']?.toString() ?? '';
@@ -856,6 +1438,8 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
         cityController.text = shipping['city']?.toString() ?? '';
         provinceController.text = shipping['province']?.toString() ?? '';
         countryController.text = shipping['country']?.toString() ?? '';
+        shippingEmailController.text = shipping['email']?.toString() ?? '';
+        shippingPhoneController.text = shipping['phone']?.toString() ?? '';
         if (customer['shipping_address']['additionalAddressLines'] != null) {
           final lines = customer['shipping_address']['additionalAddressLines'] as List<dynamic>;
           additionalLinesController.text = lines.join('\n');
@@ -869,311 +1453,259 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.85,
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: Column(
-              children: [
-                // Drag Handle
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.outline.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+          return DraggableScrollableSheet(
+            initialChildSize: 0.85,
+            minChildSize: 0.5,
+            maxChildSize: 0.95,
+            expand: false,
+            builder: (context, scrollController) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, -3)),
+                  ],
                 ),
-
-                // Header
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-                  child: Row(
-                    children: [
-                      getAdaptiveIcon(
-                        iconName: isBilling ? 'receipt' : 'local_shipping',
-                        defaultIcon: isBilling ? Icons.receipt : Icons.local_shipping,
-                        color: Theme.of(context).colorScheme.primary,
+                child: Column(
+                  children: [
+                    // Drag Handle
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12, bottom: 8),
+                      child: Container(
+                        width: 50, height: 5,
+                        decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10)),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          isBilling ? 'Rechnungsadresse bearbeiten' : 'Lieferadresse bearbeiten',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                      ),
-                    ],
-                  ),
-                ),
+                    ),
 
-                const Divider(),
-
-                // Content
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Toggle für Lieferadresse
-                        if (!isBilling) ...[
+                    // Header
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
+                      child: Row(
+                        children: [
                           Container(
+                            padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: useIdenticalAddress
-                                  ? Colors.green.withOpacity(0.1)
-                                  : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                              color: (isBilling ? Colors.blue : Colors.deepPurple).withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: useIdenticalAddress
-                                    ? Colors.green.withOpacity(0.3)
-                                    : Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                            ),
+                            child: getAdaptiveIcon(
+                              iconName: isBilling ? 'receipt' : 'local_shipping',
+                              defaultIcon: isBilling ? Icons.receipt : Icons.local_shipping,
+                              color: isBilling ? Colors.blue : Colors.deepPurple,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              isBilling ? 'Rechnungsadresse' : 'Lieferadresse',
+                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: isBilling ? Colors.blue : Colors.deepPurple,
                               ),
                             ),
-                            child: SwitchListTile(
-                              title: const Text('Identisch mit Rechnungsadresse'),
-                              subtitle: Text(
-                                useIdenticalAddress
-                                    ? 'Lieferung an Rechnungsadresse'
-                                    : 'Abweichende Lieferadresse',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: useIdenticalAddress ? Colors.green[700] : null,
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(color: Colors.grey.shade200, shape: BoxShape.circle),
+                              child: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close, size: 18),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+
+                    // Content
+                    Expanded(
+                      child: ListView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.all(20),
+                        children: [
+                          // Toggle für Lieferadresse
+                          if (!isBilling) ...[
+                            Card(
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                side: BorderSide(
+                                  color: useIdenticalAddress ? Colors.green.withOpacity(0.3) : Colors.grey.shade200,
                                 ),
                               ),
-                              value: useIdenticalAddress,
-                              onChanged: (value) {
-                                setDialogState(() {
-                                  useIdenticalAddress = value;
+                              color: useIdenticalAddress ? Colors.green.withOpacity(0.05) : null,
+                              child: SwitchListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                title: const Text('Identisch mit Rechnungsadresse', style: TextStyle(fontWeight: FontWeight.w600)),
+                                subtitle: Text(
+                                  useIdenticalAddress ? 'Lieferung an Rechnungsadresse' : 'Abweichende Lieferadresse',
+                                  style: TextStyle(fontSize: 12, color: useIdenticalAddress ? Colors.green[700] : null),
+                                ),
+                                value: useIdenticalAddress,
+                                onChanged: (value) => setDialogState(() => useIdenticalAddress = value),
+                                secondary: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: useIdenticalAddress ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: getAdaptiveIcon(
+                                    iconName: useIdenticalAddress ? 'check_circle' : 'edit_location',
+                                    defaultIcon: useIdenticalAddress ? Icons.check_circle : Icons.edit_location,
+                                    color: useIdenticalAddress ? Colors.green : Colors.grey,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // Adressfelder
+                          if (isBilling || !useIdenticalAddress) ...[
+                            // Firma & Name
+                            _buildSectionCard(context,
+                              title: 'Empfänger',
+                              icon: 'business',
+                              defaultIcon: Icons.business,
+                              iconColor: isBilling ? Colors.blue : Colors.deepPurple,
+                              child: Column(
+                                children: [
+                                  const SizedBox(height: 16),
+                                  _buildStyledTextField(context, companyController, 'Firma', 'domain', Icons.domain),
+                                  const SizedBox(height: 12),
+                                  Row(children: [
+                                    Expanded(child: _buildStyledTextField(context, firstNameController, 'Vorname', 'person', Icons.person)),
+                                    const SizedBox(width: 12),
+                                    Expanded(child: _buildStyledTextField(context, lastNameController, 'Nachname', 'person', Icons.person)),
+                                  ]),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Adresse
+                            _buildSectionCard(context,
+                              title: 'Adresse',
+                              icon: 'location_on',
+                              defaultIcon: Icons.location_on,
+                              iconColor: Colors.red,
+                              child: Column(
+                                children: [
+                                  const SizedBox(height: 16),
+                                  Row(children: [
+                                    Expanded(flex: 3, child: _buildStyledTextField(context, streetController, 'Straße', 'home', Icons.home)),
+                                    const SizedBox(width: 12),
+                                    Expanded(flex: 1, child: _buildStyledTextField(context, houseNumberController, 'Nr.', 'tag', Icons.tag)),
+                                  ]),
+                                  const SizedBox(height: 12),
+                                  _buildStyledTextField(context, additionalLinesController, 'Zusätzliche Adresszeilen', 'notes', Icons.notes, maxLines: 4),
+                                  const SizedBox(height: 12),
+                                  Row(children: [
+                                    SizedBox(width: 120, child: _buildStyledTextField(context, zipController, 'PLZ', 'pin_drop', Icons.pin_drop)),
+                                    const SizedBox(width: 12),
+                                    Expanded(child: _buildStyledTextField(context, cityController, 'Ort', 'location_city', Icons.location_city)),
+                                  ]),
+                                  const SizedBox(height: 12),
+                                  _buildStyledTextField(context, provinceController, 'Provinz / Bundesland', 'map', Icons.map),
+                                  const SizedBox(height: 12),
+                                  _buildStyledTextField(context, countryController, 'Land', 'flag', Icons.flag),
+                                ],
+                              ),
+                            ),
+
+                            // Kontaktdaten nur bei Lieferadresse
+                            if (!isBilling) ...[
+                              const SizedBox(height: 16),
+                              _buildSectionCard(context,
+                                title: 'Kontakt (Lieferadresse)',
+                                icon: 'contacts',
+                                defaultIcon: Icons.contacts,
+                                iconColor: Colors.orange,
+                                child: Column(
+                                  children: [
+                                    const SizedBox(height: 16),
+                                    _buildStyledTextField(context, shippingEmailController, 'E-Mail', 'email', Icons.email, keyboardType: TextInputType.emailAddress),
+                                    const SizedBox(height: 12),
+                                    _buildStyledTextField(context, shippingPhoneController, 'Telefon', 'phone', Icons.phone, keyboardType: TextInputType.phone),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    // Actions
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(context),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                side: BorderSide(color: Colors.grey.shade300),
+                              ),
+                              child: const Text('Abbrechen'),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.pop(context, {
+                                  'type': type,
+                                  'useIdentical': useIdenticalAddress,
+                                  'company': companyController.text,
+                                  'firstName': firstNameController.text,
+                                  'lastName': lastNameController.text,
+                                  'street': streetController.text,
+                                  'houseNumber': houseNumberController.text,
+                                  'additionalAddressLines': additionalLinesController.text,
+                                  'zipCode': zipController.text,
+                                  'city': cityController.text,
+                                  'province': provinceController.text,
+                                  'country': countryController.text,
+                                  'shippingEmail': shippingEmailController.text,
+                                  'shippingPhone': shippingPhoneController.text,
                                 });
                               },
-                              secondary: getAdaptiveIcon(
-                                iconName: useIdenticalAddress ? 'check_circle' : 'edit_location',
-                                defaultIcon: useIdenticalAddress ? Icons.check_circle : Icons.edit_location,
-                                color: useIdenticalAddress ? Colors.green : null,
+                              icon: getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save, size: 18, color: Colors.white),
+                              label: const Text('Speichern'),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                backgroundColor: Theme.of(context).colorScheme.primary,
+                                foregroundColor: Colors.white,
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-
-                        // Adressfelder (ausgeblendet wenn identisch)
-                        if (isBilling || !useIdenticalAddress) ...[
-                          // Firma
-                          TextField(
-                            controller: companyController,
-                            decoration: InputDecoration(
-                              labelText: 'Firma',
-                              prefixIcon: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: getAdaptiveIcon(iconName: 'business', defaultIcon: Icons.business),
-                              ),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Vorname + Nachname
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: firstNameController,
-                                  decoration: InputDecoration(
-                                    labelText: 'Vorname',
-                                    prefixIcon: Padding(
-                                      padding: const EdgeInsets.all(12),
-                                      child: getAdaptiveIcon(iconName: 'person', defaultIcon: Icons.person),
-                                    ),
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: TextField(
-                                  controller: lastNameController,
-                                  decoration: InputDecoration(
-                                    labelText: 'Nachname',
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Straße + Hausnummer
-                          Row(
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: TextField(
-                                  controller: streetController,
-                                  decoration: InputDecoration(
-                                    labelText: 'Straße',
-                                    prefixIcon: Padding(
-                                      padding: const EdgeInsets.all(12),
-                                      child: getAdaptiveIcon(iconName: 'home', defaultIcon: Icons.home),
-                                    ),
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                flex: 1,
-                                child: TextField(
-                                  controller: houseNumberController,
-                                  decoration: InputDecoration(
-                                    labelText: 'Nr.',
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-// NEU: Zusätzliche Adresszeilen
-                          TextField(
-                            controller: additionalLinesController,
-                            maxLines: 3,
-                            decoration: InputDecoration(
-                              labelText: 'Zusätzliche Adresszeilen',
-                              hintText: 'z.B. Gebäude, Etage, Abteilung...',
-                              prefixIcon: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: getAdaptiveIcon(iconName: 'notes', defaultIcon: Icons.notes),
-                              ),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              alignLabelWithHint: true,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          // PLZ + Ort
-                          Row(
-                            children: [
-                              SizedBox(
-                                width: 120,
-                                child: TextField(
-                                  controller: zipController,
-                                  decoration: InputDecoration(
-                                    labelText: 'PLZ',
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: TextField(
-                                  controller: cityController,
-                                  decoration: InputDecoration(
-                                    labelText: 'Ort',
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Provinz
-                          TextField(
-                            controller: provinceController,
-                            decoration: InputDecoration(
-                              labelText: 'Provinz / Bundesland',
-                              prefixIcon: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: getAdaptiveIcon(iconName: 'map', defaultIcon: Icons.map),
-                              ),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Land
-                          TextField(
-                            controller: countryController,
-                            decoration: InputDecoration(
-                              labelText: 'Land',
-                              prefixIcon: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: getAdaptiveIcon(iconName: 'flag', defaultIcon: Icons.flag),
-                              ),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                             ),
                           ),
                         ],
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-
-                // Actions
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, -5),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Abbrechen'),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.pop(context, {
-                              'type': type,
-                              'useIdentical': useIdenticalAddress,
-                              'company': companyController.text,
-                              'firstName': firstNameController.text,
-                              'lastName': lastNameController.text,
-                              'street': streetController.text,
-                              'houseNumber': houseNumberController.text,
-                              'additionalAddressLines': additionalLinesController.text,  // NEU
-                              'zipCode': zipController.text,
-                              'city': cityController.text,
-                              'province': provinceController.text,
-                              'country': countryController.text,
-                            });
-                          },
-                          child: const Text('Speichern'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              );
+            },
           );
         },
       ),
     );
 
-    // Ergebnis verarbeiten
     if (result != null) {
       await _saveAddressChanges(currentOrder, result);
     }
 
-    // Controller aufräumen
     companyController.dispose();
     firstNameController.dispose();
     lastNameController.dispose();
@@ -1184,6 +1716,8 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
     provinceController.dispose();
     countryController.dispose();
     additionalLinesController.dispose();
+    shippingEmailController.dispose();
+    shippingPhoneController.dispose();
   }
   Future<void> _saveAddressChanges(OrderX currentOrder, Map<String, dynamic> data) async {
     try {
@@ -1223,6 +1757,8 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
           updateData['customer.shippingCity'] = '';
           updateData['customer.shippingProvince'] = '';
           updateData['customer.shippingCountry'] = '';
+          updateData['customer.shippingEmail'] = '';
+          updateData['customer.shippingPhone'] = '';
           // Auch verschachtelte Struktur leeren falls vorhanden
           updateData['customer.shipping_address'] = {};
         } else {
@@ -1237,6 +1773,8 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
           updateData['customer.shippingCity'] = data['city'];
           updateData['customer.shippingProvince'] = data['province'];
           updateData['customer.shippingCountry'] = data['country'];
+          updateData['customer.shippingEmail'] = data['shippingEmail'] ?? '';
+          updateData['customer.shippingPhone'] = data['shippingPhone'] ?? '';
 
           final additionalLines = (data['additionalAddressLines'] as String?)
               ?.split('\n')

@@ -12,7 +12,7 @@ import 'package:tonewood/home/printer_screen.dart';
 import '../components/circular_avatar_shadowed.dart';
 import '../constants.dart';
 import '../home/settings_form.dart';
-import '../home/warehouse_screen.dart';
+import '../warehouse/warehouse_screen.dart';
 import '../production/product_management_screen.dart';
 import '../sales/sales_screen.dart';
 import '../production/production_batch_migration.dart';

@@ -221,19 +221,18 @@ class _SalesCountryViewState extends State<SalesCountryView> {
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Umsatzverteilung',
+              'Umsatz nach Land (Warenwert)',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             SizedBox(
-              height: 220,
+              height: 200,
               child: PieChart(
                 PieChartData(
                   sectionsSpace: 2,
-                  centerSpaceRadius: 40,
+                  centerSpaceRadius: 35,
                   sections: [
                     ...List.generate(topCountries.length, (index) {
                       final country = topCountries[index];
@@ -348,12 +347,12 @@ class _SalesCountryViewState extends State<SalesCountryView> {
                 color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Row(
+              child: const Row(
                 children: [
-                  const Expanded(flex: 3, child: Text('Land', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
-                  const Expanded(flex: 2, child: Text('Umsatz', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12), textAlign: TextAlign.right)),
-                  const Expanded(flex: 1, child: Text('%', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12), textAlign: TextAlign.right)),
-                  const Expanded(flex: 1, child: Text('Lfg.', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12), textAlign: TextAlign.right)),
+                  Expanded(flex: 3, child: Text('Land', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
+                  Expanded(flex: 2, child: Text('Warenwert', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12), textAlign: TextAlign.right)),
+                  Expanded(flex: 1, child: Text('%', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12), textAlign: TextAlign.right)),
+                  Expanded(flex: 1, child: Text('Lfg.', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12), textAlign: TextAlign.right)),
                 ],
               ),
             ),

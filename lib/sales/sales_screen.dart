@@ -7,7 +7,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:tonewood/home/quote_order_flow_screen.dart';
 import 'package:tonewood/home/service_selection_sheet.dart';
 
-import 'package:tonewood/home/warehouse_screen.dart';
+import 'package:tonewood/warehouse/warehouse_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -1629,6 +1629,17 @@ return Scaffold(
       showThousandsSeparator: true,
     );
   }
+  String _formatPriceNoRounding(double amount) {
+    return PriceFormatter.format(
+      priceInCHF: amount,
+      currency: _selectedCurrency,
+      exchangeRates: _exchangeRates,
+      roundingSettings: const {},
+      showCurrency: true,
+      showThousandsSeparator: true,
+    );
+  }
+
   void _showCurrencyConverterDialog() {
     CurrencyConverterSheet.show(
       context,
@@ -3379,7 +3390,7 @@ return Scaffold(
                                             }
 
                                             return Text(
-                                              '$quantityDisplay ${item['unit']} × ${_formatPrice(pricePerUnit)}${item['is_price_customized'] == true ? ' *' : ''}',
+                                              '$quantityDisplay ${item['unit']} × ${_formatPriceNoRounding(pricePerUnit)}${item['is_price_customized'] == true ? ' *' : ''}',
                                               style: TextStyle(
                                                 fontSize: 10,
                                                 fontStyle: item['is_price_customized'] == true
@@ -3407,7 +3418,7 @@ return Scaffold(
                                           valueListenable: _currencyNotifier,
                                           builder: (context, currency, child) {
                                             return Text(
-                                              _formatPrice(subtotal),
+                                              _formatPriceNoRounding(subtotal),
                                               style: TextStyle(
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.w600,
@@ -3428,7 +3439,7 @@ return Scaffold(
                                             valueListenable: _currencyNotifier,
                                             builder: (context, currency, child) {
                                               return Text(
-                                                _formatPrice(subtotal - discountAmount),
+                                                _formatPriceNoRounding(subtotal - discountAmount),
                                                 style: const TextStyle(
                                                   fontSize: 12,
                                                   fontWeight: FontWeight.bold,
@@ -3502,7 +3513,7 @@ return Scaffold(
                                     Expanded(
                                       child: Text(
                                         'Rabatt: ${itemDiscount.percentage > 0 ? '${itemDiscount.percentage.toStringAsFixed(2)}% ' : ''}'
-                                            '${itemDiscount.absolute > 0 ? _formatPrice(itemDiscount.absolute) : ''}',
+                                            '${itemDiscount.absolute > 0 ? _formatPriceNoRounding(itemDiscount.absolute) : ''}',
                                         style: TextStyle(
                                           fontSize: 11,
                                           color: Theme.of(context).colorScheme.primary,
@@ -3510,7 +3521,7 @@ return Scaffold(
                                       ),
                                     ),
                                     Text(
-                                      '- ${_formatPrice(discountAmount)}',
+                                      '- ${_formatPriceNoRounding(discountAmount)}',
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
@@ -3592,763 +3603,813 @@ return Scaffold(
             return ValueListenableBuilder<TaxOption>(
               valueListenable: _taxOptionNotifier,
               builder: (context, taxOption, _) {
-                return ValueListenableBuilder<double>( // NEU hinzufügen
+                return ValueListenableBuilder<double>(
                     valueListenable: _vatRateNotifier,
                     builder: (context, vatRate, _) {
-                    return StreamBuilder<QuerySnapshot>(
-                      stream: _basketStream,
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) return const SizedBox.shrink();
+                      return StreamBuilder<QuerySnapshot>(
+                        stream: _basketStream,
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) return const SizedBox.shrink();
 
-                        final basketItems = snapshot.data!.docs;
+                          final basketItems = snapshot.data!.docs;
 
-                        // Berechne Zwischensummen
-                        double subtotal = 0.0;
-                        double itemDiscounts = 0.0;
+                          // Berechne Zwischensummen
+                          double subtotal = 0.0;
+                          double itemDiscounts = 0.0;
 
-                        // In der StreamBuilder-Berechnung:
-                        for (var doc in basketItems) {
-                          final data = doc.data() as Map<String, dynamic>;
+                          for (var doc in basketItems) {
+                            final data = doc.data() as Map<String, dynamic>;
 
-                          // NEU: Gratisartikel-Check
-                          final isGratisartikel = data['is_gratisartikel'] == true;
+                            final isGratisartikel = data['is_gratisartikel'] == true;
 
-                          // Preis berechnen - 0 für Gratisartikel
-                          final customPriceValue = data['custom_price_per_unit'];
-                          final pricePerUnit = isGratisartikel
-                              ? 0.0
-                              : (customPriceValue != null
-                              ? (customPriceValue as num).toDouble()
-                              : (data['price_per_unit'] as num).toDouble());
+                            final customPriceValue = data['custom_price_per_unit'];
+                            final pricePerUnit = isGratisartikel
+                                ? 0.0
+                                : (customPriceValue != null
+                                ? (customPriceValue as num).toDouble()
+                                : (data['price_per_unit'] as num).toDouble());
 
-                          final itemSubtotal = (data['quantity']) * pricePerUnit;
-                          subtotal += itemSubtotal;
+                            final itemSubtotal = (data['quantity']) * pricePerUnit;
+                            subtotal += itemSubtotal;
 
-                          // Rabatte nur auf bezahlte Artikel anwenden
-                          if (!isGratisartikel) {
-                            final itemDiscount = _itemDiscounts[doc.id] ?? const Discount();
-                            itemDiscounts += itemDiscount.calculateDiscount(itemSubtotal);
+                            if (!isGratisartikel) {
+                              final itemDiscount = _itemDiscounts[doc.id] ?? const Discount();
+                              itemDiscounts += itemDiscount.calculateDiscount(itemSubtotal);
+                            }
                           }
-                        }
 
-                        final afterItemDiscounts = subtotal - itemDiscounts;
-                        final totalDiscountAmount = _totalDiscount.calculateDiscount(
-                          afterItemDiscounts,
-                        );
-                        final netAmount = afterItemDiscounts - totalDiscountAmount;
+                          final afterItemDiscounts = subtotal - itemDiscounts;
+                          final totalDiscountAmount = _totalDiscount.calculateDiscount(
+                            afterItemDiscounts,
+                          );
+                          final netAmount = afterItemDiscounts - totalDiscountAmount;
+                          double vatRoundingDifference = 0.0;
 
-                        // NEU: StreamBuilder für Versandkosten
-                        return StreamBuilder<DocumentSnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection('temporary_shipping_costs')
-                              .doc('current_costs')
-                              .snapshots(),
-                          builder: (context, shippingSnapshot) {
-                            double freightCost = 0.0;
-                            double phytosanitaryCost = 0.0;
-                            double totalDeductions = 0.0;  // NEU
-                            double totalSurcharges = 0.0;  // NEU
+                          return StreamBuilder<DocumentSnapshot>(
+                            stream: FirebaseFirestore.instance
+                                .collection('temporary_shipping_costs')
+                                .doc('current_costs')
+                                .snapshots(),
+                            builder: (context, shippingSnapshot) {
+                              double freightCost = 0.0;
+                              double phytosanitaryCost = 0.0;
+                              double totalDeductions = 0.0;
+                              double totalSurcharges = 0.0;
 
-                            if (shippingSnapshot.hasData && shippingSnapshot.data!.exists) {
-                              final shippingData = shippingSnapshot.data!.data() as Map<String, dynamic>;
-                              freightCost = (shippingData['amount'] as num?)?.toDouble() ?? 0.0;
-                              phytosanitaryCost = (shippingData['phytosanitaryCertificate'] as num?)?.toDouble() ?? 0.0;
-                              totalDeductions = (shippingData['totalDeductions'] as num?)?.toDouble() ?? 0.0;  // NEU
-                              totalSurcharges = (shippingData['totalSurcharges'] as num?)?.toDouble() ?? 0.0;  // NEU
-                            }
+                              if (shippingSnapshot.hasData && shippingSnapshot.data!.exists) {
+                                final shippingData = shippingSnapshot.data!.data() as Map<String, dynamic>;
+                                freightCost = (shippingData['amount'] as num?)?.toDouble() ?? 0.0;
+                                phytosanitaryCost = (shippingData['phytosanitaryCertificate'] as num?)?.toDouble() ?? 0.0;
+                                totalDeductions = (shippingData['totalDeductions'] as num?)?.toDouble() ?? 0.0;
+                                totalSurcharges = (shippingData['totalSurcharges'] as num?)?.toDouble() ?? 0.0;
+                              }
 
-// Berechne neuen Total mit Versandkosten, Abschlägen und Zuschlägen
-                            final netWithShipping = netAmount + freightCost + phytosanitaryCost + totalSurcharges - totalDeductions;
+                              // Berechne neuen Total mit Versandkosten, Abschlägen und Zuschlägen
+                              final netWithShipping = netAmount + freightCost + phytosanitaryCost + totalSurcharges - totalDeductions;
 
-                            // MwSt nur berechnen, wenn es Standard-Option ist
-                            double vatAmount = 0.0;
-                            double total = netWithShipping;
+                              // MwSt nur berechnen, wenn es Standard-Option ist
+                              double vatAmount = 0.0;
+                              double total = netWithShipping;
 
-                            if (taxOption == TaxOption.standard) {
-                              // NEU: Erst Nettobetrag auf 2 Nachkommastellen runden
-                              final netAmountRounded = double.parse(netWithShipping.toStringAsFixed(2));
+                              if (taxOption == TaxOption.standard) {
+                                final netAmountRounded = double.parse(netWithShipping.toStringAsFixed(2));
+                                vatAmount = double.parse((netAmountRounded * (_vatRate / 100)).toStringAsFixed(2));
 
-                              // NEU: MwSt berechnen und auf 2 Nachkommastellen runden
-                              vatAmount = double.parse((netAmountRounded * (_vatRate / 100)).toStringAsFixed(2));
+                                // Brutto berechnen (ungerundet)
+                                final rawTotal = netAmountRounded + vatAmount;
 
-                              // NEU: Total ist Summe der gerundeten Beträge
-                              total = netAmountRounded + vatAmount;
-                            } else {
-                              // Bei anderen Steueroptionen auch auf 2 Nachkommastellen runden
-                              total = double.parse(netWithShipping.toStringAsFixed(2));
-                            }
-// NEU: 5er rundung anwenden
-                            double displayTotal = total;
-                            if (_selectedCurrency != 'CHF') {
-                              displayTotal = total * _exchangeRates[_selectedCurrency]!;
-                            }
+                                // Brutto auf 5 Rappen runden, Differenz in MwSt ausgleichen
+                                if (_roundingSettings[_selectedCurrency] == true) {
+                                  // In Anzeigewährung umrechnen
+                                  double rawTotalInDisplay = rawTotal;
+                                  if (_selectedCurrency != 'CHF') {
+                                    rawTotalInDisplay = rawTotal * _exchangeRates[_selectedCurrency]!;
+                                  }
 
-                            final roundedDisplayTotal = SwissRounding.round(
-                              displayTotal,
-                              currency: _selectedCurrency,
-                              roundingSettings: _roundingSettings,
-                            );
+                                  // Brutto runden
+                                  final roundedTotalInDisplay = SwissRounding.round(
+                                    rawTotalInDisplay,
+                                    currency: _selectedCurrency,
+                                    roundingSettings: _roundingSettings,
+                                  );
 
-// Zurück in CHF umrechnen für interne Berechnungen
-                            final roundedTotal = _selectedCurrency == 'CHF'
-                                ? roundedDisplayTotal
-                                : roundedDisplayTotal / _exchangeRates[_selectedCurrency]!;
+                                  // Rundungsdifferenz berechnen (in Anzeigewährung)
+                                  vatRoundingDifference = roundedTotalInDisplay - rawTotalInDisplay;
 
-                            final roundingDifference = SwissRounding.getRoundingDifference(
-                              displayTotal,  // Verwende den Betrag in der Anzeigewährung
-                              currency: _selectedCurrency,
-                              roundingSettings: _roundingSettings,
-                            );
+                                  // MwSt anpassen: Differenz auf MwSt draufschlagen
+                                  if (_selectedCurrency != 'CHF') {
+                                    final diffInCHF = vatRoundingDifference / _exchangeRates[_selectedCurrency]!;
+                                    vatAmount = vatAmount + diffInCHF;
+                                    total = netAmountRounded + vatAmount;
+                                  } else {
+                                    vatAmount = vatAmount + vatRoundingDifference;
+                                    total = netAmountRounded + vatAmount;
+                                  }
+                                } else {
+                                  total = rawTotal;
+                                }
+                              } else {
+                                total = double.parse(netWithShipping.toStringAsFixed(2));
+                              }
 
-                            return Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).cardColor,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.1),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, -2),
-                                  ),
-                                ],
-                              ),
-                              child: SafeArea(
-                                child: Column(
-                                  children: [
-                                    // Zwischensumme
-                                    Container(
-                                      alignment: Alignment.centerRight,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(10),
-                                        decoration: BoxDecoration(
-                                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                                          borderRadius: const BorderRadius.all(Radius.circular(8)),
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.end,
-                                          children: [
-                                            // Details-Toggle und Gesamtbetrag in einer Zeile
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                // Toggle-Button links
-                                                GestureDetector(
-                                                  onTap: () {
-                                                    setState(() {
-                                                      _isDetailExpanded = !_isDetailExpanded;
-                                                    });
-                                                  },
-                                                  child: Container(
-                                                    padding: const EdgeInsets.all(4),
-                                                    child:
+                              // Bei standard: Endbetrag wird NICHT gerundet (nur MwSt wurde gerundet)
+// Bei noTax/totalOnly: Endbetrag wird auf 5 Rappen gerundet
+                              double displayTotal = total;
+                              if (_selectedCurrency != 'CHF') {
+                                displayTotal = total * _exchangeRates[_selectedCurrency]!;
+                              }
+
+                              double roundedDisplayTotal = displayTotal;
+                              double roundingDifference = 0.0;
+
+                              if (taxOption == TaxOption.standard) {
+                                // Bei standard: Brutto wurde bereits über MwSt-Anpassung gerundet → keine Extra-Rundung
+                                roundedDisplayTotal = displayTotal;
+                                roundingDifference = 0.0;
+                              } else {
+                                // Bei noTax/totalOnly: Endbetrag auf 5 Rappen runden
+                                if (_roundingSettings[_selectedCurrency] == true) {
+                                  roundedDisplayTotal = SwissRounding.round(
+                                    displayTotal,
+                                    currency: _selectedCurrency,
+                                    roundingSettings: _roundingSettings,
+                                  );
+                                  roundingDifference = roundedDisplayTotal - displayTotal;
+                                }
+                              }
+
+                              final roundedTotal = _selectedCurrency == 'CHF'
+                                  ? roundedDisplayTotal
+                                  : roundedDisplayTotal / _exchangeRates[_selectedCurrency]!;
+
+                              return Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).cardColor,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.1),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, -2),
+                                    ),
+                                  ],
+                                ),
+                                child: SafeArea(
+                                  child: Column(
+                                    children: [
+                                      // Zwischensumme
+                                      Container(
+                                        alignment: Alignment.centerRight,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                            borderRadius: const BorderRadius.all(Radius.circular(8)),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.end,
+                                            children: [
+                                              // Details-Toggle und Gesamtbetrag in einer Zeile
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  // Toggle-Button links
+                                                  GestureDetector(
+                                                    onTap: () {
+                                                      setState(() {
+                                                        _isDetailExpanded = !_isDetailExpanded;
+                                                      });
+                                                    },
+                                                    child: Container(
+                                                      padding: const EdgeInsets.all(4),
+                                                      child:
                                                       _isDetailExpanded
                                                           ? getAdaptiveIcon(iconName: 'expand_less', defaultIcon:Icons.expand_less, size: 20, color: Theme.of(context).colorScheme.primary,)
                                                           : getAdaptiveIcon(iconName: 'expand_more', defaultIcon:Icons.expand_more, size: 20, color: Theme.of(context).colorScheme.primary),
 
+                                                    ),
                                                   ),
-                                                ),
-                                                const SizedBox(width: 16),
+                                                  const SizedBox(width: 16),
 
-                                                // Gesamtbetrag rechts
-                                                Expanded(
-                                                  child: Row(
-                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                    children: [
-                                                      Text(
-                                                        taxOption == TaxOption.standard
-                                                            ? 'Gesamtbetrag:'
-                                                            : taxOption == TaxOption.noTax
-                                                            ? 'Nettobetrag:'
-                                                            : 'Gesamt inkl. MwSt:',
-                                                        style: const TextStyle(
-                                                          fontSize: 18,
-                                                          fontWeight: FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                      Column(
-                                                        crossAxisAlignment: CrossAxisAlignment.end,
-                                                        children: [
-                                                          // NEU: Wenn gerundet wurde, zeige Original durchgestrichen
-                                                          if (_roundingSettings[_selectedCurrency] == true && roundingDifference != 0) ...[
-                                                            Text(
-                                                              _formatPrice(total),
-                                                              style: const TextStyle(
-                                                                fontSize: 14,
-                                                                decoration: TextDecoration.lineThrough,
-                                                                color: Colors.grey,
-                                                              ),
-                                                            ),
-                                                            const SizedBox(height: 2),
-                                                          ],
-                                                          // Gerundeter oder normaler Betrag
-                                                          Text(
-                                                            _formatPrice( roundedTotal),
-                                                            style: const TextStyle(
-                                                              fontSize: 18,
-                                                              fontWeight: FontWeight.bold,
-                                                            ),
+                                                  // Gesamtbetrag rechts
+                                                  Expanded(
+                                                    child: Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        Text(
+                                                          taxOption == TaxOption.standard
+                                                              ? 'Gesamtbetrag:'
+                                                              : taxOption == TaxOption.noTax
+                                                              ? 'Nettobetrag:'
+                                                              : 'Gesamt inkl. MwSt:',
+                                                          style: const TextStyle(
+                                                            fontSize: 18,
+                                                            fontWeight: FontWeight.bold,
                                                           ),
-                                                          // NEU: Rundungsdifferenz anzeigen (optional)
-                                                          if (_roundingSettings[_selectedCurrency] == true && roundingDifference != 0) ...[
-                                                            const SizedBox(height: 2),
+                                                        ),
+                                                        Column(
+                                                          crossAxisAlignment: CrossAxisAlignment.end,
+                                                          children: [
+                                                            // Bei noTax/totalOnly: Wenn Endbetrag gerundet wurde, zeige Original durchgestrichen
+                                                            if (taxOption != TaxOption.standard && _roundingSettings[_selectedCurrency] == true && roundingDifference != 0) ...[
+                                                              Text(
+                                                                _formatPriceNoRounding(total),
+                                                                style: const TextStyle(
+                                                                  fontSize: 14,
+                                                                  decoration: TextDecoration.lineThrough,
+                                                                  color: Colors.grey,
+                                                                ),
+                                                              ),
+                                                              const SizedBox(height: 2),
+                                                            ],
+// Gerundeter oder normaler Betrag
                                                             Text(
-                                                              'Rundung: ${roundingDifference > 0 ? '+' : ''}${_formatPrice(roundingDifference)}',
-                                                              style: TextStyle(
-                                                                fontSize: 11,
-                                                                color: roundingDifference > 0 ? Colors.green : Colors.orange,
-                                                                fontStyle: FontStyle.italic,
+                                                              _formatPriceNoRounding(roundedTotal),
+                                                              style: const TextStyle(
+                                                                fontSize: 18,
+                                                                fontWeight: FontWeight.bold,
                                                               ),
                                                             ),
+// Rundungsdifferenz nur bei noTax/totalOnly anzeigen
+                                                            if (taxOption != TaxOption.standard && _roundingSettings[_selectedCurrency] == true && roundingDifference != 0) ...[
+                                                              const SizedBox(height: 2),
+                                                              Text(
+                                                                'Rundung: ${roundingDifference > 0 ? '+' : ''}${_formatPriceNoRounding(roundingDifference)}',
+                                                                style: TextStyle(
+                                                                  fontSize: 11,
+                                                                  color: roundingDifference > 0 ? Colors.green : Colors.orange,
+                                                                  fontStyle: FontStyle.italic,
+                                                                ),
+                                                              ),
+                                                            ],
+// Bei standard: MwSt-Rundungsinfo am Gesamtbetrag anzeigen
+                                                            if (taxOption == TaxOption.standard && _roundingSettings[_selectedCurrency] == true && vatRoundingDifference != 0) ...[
+                                                              const SizedBox(height: 2),
+                                                              Text(
+                                                                'MwSt gerundet: ${vatRoundingDifference > 0 ? '+' : ''}${vatRoundingDifference.toStringAsFixed(2)} $_selectedCurrency',
+                                                                style: TextStyle(
+                                                                  fontSize: 11,
+                                                                  color: vatRoundingDifference > 0 ? Colors.green : Colors.orange,
+                                                                  fontStyle: FontStyle.italic,
+                                                                ),
+                                                              ),
+                                                            ],
                                                           ],
-                                                        ],
-                                                      ),
-                                                    ],
+                                                        ),
+                                                      ],
+                                                    ),
                                                   ),
-                                                ),
-                                              ],
-                                            ),
-
-                                            // Details nur wenn expanded
-                                            if (_isDetailExpanded) ...[
-                                              const Divider(height: 16),
-
-                                              // Zwischensumme
-                                              Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                children: [
-                                                  const Text('Zwischensumme'),
-                                                  Text(_formatPrice(subtotal)),
                                                 ],
                                               ),
 
-                                              // Positionsrabatte
-                                              if (itemDiscounts > 0) ...[
-                                                const SizedBox(height: 4),
+                                              // Details nur wenn expanded
+                                              if (_isDetailExpanded) ...[
+                                                const Divider(height: 16),
+
+                                                // Zwischensumme
                                                 Row(
                                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                   children: [
-                                                    const Text('Positionsrabatte'),
-                                                    Text(
-                                                      '- ${_formatPrice(itemDiscounts)}',
-                                                      style: TextStyle(
-                                                        color: Theme.of(context).colorScheme.primary,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-
-                                              // Gesamtrabatt
-                                              if (_totalDiscount.hasDiscount) ...[
-                                                const SizedBox(height: 4),
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    Text(
-                                                        'Gesamtrabatt '
-                                                            '${_totalDiscount.percentage > 0 ? '(${_totalDiscount.percentage}%)' : ''}'
-                                                            '${_totalDiscount.absolute > 0 ? ' ${_formatPrice(_totalDiscount.absolute)}' : ''}'
-                                                    ),
-                                                    Text(
-                                                      '- ${_formatPrice(totalDiscountAmount)}',
-                                                      style: TextStyle(
-                                                        color: Theme.of(context).colorScheme.primary,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-
-                                              // MwSt-Bereich basierend auf gewählter Option
-                                              if (taxOption == TaxOption.standard) ...[
-                                                const SizedBox(height: 4),
-                                                // Nettobetrag
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    const Text('Nettobetrag'),
-                                                    Text(_formatPrice(netAmount)),
+                                                    const Text('Zwischensumme'),
+                                                    Text(_formatPriceNoRounding(subtotal)),
                                                   ],
                                                 ),
 
-                                                // NEU: Versandkosten anzeigen
-                                                if (freightCost > 0) ...[
+                                                // Positionsrabatte
+                                                if (itemDiscounts > 0) ...[
                                                   const SizedBox(height: 4),
                                                   Row(
                                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                     children: [
-                                                      const Text('Verpackung & Fracht'),
-                                                      Text(_formatPrice(freightCost)),
-                                                    ],
-                                                  ),
-                                                ],
-
-                                                if (phytosanitaryCost > 0) ...[
-                                                  const SizedBox(height: 4),
-                                                  Row(
-                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                    children: [
-                                                      const Text('Pflanzenschutzzeugnisse'),
-                                                      Text(_formatPrice(phytosanitaryCost)),
-                                                    ],
-                                                  ),
-                                                ],
-                                                if (  totalDeductions > 0) ...[
-                                                  const SizedBox(height: 4),
-                                                  Row(
-                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                    children: [
-                                                      const Text('Abschläge'),
+                                                      const Text('Positionsrabatte'),
                                                       Text(
-                                                        '- ${_formatPrice(totalDeductions)}',
+                                                        '- ${_formatPriceNoRounding(itemDiscounts)}',
                                                         style: TextStyle(
-                                                          color: Colors.red,
+                                                          color: Theme.of(context).colorScheme.primary,
                                                         ),
                                                       ),
                                                     ],
                                                   ),
                                                 ],
-                                                const SizedBox(height: 4),
-                                                if (  totalSurcharges > 0) ...[
+
+                                                // Gesamtrabatt
+                                                if (_totalDiscount.hasDiscount) ...[
                                                   const SizedBox(height: 4),
                                                   Row(
                                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                     children: [
-                                                      const Text('Zuschläge'),
-                                                      Text(_formatPrice(totalSurcharges)),
+                                                      Text(
+                                                          'Gesamtrabatt '
+                                                              '${_totalDiscount.percentage > 0 ? '(${_totalDiscount.percentage}%)' : ''}'
+                                                              '${_totalDiscount.absolute > 0 ? ' ${_formatPriceNoRounding(_totalDiscount.absolute)}' : ''}'
+                                                      ),
+                                                      Text(
+                                                        '- ${_formatPriceNoRounding(totalDiscountAmount)}',
+                                                        style: TextStyle(
+                                                          color: Theme.of(context).colorScheme.primary,
+                                                        ),
+                                                      ),
                                                     ],
                                                   ),
                                                 ],
-                                                const SizedBox(height: 4),
-                                                // MwSt mit Einstellungsrad
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    Text('MwSt ($_vatRate%)'),
-                                                    Row(
-                                                      children: [
-                                                        IconButton(
-                                                          icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
-                                                          onPressed: _showTaxOptionsDialog,
-                                                          tooltip: 'Steuereinstellungen ändern',
-                                                        ),
-                                                        Text(_formatPrice(vatAmount)),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ] else if (taxOption == TaxOption.noTax) ...[
-                                                const SizedBox(height: 4),
 
-                                                // NEU: Auch bei noTax die Versandkosten anzeigen
-                                                if (freightCost > 0 || phytosanitaryCost > 0) ...[
+                                                // MwSt-Bereich basierend auf gewählter Option
+                                                if (taxOption == TaxOption.standard) ...[
+                                                  const SizedBox(height: 4),
+                                                  // Nettobetrag
                                                   Row(
                                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                     children: [
                                                       const Text('Nettobetrag'),
-                                                      Text(_formatPrice(netAmount)),
+                                                      Text(_formatPriceNoRounding(netAmount)),
                                                     ],
                                                   ),
-                                                ],
 
-                                                if (freightCost > 0) ...[
-                                                  const SizedBox(height: 4),
-                                                  Row(
-                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                    children: [
-                                                      const Text('Verpackung & Fracht'),
-                                                      Text(_formatPrice(freightCost)),
-                                                    ],
-                                                  ),
-                                                ],
-
-                                                if (phytosanitaryCost > 0) ...[
-                                                  const SizedBox(height: 4),
-                                                  Row(
-                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                    children: [
-                                                      const Text('Pflanzenschutzzeugnisse'),
-                                                      Text(_formatPrice(phytosanitaryCost)),
-                                                    ],
-                                                  ),
-                                                ],
-
-                                                // Einstellungs-Button
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.end,
-                                                  children: [
-                                                    IconButton(
-                                                      icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
-                                                      onPressed: _showTaxOptionsDialog,
-                                                      tooltip: 'Steuereinstellungen ändern',
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  'Es wird keine Mehrwertsteuer berechnet.',
-                                                  style: TextStyle(
-                                                    fontSize: 9,
-                                                    fontStyle: FontStyle.italic,
-                                                    color: Colors.grey[700],
-                                                  ),
-                                                ),
-                                              ] else ...[
-                                                // totalOnly
-                                                const SizedBox(height: 4),
-
-                                                // NEU: Auch bei totalOnly die Versandkosten anzeigen
-                                                if (freightCost > 0 || phytosanitaryCost > 0) ...[
-                                                  Row(
-                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                    children: [
-                                                      const Text('Warenwert'),
-                                                      Text(_formatPrice(netAmount)),
-                                                    ],
-                                                  ),
-                                                ],
-
-                                                if (freightCost > 0) ...[
-                                                  const SizedBox(height: 4),
-                                                  Row(
-                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                    children: [
-                                                      const Text('Verpackung & Fracht'),
-                                                      Text(_formatPrice(freightCost)),
-                                                    ],
-                                                  ),
-                                                ],
-
-                                                if (phytosanitaryCost > 0) ...[
-                                                  const SizedBox(height: 4),
-                                                  Row(
-                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                    children: [
-                                                      const Text('Pflanzenschutzzeugnisse'),
-                                                      Text(_formatPrice(phytosanitaryCost)),
-                                                    ],
-                                                  ),
-                                                ],
-
-                                                // Einstellungs-Button
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.end,
-                                                  children: [
-                                                    IconButton(
-                                                      icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
-                                                      onPressed: _showTaxOptionsDialog,
-                                                      tooltip: 'Steuereinstellungen ändern',
-                                                    ),
-                                                  ],
-                                                ),
-
-                                              ],
-                                              // NEU: Rappenrundung in der Detail-Ansicht zeigen
-                                              if (_roundingSettings[_selectedCurrency] == true && roundingDifference != 0) ...[
-                                                const SizedBox(height: 4),
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
+                                                  if (freightCost > 0) ...[
+                                                    const SizedBox(height: 4),
                                                     Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                       children: [
-                                                        Text('5er Rundung'),
-                                                        const SizedBox(width: 4),
-                                                        Tooltip(
-                                                          message: SwissRounding.getRoundingDetails(total, currency: _selectedCurrency)['rule'],
-                                                          child: getAdaptiveIcon(
-                                                            iconName: 'info',
-                                                            defaultIcon: Icons.info,
-                                                            size: 14,
-                                                            color: Colors.grey,
+                                                        const Text('Verpackung & Fracht'),
+                                                        Text(_formatPriceNoRounding(freightCost)),
+                                                      ],
+                                                    ),
+                                                  ],
+
+                                                  if (phytosanitaryCost > 0) ...[
+                                                    const SizedBox(height: 4),
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        const Text('Pflanzenschutzzeugnisse'),
+                                                        Text(_formatPriceNoRounding(phytosanitaryCost)),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                  if (totalDeductions > 0) ...[
+                                                    const SizedBox(height: 4),
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        const Text('Abschläge'),
+                                                        Text(
+                                                          '- ${_formatPriceNoRounding(totalDeductions)}',
+                                                          style: const TextStyle(
+                                                            color: Colors.red,
                                                           ),
                                                         ),
                                                       ],
                                                     ),
-                                                    Text(
-                                                      '${roundingDifference > 0 ? '+' : ''}${_formatPrice(roundingDifference)}',
-                                                      style: TextStyle(
-                                                        color: roundingDifference > 0 ? Colors.green : Colors.orange,
-                                                      ),
+                                                  ],
+                                                  const SizedBox(height: 4),
+                                                  if (totalSurcharges > 0) ...[
+                                                    const SizedBox(height: 4),
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        const Text('Zuschläge'),
+                                                        Text(_formatPriceNoRounding(totalSurcharges)),
+                                                      ],
                                                     ),
                                                   ],
-                                                ),
-                                              ],
-                                            ],
+                                                  const SizedBox(height: 4),
+                                                  // MwSt mit Einstellungsrad – Rundungsinfo im Label links
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      Flexible(
+                                                        child: Text(
+                                                          'MwSt ($_vatRate%)'
+                                                              + (_roundingSettings[_selectedCurrency] == true && vatRoundingDifference != 0
+                                                              ? '  (gerundet ${vatRoundingDifference > 0 ? '+' : ''}${vatRoundingDifference.toStringAsFixed(2)})'
+                                                              : ''),
+                                                          style: TextStyle(
+                                                            color: (_roundingSettings[_selectedCurrency] == true && vatRoundingDifference != 0)
+                                                                ? (vatRoundingDifference > 0 ? Colors.green : Colors.orange)
+                                                                : null,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Row(
+                                                        children: [
+                                                          IconButton(
+                                                            icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
+                                                            onPressed: _showTaxOptionsDialog,
+                                                            tooltip: 'Steuereinstellungen ändern',
+                                                          ),
+                                                          Text(_formatPriceNoRounding(vatAmount)),
+                                                        ],
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ] else if (taxOption == TaxOption.noTax) ...[
+                                                  const SizedBox(height: 4),
 
-                                          ],
+                                                  if (freightCost > 0 || phytosanitaryCost > 0) ...[
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        const Text('Nettobetrag'),
+                                                        Text(_formatPriceNoRounding(netAmount)),
+                                                      ],
+                                                    ),
+                                                  ],
+
+                                                  if (freightCost > 0) ...[
+                                                    const SizedBox(height: 4),
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        const Text('Verpackung & Fracht'),
+                                                        Text(_formatPriceNoRounding(freightCost)),
+                                                      ],
+                                                    ),
+                                                  ],
+
+                                                  if (phytosanitaryCost > 0) ...[
+                                                    const SizedBox(height: 4),
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        const Text('Pflanzenschutzzeugnisse'),
+                                                        Text(_formatPriceNoRounding(phytosanitaryCost)),
+                                                      ],
+                                                    ),
+                                                  ],
+
+                                                  // Einstellungs-Button
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.end,
+                                                    children: [
+                                                      IconButton(
+                                                        icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
+                                                        onPressed: _showTaxOptionsDialog,
+                                                        tooltip: 'Steuereinstellungen ändern',
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    'Es wird keine Mehrwertsteuer berechnet.',
+                                                    style: TextStyle(
+                                                      fontSize: 9,
+                                                      fontStyle: FontStyle.italic,
+                                                      color: Colors.grey[700],
+                                                    ),
+                                                  ),
+                                                ] else ...[
+                                                  // totalOnly
+                                                  const SizedBox(height: 4),
+
+                                                  if (freightCost > 0 || phytosanitaryCost > 0) ...[
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        const Text('Warenwert'),
+                                                        Text(_formatPriceNoRounding(netAmount)),
+                                                      ],
+                                                    ),
+                                                  ],
+
+                                                  if (freightCost > 0) ...[
+                                                    const SizedBox(height: 4),
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        const Text('Verpackung & Fracht'),
+                                                        Text(_formatPriceNoRounding(freightCost)),
+                                                      ],
+                                                    ),
+                                                  ],
+
+                                                  if (phytosanitaryCost > 0) ...[
+                                                    const SizedBox(height: 4),
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        const Text('Pflanzenschutzzeugnisse'),
+                                                        Text(_formatPriceNoRounding(phytosanitaryCost)),
+                                                      ],
+                                                    ),
+                                                  ],
+
+                                                  // Einstellungs-Button
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.end,
+                                                    children: [
+                                                      IconButton(
+                                                        icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
+                                                        onPressed: _showTaxOptionsDialog,
+                                                        tooltip: 'Steuereinstellungen ändern',
+                                                      ),
+                                                    ],
+                                                  ),
+
+                                                ],
+                                                // Rappenrundung in der Detail-Ansicht zeigen (nur bei noTax/totalOnly)
+                                                if (_roundingSettings[_selectedCurrency] == true && roundingDifference != 0) ...[
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      Row(
+                                                        children: [
+                                                          const Text('5er Rundung'),
+                                                          const SizedBox(width: 4),
+                                                          Tooltip(
+                                                            message: SwissRounding.getRoundingDetails(total, currency: _selectedCurrency)['rule'],
+                                                            child: getAdaptiveIcon(
+                                                              iconName: 'info',
+                                                              defaultIcon: Icons.info,
+                                                              size: 14,
+                                                              color: Colors.grey,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      Text(
+                                                        '${roundingDifference > 0 ? '+' : ''}${_formatPriceNoRounding(roundingDifference)}',
+                                                        style: TextStyle(
+                                                          color: roundingDifference > 0 ? Colors.green : Colors.orange,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ],
+
+                                            ],
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 12),
+                                      const SizedBox(height: 12),
 
-                                // Sprache
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-
-
-                                    //Rabattfeld
-                                    ValueListenableBuilder<bool>(
-                                      valueListenable: _additionalTextsSelectedNotifier,
-                                      builder: (context, hasTexts, child) {
-                                        return Container(
-                                          decoration: BoxDecoration(
-                                            border: Border.all(
-                                              color: Colors.green
-                                            ),
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: Material(
-                                            color: Colors.transparent,
-                                            child: InkWell(
-                                              onTap: _showTotalDiscountDialog,
-                                              borderRadius: BorderRadius.circular(4),
-                                              child: Padding(
-                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-
-                                                    getAdaptiveIcon(iconName: 'sell', defaultIcon: Icons.sell,color: Colors.green)
-
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                    // Zusatztexte Button
-                                    ValueListenableBuilder<bool>(
-                                      valueListenable: _additionalTextsSelectedNotifier,
-                                      builder: (context, hasTexts, child) {
-                                        return Container(
-                                          decoration: BoxDecoration(
-                                            border: Border.all(
-                                              color: hasTexts ? Colors.green : Colors.red,
-                                            ),
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: Material(
-                                            color: Colors.transparent,
-                                            child: InkWell(
-                                              onTap: _showAdditionalTextsDialog,
-                                              borderRadius: BorderRadius.circular(4),
-                                              child: Padding(
-                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    hasTexts
-                                                        ?
-                                                    getAdaptiveIcon(iconName: 'text_fields', defaultIcon: Icons.text_fields,color: Colors.green):
-                                                    getAdaptiveIcon(iconName: 'text_fields', defaultIcon: Icons.text_fields,color:  Colors.red),
+                                      // Sprache
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
 
 
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-
-                                    // Nach dem Zusatztexte Button
-
-                    // Versandkosten Button
-                                    ValueListenableBuilder<bool>(
-                                      valueListenable: _shippingCostsConfiguredNotifier,
-                                      builder: (context, hasShippingCosts, child) {
-                                        return Container(
-                                          decoration: BoxDecoration(
-                                            border: Border.all(
-                                              color: hasShippingCosts ? Colors.green : Colors.red.shade300,
-                                            ),
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: Material(
-                                            color: Colors.transparent,
-                                            child: InkWell(
-                                              onTap: _showShippingCostsDialog,
-                                              borderRadius: BorderRadius.circular(4),
-                                              child: Padding(
-                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    hasShippingCosts
-                                                        ?
-                                                    getAdaptiveIcon(iconName: 'local_shipping', defaultIcon: Icons.local_shipping,color: Colors.green):
-                                                    getAdaptiveIcon(iconName: 'local_shipping', defaultIcon: Icons.local_shipping,color:  Colors.red),
-
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-
-                                    ValueListenableBuilder<bool>(
-                                      valueListenable: _documentSelectionCompleteNotifier,
-                                      builder: (context, isComplete, child) {
-                                        return ValueListenableBuilder<String>(
-                                          valueListenable: _documentLanguageNotifier,
-                                          builder: (context, language, child) {
-                                            return Container(
-                                              decoration: BoxDecoration(
-                                                border: Border.all(
-                                                  color: isComplete ? Colors.green : Colors.red.shade300,
-                                                ),
-                                                borderRadius: BorderRadius.circular(4),
-                                              ),
-                                              child: Material(
-                                                color: Colors.transparent,
-                                                child: InkWell(
-                                                  onTap: _showDocumentTypeSelection,
+                                          //Rabattfeld
+                                          ValueListenableBuilder<bool>(
+                                            valueListenable: _additionalTextsSelectedNotifier,
+                                            builder: (context, hasTexts, child) {
+                                              return Container(
+                                                decoration: BoxDecoration(
+                                                  border: Border.all(
+                                                      color: Colors.green
+                                                  ),
                                                   borderRadius: BorderRadius.circular(4),
-                                                  child: Padding(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 5), // VERGRÖSSERT
-                                                    child: Row(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: [
-                                                        // Sprach-Toggle
-                                                        GestureDetector(
-                                                          onTap: () {
-                                                            _documentLanguageNotifier.value =
-                                                            _documentLanguageNotifier.value == 'DE' ? 'EN' : 'DE';
-                                                            _saveDocumentLanguage();
-                                                          },
-                                                          child: Container(
-                                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // AUCH VERGRÖSSERT
-                                                            decoration: BoxDecoration(
-                                                              color: Theme.of(context).colorScheme.primary,
-                                                              borderRadius: BorderRadius.circular(4),
-                                                            ),
-                                                            child: Text(
-                                                              language,
-                                                              style: TextStyle(
-                                                                color: Theme.of(context).colorScheme.onPrimary,
-                                                                fontSize: 12, // GRÖSSERE SCHRIFT
-                                                                fontWeight: FontWeight.bold,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        const SizedBox(width: 12), // MEHR ABSTAND
-                                                        getAdaptiveIcon(
-                                                          iconName: 'description',
-                                                          defaultIcon: Icons.description,
-                                                          color: isComplete ? Colors.green : Colors.red,
-                                                          size: 20, // GRÖSSERES ICON
-                                                        ),
+                                                ),
+                                                child: Material(
+                                                  color: Colors.transparent,
+                                                  child: InkWell(
+                                                    onTap: _showTotalDiscountDialog,
+                                                    borderRadius: BorderRadius.circular(4),
+                                                    child: Padding(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
 
-                                                      ],
+                                                          getAdaptiveIcon(iconName: 'sell', defaultIcon: Icons.sell,color: Colors.green)
+
+                                                        ],
+                                                      ),
                                                     ),
                                                   ),
                                                 ),
-                                              ),
-                                            );
-                                          },
-                                        );
-                                      },
-                                    ),
+                                              );
+                                            },
+                                          ),
+                                          // Zusatztexte Button
+                                          ValueListenableBuilder<bool>(
+                                            valueListenable: _additionalTextsSelectedNotifier,
+                                            builder: (context, hasTexts, child) {
+                                              return Container(
+                                                decoration: BoxDecoration(
+                                                  border: Border.all(
+                                                    color: hasTexts ? Colors.green : Colors.red,
+                                                  ),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: Material(
+                                                  color: Colors.transparent,
+                                                  child: InkWell(
+                                                    onTap: _showAdditionalTextsDialog,
+                                                    borderRadius: BorderRadius.circular(4),
+                                                    child: Padding(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          hasTexts
+                                                              ?
+                                                          getAdaptiveIcon(iconName: 'text_fields', defaultIcon: Icons.text_fields,color: Colors.green):
+                                                          getAdaptiveIcon(iconName: 'text_fields', defaultIcon: Icons.text_fields,color:  Colors.red),
 
 
-                                    ValueListenableBuilder<bool>(
-                                      valueListenable: _documentSelectionCompleteNotifier,
-                                      builder: (context, isDocSelectionComplete, child) {
-                                        return ValueListenableBuilder<bool>(
-                                          valueListenable: _additionalTextsSelectedNotifier,
-                                          builder: (context, hasTexts, child) {
-                                            return ValueListenableBuilder<bool>(
-                                              valueListenable: _shippingCostsConfiguredNotifier,
-                                              builder: (context, hasShipping, child) {
-                                                return StreamBuilder<Customer?>(
-                                                  stream: _temporaryCustomerStream,
-                                                  builder: (context, customerSnapshot) {
-                                                    return StreamBuilder<CostCenter?>(
-                                                      stream: _temporaryCostCenterStream,
-                                                      builder: (context, costCenterSnapshot) {
-                                                        // Prüfe alle Bedingungen
-                                                        final hasCustomer = customerSnapshot.data != null;
-                                                        final hasCostCenter = costCenterSnapshot.data != null;
-                                                        final allConfigured = isDocSelectionComplete &&
-                                                            hasTexts &&
-                                                            hasShipping &&
-                                                            hasCustomer &&
-                                                            hasCostCenter;
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
 
-                                                        final canProceed = basketItems.isNotEmpty &&
-                                                            !isLoading &&
-                                                            allConfigured;
+                                          // Versandkosten Button
+                                          ValueListenableBuilder<bool>(
+                                            valueListenable: _shippingCostsConfiguredNotifier,
+                                            builder: (context, hasShippingCosts, child) {
+                                              return Container(
+                                                decoration: BoxDecoration(
+                                                  border: Border.all(
+                                                    color: hasShippingCosts ? Colors.green : Colors.red.shade300,
+                                                  ),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: Material(
+                                                  color: Colors.transparent,
+                                                  child: InkWell(
+                                                    onTap: _showShippingCostsDialog,
+                                                    borderRadius: BorderRadius.circular(4),
+                                                    child: Padding(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          hasShippingCosts
+                                                              ?
+                                                          getAdaptiveIcon(iconName: 'local_shipping', defaultIcon: Icons.local_shipping,color: Colors.green):
+                                                          getAdaptiveIcon(iconName: 'local_shipping', defaultIcon: Icons.local_shipping,color:  Colors.red),
 
-                                                        return Container(
-                                                          decoration: BoxDecoration(
-                                                            border: Border.all(
-                                                              color: allConfigured
-                                                                  ? Colors.green
-                                                                  : Colors.red.shade300,
-                                                            ),
-                                                            borderRadius: BorderRadius.circular(4),
-                                                          ),
-                                                          child: Material(
-                                                            color: allConfigured
-                                                                ? Theme.of(context).colorScheme.primary
-                                                                : Colors.red,
-                                                            borderRadius: BorderRadius.circular(3),
-                                                            child: InkWell(
-                                                              onTap: canProceed ? _processTransaction : null,
-                                                              borderRadius: BorderRadius.circular(3),
-                                                              child: Padding(
-                                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                                                child: isLoading
-                                                                    ? const SizedBox(
-                                                                  width: 18,
-                                                                  height: 18,
-                                                                  child: CircularProgressIndicator(
-                                                                    strokeWidth: 2,
-                                                                    color: Colors.white,
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
+
+                                          ValueListenableBuilder<bool>(
+                                            valueListenable: _documentSelectionCompleteNotifier,
+                                            builder: (context, isComplete, child) {
+                                              return ValueListenableBuilder<String>(
+                                                valueListenable: _documentLanguageNotifier,
+                                                builder: (context, language, child) {
+                                                  return Container(
+                                                    decoration: BoxDecoration(
+                                                      border: Border.all(
+                                                        color: isComplete ? Colors.green : Colors.red.shade300,
+                                                      ),
+                                                      borderRadius: BorderRadius.circular(4),
+                                                    ),
+                                                    child: Material(
+                                                      color: Colors.transparent,
+                                                      child: InkWell(
+                                                        onTap: _showDocumentTypeSelection,
+                                                        borderRadius: BorderRadius.circular(4),
+                                                        child: Padding(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 5),
+                                                          child: Row(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: [
+                                                              // Sprach-Toggle
+                                                              GestureDetector(
+                                                                onTap: () {
+                                                                  _documentLanguageNotifier.value =
+                                                                  _documentLanguageNotifier.value == 'DE' ? 'EN' : 'DE';
+                                                                  _saveDocumentLanguage();
+                                                                },
+                                                                child: Container(
+                                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                                  decoration: BoxDecoration(
+                                                                    color: Theme.of(context).colorScheme.primary,
+                                                                    borderRadius: BorderRadius.circular(4),
                                                                   ),
-                                                                )
-                                                                    :
-                                                                allConfigured
-                                                                    ?
-                                                                getAdaptiveIcon(iconName: 'check', defaultIcon: Icons.check,color:  Colors.green, size: 18)
-                                                               : getAdaptiveIcon(iconName: 'warning', defaultIcon: Icons.warning,color:  Colors.white, size: 18,
+                                                                  child: Text(
+                                                                    language,
+                                                                    style: TextStyle(
+                                                                      color: Theme.of(context).colorScheme.onPrimary,
+                                                                      fontSize: 12,
+                                                                      fontWeight: FontWeight.bold,
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                              const SizedBox(width: 12),
+                                                              getAdaptiveIcon(
+                                                                iconName: 'description',
+                                                                defaultIcon: Icons.description,
+                                                                color: isComplete ? Colors.green : Colors.red,
+                                                                size: 20,
                                                               ),
 
-
-                                                              ),
-                                                            ),
+                                                            ],
                                                           ),
-                                                        );
-                                                      },
-                                                    );
-                                                  },
-                                                );
-                                              },
-                                            );
-                                          },
-                                        );
-                                      },
-                                    ),
-                                  ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                              );
+                                            },
+                                          ),
+
+
+                                          ValueListenableBuilder<bool>(
+                                            valueListenable: _documentSelectionCompleteNotifier,
+                                            builder: (context, isDocSelectionComplete, child) {
+                                              return ValueListenableBuilder<bool>(
+                                                valueListenable: _additionalTextsSelectedNotifier,
+                                                builder: (context, hasTexts, child) {
+                                                  return ValueListenableBuilder<bool>(
+                                                    valueListenable: _shippingCostsConfiguredNotifier,
+                                                    builder: (context, hasShipping, child) {
+                                                      return StreamBuilder<Customer?>(
+                                                        stream: _temporaryCustomerStream,
+                                                        builder: (context, customerSnapshot) {
+                                                          return StreamBuilder<CostCenter?>(
+                                                            stream: _temporaryCostCenterStream,
+                                                            builder: (context, costCenterSnapshot) {
+                                                              // Prüfe alle Bedingungen
+                                                              final hasCustomer = customerSnapshot.data != null;
+                                                              final hasCostCenter = costCenterSnapshot.data != null;
+                                                              final allConfigured = isDocSelectionComplete &&
+                                                                  hasTexts &&
+                                                                  hasShipping &&
+                                                                  hasCustomer &&
+                                                                  hasCostCenter;
+
+                                                              final canProceed = basketItems.isNotEmpty &&
+                                                                  !isLoading &&
+                                                                  allConfigured;
+
+                                                              return Container(
+                                                                decoration: BoxDecoration(
+                                                                  border: Border.all(
+                                                                    color: allConfigured
+                                                                        ? Colors.green
+                                                                        : Colors.red.shade300,
+                                                                  ),
+                                                                  borderRadius: BorderRadius.circular(4),
+                                                                ),
+                                                                child: Material(
+                                                                  color: allConfigured
+                                                                      ? Theme.of(context).colorScheme.primary
+                                                                      : Colors.red,
+                                                                  borderRadius: BorderRadius.circular(3),
+                                                                  child: InkWell(
+                                                                    onTap: canProceed ? _processTransaction : null,
+                                                                    borderRadius: BorderRadius.circular(3),
+                                                                    child: Padding(
+                                                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                                      child: isLoading
+                                                                          ? const SizedBox(
+                                                                        width: 18,
+                                                                        height: 18,
+                                                                        child: CircularProgressIndicator(
+                                                                          strokeWidth: 2,
+                                                                          color: Colors.white,
+                                                                        ),
+                                                                      )
+                                                                          :
+                                                                      allConfigured
+                                                                          ?
+                                                                      getAdaptiveIcon(iconName: 'check', defaultIcon: Icons.check,color:  Colors.green, size: 18)
+                                                                          : getAdaptiveIcon(iconName: 'warning', defaultIcon: Icons.warning,color:  Colors.white, size: 18,
+                                                                      ),
+
+
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              );
+                                                            },
+                                                          );
+                                                        },
+                                                      );
+                                                    },
+                                                  );
+                                                },
+                                              );
+                                            },
+                                          ),
+                                        ],
+                                      ),
+
+
+
+                                    ],
+                                  ),
                                 ),
-
-
-
-                                ],
-                              ),
-                            ),
-                            );
-                          },
-                        );
-                      },
-                    );
+                              );
+                            },
+                          );
+                        },
+                      );
                     }
                 );
               },

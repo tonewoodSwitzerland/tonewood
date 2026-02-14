@@ -22,15 +22,42 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
   late RoundwoodFilter tempFilter;
   final RoundwoodService _service = RoundwoodService();
   List<int> _availableYears = [];
-
+// NEU: Oben in RoundwoodFilterDialogState hinzufügen:
+  Map<String, String> _woodTypeNames = {};
+  Map<String, String> _qualityNames = {};
   // Hardcoded Verwendungszwecke (wie im Entry Screen)
   final List<String> _availablePurposes = ['Gitarre', 'Violine', 'Viola', 'Cello', 'Bass'];
 
+  @override
   @override
   void initState() {
     super.initState();
     tempFilter = widget.initialFilter;
     _loadAvailableYears();
+    _loadNames(); // NEU
+  }
+
+// NEU: Methode hinzufügen
+  Future<void> _loadNames() async {
+    final woodSnap = await FirebaseFirestore.instance.collection('wood_types').get();
+    final qualSnap = await FirebaseFirestore.instance.collection('qualities').get();
+
+    if (mounted) {
+      setState(() {
+        for (final doc in woodSnap.docs) {
+          final data = doc.data();
+          final code = data['code'] as String? ?? doc.id;
+          final name = data['name'] as String? ?? code;
+          _woodTypeNames[code] = name;
+        }
+        for (final doc in qualSnap.docs) {
+          final data = doc.data();
+          final code = data['code'] as String? ?? doc.id;
+          final name = data['name'] as String? ?? code;
+          _qualityNames[code] = name;
+        }
+      });
+    }
   }
 
   Future<void> _loadAvailableYears() async {
@@ -270,10 +297,19 @@ class RoundwoodFilterDialogState extends State<RoundwoodFilterDialog> {
         children: [
           if (tempFilter.year != null)
             _buildFilterChip('Jahr: ${tempFilter.year}', () => _updateFilter(clearYear: true)),
+
+
           if (tempFilter.woodTypes?.isNotEmpty ?? false)
-            ...tempFilter.woodTypes!.map((w) => _buildFilterChip('Holz: $w', () => _removeWoodType(w))),
+            ...tempFilter.woodTypes!.map((w) => _buildFilterChip(
+              'Holz: ${_woodTypeNames[w] ?? w}',
+                  () => _removeWoodType(w),
+            )),
           if (tempFilter.qualities?.isNotEmpty ?? false)
-            ...tempFilter.qualities!.map((q) => _buildFilterChip('Qualität: $q', () => _removeQuality(q))),
+            ...tempFilter.qualities!.map((q) => _buildFilterChip(
+              'Qualität: ${_qualityNames[q] ?? q}',
+                  () => _removeQuality(q),
+            )),
+
           if (tempFilter.purposes?.isNotEmpty ?? false)
             ...tempFilter.purposes!.map((p) => _buildFilterChip('Zweck: $p', () => _removePurpose(p))),
           if (tempFilter.origin != null)

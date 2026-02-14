@@ -22,7 +22,7 @@ abstract class BaseDeliveryNotePdfGenerator {
 
   // Konstanten für Fenster-Positionierung (in mm)
   static const double addressFieldWidth = 80.0;   // mm
-  static const double addressFieldHeight = 40.0;  // mm
+  static const double addressFieldHeight = 60.0;  // mm
   static const double addressFieldFromRight = 25.0; // mm vom rechten Rand
   static const double addressFieldFromTop = 50.0;   // mm von oben
 
