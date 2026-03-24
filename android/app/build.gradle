@@ -27,7 +27,7 @@ if (flutterVersionName == null) {
 
 android {
     namespace = "tonewood.com.tonewood"
-    compileSdkVersion 34
+    compileSdkVersion 36
     ndkVersion = "27.0.12077973"  // Fixed: Explicitly set the NDK version
 
     compileOptions {

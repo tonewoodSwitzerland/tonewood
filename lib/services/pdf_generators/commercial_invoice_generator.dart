@@ -5,10 +5,12 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import '../pdf_settings_screen.dart';
+import '../pdf_services/pdf_settings_screen.dart';
+import '../pdf_services/pdf_header_footer_settings_screen.dart';
 import '../product_sorting_manager.dart';
+import '../user_basket_service.dart';
 import 'base_pdf_generator.dart';
-import '../additional_text_manager.dart';
+import '../../quotes/additional_text_manager.dart';
 
 class CommercialInvoiceGenerator extends BasePdfGenerator {
 
@@ -56,7 +58,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       });
     } catch (e) {
       print('Fehler beim Erstellen der Handelsrechnungs-Nummer: $e');
-      return 'HR-${DateTime.now().year}-1000';
+      rethrow;
     }
   }
 
@@ -82,6 +84,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
   }) async {
     final pdf = pw.Document();
     final logo = await BasePdfGenerator.loadLogo();
+    final hfSettings = await PdfHeaderFooterSettings.load();
 
     print("invoiceDate:$invoiceDate");
 
@@ -160,6 +163,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
                 pageNumber: context.pageNumber,
                 totalPages: context.pagesCount,
                 language: language,
+                hfSettings: hfSettings,
               ),
               pw.SizedBox(height: 10),
             ],
@@ -169,6 +173,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           pageNumber: context.pageNumber,
           totalPages: context.pagesCount,
           language: language,
+          hfSettings: hfSettings,
         ),
         build: (pw.Context context) {
           return [
@@ -180,6 +185,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               logo: logo,
               costCenter: null,
               language: language,
+              hfSettings: hfSettings,
             ),
             pw.SizedBox(height: 20),
 
@@ -258,8 +264,8 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
           print("settings:$settings");
         } else {
-          final tempSettingsDoc = await FirebaseFirestore.instance
-              .collection('temporary_document_settings')
+          final tempSettingsDoc = await
+              UserBasketService.temporaryDocumentSettings
               .doc('tara_settings')
               .get();
 
@@ -270,8 +276,8 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           }
         }
       } else {
-        final tempSettingsDoc = await FirebaseFirestore.instance
-            .collection('temporary_document_settings')
+        final tempSettingsDoc = await
+            UserBasketService.temporaryDocumentSettings
             .doc('tara_settings')
             .get();
 
@@ -622,8 +628,9 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       }
 
       final woodInfo = woodTypeCache[woodCode]!;
-      final density = (woodInfo['density'] as num?)?.toDouble() ?? 0;
-
+      final baseDensity = (woodInfo['density'] as num?)?.toDouble() ?? 0;
+      final customDensity = (item['custom_density'] as num?)?.toDouble() ?? 0;
+      final density = customDensity > 0 ? customDensity : baseDensity;
       // PRIORITÄT 1: Individuelle Zolltarifnummer
       if (item['custom_tariff_number'] != null &&
           (item['custom_tariff_number'] as String).isNotEmpty) {
@@ -637,11 +644,14 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             : 0.0;
 
         if (thickness <= 6.0) {
-          tariffNumber = woodInfo['z_tares_1'] ?? '4408.1000';
+          tariffNumber = woodInfo['z_tares_1'] ?? '';
         } else {
-          tariffNumber = woodInfo['z_tares_2'] ?? '4407.1200';
+          tariffNumber = woodInfo['z_tares_2'] ?? '';
         }
       }
+      print('DEBUG TARIFF: ${item['product_name']} | thickness: ${item['custom_thickness']} | tariff: $tariffNumber');
+
+      // Hole Maße
 
       // Hole Maße
       final length = item['custom_length'] != null
@@ -1749,7 +1759,25 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         );
       }
 
-      // Free Text
+      // Custom Text Blocks
+      final customBlockTexts = AdditionalTextsManager.getActiveCustomBlockTexts(
+        additionalTexts,
+        language: language,
+      );
+      for (final blockText in customBlockTexts) {
+        textWidgets.add(
+          pw.Container(
+            alignment: pw.Alignment.centerLeft,
+            margin: const pw.EdgeInsets.only(bottom: 6),
+            child: pw.Text(
+              blockText,
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey700),
+            ),
+          ),
+        );
+      }
+
+
       if (additionalTexts['free_text']?['selected'] == true) {
         textWidgets.add(
           pw.Container(
@@ -1766,6 +1794,8 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           ),
         );
       }
+
+
 
       if (textWidgets.isEmpty) {
         return pw.SizedBox.shrink();

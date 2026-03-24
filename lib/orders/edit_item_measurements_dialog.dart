@@ -1,6 +1,7 @@
 // lib/screens/orders/edit_item_measurements_dialog.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -8,6 +9,17 @@ import '../services/icon_helper.dart';
 import 'order_model.dart';
 
 class EditItemMeasurementsDialog {
+  // Komma → Punkt ersetzen + nur gültige Dezimalzahlen erlauben
+  static final List<TextInputFormatter> _decimalFormatters = [
+    _CommaToPointFormatter(),
+    FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+  ];
+
+  // Nur ganze Zahlen
+  static final List<TextInputFormatter> _integerFormatters = [
+    FilteringTextInputFormatter.digitsOnly,
+  ];
+
   static void show(
       BuildContext context,
       OrderX order,
@@ -30,6 +42,29 @@ class EditItemMeasurementsDialog {
     final partsController = TextEditingController(
       text: item['parts']?.toString() ?? '1', // Standard: 1 wenn fehlt
     );
+// NEU: Controller für direktes Volumen (volume_per_unit in m³)
+    final existingVolumePerUnit = (item['volume_per_unit'] as num?)?.toDouble() ?? 0.0;
+    final volumeDirectController = TextEditingController(
+      text: existingVolumePerUnit > 0 ? existingVolumePerUnit.toString() : '',
+    );
+
+    // Bestimme initialen Modus: Wenn Einzelmaße vorhanden → berechnet, sonst direkt
+    final hasExistingDimensions = (item['custom_length'] as num?)?.toDouble() != null &&
+        (item['custom_length'] as num?)?.toDouble() != 0 &&
+        (item['custom_width'] as num?)?.toDouble() != null &&
+        (item['custom_width'] as num?)?.toDouble() != 0 &&
+        (item['custom_thickness'] as num?)?.toDouble() != null &&
+        (item['custom_thickness'] as num?)?.toDouble() != 0;
+
+    // Modus: 'calculated' = aus Einzelmaßen, 'direct' = manuell als m³
+    String volumeMode;
+    final savedMode = item['volume_mode'] as String?;
+    if (savedMode == 'calculated' || savedMode == 'direct') {
+      volumeMode = savedMode!;
+    } else {
+      volumeMode = hasExistingDimensions ? 'calculated' : (existingVolumePerUnit > 0 ? 'direct' : 'calculated');
+    }
+
 // NEU: Controller für Zolltarifnummer und Hinweise
     final customTariffController = TextEditingController(
       text: item['custom_tariff_number']?.toString() ?? '',
@@ -37,9 +72,13 @@ class EditItemMeasurementsDialog {
     final notesController = TextEditingController(
       text: item['notes']?.toString() ?? '',
     );
+    final existingCustomDensity = (item['custom_density'] as num?)?.toDouble() ?? 0;
+    final customDensityController = TextEditingController(
+      text: existingCustomDensity > 0 ? existingCustomDensity.toStringAsFixed(0) : '',
+    );
     // Anzahl (quantity) - nicht editierbar, nur zur Anzeige
     final quantity = (item['quantity'] as num?)?.toDouble() ?? 1;
-
+    bool densityEditMode = false;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -360,42 +399,128 @@ class EditItemMeasurementsDialog {
 
                           const SizedBox(height: 20),
 
-                          // Volumen-Anzeige (berechnet)
-                          _buildVolumeSection(
+                          // === VOLUMEN MODUS TOGGLE ===
+                          _buildVolumeModeToggle(
                             context: context,
-                            hasValidDimensions: hasValidDimensions,
-                            length: length,
-                            width: width,
-                            thickness: thickness,
-                            parts: parts,
-                            quantity: quantity,
-                            volumePerPieceMm3: volumePerPieceMm3,
-                            volumePerPieceDm3: volumePerPieceDm3,
-                            volumePerPieceM3: volumePerPieceM3,
-                            totalVolumeMm3: totalVolumeMm3,
-                            totalVolumeDm3: totalVolumeDm3,
-                            totalVolumeM3: totalVolumeM3,
-                          ),
-                          const SizedBox(height: 20),
-                          _buildWeightSection(
-                            context: context,
-                            hasValidDimensions: hasValidDimensions,
-                            density: density,
-                            weightPerPiece: weightPerPiece,
-                            totalWeight: totalWeight,
-                            quantity: quantity,
-                            volumePerPieceM3: volumePerPieceM3,
-                            unit: item['unit']?.toString() ?? 'Stück',
-                          ),
-// NEU: Zolltarifnummer
-                          const SizedBox(height: 20),
-                          _buildTariffSection(
-                            context: context,
-                            item: item,
-                            customTariffController: customTariffController,
-                            onChanged: () => setModalState(() {}),
+                            volumeMode: volumeMode,
+                            onModeChanged: (newMode) {
+                              setModalState(() {
+                                volumeMode = newMode;
+                              });
+                            },
                           ),
 
+                          const SizedBox(height: 12),
+
+                          // Volumen-Anzeige je nach Modus
+                          if (volumeMode == 'calculated') ...[
+                            // Berechnetes Volumen aus Einzelmaßen
+                            _buildVolumeSection(
+                              context: context,
+                              hasValidDimensions: hasValidDimensions,
+                              length: length,
+                              width: width,
+                              thickness: thickness,
+                              parts: parts,
+                              quantity: quantity,
+                              volumePerPieceMm3: volumePerPieceMm3,
+                              volumePerPieceDm3: volumePerPieceDm3,
+                              volumePerPieceM3: volumePerPieceM3,
+                              totalVolumeMm3: totalVolumeMm3,
+                              totalVolumeDm3: totalVolumeDm3,
+                              totalVolumeM3: totalVolumeM3,
+                              isActive: true,
+                            ),
+                            // Nur Hinweis wenn BEIDE Seiten Werte haben → echter Konflikt
+                            if (existingVolumePerUnit > 0 && hasValidDimensions) ...[
+                              const SizedBox(height: 8),
+                              _buildInactiveVolumeHint(
+                                context: context,
+                                label: 'Gespeichertes Direktvolumen',
+                                valueM3: existingVolumePerUnit,
+                                quantity: quantity,
+                                hint: 'Wird ignoriert – Einzelmaße werden verwendet',
+                              ),
+                            ],
+                          ] else ...[
+                            // Direktes Volumen Eingabefeld
+                            _buildDirectVolumeSection(
+                              context: context,
+                              volumeDirectController: volumeDirectController,
+                              quantity: quantity,
+                              onChanged: () => setModalState(() {}),
+                            ),
+                            // Nur Hinweis wenn BEIDE Seiten Werte haben → echter Konflikt
+                            if (hasValidDimensions && (double.tryParse(volumeDirectController.text) ?? 0) > 0) ...[
+                              const SizedBox(height: 8),
+                              _buildInactiveVolumeHint(
+                                context: context,
+                                label: 'Berechnetes Volumen (L×B×D)',
+                                valueM3: volumePerPieceM3,
+                                quantity: quantity,
+                                hint: 'Wird ignoriert – Direkteingabe wird verwendet',
+                              ),
+                            ],
+                          ],
+                          const SizedBox(height: 20),
+                          Builder(
+                            builder: (context) {
+                              // Gewicht basierend auf aktivem Volumen-Modus
+                              double effectiveVolumePerPieceM3;
+                              bool effectiveHasVolume;
+
+                              if (volumeMode == 'calculated') {
+                                effectiveVolumePerPieceM3 = volumePerPieceM3;
+                                effectiveHasVolume = hasValidDimensions;
+                              } else {
+                                final directVal = double.tryParse(volumeDirectController.text) ?? 0;
+                                effectiveVolumePerPieceM3 = directVal;
+                                effectiveHasVolume = directVal > 0;
+                              }
+// NEU: Custom-Dichte hat Vorrang
+                              final customDensityVal = double.tryParse(customDensityController.text);
+                              final effectiveDensity = (customDensityVal != null && customDensityVal > 0)
+                                  ? customDensityVal
+                                  : density; // density = 0 in deinem Fall
+
+                              final effectiveWeightPerPiece = effectiveVolumePerPieceM3 * effectiveDensity;
+                              final effectiveTotalWeight = effectiveWeightPerPiece * quantity;
+                              return _buildWeightSection(
+                                context: context,
+                                hasValidDimensions: effectiveHasVolume,
+                                density: density,                        // Original-Dichte (für helperText)
+                                effectiveDensity: effectiveDensity,      // Wird tatsächlich gerechnet
+                                weightPerPiece: effectiveWeightPerPiece,
+                                totalWeight: effectiveTotalWeight,
+                                quantity: quantity,
+                                volumePerPieceM3: effectiveVolumePerPieceM3,
+                                unit: item['unit']?.toString() ?? 'Stück',
+                                densityEditMode: densityEditMode,
+                                customDensityController: customDensityController,
+                                onToggleDensityEdit: () => setModalState(() {
+                                  densityEditMode = !densityEditMode;
+                                }),
+                                onDensityChanged: () => setModalState(() {}),
+                              );
+                            },
+                          ),
+// NEU: Zolltarifnummer
+                          // NEU: Zolltarifnummer (berechnet aus Holzart + Dicke)
+                          const SizedBox(height: 20),
+                          FutureBuilder<String?>(
+                            future: _calculateTariffNumber(item, thickness),
+                            builder: (context, snapshot) {
+                              if (snapshot.hasData && snapshot.data != null) {
+                                item['_calculated_tariff'] = snapshot.data;
+                              }
+                              return _buildTariffSection(
+                                context: context,
+                                item: item,
+                                customTariffController: customTariffController,
+                                onChanged: () => setModalState(() {}),
+                              );
+                            },
+                          ),
 // NEU: Hinweise
                           const SizedBox(height: 20),
                           _buildNotesSection(
@@ -432,9 +557,12 @@ class EditItemMeasurementsDialog {
                                     widthController: widthController,
                                     thicknessController: thicknessController,
                                     partsController: partsController,
-                                    customTariffController: customTariffController,  // NEU
-                                    notesController: notesController,                  // NEU
+                                    customTariffController: customTariffController,
+                                    notesController: notesController,
                                     quantity: quantity,
+                                    volumeMode: volumeMode,
+                                    volumeDirectController: volumeDirectController,
+                                    customDensityController: customDensityController,
                                   ),
                                   icon: getAdaptiveIcon(
                                     iconName: 'save',
@@ -494,6 +622,7 @@ class EditItemMeasurementsDialog {
         TextField(
           controller: controller,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: _decimalFormatters,
           textAlign: TextAlign.center,
           decoration: InputDecoration(
             hintText: '0',
@@ -551,6 +680,7 @@ class EditItemMeasurementsDialog {
         TextField(
           controller: controller,
           keyboardType: const TextInputType.numberWithOptions(decimal: false),
+          inputFormatters: _integerFormatters,
           textAlign: TextAlign.center,
           decoration: InputDecoration(
             hintText: '1',
@@ -610,9 +740,10 @@ class EditItemMeasurementsDialog {
     required VoidCallback onChanged,
   }) {
     // Standard-Zolltarifnummer aus dem Item (falls vorhanden)
-    final standardTariff = item['tariff_number']?.toString() ??
+    // Standard-Zolltarifnummer berechnen aus Holzart + Dicke
+    String? standardTariff = item['_calculated_tariff']?.toString() ??
+        item['tariff_number']?.toString() ??
         item['standard_tariff_number']?.toString();
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -787,18 +918,76 @@ class EditItemMeasurementsDialog {
       ),
     );
   }
+  static Future<String?> _calculateTariffNumber(Map<String, dynamic> item, double thickness) async {
+    // DEBUG
+    print('🔍 _calculateTariffNumber called');
+    print('   thickness: $thickness');
+    print('   wood_code: ${item['wood_code']}');
+    print('   item keys: ${item.keys.toList()}');
+
+    if (thickness <= 0) {
+      print('   ❌ thickness <= 0, returning null');
+      return null;
+    }
+
+    final woodCode = item['wood_code'] as String? ?? '';
+    if (woodCode.isEmpty) {
+      print('   ❌ woodCode is empty, returning null');
+      return null;
+    }
+
+    try {
+      final woodTypeDoc = await FirebaseFirestore.instance
+          .collection('wood_types')
+          .doc(woodCode)
+          .get();
+
+      print('   Firestore doc exists: ${woodTypeDoc.exists}');
+
+      if (!woodTypeDoc.exists) {
+        print('   ❌ wood_types/$woodCode does not exist');
+        return null;
+      }
+
+      final woodInfo = woodTypeDoc.data()!;
+      print('   woodInfo keys: ${woodInfo.keys.toList()}');
+      print('   z_tares_1: ${woodInfo['z_tares_1']}');
+      print('   z_tares_2: ${woodInfo['z_tares_2']}');
+
+      if (thickness <= 6.0) {
+        final result = woodInfo['z_tares_1']?.toString() ?? '4408.1000';
+        print('   ✅ thickness <= 6mm → $result');
+        return result;
+      } else {
+        final result = woodInfo['z_tares_2']?.toString() ?? '4407.1200';
+        print('   ✅ thickness > 6mm → $result');
+        return result;
+      }
+    } catch (e) {
+      print('   ❌ Error: $e');
+      return null;
+    }
+  }
   static Widget _buildWeightSection({
     required BuildContext context,
     required bool hasValidDimensions,
-    required double density,
+    required double density,           // Original (nur für helperText)
+    required double effectiveDensity,  // NEU: wird tatsächlich verwendet
     required double weightPerPiece,
     required double totalWeight,
     required double quantity,
     required double volumePerPieceM3,
     required String unit,
-  }) {
-    final hasWeight = hasValidDimensions && density > 0;
-
+    required bool densityEditMode,
+    required TextEditingController customDensityController,
+    required VoidCallback onToggleDensityEdit,
+    required VoidCallback onDensityChanged,
+  }){
+    final hasWeight = hasValidDimensions && effectiveDensity > 0;
+// Effektive Dichte für Anzeige
+    final effectiveDensityDisplay = (double.tryParse(customDensityController.text) ?? 0) > 0
+        ? double.parse(customDensityController.text)
+        : density;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -837,25 +1026,103 @@ class EditItemMeasurementsDialog {
                 ),
               ),
               const Spacer(),
-              if (hasWeight)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${density.toStringAsFixed(0)} kg/m³',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.green,
-                      fontWeight: FontWeight.w500,
+              if (hasWeight) ...[
+                // Dichte-Badge mit Stift
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: customDensityController.text.isNotEmpty
+                            ? Colors.orange.withOpacity(0.15)
+                            : Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${effectiveDensity.toStringAsFixed(0)} kg/m³',  style: TextStyle(
+                          fontSize: 11,
+                          color: customDensityController.text.isNotEmpty
+                              ? Colors.orange.shade700
+                              : Colors.green,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 4),
+                    GestureDetector(
+                      onTap: onToggleDensityEdit,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: densityEditMode
+                              ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Icon(
+                          Icons.edit,
+                          size: 14,
+                          color: densityEditMode
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+              ],
             ],
           ),
-
+// Manuelle Dichte-Eingabe (nur wenn Edit-Mode aktiv)
+          if (densityEditMode) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: customDensityController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: _decimalFormatters,
+                    textAlign: TextAlign.center,
+                    decoration: InputDecoration(
+                      labelText: 'Manuelle Dichte',
+                      suffixText: 'kg/m³',
+                      hintText: density > 0 ? density.toStringAsFixed(0) : '600',
+                      helperText: density > 0
+                          ? 'Überschreibt die hinterlegte Dichte (${density.toStringAsFixed(0)} kg/m³)'
+                          : 'Keine Dichte hinterlegt',  border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      filled: true,
+                      fillColor: Theme.of(context).colorScheme.surface,
+                      prefixIcon: Icon(
+                        Icons.scale,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    onChanged: (_) => onDensityChanged(),
+                  ),
+                ),
+                if (customDensityController.text.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () {
+                      customDensityController.clear();
+                      onDensityChanged();
+                    },
+                    icon: const Icon(Icons.clear, size: 18),
+                    tooltip: 'Zurücksetzen',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.red.withOpacity(0.1),
+                      foregroundColor: Colors.red,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
           if (hasWeight) ...[
             const SizedBox(height: 16),
 
@@ -870,8 +1137,7 @@ class EditItemMeasurementsDialog {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${volumePerPieceM3.toStringAsFixed(7)} m³ × ${density.toStringAsFixed(0)} kg/m³',
-                    style: TextStyle(
+                    '${volumePerPieceM3.toStringAsFixed(7)} m³ × ${effectiveDensityDisplay.toStringAsFixed(0)} kg/m³',  style: TextStyle(
                       fontSize: 12,
                       fontFamily: 'monospace',
                       color: Colors.grey.shade600,
@@ -927,10 +1193,9 @@ class EditItemMeasurementsDialog {
             const SizedBox(height: 16),
             Center(
               child: Text(
-                density <= 0
+                effectiveDensity <= 0
                     ? 'Keine Dichte hinterlegt – Gewicht kann nicht berechnet werden'
-                    : 'Gib alle Maße ein, um das Gewicht zu berechnen',
-                style: TextStyle(
+                    : 'Gib alle Maße ein, um das Gewicht zu berechnen',   style: TextStyle(
                   fontSize: 12,
                   color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                 ),
@@ -956,6 +1221,7 @@ class EditItemMeasurementsDialog {
     required double totalVolumeMm3,
     required double totalVolumeDm3,
     required double totalVolumeM3,
+    bool isActive = true,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1262,6 +1528,375 @@ class EditItemMeasurementsDialog {
     );
   }
 
+  // ============================================================
+  // VOLUME MODE TOGGLE & DIRECT VOLUME INPUT
+  // ============================================================
+
+  static Widget _buildVolumeModeToggle({
+    required BuildContext context,
+    required String volumeMode,
+    required Function(String) onModeChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => onModeChanged('calculated'),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: volumeMode == 'calculated'
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: volumeMode == 'calculated'
+                      ? [
+                    BoxShadow(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.straighten,
+                      size: 16,
+                      color: volumeMode == 'calculated'
+                          ? Theme.of(context).colorScheme.onPrimary
+                          : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Einzelmaße (L×B×D)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: volumeMode == 'calculated'
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => onModeChanged('direct'),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: volumeMode == 'direct'
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: volumeMode == 'direct'
+                      ? [
+                    BoxShadow(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.view_in_ar,
+                      size: 16,
+                      color: volumeMode == 'direct'
+                          ? Theme.of(context).colorScheme.onPrimary
+                          : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Volumen direkt',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: volumeMode == 'direct'
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _buildDirectVolumeSection({
+    required BuildContext context,
+    required TextEditingController volumeDirectController,
+    required double quantity,
+    required VoidCallback onChanged,
+  }) {
+    final directVal = double.tryParse(volumeDirectController.text) ?? 0;
+    final hasValue = directVal > 0;
+    final totalVolumeM3 = directVal * quantity;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: hasValue
+            ? Theme.of(context).colorScheme.tertiaryContainer.withOpacity(0.3)
+            : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: hasValue
+              ? Theme.of(context).colorScheme.tertiary.withOpacity(0.3)
+              : Theme.of(context).colorScheme.outline.withOpacity(0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              getAdaptiveIcon(
+                iconName: 'view_in_ar',
+                defaultIcon: Icons.view_in_ar,
+                size: 20,
+                color: hasValue
+                    ? Theme.of(context).colorScheme.tertiary
+                    : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Volumen pro Einheit (direkt)',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: hasValue
+                      ? Theme.of(context).colorScheme.tertiary
+                      : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                ),
+              ),
+              const Spacer(),
+              if (hasValue)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      getAdaptiveIcon(
+                        iconName: 'check',
+                        defaultIcon: Icons.check,
+                        size: 14,
+                        color: Colors.green,
+                      ),
+                      const SizedBox(width: 4),
+                      const Text(
+                        'Aktiv',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.green,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Eingabefeld für Volumen in m³
+          TextField(
+            controller: volumeDirectController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: _decimalFormatters,
+            textAlign: TextAlign.center,
+            decoration: InputDecoration(
+              labelText: 'Volumen pro Einheit',
+              suffixText: 'm³',
+              hintText: 'z.B. 0.000125',
+              prefixIcon: getAdaptiveIcon(
+                iconName: 'view_in_ar',
+                defaultIcon: Icons.view_in_ar,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              filled: true,
+              fillColor: Theme.of(context).colorScheme.surface,
+              helperText: 'Volumen pro Stück in Kubikmetern (m³)',
+            ),
+            onChanged: (_) => onChanged(),
+          ),
+
+          if (hasValue) ...[
+            const SizedBox(height: 16),
+
+            // Gesamtvolumen
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context)
+                    .colorScheme
+                    .primaryContainer
+                    .withOpacity(0.5),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      getAdaptiveIcon(
+                        iconName: 'calculate',
+                        defaultIcon: Icons.calculate,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Gesamtvolumen',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '× ${quantity.toStringAsFixed(quantity.truncateToDouble() == quantity ? 0 : 1)} Stk',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${directVal.toStringAsFixed(7)} m³ × ${quantity.toStringAsFixed(quantity.truncateToDouble() == quantity ? 0 : 1)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '= ${totalVolumeM3.toStringAsFixed(7)} m³',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static Widget _buildInactiveVolumeHint({
+    required BuildContext context,
+    required String label,
+    required double valueM3,
+    required double quantity,
+    required String hint,
+  }) {
+    final totalM3 = valueM3 * quantity;
+    final showTotal = quantity > 1;
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.orange.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 16,
+            color: Colors.orange.shade600,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  showTotal
+                      ? '$label: ${valueM3.toStringAsFixed(7)} m³/Stk × ${quantity.toStringAsFixed(quantity.truncateToDouble() == quantity ? 0 : 1)} = ${totalM3.toStringAsFixed(7)} m³'
+                      : '$label: ${valueM3.toStringAsFixed(7)} m³',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                    decoration: TextDecoration.lineThrough,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hint,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.orange.shade600,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   static Widget _buildVolumeTableRow(
       BuildContext context,
       String unit,
@@ -1340,9 +1975,12 @@ class EditItemMeasurementsDialog {
     required TextEditingController widthController,
     required TextEditingController thicknessController,
     required TextEditingController partsController,
-    required TextEditingController customTariffController,  // NEU
-    required TextEditingController notesController,          // NEU
+    required TextEditingController customTariffController,
+    required TextEditingController notesController,
     required double quantity,
+    required String volumeMode,
+    required TextEditingController volumeDirectController,
+    required TextEditingController customDensityController,
   }) async {
     // Validiere und parse die Eingaben
     final lengthVal = double.tryParse(lengthController.text);
@@ -1354,17 +1992,31 @@ class EditItemMeasurementsDialog {
       // Update das Item in der Liste
       final updatedItems = List<Map<String, dynamic>>.from(order.items);
 
-      // Berechne Volumen für Speicherung
-      double? volPerPiece;
-      double? volTotal;
-      if (lengthVal != null &&
-          widthVal != null &&
-          thicknessVal != null &&
-          lengthVal > 0 &&
-          widthVal > 0 &&
-          thicknessVal > 0) {
-        volPerPiece = lengthVal * widthVal * thicknessVal * partsVal;
-        volTotal = volPerPiece * quantity;
+      // Volumen je nach Modus berechnen
+      double? volPerPiece;       // in mm³ (für berechneten Modus)
+      double? volTotal;          // in mm³
+      double? volumePerUnitM3;   // in m³ (für beide Modi, als Endwert)
+
+      if (volumeMode == 'calculated') {
+        // Berechne Volumen aus Einzelmaßen
+        if (lengthVal != null &&
+            widthVal != null &&
+            thicknessVal != null &&
+            lengthVal > 0 &&
+            widthVal > 0 &&
+            thicknessVal > 0) {
+          volPerPiece = lengthVal * widthVal * thicknessVal * partsVal;
+          volTotal = volPerPiece * quantity;
+          volumePerUnitM3 = volPerPiece / 1000000000;
+        }
+      } else {
+        // Direktes Volumen in m³
+        final directVal = double.tryParse(volumeDirectController.text);
+        if (directVal != null && directVal > 0) {
+          volumePerUnitM3 = directVal;
+          volPerPiece = directVal * 1000000000; // zurück zu mm³
+          volTotal = volPerPiece * quantity;
+        }
       }
 
       // Update direkt am korrekten Index
@@ -1374,19 +2026,21 @@ class EditItemMeasurementsDialog {
         'custom_width': widthVal,
         'custom_thickness': thicknessVal,
         'parts': partsVal,
-        // Volumen pro Stück
+        'volume_mode': volumeMode, // Speichere welcher Modus aktiv war
 
+        // Volumen pro Stück
         'volume_per_unit_mm3': volPerPiece,
         'volume_per_unit_dm3': volPerPiece != null ? volPerPiece / 1000000 : null,
-        'volume_per_unit_m3':
-        volPerPiece != null ? volPerPiece / 1000000000 : null,
-        'volume_per_unit':    volPerPiece != null ? volPerPiece / 1000000000 : null,
+        'volume_per_unit_m3': volumePerUnitM3,
+        'volume_per_unit': volumePerUnitM3,
 
         // Gesamtvolumen
         'total_volume_mm3': volTotal,
         'total_volume_dm3': volTotal != null ? volTotal / 1000000 : null,
         'total_volume_m3': volTotal != null ? volTotal / 1000000000 : null,
-
+        'custom_density': (double.tryParse(customDensityController.text) ?? 0) > 0
+            ? double.tryParse(customDensityController.text)
+            : null,
         'custom_tariff_number': customTariffController.text.trim().isNotEmpty
             ? customTariffController.text.trim()
             : null,
@@ -1424,14 +2078,15 @@ class EditItemMeasurementsDialog {
           'thickness': thicknessVal,
           'parts': partsVal,
           'quantity': quantity,
+          'volume_mode': volumeMode,
+          'volume_per_unit_m3': volumePerUnitM3,
           'volume_per_unit_mm3': volPerPiece,
           'total_volume_mm3': volTotal,
         },
       });
 
       if (context.mounted) {
-        Navigator.pop(context);
-
+        Navigator.of(context, rootNavigator: true).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Maße für ${item['product_name']} wurden aktualisiert'),
@@ -1459,5 +2114,17 @@ class EditItemMeasurementsDialog {
         );
       }
     }
+  }
+}
+
+/// Ersetzt Kommas durch Punkte bei der Eingabe, damit deutsche Tastatur
+/// kein falsches Format erzeugt (z.B. "0,5" → "0.5")
+class _CommaToPointFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    return newValue.copyWith(
+      text: newValue.text.replaceAll(',', '.'),
+    );
   }
 }

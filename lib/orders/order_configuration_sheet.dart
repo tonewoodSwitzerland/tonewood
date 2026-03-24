@@ -5,10 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../services/additional_text_manager.dart';
+import '../quotes/additional_text_manager.dart';
 import '../services/icon_helper.dart';
 import '../services/pdf_generators/invoice_generator.dart';
-import '../services/preview_pdf_viewer_screen.dart';
+import '../services/pdf_services/preview_pdf_viewer_screen.dart';
 import '../services/swiss_rounding.dart';
 
 class OrderConfigurationSheet extends StatefulWidget {
@@ -96,6 +96,13 @@ class _OrderConfigurationSheetState extends State<OrderConfigurationSheet> {
   }
 
   Future<void> _checkAdditionalTexts() async {
+    // Wenn die Quote bereits Zusatztexte in den Metadaten hat, diese zuerst laden
+    final savedTexts = widget.metadata['additionalTexts'];
+    if (savedTexts != null) {
+      await AdditionalTextsManager.saveAdditionalTexts(
+        Map<String, dynamic>.from(savedTexts as Map),
+      );
+    }
     final hasTexts = await AdditionalTextsManager.hasTextsSelected();
     _additionalTextsSelectedNotifier.value = hasTexts;
   }

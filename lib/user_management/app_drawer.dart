@@ -8,6 +8,7 @@ import '../cost_center/cost_center_management_screen.dart';
 import '../customers/customer_selection.dart';
 import '../inventory/inventory_screen.dart';
 import '../services/icon_helper.dart';
+import '../services/pdf_services/pdf_settings_screen.dart';
 import '../user_management/permission_service.dart';
 import '../user_management/user_management_screen.dart';
 import '../quotes/quotes_overview_screen.dart';
@@ -15,7 +16,8 @@ import '../orders/orders_overview_screen.dart';
 import '../home/standardized_packages_screen.dart';
 import '../home/standardized_product_management_screen.dart';
 import '../services/admin_additional_text_manager.dart';
-import '../services/pdf_settings_screen.dart';
+import '../services/pdf_services/pdf_settings_overview_screen.dart';
+import '../services/incoterms_settings_screen.dart';
 import '../user_management/permission_config_screen.dart';
 
 class AppDrawer extends StatefulWidget {
@@ -152,7 +154,7 @@ class _AppDrawerState extends State<AppDrawer> {
               icon: Icons.request_quote,
               iconName: 'request_quote',
               title: 'Angebote',
-              badgeQuery: _db.collection('quotes').where('status', whereNotIn: ['accepted']),
+              badgeQuery: _db.collection('quotes').where('status', whereIn: ['draft', 'sent']),
               onTap: () => _navigateTo(context, const QuotesOverviewScreen()),
             ),
           if (_permissions.hasAccess(userGroup, 'drawer_orders'))
@@ -161,7 +163,7 @@ class _AppDrawerState extends State<AppDrawer> {
               icon: Icons.shopping_bag,
               iconName: 'shopping_bag',
               title: 'Aufträge',
-              badgeQuery: _db.collection('orders').where('status', whereNotIn: ['delivered', 'cancelled']),
+              badgeQuery: _db.collection('orders').where('status', isEqualTo: 'processing'),
               onTap: () => _navigateTo(context, const OrdersOverviewScreen()),
             ),
         ],
@@ -221,7 +223,14 @@ class _AppDrawerState extends State<AppDrawer> {
               icon: Icons.picture_as_pdf,
               iconName: 'picture_as_pdf',
               title: 'PDF Einstellungen',
-              onTap: () => _navigateTo(context, const PdfSettingsScreen()),
+              onTap: () => _navigateTo(context, const PdfSettingsOverviewScreen()),
+            ),
+          if (_permissions.hasAccess(userGroup, 'drawer_pdf'))
+            _buildDrawerItem(
+              icon: Icons.local_shipping,
+              iconName: 'local_shipping',
+              title: 'Incoterms',
+              onTap: () => _navigateTo(context, const IncotermsSettingsScreen()),
             ),
         ],
 

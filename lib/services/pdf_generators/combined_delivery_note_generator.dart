@@ -3,7 +3,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
 import 'base_pdf_generator.dart';
-import '../additional_text_manager.dart';
+import '../../quotes/additional_text_manager.dart';
 import '../../orders/order_model.dart';
 
 class CombinedDeliveryNoteGenerator {

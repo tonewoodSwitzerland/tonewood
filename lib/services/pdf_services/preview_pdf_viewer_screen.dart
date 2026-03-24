@@ -10,7 +10,7 @@ import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'dart:typed_data';
 import 'package:universal_html/html.dart' as html;
 import 'download_helper_mobile.dart' if (dart.library.html) 'download_helper_web.dart';
-import 'icon_helper.dart';
+import '../icon_helper.dart';
 
 class PreviewPDFViewerScreen extends StatefulWidget {
 final Uint8List pdfBytes;

@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:tonewood/home/production_screen.dart';
+import 'package:tonewood/production/production_screen.dart';
 import 'dart:math';
 
 import 'package:barcode_widget/barcode_widget.dart';

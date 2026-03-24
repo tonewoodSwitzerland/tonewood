@@ -14,7 +14,7 @@ import 'package:cross_file/cross_file.dart';
 
 
 import 'dart:typed_data';
-import '../services/download_helper_mobile.dart' if (dart.library.html) '../services/download_helper_web.dart';
+import 'download_helper_mobile.dart' if (dart.library.html) '../services/download_helper_web.dart';
 
 
 import 'dart:io';
@@ -23,7 +23,7 @@ import 'package:http/http.dart' as http;
 
 import 'dart:io' if (dart.library.html) 'dart:html' as html;
 
-import 'icon_helper.dart';
+import '../icon_helper.dart';
 class PDFViewerScreen extends StatefulWidget {
   final String pdfUrl;
   final String receiptId;

@@ -193,9 +193,9 @@ Future<void> _loadNames() async {
                         mainAxisSize: MainAxisSize.min,
                         children: [
 
-                          getAdaptiveIcon(iconName: 'format_list_bulleted', defaultIcon: Icons.format_list_bulleted,size: 20),
+                          getAdaptiveIcon(iconName: 'analytics', defaultIcon: Icons.analytics,size: 20),
                           const SizedBox(width: 8),
-                          Text(RoundwoodStrings.listTabTitle),
+                          Text(RoundwoodStrings.analysisTabTitle),
                         ],
                       ),
                     ),
@@ -204,12 +204,13 @@ Future<void> _loadNames() async {
                         mainAxisSize: MainAxisSize.min,
                         children: [
 
-                          getAdaptiveIcon(iconName: 'analytics', defaultIcon: Icons.analytics,size: 20),
+                          getAdaptiveIcon(iconName: 'format_list_bulleted', defaultIcon: Icons.format_list_bulleted,size: 20),
                           const SizedBox(width: 8),
-                          Text(RoundwoodStrings.analysisTabTitle),
+                          Text(RoundwoodStrings.listTabTitle),
                         ],
                       ),
                     ),
+
                   ],
                 ),
               ),
@@ -250,6 +251,11 @@ Future<void> _loadNames() async {
           child: TabBarView(
             controller: _tabController,
             children: [
+              RoundwoodAnalysis(
+                filter: _activeFilter,
+                service: _service,
+                isDesktopLayout: widget.isDesktopLayout,
+              ),
               RoundwoodList(
                 filter: _activeFilter,
                 onFilterChanged: _handleFilterChange,
@@ -257,11 +263,7 @@ Future<void> _loadNames() async {
                 isDesktopLayout: widget.isDesktopLayout,
                 showHeaderActions: false, // Neue Property um Header-Aktionen zu verstecken
               ),
-              RoundwoodAnalysis(
-                filter: _activeFilter,
-                service: _service,
-                isDesktopLayout: widget.isDesktopLayout,
-              ),
+
             ],
           ),
         ),

@@ -31,16 +31,11 @@ class SalesService {
       endDate = filter.endDate;
     }
 
-    // Basis-Query: orders statt sales_receipts
+    // Basis-Query: orders
     Query salesQuery = _db.collection('orders');
 
-    // Zeitraum-Filter: orderDate statt metadata.timestamp
-    if (startDate != null) {
-      salesQuery = salesQuery.where('orderDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate));
-    }
-    if (endDate != null) {
-      salesQuery = salesQuery.where('orderDate', isLessThanOrEqualTo: Timestamp.fromDate(endDate));
-    }
+    // KEIN Datums-Filter auf Firestore-Ebene — wir nutzen shippedAt ?? orderDate.
+    // Der Datumsfilter greift vollständig in-memory in _meetsCriteria().
 
     // Kunden-Filter
     if (filter.selectedCustomers != null && filter.selectedCustomers!.isNotEmpty) {
@@ -62,7 +57,7 @@ class SalesService {
       for (var doc in snapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
 
-        if (!_meetsCriteria(data, filter)) continue;
+        if (!_meetsCriteria(data, filter, startDate: startDate, endDate: endDate)) continue;
 
         final calculations = data['calculations'] as Map<String, dynamic>?;
         if (calculations == null) continue;
@@ -184,14 +179,17 @@ class SalesService {
             customerStats[customerId]!.orderCount++;
           }
 
-          // Monatlichen Umsatz aktualisieren - orderDate statt metadata.timestamp
-          final orderDate = data['orderDate'];
+          // Monatlichen Umsatz: shippedAt bevorzugt, Fallback auf orderDate
+          final shippedAtRaw = data['shippedAt'];
+          final orderDateRaw = data['orderDate'];
           DateTime? date;
 
-          if (orderDate is Timestamp) {
-            date = orderDate.toDate();
-          } else if (orderDate is String) {
-            date = DateTime.tryParse(orderDate);
+          if (shippedAtRaw is Timestamp) {
+            date = shippedAtRaw.toDate();
+          } else if (orderDateRaw is Timestamp) {
+            date = orderDateRaw.toDate();
+          } else if (orderDateRaw is String) {
+            date = DateTime.tryParse(orderDateRaw);
           }
 
           if (date != null) {
@@ -250,9 +248,23 @@ class SalesService {
     });
   }
 
-  bool _meetsCriteria(Map<String, dynamic> data, SalesFilter filter) {
+  bool _meetsCriteria(Map<String, dynamic> data, SalesFilter filter, {DateTime? startDate, DateTime? endDate}) {
     // Stornierte Aufträge ausschließen
     if (data['status'] == 'cancelled') return false;
+
+    // Datums-Filter in-memory: shippedAt bevorzugt, Fallback auf orderDate
+    final shippedAtRaw = data['shippedAt'];
+    final orderDateRaw = data['orderDate'];
+    DateTime? relevantDate;
+    if (shippedAtRaw is Timestamp) {
+      relevantDate = shippedAtRaw.toDate();
+    } else if (orderDateRaw is Timestamp) {
+      relevantDate = orderDateRaw.toDate();
+    }
+    if (relevantDate != null) {
+      if (startDate != null && relevantDate.isBefore(startDate)) return false;
+      if (endDate != null && relevantDate.isAfter(endDate.add(const Duration(days: 1)))) return false;
+    }
 
     // Länder-Filter
     if (filter.countries != null && filter.countries!.isNotEmpty) {

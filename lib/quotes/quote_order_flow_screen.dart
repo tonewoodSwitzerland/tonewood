@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../orders/order_model.dart';
 import '../orders/order_service.dart';
-import '../quotes/quote_model.dart';
+import '../services/postal_document_service.dart';
+import '../services/user_basket_service.dart';
+import 'quote_model.dart';
 
-import '../quotes/quote_service.dart';
-import '../services/document_selection_manager.dart';
-import '../services/additional_text_manager.dart';
-import '../services/shipping_costs_manager.dart';
+import 'quote_service.dart';
+import 'quote_doc_selection_manager.dart';
+import 'additional_text_manager.dart';
+import 'shipping_costs_manager.dart';
 import '../services/icon_helper.dart';
 
 class QuoteOrderFlowScreen extends StatefulWidget {
@@ -40,8 +42,8 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
 // Neue Methode hinzufügen:
   Future<void> _loadCustomerLanguage() async {
     try {
-      final customerSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_customer')
+      final customerSnapshot = await
+      UserBasketService.temporaryCustomer
           .limit(1)
           .get();
 
@@ -100,8 +102,8 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
 
   Widget _buildInfoSection() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('temporary_basket')
+      stream:
+      UserBasketService.temporaryBasket
           .snapshots(),
       builder: (context, snapshot) {
         final itemCount = snapshot.data?.docs.length ?? 0;
@@ -134,8 +136,8 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
 
               // Kunde
               StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('temporary_customer')
+                stream:
+                UserBasketService.temporaryCustomer
                     .limit(1)
                     .snapshots(),
                 builder: (context, snapshot) {
@@ -197,8 +199,8 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
           ),
           const SizedBox(height: 4),
           StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('temporary_document_settings')
+            stream:
+            UserBasketService.temporaryDocumentSettings
                 .doc('language_settings')
                 .snapshots(),
             builder: (context, snapshot) {
@@ -571,21 +573,23 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
   }
 
   Future<void> _processDocuments() async {
+    print('🔧 FLOW-DEBUG: _processDocuments START');
+    print('🔧 FLOW-DEBUG: widget.editingQuoteId=${widget.editingQuoteId}');
+    print('🔧 FLOW-DEBUG: widget.editingQuoteNumber=${widget.editingQuoteNumber}');
+    print('🔧 FLOW-DEBUG: _isQuoteOnly=$_isQuoteOnly');
+    print('🔧 FLOW-DEBUG: _documentSelection=$_documentSelection');
     setState(() => _isLoading = true);
 
     try {
-      // Lade alle benötigten Daten
       final data = await _loadTransactionData();
-      if (data == null) {
-        throw Exception('Nicht alle erforderlichen Daten vorhanden');
-      }
+      if (data == null) throw Exception('Nicht alle erforderlichen Daten vorhanden');
 
       if (_isQuoteOnly) {
+        print('🔧 FLOW-DEBUG: _isQuoteOnly=true');
+        print('🔧 FLOW-DEBUG: editingQuoteId=${widget.editingQuoteId}');
+        print('🔧 FLOW-DEBUG: editingQuoteNumber=${widget.editingQuoteNumber}');
         Quote quote;
-
-        // NEU: Prüfe ob wir im Edit-Modus sind
         if (widget.editingQuoteId != null && widget.editingQuoteNumber != null) {
-          // Update existierendes Angebot
           quote = await QuoteService.updateQuote(
             widget.editingQuoteId!,
             widget.editingQuoteNumber!,
@@ -597,7 +601,6 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
             metadata: data['metadata'],
           );
         } else {
-          // Erstelle neues Angebot
           quote = await QuoteService.createQuote(
             customerData: data['customer'],
             costCenter: data['costCenter'],
@@ -605,10 +608,9 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
             items: data['items'],
             calculations: data['calculations'],
             metadata: data['metadata'],
-            createReservations: true, // Produkte reservieren
+            createReservations: true,
           );
         }
-
         await _clearTemporaryData();
 
         if (mounted) {
@@ -622,42 +624,183 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
           );
         }
       } else {
-        // Angebot + Auftrag + gewählte Dokumente erstellen
+        // 1. Erstelle oder aktualisiere Angebot
+        print('🔧 FLOW-DEBUG: _isQuoteOnly=false');
+        print('🔧 FLOW-DEBUG: editingQuoteId=${widget.editingQuoteId}');
+        print('🔧 FLOW-DEBUG: editingQuoteNumber=${widget.editingQuoteNumber}');
 
-        // 1. Erstelle Angebot (ohne Reservierungen, da direkt verkauft)
-        final quote = await QuoteService.createQuote(
-          customerData: data['customer'],
-          costCenter: data['costCenter'],
-          fair: data['fair'],
-          items: data['items'],
-          calculations: data['calculations'],
-          metadata: data['metadata'],
-          createReservations: false, // Keine Reservierungen, da direkt verkauft
-        );
+        Quote quote;
+        if (widget.editingQuoteId != null && widget.editingQuoteNumber != null) {
+          // EDIT-MODUS: Bestehendes Angebot aktualisieren (behält Nummer + Reservierungen)
+          print('🔧 FLOW-DEBUG: → updateQuote wird aufgerufen für ${widget.editingQuoteId}');
+          quote = await QuoteService.updateQuote(
+            widget.editingQuoteId!,
+            widget.editingQuoteNumber!,
+            customerData: data['customer'],
+            costCenter: data['costCenter'],
+            fair: data['fair'],
+            items: data['items'],
+            calculations: data['calculations'],
+            metadata: data['metadata'],
+          );
+          print('🔧 FLOW-DEBUG: → updateQuote fertig, quoteId=${quote.id}');
+        } else {
+          // NEU-MODUS: Neues Angebot erstellen (ohne Reservierungen, da sofort Auftrag folgt)
+          print('🔧 FLOW-DEBUG: → createQuote wird aufgerufen (NEU)');
+          quote = await QuoteService.createQuote(
+            customerData: data['customer'],
+            costCenter: data['costCenter'],
+            fair: data['fair'],
+            items: data['items'],
+            calculations: data['calculations'],
+            metadata: data['metadata'],
+            createReservations: false,
+          );
+          print('🔧 FLOW-DEBUG: → createQuote fertig, quoteId=${quote.id}');
+        }
 
-        // 2. Konvertiere zu Auftrag (bucht Produkte aus)
+        // 2. Konvertiere zu Auftrag
+        print('🔧 FLOW-DEBUG: → createOrderFromQuote wird aufgerufen für ${quote.id}');
         final order = await OrderService.createOrderFromQuote(quote.id);
-
-        // 3. Erstelle gewählte Dokumente
         final documentSelection = Map<String, bool>.from(_documentSelection);
-        documentSelection.remove('Offerte'); // Entferne Offerte, da bereits erstellt
+        documentSelection.remove('Offerte'); // Bereits erstellt
 
-        final createdDocuments = await OrderService.createOrderDocuments(
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          documentTypes: documentSelection,
-          orderData: {
-            'orderId': order.id,
-            'quoteId': quote.id,
-            'customer': data['customer'],
-            'costCenter': data['costCenter'],
-            'fair': data['fair'],
+        // 🚀 BUGFIX START: EINZELVERSAND WEICHE
+        // Sicheres Casten mit Map.from() um "Map<dynamic, dynamic>" Errors zu verhindern!
+        final metadata = Map<String, dynamic>.from(data['metadata'] as Map? ?? {});
+        final packingListSettings = Map<String, dynamic>.from(metadata['packingListSettings'] as Map? ?? {});
+        final shipmentMode = packingListSettings['shipment_mode'] as String? ?? 'total';
+
+        final rawPackages = packingListSettings['packages'] as List<dynamic>? ?? [];
+        final packages = rawPackages.map((p) => Map<String, dynamic>.from(p as Map)).toList();
+
+        for (int i = 0; i < packages.length; i++) {
+          if (packages[i]['shipment_group'] == null) {
+            packages[i]['shipment_group'] = i + 1;
+          }
+        }
+
+        if (documentSelection['Packliste'] == true || shipmentMode == 'per_shipment') {
+          await FirebaseFirestore.instance
+              .collection('orders')
+              .doc(order.id)
+              .collection('packing_list')
+              .doc('settings')
+              .set({
+            'packages': packages,
+            'shipment_mode': shipmentMode,
+            'updated_at': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
+
+        if (shipmentMode == 'per_shipment' &&
+            (documentSelection['Handelsrechnung'] == true || documentSelection['Lieferschein'] == true)) {
+
+          // 🛠 FIX: Auch hier sicheres Casten für alle Settings-Maps
+          final rawTara = Map<String, dynamic>.from(metadata['taraSettings'] as Map? ?? {});
+          final dnSettings = Map<String, dynamic>.from(metadata['deliveryNoteSettings'] as Map? ?? {});
+          final safeShippingCosts = Map<String, dynamic>.from(metadata['shippingCosts'] as Map? ?? {});
+          final safeAdditionalTexts = Map<String, dynamic>.from(metadata['additionalTexts'] as Map? ?? {});
+
+          // Timestamp-Sicherheit für Datumsfelder
+          dynamic hrDate = rawTara['commercial_invoice_date'];
+          if (hrDate is Timestamp) hrDate = hrDate.toDate();
+
+          dynamic delDate = rawTara['commercial_invoice_delivery_date_value'] ?? rawTara['delivery_date_value'];
+          if (delDate is Timestamp) delDate = delDate.toDate();
+
+          final mappedCommercialInvoiceSettings = {
+            'number_of_packages': rawTara['number_of_packages'] ?? 1,
+            'commercial_invoice_date': hrDate,
+            'use_as_delivery_date': rawTara['use_as_delivery_date'] ?? true,
+            'origin_declaration': rawTara['commercial_invoice_origin_declaration'] ?? rawTara['origin_declaration'] ?? false,
+            'cites': rawTara['commercial_invoice_cites'] ?? rawTara['cites'] ?? false,
+            'export_reason': rawTara['commercial_invoice_export_reason'] ?? rawTara['export_reason'] ?? false,
+            'export_reason_text': rawTara['commercial_invoice_export_reason_text'] ?? rawTara['export_reason_text'] ?? 'Ware',
+            'incoterms': rawTara['commercial_invoice_incoterms'] ?? rawTara['incoterms'] ?? false,
+            'selected_incoterms': List<String>.from(rawTara['commercial_invoice_selected_incoterms'] ?? rawTara['selected_incoterms'] ?? []),
+            'incoterms_freetexts': Map<String, String>.from(rawTara['commercial_invoice_incoterms_freetexts'] ?? rawTara['incoterms_freetexts'] ?? {}),
+            'delivery_date': rawTara['commercial_invoice_delivery_date'] ?? rawTara['delivery_date'] ?? false,
+            'delivery_date_value': delDate,
+            'delivery_date_month_only': rawTara['commercial_invoice_delivery_date_month_only'] ?? rawTara['delivery_date_month_only'] ?? false,
+            'carrier': rawTara['commercial_invoice_carrier'] ?? rawTara['carrier'] ?? false,
+            'carrier_text': rawTara['commercial_invoice_carrier_text'] ?? rawTara['carrier_text'] ?? 'Swiss Post',
+            'signature': rawTara['commercial_invoice_signature'] ?? rawTara['signature'] ?? false,
+            'selected_signature': rawTara['commercial_invoice_selected_signature'] ?? rawTara['selected_signature'],
+            'currency': rawTara['commercial_invoice_currency'] ?? rawTara['currency'],
+          };
+
+          final settingsMap = {
+            'packing_list': {'packages': packages, 'shipment_mode': shipmentMode},
+            'commercial_invoice': mappedCommercialInvoiceSettings,
+            'delivery_note': dnSettings,
+          };
+
+          final rawExchangeRates = metadata['exchangeRates'] as Map<dynamic, dynamic>? ?? {};
+          final exchangeRates = <String, double>{'CHF': 1.0};
+          rawExchangeRates.forEach((key, value) {
+            if (value != null) exchangeRates[key.toString()] = (value as num).toDouble();
+          });
+
+          final lang = metadata['language'] ?? 'DE';
+
+          final orderDataMap = {
+            'order': order,
             'items': data['items'],
+            'customer': data['customer'],
             'calculations': data['calculations'],
-            'metadata': data['metadata'],
-          },
-          language: data['metadata']['language'] ?? 'DE',
-        );
+            'settings': settingsMap,
+            'shippingCosts': safeShippingCosts,
+            'currency': metadata['currency'] ?? 'CHF',
+            'exchangeRates': exchangeRates,
+            'costCenterCode': data['costCenter']?['code'] ?? '00000',
+            'fair': data['fair'],
+            'taxOption': metadata['taxOption'] ?? 0,
+            'vatRate': (metadata['vatRate'] as num?)?.toDouble() ?? 8.1,
+            'language': lang,
+            'documentLanguages': {
+              'Rechnung': lang,
+              'Lieferschein': lang,
+              'Handelsrechnung': lang,
+              'Packliste': lang,
+            },
+          };
+
+          await PostalDocumentService.createShipmentDocuments(
+            order: order,
+            orderData: orderDataMap,
+            settings: settingsMap,
+            additionalTextsConfig: safeAdditionalTexts,
+            createCommercialInvoices: documentSelection['Handelsrechnung'] == true,
+            createDeliveryNotes: documentSelection['Lieferschein'] == true,
+          );
+
+          // Verhindere Standard-Generierung für HR und LS
+          documentSelection.remove('Handelsrechnung');
+          documentSelection.remove('Lieferschein');
+        }
+        // 🚀 BUGFIX ENDE
+
+        // 3. Erstelle restliche Standard-Dokumente (z.B. Rechnung)
+        if (documentSelection.values.any((v) => v == true)) {
+          await OrderService.createOrderDocuments(
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            documentTypes: documentSelection,
+            orderData: {
+              'orderId': order.id,
+              'quoteId': quote.id,
+              'customer': data['customer'],
+              'costCenter': data['costCenter'],
+              'fair': data['fair'],
+              'items': data['items'],
+              'calculations': data['calculations'],
+              // Sichere auch hier das Metadata-Objekt ab:
+              'metadata': Map<String, dynamic>.from(data['metadata'] as Map? ?? {}),
+            },
+            language: metadata['language'] ?? 'DE',
+          );
+        }
 
         await _clearTemporaryData();
 
@@ -685,92 +828,43 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
   Future<Map<String, dynamic>?> _loadTransactionData() async {
     try {
       // Kunde
-      final customerSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_customer')
-          .limit(1)
-          .get();
-
-      if (customerSnapshot.docs.isEmpty) {
-        throw Exception('Kein Kunde ausgewählt');
-      }
+      final customerSnapshot = await UserBasketService.temporaryCustomer.limit(1).get();
+      if (customerSnapshot.docs.isEmpty) throw Exception('Kein Kunde ausgewählt');
 
       // Kostenstelle
-      final costCenterSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_cost_center')
-          .limit(1)
-          .get();
+      final costCenterSnapshot = await UserBasketService.temporaryCostCenter.limit(1).get();
 
       // Warenkorb
-      final basketSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_basket')
-          .get();
-
-      if (basketSnapshot.docs.isEmpty) {
-        throw Exception('Warenkorb ist leer');
-      }
+      final basketSnapshot = await UserBasketService.temporaryBasket.get();
+      if (basketSnapshot.docs.isEmpty) throw Exception('Warenkorb ist leer');
 
       // Messe (optional)
-      final fairSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_fair')
-          .limit(1)
-          .get();
+      final fairSnapshot = await UserBasketService.temporaryFair.limit(1).get();
 
-      // Steuerdaten
-      final taxDoc = await FirebaseFirestore.instance
-          .collection('temporary_tax')
-          .doc('current_tax')
-          .get();
+      // Settings laden
+      final taxDoc = await UserBasketService.temporaryTax.doc('current_tax').get();
+      final currencyDoc = await FirebaseFirestore.instance.collection('general_data').doc('currency_settings').get();
+      final taraSettingsDoc = await UserBasketService.temporaryDocumentSettings.doc('tara_settings').get();
 
-      // Währungsdaten
-      final currencyDoc = await FirebaseFirestore.instance
-          .collection('general_data')
-          .doc('currency_settings')
-          .get();
+      // NEU: Diese beiden brauchte der Erstellungsprozess noch!
+      final packingListSettings = await DocumentSelectionManager.loadPackingListSettings();
+      final deliveryNoteSettings = await DocumentSelectionManager.loadDeliveryNoteSettings();
 
-      //TaraSettings
-      final taraSettingsDoc = await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
-          .doc('tara_settings')
-          .get();
-
-
-      // Versandkosten
       final shippingCosts = await ShippingCostsManager.loadShippingCosts();
-
-      // Zusatztexte
       final additionalTexts = await AdditionalTextsManager.loadAdditionalTexts();
-
-      // Berechne Summen
       final calculations = await _calculateTotals(basketSnapshot.docs);
-
       final invoiceSettings = await DocumentSelectionManager.loadInvoiceSettings();
-// DEBUG
-      print('DEBUG _loadTransactionData:');
-      print('invoiceSettings: $invoiceSettings');
-      print('is_full_payment: ${invoiceSettings['is_full_payment']}');
-      print('payment_method: ${invoiceSettings['payment_method']}');
+      final quoteSettings = await DocumentSelectionManager.loadQuoteSettings();
 
-      // Items vorbereiten
-      final items = basketSnapshot.docs.map((doc) {
-        final data = doc.data();
-
-
-
-
-        return {
-          ...data,
-          'basket_doc_id': doc.id,
-        };
+      final items = basketSnapshot.docs.map((doc) => {
+        ...doc.data(),
+        'basket_doc_id': doc.id,
       }).toList();
 
       return {
         'customer': customerSnapshot.docs.first.data(),
-        'costCenter': costCenterSnapshot.docs.isNotEmpty
-            ? costCenterSnapshot.docs.first.data()
-            : null,
-        'fair': fairSnapshot.docs.isNotEmpty
-            ? fairSnapshot.docs.first.data()
-            : null,
+        'costCenter': costCenterSnapshot.docs.isNotEmpty ? costCenterSnapshot.docs.first.data() : null,
+        'fair': fairSnapshot.docs.isNotEmpty ? fairSnapshot.docs.first.data() : null,
         'items': items,
         'calculations': calculations,
         'metadata': {
@@ -779,12 +873,14 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
           'currency': currencyDoc.exists ? (currencyDoc.data()?['selected_currency'] ?? 'CHF') : 'CHF',
           'exchangeRates': currencyDoc.exists ? (currencyDoc.data()?['exchange_rates'] ?? {'CHF': 1.0}) : {'CHF': 1.0},
           'language': await _getDocumentLanguage() ?? customerSnapshot.docs.first.data()['language'] ?? 'DE',
-          'taraSettings': taraSettingsDoc.exists ? taraSettingsDoc.data() : {},  // <-- RICHTIG: Nur die Daten!
-
+          'taraSettings': taraSettingsDoc.exists ? taraSettingsDoc.data() : {},
+          'packingListSettings': packingListSettings, // NEU
+          'deliveryNoteSettings': deliveryNoteSettings, // NEU
           'shippingCosts': shippingCosts,
           'additionalTexts': additionalTexts,
           'invoiceSettings': invoiceSettings,
           'distributionChannel': _selectedDistributionChannel,
+          'quoteSettings': quoteSettings,
         },
       };
     } catch (e) {
@@ -795,8 +891,8 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
 // Und füge diese Hilfsmethode hinzu:
   Future<String?> _getDocumentLanguage() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      final doc = await
+      UserBasketService.temporaryDocumentSettings
           .doc('language_settings')
           .get();
 
@@ -843,8 +939,8 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
 
     // Gesamtrabatt
     double totalDiscountAmount = 0.0;
-    final totalDiscountDoc = await FirebaseFirestore.instance
-        .collection('temporary_discounts')
+    final totalDiscountDoc = await
+    UserBasketService.temporaryDiscounts
         .doc('total_discount')
         .get();
 
@@ -878,8 +974,8 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
     final netAmount = subtotal - itemDiscounts - totalDiscountAmount;
 
     // Steuern
-    final taxDoc = await FirebaseFirestore.instance
-        .collection('temporary_tax')
+    final taxDoc = await
+    UserBasketService.temporaryTax
         .doc('current_tax')
         .get();
 
@@ -919,8 +1015,8 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
     final batch = FirebaseFirestore.instance.batch();
 
     // Lösche Warenkorb
-    final basketDocs = await FirebaseFirestore.instance
-        .collection('temporary_basket')
+    final basketDocs = await
+    UserBasketService.temporaryBasket
         .get();
     for (final doc in basketDocs.docs) {
 
@@ -937,6 +1033,8 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
               .update({
             'in_cart': false,
             'cart_timestamp': FieldValue.delete(),
+            'cart_user_id': FieldValue.delete(),
+            'cart_user_name': FieldValue.delete(),
           });
         } catch (e) {
           print('Fehler beim Zurücksetzen von in_cart für $onlineShopBarcode: $e');
@@ -949,37 +1047,37 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
     }
 
     // Lösche Kunde
-    final customerDocs = await FirebaseFirestore.instance
-        .collection('temporary_customer')
+    final customerDocs = await
+    UserBasketService.temporaryCustomer
         .get();
     for (final doc in customerDocs.docs) {
       batch.delete(doc.reference);
     }
 
     // Lösche weitere temporäre Daten...
-    final costCenterDocs = await FirebaseFirestore.instance
-        .collection('temporary_cost_center')
+    final costCenterDocs = await
+    UserBasketService.temporaryCostCenter
         .get();
     for (final doc in costCenterDocs.docs) {
       batch.delete(doc.reference);
     }
 
-    final fairDocs = await FirebaseFirestore.instance
-        .collection('temporary_fair')
+    final fairDocs = await
+    UserBasketService.temporaryFair
         .get();
     for (final doc in fairDocs.docs) {
       batch.delete(doc.reference);
     }
 
-    final taxDocs = await FirebaseFirestore.instance
-        .collection('temporary_tax')
+    final taxDocs = await
+    UserBasketService.temporaryTax
         .get();
     for (final doc in taxDocs.docs) {
       batch.delete(doc.reference);
     }
 
-    final discountDocs = await FirebaseFirestore.instance
-        .collection('temporary_discounts')
+    final discountDocs = await
+    UserBasketService.temporaryDiscounts
         .get();
     for (final doc in discountDocs.docs) {
       batch.delete(doc.reference);

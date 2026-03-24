@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../countries.dart';
+import '../pdf_services/pdf_header_footer_settings_screen.dart'; // NEU: Kopf-/Fußzeilen-Settings
 
 /// Basis-Generator für Dokumente mit Fenstertaschen-Layout
 /// C6/5 Dokumententasche mit Fenster RECHTS
@@ -99,7 +100,9 @@ abstract class BaseDeliveryNotePdfGenerator {
     String? quoteNumber,
     required String language,
     double addressEmailSpacing = 6.0,
+    PdfHeaderFooterSettings? hfSettings,
   }) {
+    final s = hfSettings ?? const PdfHeaderFooterSettings();
     // A4 Breite = 210mm, Page-Margin = 20mm auf jeder Seite
     // Nutzbarer Bereich = 170mm
     // Adressfeld: 25mm vom rechten Dokumentrand = 210 - 25 - 80 = 105mm vom linken Rand
@@ -125,14 +128,14 @@ abstract class BaseDeliveryNotePdfGenerator {
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   // Logo
-                  pw.Image(logo, width: 140),
+                  pw.Image(logo, width: s.deliveryNoteLogoWidth),
                   pw.SizedBox(height: 10),
 
                   // Dokumenttitel
                   pw.Text(
                     getTranslation(documentTitle.toLowerCase().replaceAll(' ', '_'), language),
                     style: pw.TextStyle(
-                      fontSize: 22,
+                      fontSize: s.deliveryNoteTitleFontSize,
                       fontWeight: pw.FontWeight.bold,
                       fontStyle: pw.FontStyle.italic,
                       color: PdfColors.blueGrey800,
@@ -300,7 +303,7 @@ abstract class BaseDeliveryNotePdfGenerator {
     final bool hasName = fullName.isNotEmpty;
 
     return pw.Container(
-    //  padding: const pw.EdgeInsets.all(6),
+      //  padding: const pw.EdgeInsets.all(6),
 
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -509,7 +512,8 @@ abstract class BaseDeliveryNotePdfGenerator {
     );
   }
 
-  static pw.Widget buildFooter({int? pageNumber, int? totalPages, String language = 'DE'}) {
+  static pw.Widget buildFooter({int? pageNumber, int? totalPages, String language = 'DE', PdfHeaderFooterSettings? hfSettings}) {
+    final s = hfSettings ?? const PdfHeaderFooterSettings();
     return pw.Container(
       padding: const pw.EdgeInsets.only(top: 8),
       decoration: const pw.BoxDecoration(
@@ -523,16 +527,16 @@ abstract class BaseDeliveryNotePdfGenerator {
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text('Florinett AG',
-                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey800, fontSize: 8)),
-              pw.Text('Tonewood Switzerland',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
-              pw.Text('Veja Zinols 6',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
-              pw.Text('7482 Bergün',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
-              pw.Text('Switzerland',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
+              pw.Text(s.footerCompanyName,
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey800, fontSize: s.footerFontSize)),
+              pw.Text(s.footerCompanySubtitle,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
+              pw.Text(s.footerStreet,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
+              pw.Text(s.footerZipCity,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
+              pw.Text(s.footerCountry,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
             ],
           ),
           if (pageNumber != null && totalPages != null)
@@ -540,22 +544,22 @@ abstract class BaseDeliveryNotePdfGenerator {
               language == 'EN'
                   ? 'Page $pageNumber / $totalPages'
                   : 'Seite $pageNumber / $totalPages',
-              style: const pw.TextStyle(
-                fontSize: 8,
+              style: pw.TextStyle(
+                fontSize: s.footerPageNumberFontSize,
                 color: PdfColors.blueGrey400,
               ),
             ),
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
-              pw.Text('phone: +41 81 407 21 34',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
-              pw.Text('e-mail: info@tonewood.ch',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
-              pw.Text('website: www.tonewood.ch',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
-              pw.Text('VAT: CHE-102.853.600 MWST',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
+              pw.Text(s.footerPhone,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
+              pw.Text(s.footerEmail,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
+              pw.Text(s.footerWebsite,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
+              pw.Text(s.footerVat,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
             ],
           ),
         ],

@@ -5,10 +5,11 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:tonewood/services/pdf_generators/base_pdf_generator.dart';
-import '../pdf_settings_screen.dart';
+import '../pdf_services/pdf_settings_screen.dart';
+import '../pdf_services/pdf_header_footer_settings_screen.dart';
 import '../product_sorting_manager.dart';
 import 'base_delivery_note_generator.dart';
-import '../additional_text_manager.dart';
+import '../../quotes/additional_text_manager.dart';
 
 class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
 
@@ -56,7 +57,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
       });
     } catch (e) {
       print('Fehler beim Erstellen der Lieferschein-Nummer: $e');
-      return 'LS-${DateTime.now().year}-1000';
+      rethrow;
     }
   }
 
@@ -413,6 +414,25 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
         );
       }
 
+      // Custom Text Blocks
+      final customBlockTexts = AdditionalTextsManager.getActiveCustomBlockTexts(
+        additionalTexts,
+        language: language,
+      );
+      for (final blockText in customBlockTexts) {
+        textWidgets.add(
+          pw.Container(
+            alignment: pw.Alignment.centerLeft,
+            margin: const pw.EdgeInsets.only(bottom: 3),
+            child: pw.Text(
+              blockText,
+              style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+            ),
+          ),
+        );
+      }
+
+
       if (additionalTexts['free_text']?['selected'] == true) {
         textWidgets.add(
           pw.Container(
@@ -425,6 +445,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
           ),
         );
       }
+
 
       if (textWidgets.isEmpty) {
         return pw.SizedBox.shrink();
@@ -465,6 +486,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
 
     final pdf = pw.Document();
     final logo = await BaseDeliveryNotePdfGenerator.loadLogo();
+    final hfSettings = await PdfHeaderFooterSettings.load();
 
     final deliveryNum = deliveryNoteNumber ?? await getNextDeliveryNoteNumber();
 
@@ -498,6 +520,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
                 pageNumber: context.pageNumber,
                 totalPages: context.pagesCount,
                 language: language,
+                hfSettings: hfSettings,
               ),
               pw.SizedBox(height: 10),
             ],
@@ -507,6 +530,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
           pageNumber: context.pageNumber,
           totalPages: context.pagesCount,
           language: language,
+          hfSettings: hfSettings,
         ),
         build: (pw.Context context) {
           return [
@@ -522,6 +546,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
               quoteNumber: quoteNumber,
               language: language,
               addressEmailSpacing: addressEmailSpacing,
+              hfSettings: hfSettings,
             ),
 
             pw.SizedBox(height: 15),

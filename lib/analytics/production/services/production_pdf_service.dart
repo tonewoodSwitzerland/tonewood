@@ -324,7 +324,8 @@ class ProductionPdfService {
         4: pw.Alignment.centerLeft,
         5: pw.Alignment.centerRight,
         6: pw.Alignment.centerRight,
-        7: pw.Alignment.center,
+        7: pw.Alignment.centerRight,
+        8: pw.Alignment.center,
       },
       cellAlignments: {
         0: pw.Alignment.centerLeft,
@@ -334,7 +335,8 @@ class ProductionPdfService {
         4: pw.Alignment.centerLeft,
         5: pw.Alignment.centerRight,
         6: pw.Alignment.centerRight,
-        7: pw.Alignment.center,
+        7: pw.Alignment.centerRight,
+        8: pw.Alignment.center,
       },
       headers: [
         'Datum',
@@ -344,6 +346,7 @@ class ProductionPdfService {
         'Qualität',
         'Menge',
         'Wert CHF',
+        'Vol. m³',
         'Spezial',
       ],
       data: batches.map((batch) {
@@ -365,6 +368,10 @@ class ProductionPdfService {
         final batchNumber = (batch['batch_number'] ?? 0).toString().padLeft(4, '0');
         final productionNumber = barcode.isNotEmpty ? '$barcode.$batchNumber' : batchNumber;
 
+        // Volumen
+        final volumeM3 = batch['_volume_m3'] as double?;
+        final volumeStr = volumeM3 != null ? volumeM3.toStringAsFixed(7) : '';
+
         return [
           date != null ? DateFormat('dd.MM.yy').format(date) : '',
           productionNumber,
@@ -373,6 +380,7 @@ class ProductionPdfService {
           batch['quality_name'] ?? '',
           '${NumberFormat('#,##0').format(quantity)} $unit',
           NumberFormat('#,##0.00').format(value),
+          volumeStr,
           specialFlags.join(','),
         ];
       }).toList(),

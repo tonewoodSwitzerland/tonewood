@@ -1,11 +1,11 @@
+// lib/production/production_logs_view.dart
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:tonewood/production/production_batch_service.dart';
 import '../../services/icon_helper.dart';
 
-/// Ansicht für Produktions-Einträge gruppiert nach Stämmen
-/// Ersetzt die alte "Chargen" Ansicht
 class ProductionLogsView extends StatefulWidget {
   final ProductionBatchService service;
   final Function(int year)? onYearChanged;
@@ -29,10 +29,14 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
   List<int> _availableYears = [];
   bool _isLoading = true;
   String _viewMode = 'byLog'; // 'byLog' oder 'chronological'
+  bool _showEmptyLogs = false; // Stämme ohne Produktion einblenden
 
   List<Map<String, dynamic>> _batches = [];
   Map<String, List<Map<String, dynamic>>> _batchesByLog = {};
   Map<String, Map<String, dynamic>> _logDetails = {};
+
+  // Alle Stämme des Jahrgangs (inkl. ohne Produktion)
+  List<Map<String, dynamic>> _allLogsOfYear = [];
 
   @override
   void initState() {
@@ -41,7 +45,7 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
   }
 
   Future<void> _loadYears() async {
-    final years = await widget.service.getAvailableYears();
+    final years = await widget.service.getAvailableRoundwoodYears();
     setState(() {
       _availableYears = years.isNotEmpty ? years : [DateTime.now().year];
       if (!_availableYears.contains(_selectedYear)) {
@@ -55,9 +59,22 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
     setState(() => _isLoading = true);
 
     try {
-      final batches = await widget.service.getBatchesForYear(_selectedYear);
+      // Alle Stämme des Jahrgangs laden
+      final allLogsSnapshot = await FirebaseFirestore.instance
+          .collection('roundwood')
+          .where('year', isEqualTo: _selectedYear)
+          .get();
 
-      // Gruppiere nach Stamm
+      final allLogs = allLogsSnapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+
+      // Batches für diese Stämme laden
+      final batches = await widget.service.getBatchesForRoundwoodYear(_selectedYear);
+
+      // Gruppiere Batches nach Stamm
       final byLog = <String, List<Map<String, dynamic>>>{};
       final withoutLog = <Map<String, dynamic>>[];
 
@@ -70,23 +87,22 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
         }
       }
 
-      // Lade Stamm-Details
+      // Stamm-Details aus allLogs zusammenstellen
       final logDetails = <String, Map<String, dynamic>>{};
-      for (final logId in byLog.keys) {
-        try {
-          final doc = await FirebaseFirestore.instance
-              .collection('roundwood')
-              .doc(logId)
-              .get();
-          if (doc.exists) {
-            logDetails[logId] = doc.data()!;
-          }
-        } catch (e) {
-          // Ignoriere Fehler bei einzelnen Stämmen
+      for (final log in allLogs) {
+        logDetails[log['id'] as String] = log;
+      }
+
+      // Stämme ohne Produktion: in allLogs vorhanden aber nicht in byLog
+      for (final log in allLogs) {
+        final logId = log['id'] as String;
+        if (!byLog.containsKey(logId)) {
+          byLog['_empty_$logId'] = []; // leere Liste = kein Batch
+          logDetails['_empty_$logId'] = log;
         }
       }
 
-      // Füge "ohne Zuordnung" als virtuelle Gruppe hinzu
+      // Stämme ohne Zuordnung
       if (withoutLog.isNotEmpty) {
         byLog['_unassigned'] = withoutLog;
       }
@@ -95,6 +111,7 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
         _batches = batches;
         _batchesByLog = byLog;
         _logDetails = logDetails;
+        _allLogsOfYear = allLogs;
         _isLoading = false;
       });
 
@@ -109,6 +126,15 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
     }
   }
 
+  // Hilfsmethoden für Statistiken
+  int get _logsWithProduction =>
+      _batchesByLog.keys.where((k) => !k.startsWith('_empty_') && k != '_unassigned').length;
+
+  int get _logsWithoutProduction =>
+      _batchesByLog.keys.where((k) => k.startsWith('_empty_')).length;
+
+  int get _totalLogs => _allLogsOfYear.length;
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -117,7 +143,7 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
         Expanded(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
-              : _batches.isEmpty
+              : _batches.isEmpty && _allLogsOfYear.isEmpty
               ? _buildEmptyState()
               : _viewMode == 'byLog'
               ? _buildLogGroupedView()
@@ -134,44 +160,34 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
         color: Colors.grey[50],
         border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final isNarrow = constraints.maxWidth < 600;
-
-          if (isNarrow) {
-            // Mobile: Vertikal stapeln
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Erste Zeile: Jahr + Statistik
-                Row(
-                  children: [
-                    _buildYearSelector(),
-                    const Spacer(),
-                    _buildStatsBadge(),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                // Zweite Zeile: Ansicht-Toggle
-                _buildViewToggle(),
-              ],
-            );
-          }
-
-          // Desktop: Horizontal
-          return Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Zeile 1: Jahr + Badge
+          Row(
             children: [
               _buildYearSelector(),
-              const Spacer(),
-              _buildStatsBadge(),
               const SizedBox(width: 12),
-              _buildViewToggle(),
+              Flexible(child: _buildStatsBadge()),
             ],
-          );
-        },
+          ),
+          const SizedBox(height: 12),
+          // Zeile 2: Toggles – horizontal scrollbar gegen Overflow
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildViewToggle(),
+                const SizedBox(width: 12),
+                _buildEmptyLogsToggle(),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
+
 
   Widget _buildYearSelector() {
     return Row(
@@ -218,8 +234,48 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        '${_batches.length} Einträge • ${_batchesByLog.length - (_batchesByLog.containsKey('_unassigned') ? 1 : 0)} Stämme',
-        style: const TextStyle(fontWeight: FontWeight.w500, color: Color(0xFF0F4A29)),
+        '$_logsWithProduction/$_totalLogs Stämme • ${_batches.length} Einträge',
+        style: const TextStyle(
+          fontWeight: FontWeight.w500,
+          color: Color(0xFF0F4A29),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyLogsToggle() {
+    if (_logsWithoutProduction == 0) return const SizedBox.shrink();
+
+    return GestureDetector(
+      onTap: () => setState(() => _showEmptyLogs = !_showEmptyLogs),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: _showEmptyLogs
+              ? Colors.grey.withOpacity(0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey[300]!),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _showEmptyLogs ? Icons.visibility : Icons.visibility_off,
+              size: 16,
+              color: Colors.grey[600],
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '$_logsWithoutProduction ohne Produktion',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -230,12 +286,12 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
         ButtonSegment(
           value: 'byLog',
           icon: getAdaptiveIcon(iconName: 'forest', defaultIcon: Icons.forest, size: 18),
-          label: const Text('Nach Stamm'),
+          label: const Text('Stamm'),
         ),
         ButtonSegment(
           value: 'chronological',
           icon: getAdaptiveIcon(iconName: 'list', defaultIcon: Icons.list, size: 18),
-          label: const Text('Chronologisch'),
+          label: const Text('Datum'),
         ),
       ],
       selected: {_viewMode},
@@ -244,6 +300,7 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
       },
     );
   }
+
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -252,7 +309,7 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
           Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
           Text(
-            'Keine Produktionsdaten für $_selectedYear',
+            'Keine Stämme für $_selectedYear',
             style: TextStyle(fontSize: 16, color: Colors.grey[600]),
           ),
         ],
@@ -261,12 +318,24 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
   }
 
   Widget _buildLogGroupedView() {
-    // Sortiere: Stämme mit Daten zuerst, dann ohne Zuordnung
-    final sortedKeys = _batchesByLog.keys.toList()
+    // Filtere Keys je nach _showEmptyLogs
+    final sortedKeys = _batchesByLog.keys.where((k) {
+      if (k == '_unassigned') return true;
+      if (k.startsWith('_empty_')) return _showEmptyLogs;
+      return true;
+    }).toList()
       ..sort((a, b) {
         if (a == '_unassigned') return 1;
         if (b == '_unassigned') return -1;
-        return a.compareTo(b);
+        // Leere Stämme ans Ende (aber vor _unassigned)
+        if (a.startsWith('_empty_') && !b.startsWith('_empty_')) return 1;
+        if (!a.startsWith('_empty_') && b.startsWith('_empty_')) return -1;
+        // Nach Stamm-Nummer sortieren
+        final logA = _logDetails[a];
+        final logB = _logDetails[b];
+        final numA = logA?['internal_number']?.toString() ?? '';
+        final numB = logB?['internal_number']?.toString() ?? '';
+        return numA.compareTo(numB);
       });
 
     return ListView.builder(
@@ -276,16 +345,19 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
         final logId = sortedKeys[index];
         final batches = _batchesByLog[logId]!;
         final logData = _logDetails[logId];
-
         return _buildLogCard(logId, batches, logData);
       },
     );
   }
 
-  Widget _buildLogCard(String logId, List<Map<String, dynamic>> batches, Map<String, dynamic>? logData) {
+  Widget _buildLogCard(
+      String logId,
+      List<Map<String, dynamic>> batches,
+      Map<String, dynamic>? logData,
+      ) {
     final isUnassigned = logId == '_unassigned';
+    final isEmpty = logId.startsWith('_empty_');
 
-    // Berechne Summen
     double totalValue = 0;
     double totalQuantity = 0;
     for (final b in batches) {
@@ -293,15 +365,77 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
       totalQuantity += (b['quantity'] as num?)?.toDouble() ?? 0;
     }
 
+    Color borderColor = Colors.grey[200]!;
+    if (isUnassigned) borderColor = Colors.orange.withOpacity(0.3);
+    if (isEmpty) borderColor = Colors.grey.withOpacity(0.2);
+
+    Color iconColor = const Color(0xFF0F4A29);
+    if (isUnassigned) iconColor = Colors.orange;
+    if (isEmpty) iconColor = Colors.grey[400]!;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: isUnassigned ? Colors.orange.withOpacity(0.3) : Colors.grey[200]!,
-        ),
+        side: BorderSide(color: borderColor),
       ),
-      child: Theme(
+      color: isEmpty ? Colors.grey[50] : null,
+      child: isEmpty
+      // Stämme ohne Produktion: kein ExpansionTile
+          ? Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.forest, size: 24, color: Colors.grey[400]),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${logData?['internal_number'] ?? '?'}/${logData?['year'] ?? '?'}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  if (logData != null)
+                    Text(
+                      '${logData['wood_name'] ?? ''}'
+                          '${logData['original_number'] != null ? ' • ${logData['original_number']}' : ''}',
+                      style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                    ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Keine Produktion',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey[500],
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          ],
+        ),
+      )
+      // Stämme mit Produktion: ExpansionTile
+          : Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -316,7 +450,7 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
             child: getAdaptiveIcon(
               iconName: isUnassigned ? 'help' : 'forest',
               defaultIcon: isUnassigned ? Icons.help_outline : Icons.forest,
-              color: isUnassigned ? Colors.orange : const Color(0xFF0F4A29),
+              color: iconColor,
               size: 24,
             ),
           ),
@@ -330,11 +464,13 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
                       isUnassigned
                           ? 'Ohne Stamm-Zuordnung'
                           : '${logData?['internal_number'] ?? '?'}/${logData?['year'] ?? '?'}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                     if (!isUnassigned && logData != null)
                       Text(
-                        '${logData['wood_name'] ?? ''} ${logData['original_number'] != null ? '• ${logData['original_number']}' : ''}',
+                        '${logData['wood_name'] ?? ''}'
+                            '${logData['original_number'] != null ? ' • ${logData['original_number']}' : ''}',
                         style: TextStyle(color: Colors.grey[600], fontSize: 13),
                       ),
                   ],
@@ -345,7 +481,9 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
                 children: [
                   Text(
                     _currencyFormat.format(totalValue),
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F4A29)),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F4A29)),
                   ),
                   Text(
                     '${batches.length} Einträge',
@@ -403,7 +541,8 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
         children: [
           SizedBox(
             width: 80,
-            child: Text(date, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+            child: Text(date,
+                style: TextStyle(color: Colors.grey[600], fontSize: 13)),
           ),
           Expanded(
             child: Column(
@@ -441,7 +580,6 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
   }
 
   Widget _buildChronologicalView() {
-    // Sortiere nach Datum absteigend
     final sortedBatches = List<Map<String, dynamic>>.from(_batches)
       ..sort((a, b) {
         final dateA = a['stock_entry_date'];
@@ -456,8 +594,7 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
       padding: const EdgeInsets.all(16),
       itemCount: sortedBatches.length,
       itemBuilder: (context, index) {
-        final batch = sortedBatches[index];
-        return _buildBatchCard(batch);
+        return _buildBatchCard(sortedBatches[index]);
       },
     );
   }
@@ -474,13 +611,10 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            // Datum
             SizedBox(
               width: 80,
               child: Text(date, style: TextStyle(color: Colors.grey[600])),
             ),
-
-            // Produkt-Info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -496,12 +630,11 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
                 ],
               ),
             ),
-
-            // Stamm-Zuordnung
             if (hasLog)
               Container(
                 margin: const EdgeInsets.only(right: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: const Color(0xFF0F4A29).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(4),
@@ -515,8 +648,6 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
                   ),
                 ),
               ),
-
-            // Menge & Wert
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -547,7 +678,8 @@ class _ProductionLogsViewState extends State<ProductionLogsView> {
       ),
       child: Text(
         label,
-        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w500),
+        style:
+        TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w500),
       ),
     );
   }

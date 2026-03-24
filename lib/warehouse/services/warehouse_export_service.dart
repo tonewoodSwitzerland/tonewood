@@ -24,8 +24,11 @@ class WarehouseExportService {
         ? 'Onlineshop_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.csv'
         : 'Lagerbestand_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.csv';
 
+    // Volumen-Daten laden bevor CSV gebaut wird
+    final enrichedItems = await _enrichItemsWithVolume(items);
+
     final csvBytes = _buildCsvBytes(
-      items: items,
+      items: enrichedItems,
       isOnlineShopView: isOnlineShopView,
       shopFilter: shopFilter,
     );
@@ -48,8 +51,11 @@ class WarehouseExportService {
         ? 'Onlineshop_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.pdf'
         : 'Lagerbestand_${DateFormat('dd.MM.yyyy').format(DateTime.now())}.pdf';
 
+    // Volumen-Daten laden bevor PDF gebaut wird
+    final enrichedItems = await _enrichItemsWithVolume(items);
+
     final pdfBytes = await _buildPdfBytes(
-      items: items,
+      items: enrichedItems,
       isOnlineShopView: isOnlineShopView,
       shopFilter: shopFilter,
       activeFilters: activeFilters,
@@ -61,6 +67,84 @@ class WarehouseExportService {
       mimeType: 'application/pdf',
     );
   }
+
+  // ============================================================
+  // Volumen aus standardized_products laden
+  // ============================================================
+
+  /// Lädt für alle Items das Volumen aus der standardized_products Collection.
+  /// Gruppiert die Abfragen nach articleNumber um doppelte Firestore-Reads zu vermeiden.
+  static Future<List<Map<String, dynamic>>> _enrichItemsWithVolume(
+      List<Map<String, dynamic>> items,
+      ) async {
+    // Sammle alle einzigartigen articleNumbers
+    final Map<String, String> itemKeyToArticleNumber = {};
+    final Set<String> uniqueArticleNumbers = {};
+
+    for (final item in items) {
+      final instrumentCode = item['instrument_code'] as String? ?? '';
+      final partCode = item['part_code'] as String? ?? '';
+      if (instrumentCode.isNotEmpty && partCode.isNotEmpty) {
+        final articleNumber = instrumentCode + partCode;
+        uniqueArticleNumbers.add(articleNumber);
+      }
+    }
+
+    // Lade alle Volumen in einem Batch (max 10 pro whereIn-Query)
+    final Map<String, double> volumeCache = {};
+
+    final articleNumberList = uniqueArticleNumbers.toList();
+    for (int i = 0; i < articleNumberList.length; i += 10) {
+      final batch = articleNumberList.sublist(
+        i,
+        i + 10 > articleNumberList.length ? articleNumberList.length : i + 10,
+      );
+
+      try {
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('standardized_products')
+            .where('articleNumber', whereIn: batch)
+            .get();
+
+        for (final doc in querySnapshot.docs) {
+          final data = doc.data();
+          final articleNumber = data['articleNumber'] as String? ?? '';
+
+          final mm3Volume = data['volume']?['mm3_withAddition'];
+          final dm3Volume = data['volume']?['dm3_withAddition'];
+
+          if (mm3Volume != null && (mm3Volume as num) > 0) {
+            // mm³ → m³
+            volumeCache[articleNumber] = mm3Volume.toDouble() / 1000000000.0;
+          } else if (dm3Volume != null && (dm3Volume as num) > 0) {
+            // dm³ → m³
+            volumeCache[articleNumber] = dm3Volume.toDouble() / 1000.0;
+          }
+        }
+      } catch (e) {
+        // Bei Fehler einfach ohne Volumen weiter
+        print('Fehler beim Laden der Volumen-Daten: $e');
+      }
+    }
+
+    // Items mit Volumen anreichern
+    return items.map((item) {
+      final instrumentCode = item['instrument_code'] as String? ?? '';
+      final partCode = item['part_code'] as String? ?? '';
+      final articleNumber = instrumentCode + partCode;
+
+      final volume = volumeCache[articleNumber];
+
+      if (volume != null) {
+        return {
+          ...item,
+          '_volume_m3': volume,
+        };
+      }
+      return item;
+    }).toList();
+  }
+
   // ============================================================
   // CSV Aufbau
   // ============================================================
@@ -87,6 +171,7 @@ class WarehouseExportService {
       'Qualität',
       'Status',
       'Preis CHF',
+      'Volumen m³',
       'Eingestellt am',
       if (shopFilter == 'sold') 'Verkauft am',
     ]
@@ -100,12 +185,19 @@ class WarehouseExportService {
       'Bestand',
       'Einheit',
       'Preis CHF',
+      'Volumen m³',
     ];
 
     csvContent.writeln(headers.join(';'));
 
     // Data rows
     for (final item in items) {
+      // Volumen formatieren
+      final volumeM3 = item['_volume_m3'] as double?;
+      final volumeStr = volumeM3 != null
+          ? volumeM3.toStringAsFixed(7)
+          : '';
+
       final row = isOnlineShopView
           ? [
         "'${item['barcode']}",
@@ -120,6 +212,7 @@ class WarehouseExportService {
           symbol: '',
           decimalDigits: 2,
         ).format(item['price_CHF']).trim(),
+        volumeStr,
         item['created_at'] != null
             ? DateFormat('dd.MM.yyyy HH:mm')
             .format((item['created_at'] as Timestamp).toDate())
@@ -142,6 +235,7 @@ class WarehouseExportService {
           symbol: '',
           decimalDigits: 2,
         ).format(item['price_CHF']).trim(),
+        volumeStr,
       ];
       csvContent.writeln(row.join(';'));
     }
@@ -246,7 +340,8 @@ class WarehouseExportService {
               horizontal: 3,
               vertical: 2,
             ),
-            cellAlignments: {
+            cellAlignments: isOnlineShopView
+                ? {
               0: pw.Alignment.centerLeft,
               1: pw.Alignment.centerLeft,
               2: pw.Alignment.centerLeft,
@@ -254,6 +349,20 @@ class WarehouseExportService {
               4: pw.Alignment.centerLeft,
               5: pw.Alignment.center,
               6: pw.Alignment.centerRight,
+              7: pw.Alignment.centerRight,
+              8: pw.Alignment.centerLeft,
+              if (shopFilter == 'sold')
+                9: pw.Alignment.centerLeft,
+            }
+                : {
+              0: pw.Alignment.centerLeft,
+              1: pw.Alignment.centerLeft,
+              2: pw.Alignment.centerLeft,
+              3: pw.Alignment.centerLeft,
+              4: pw.Alignment.centerLeft,
+              5: pw.Alignment.center,
+              6: pw.Alignment.centerRight,
+              7: pw.Alignment.centerRight,
             },
             columnWidths: isOnlineShopView
                 ? {
@@ -264,9 +373,10 @@ class WarehouseExportService {
               4: const pw.FlexColumnWidth(1.2),
               5: const pw.FlexColumnWidth(1),
               6: const pw.FlexColumnWidth(1.2),
-              7: const pw.FlexColumnWidth(1.5),
+              7: const pw.FlexColumnWidth(1.2),
+              8: const pw.FlexColumnWidth(1.5),
               if (shopFilter == 'sold')
-                8: const pw.FlexColumnWidth(1.5),
+                9: const pw.FlexColumnWidth(1.5),
             }
                 : {
               0: const pw.FlexColumnWidth(2),
@@ -276,6 +386,7 @@ class WarehouseExportService {
               4: const pw.FlexColumnWidth(1.2),
               5: const pw.FlexColumnWidth(1),
               6: const pw.FlexColumnWidth(1.2),
+              7: const pw.FlexColumnWidth(1.2),
             },
             headers: isOnlineShopView
                 ? [
@@ -286,6 +397,7 @@ class WarehouseExportService {
               'Qualität',
               'Status',
               'Preis CHF',
+              'Vol. m³',
               'Eingestellt',
               if (shopFilter == 'sold') 'Verkauft',
             ]
@@ -297,44 +409,54 @@ class WarehouseExportService {
               'Qualität',
               'Bestand',
               'Preis CHF',
+              'Vol. m³',
             ],
             data: items
-                .map((item) => isOnlineShopView
-                ? [
-              item['barcode'] ?? '',
-              item['product_name'] ?? '',
-              '${item['instrument_name']} (${item['instrument_code']})',
-              '${item['wood_name']} (${item['wood_code']})',
-              '${item['quality_name']} (${item['quality_code']})',
-              item['sold'] == true ? 'Verkauft' : 'Im Shop',
-              NumberFormat.currency(
-                  locale: 'de_DE',
-                  symbol: '',
-                  decimalDigits: 2)
-                  .format(item['price_CHF']),
-              item['created_at'] != null
-                  ? DateFormat('dd.MM.yy').format(
-                  (item['created_at'] as Timestamp).toDate())
-                  : '',
-              if (shopFilter == 'sold')
-                item['sold_at'] != null
+                .map((item) {
+              final volumeM3 = item['_volume_m3'] as double?;
+              final volumeStr = volumeM3 != null
+                  ? volumeM3.toStringAsFixed(7)
+                  : '';
+
+              return isOnlineShopView
+                  ? [
+                item['barcode'] ?? '',
+                item['product_name'] ?? '',
+                '${item['instrument_name']} (${item['instrument_code']})',
+                '${item['wood_name']} (${item['wood_code']})',
+                '${item['quality_name']} (${item['quality_code']})',
+                item['sold'] == true ? 'Verkauft' : 'Im Shop',
+                NumberFormat.currency(
+                    locale: 'de_DE',
+                    symbol: '',
+                    decimalDigits: 2)
+                    .format(item['price_CHF']),
+                volumeStr,
+                item['created_at'] != null
                     ? DateFormat('dd.MM.yy').format(
-                    (item['sold_at'] as Timestamp).toDate())
+                    (item['created_at'] as Timestamp).toDate())
                     : '',
-            ]
-                : [
-              item['short_barcode'] ?? '',
-              item['product_name'] ?? '',
-              '${item['instrument_name']} (${item['instrument_code']})',
-              '${item['wood_name']} (${item['wood_code']})',
-              '${item['quality_name']} (${item['quality_code']})',
-              '${item['quantity']} ${item['unit']}',
-              NumberFormat.currency(
-                  locale: 'de_DE',
-                  symbol: '',
-                  decimalDigits: 2)
-                  .format(item['price_CHF']),
-            ])
+                if (shopFilter == 'sold')
+                  item['sold_at'] != null
+                      ? DateFormat('dd.MM.yy').format(
+                      (item['sold_at'] as Timestamp).toDate())
+                      : '',
+              ]
+                  : [
+                item['short_barcode'] ?? '',
+                item['product_name'] ?? '',
+                '${item['instrument_name']} (${item['instrument_code']})',
+                '${item['wood_name']} (${item['wood_code']})',
+                '${item['quality_name']} (${item['quality_code']})',
+                '${item['quantity']} ${item['unit']}',
+                NumberFormat.currency(
+                    locale: 'de_DE',
+                    symbol: '',
+                    decimalDigits: 2)
+                    .format(item['price_CHF']),
+                volumeStr,
+              ];
+            })
                 .toList(),
           ),
         ],

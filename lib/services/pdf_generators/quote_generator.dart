@@ -5,11 +5,12 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import '../document_selection_manager.dart';
-import '../pdf_settings_screen.dart';
+import '../../quotes/quote_doc_selection_manager.dart';
+import '../pdf_services/pdf_settings_screen.dart';
+import '../pdf_services/pdf_header_footer_settings_screen.dart';
 import '../product_sorting_manager.dart';
 import 'base_pdf_generator.dart';
-import '../additional_text_manager.dart';
+import '../../quotes/additional_text_manager.dart';
 import '../swiss_rounding.dart';
 class QuoteGenerator extends BasePdfGenerator {
 
@@ -56,7 +57,7 @@ class QuoteGenerator extends BasePdfGenerator {
       });
     } catch (e) {
       print('Fehler beim Erstellen der Offerten-Nummer: $e');
-      return '${DateTime.now().year}-1000';
+      rethrow;
     }
   }
 
@@ -80,6 +81,7 @@ class QuoteGenerator extends BasePdfGenerator {
   }) async {
     final pdf = pw.Document();
     final logo = await BasePdfGenerator.loadLogo();
+    final hfSettings = await PdfHeaderFooterSettings.load();
 
     // Generiere Offerten-Nummer falls nicht übergeben
     final quoteNum = quoteNumber ?? await getNextQuoteNumber();
@@ -131,6 +133,7 @@ class QuoteGenerator extends BasePdfGenerator {
 
 // Lade Currency Settings für Kurs-Anzeige
     bool showExchangeRateOnDocument = false;
+    bool showRoundingOnDocument = true;
     try {
       final currencySettings = await FirebaseFirestore.instance
           .collection('general_data')
@@ -139,6 +142,7 @@ class QuoteGenerator extends BasePdfGenerator {
 
       if (currencySettings.exists) {
         showExchangeRateOnDocument = currencySettings.data()?['show_exchange_rate_on_documents'] ?? false;
+        showRoundingOnDocument = currencySettings.data()?['show_rounding_on_documents'] ?? true;
       }
     } catch (e) {
       print('Fehler beim Laden der Currency Settings: $e');
@@ -191,6 +195,7 @@ class QuoteGenerator extends BasePdfGenerator {
                 pageNumber: context.pageNumber,
                 totalPages: context.pagesCount,
                 language: language,
+                hfSettings: hfSettings,
               ),
               pw.SizedBox(height: 10),
             ],
@@ -200,6 +205,7 @@ class QuoteGenerator extends BasePdfGenerator {
           pageNumber: context.pageNumber,
           totalPages: context.pagesCount,
           language: language,
+          hfSettings: hfSettings,
         ),
         build: (pw.Context context) {
           return [
@@ -211,6 +217,7 @@ class QuoteGenerator extends BasePdfGenerator {
               logo: logo,
               costCenter: costCenterCode,
               language: language,
+              hfSettings: hfSettings,
             ),
             pw.SizedBox(height: 20),
 
@@ -260,7 +267,7 @@ class QuoteGenerator extends BasePdfGenerator {
             pw.SizedBox(height: 10),
 
             // Summen-Bereich
-            _buildTotalsSection(items, currency, exchangeRates, language, shippingCosts, calculations, taxOption, vatRate, roundingSettings),
+            _buildTotalsSection(items, currency, exchangeRates, language, shippingCosts, calculations, taxOption, vatRate, roundingSettings, showRoundingOnDocument),
 
             pw.SizedBox(height: 10),
 
@@ -1005,6 +1012,8 @@ class QuoteGenerator extends BasePdfGenerator {
       int taxOption,
       double vatRate,
       Map<String, bool> roundingSettings,
+      bool showRoundingOnDocument,
+
       ) {
     double subtotal = 0.0;
     double actualItemDiscounts = 0.0;
@@ -1370,7 +1379,7 @@ class QuoteGenerator extends BasePdfGenerator {
                     (language == 'EN'
                         ? 'VAT (${vatRate.toStringAsFixed(1)}%)'
                         : 'MwSt (${vatRate.toStringAsFixed(1)}%)')
-                        + (roundingSettings[currency] == true && vatRoundingDifference != 0
+                        + (roundingSettings[currency] == true && vatRoundingDifference != 0 && showRoundingOnDocument
                         ? '  (${language == 'EN' ? 'rounded' : 'gerundet'} ${vatRoundingDifference > 0 ? '+' : ''}${vatRoundingDifference.toStringAsFixed(2)})'
                         : ''),
                     style: const pw.TextStyle(fontSize: 9),
@@ -1400,7 +1409,7 @@ class QuoteGenerator extends BasePdfGenerator {
               pw.Divider(color: PdfColors.blueGrey300),
 
               // Rundungsdifferenz anzeigen (falls vorhanden)
-              if (roundingSettings[currency] == true && roundingDifference != 0) ...[
+              if (roundingSettings[currency] == true && roundingDifference != 0 && showRoundingOnDocument) ...[
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
@@ -1441,7 +1450,7 @@ class QuoteGenerator extends BasePdfGenerator {
               pw.Divider(color: PdfColors.blueGrey300),
 
               // Rundungsdifferenz anzeigen (falls vorhanden)
-              if (roundingSettings[currency] == true && roundingDifference != 0) ...[
+              if (roundingSettings[currency] == true && roundingDifference != 0 && showRoundingOnDocument) ...[
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
@@ -1563,6 +1572,26 @@ class QuoteGenerator extends BasePdfGenerator {
         );
       }
 
+      // Custom Text Blocks
+      final customBlockTexts = AdditionalTextsManager.getActiveCustomBlockTexts(
+        additionalTexts,
+        language: language,
+      );
+      for (final blockText in customBlockTexts) {
+        textWidgets.add(
+          pw.Container(
+            alignment: pw.Alignment.centerLeft,
+            margin: const pw.EdgeInsets.only(bottom: 3),
+            child: pw.Text(
+              blockText,
+              style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+              textAlign: pw.TextAlign.left,
+            ),
+          ),
+        );
+      }
+
+
       if (additionalTexts['bank_info']?['selected'] == true) {
         textWidgets.add(
           pw.Container(
@@ -1582,6 +1611,7 @@ class QuoteGenerator extends BasePdfGenerator {
       }
 
       // Neues Freitextfeld
+      // Neues Freitextfeld
       if (additionalTexts['free_text']?['selected'] == true) {
         textWidgets.add(
           pw.Container(
@@ -1599,6 +1629,8 @@ class QuoteGenerator extends BasePdfGenerator {
           ),
         );
       }
+
+
 
       if (textWidgets.isEmpty) {
         return pw.SizedBox.shrink();
@@ -1620,7 +1652,7 @@ class QuoteGenerator extends BasePdfGenerator {
 
 
   // Füge Zusatztexte-Seite hinzu
-  static Future<void> _addAdditionalTextsPage(pw.Document pdf, pw.MemoryImage logo) async {
+  static Future<void> _addAdditionalTextsPage(pw.Document pdf, pw.MemoryImage logo, {PdfHeaderFooterSettings? hfSettings}) async {
     try {
       final additionalTexts = await AdditionalTextsManager.loadAdditionalTexts();
 
@@ -1684,7 +1716,7 @@ class QuoteGenerator extends BasePdfGenerator {
                   )),
 
                   pw.Expanded(child: pw.SizedBox()),
-                  BasePdfGenerator.buildFooter(),
+                  BasePdfGenerator.buildFooter(hfSettings: hfSettings),
                 ],
               );
             },

@@ -488,12 +488,22 @@ class SalesProductView extends StatelessWidget {
 
   Color _getWoodColor(int index) {
     const colors = [
-      Color(0xFF8D6E63),
-      Color(0xFF6D4C41),
-      Color(0xFFBCAAA4),
-      Color(0xFF795548),
-      Color(0xFF5D4037),
-      Color(0xFFA1887F),
+      Color(0xFF0F4A29), // Dunkelgrün (Brand)
+      Color(0xFF1565C0), // Königsblau
+      Color(0xFFC62828), // Tiefrot
+      Color(0xFF6A1B9A), // Violett
+      Color(0xFFEF6C00), // Orange
+      Color(0xFF00838F), // Cyan/Teal
+      Color(0xFF2E7D32), // Grün
+      Color(0xFF4527A0), // Indigo
+      Color(0xFFAD1457), // Magenta
+      Color(0xFF00695C), // Dunkles Teal
+      Color(0xFF558B2F), // Olivgrün
+      Color(0xFF5D4037), // Braun
+      Color(0xFF37474F), // Blaugrau
+      Color(0xFFD84315), // Terrakotta
+      Color(0xFF1976D2), // Hellblau
+      Color(0xFF7B1FA2), // Lila
     ];
     return colors[index % colors.length];
   }

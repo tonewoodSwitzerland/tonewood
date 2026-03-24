@@ -36,6 +36,7 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
   final _customYearController = TextEditingController();
   final _otherPurposeController = TextEditingController();
 
+  int? _defaultYear; // app-weites Standardjahr
   // Selections
   DateTime? _selectedDate;
   bool _isMoonwood = false;
@@ -62,6 +63,25 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
   // Dropdown data
   List<QueryDocumentSnapshot>? woodTypes;
 
+  Future<void> _loadDefaultYear() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('settings')
+          .get();
+
+      if (doc.exists && doc.data()?['default_year'] != null) {
+        setState(() {
+          _defaultYear = doc.data()!['default_year'] as int;
+          if (!widget.editMode) {
+            _selectedYear = _defaultYear!;
+          }
+        });
+      }
+    } catch (e) {
+      print('Fehler beim Laden des Standardjahres: $e');
+    }
+  }
   @override
   void initState() {
     super.initState();
@@ -71,8 +91,183 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
       _loadExistingData();
     }
     _internalNumberController.addListener(_validateInternalNumber);
+    _loadDefaultYear(); // <-- NEU
   }
 
+  Future<void> _showDefaultYearDialog() async {
+    final int currentYear = DateTime.now().year;
+    final int minYear = 2000;
+    final int maxYear = currentYear + 5;
+    int tempSelectedYear = _defaultYear ?? _selectedYear;
+
+    final FixedExtentScrollController scrollController = FixedExtentScrollController(
+      initialItem: tempSelectedYear - minYear,
+    );
+
+    final result = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F4A29).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.calendar_today, color: Color(0xFF0F4A29), size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Text('Standardjahr', style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Wird bei neuen Einträgen als Vorauswahl verwendet.',
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              height: 180,
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Highlight-Band in der Mitte
+                  Container(
+                    height: 44,
+                    margin: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F4A29).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF0F4A29).withOpacity(0.3)),
+                    ),
+                  ),
+                  // Scroll-Wheel
+                  ListWheelScrollView.useDelegate(
+                    controller: scrollController,
+                    itemExtent: 44,
+                    perspective: 0.003,
+                    diameterRatio: 1.5,
+                    physics: const FixedExtentScrollPhysics(),
+                    onSelectedItemChanged: (index) {
+                      tempSelectedYear = minYear + index;
+                    },
+                    childDelegate: ListWheelChildBuilderDelegate(
+                      childCount: maxYear - minYear + 1,
+                      builder: (context, index) {
+                        final year = minYear + index;
+                        return Center(
+                          child: Text(
+                            '$year',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87.withOpacity(0.8),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  // Fade oben
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 50,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.grey[100]!, Colors.grey[100]!.withOpacity(0)],
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Fade unten
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: 50,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [Colors.grey[100]!, Colors.grey[100]!.withOpacity(0)],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    side: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  child: Text('Abbrechen', style: TextStyle(color: Colors.grey[700])),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context, tempSelectedYear),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F4A29),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: const Text('Speichern', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    scrollController.dispose();
+
+    if (result != null) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('general_data')
+            .doc('settings')
+            .set({'default_year': result}, SetOptions(merge: true));
+
+        setState(() {
+          _defaultYear = result;
+          _selectedYear = result;
+        });
+        _validateInternalNumber();
+        AppToast.show(message: 'Standardjahr auf $result gesetzt', height: h);
+      } catch (e) {
+        print('Fehler beim Speichern des Standardjahres: $e');
+      }
+    }
+  }
   Future<void> _loadLastInternalNumber() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -223,6 +418,14 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
           widget.editMode ? 'Rundholz bearbeiten' : 'Neues Rundholz',
           style: headline4_0,
         ),
+        actions: [
+          if (!widget.editMode)
+            IconButton(
+              icon: const Icon(Icons.settings, size: 20),
+              tooltip: 'Standardjahr einstellen',
+              onPressed: _showDefaultYearDialog,
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),

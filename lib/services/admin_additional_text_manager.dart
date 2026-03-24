@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../services/additional_text_manager.dart';
+import '../quotes/additional_text_manager.dart';
 import '../services/icon_helper.dart';
 
 class AdminTextsEditor extends StatefulWidget {
@@ -65,7 +65,10 @@ class _AdminTextsEditorState extends State<AdminTextsEditor>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
     _initializeTexts();
     _loadDefaultSelections();
   }
@@ -156,9 +159,17 @@ class _AdminTextsEditorState extends State<AdminTextsEditor>
           tabs: const [
             Tab(icon: Icon(Icons.edit_document), text: 'Texte bearbeiten'),
             Tab(icon: Icon(Icons.toggle_on), text: 'Standard-Aktivierung'),
+            Tab(icon: Icon(Icons.library_books), text: 'Textbausteine'),
           ],
         ),
         actions: [
+          // + Button nur im 3. Tab anzeigen
+          if (_tabController.index == 2)
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: 'Neuen Textbaustein anlegen',
+              onPressed: () => _showEditCustomBlockDialog(),
+            ),
           IconButton(
             icon: getAdaptiveIcon(iconName: 'refresh', defaultIcon: Icons.refresh),
             onPressed: () async {
@@ -178,6 +189,7 @@ class _AdminTextsEditorState extends State<AdminTextsEditor>
         children: [
           _buildTextEditorTab(),
           _buildDefaultSelectionsTab(),
+          _buildCustomTextBlocksTab(),
         ],
       ),
     );
@@ -548,6 +560,332 @@ class _AdminTextsEditorState extends State<AdminTextsEditor>
               }
             },
             child: const Text('Speichern'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // TAB 3: Custom Text Blocks (NEU)
+  // ==========================================
+  Widget _buildCustomTextBlocksTab() {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: AdditionalTextsManager.streamCustomTextBlocks(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final blocks = snapshot.data ?? [];
+
+        if (blocks.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.library_books,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Noch keine Textbausteine vorhanden',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tippe auf das + oben rechts, um einen neuen Textbaustein anzulegen.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Card(
+              color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Icon(Icons.info, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Textbausteine stehen allen Benutzern als auswählbare Zusatztexte zur Verfügung. '
+                            'DE und EN werden gleichzeitig gepflegt.',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...blocks.map((block) => _buildCustomBlockCard(block)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildCustomBlockCard(Map<String, dynamic> block) {
+    final title = block['title'] ?? '';
+    final textDe = block['text_de'] ?? '';
+    final textEn = block['text_en'] ?? '';
+    final activeByDefault = block['active_by_default'] ?? false;
+    final blockId = block['id'] as String;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Titel & Aktionen
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.edit, size: 20),
+                  tooltip: 'Bearbeiten',
+                  onPressed: () => _showEditCustomBlockDialog(block: block),
+                ),
+                IconButton(
+                  icon: Icon(Icons.delete, size: 20, color: Theme.of(context).colorScheme.error),
+                  tooltip: 'Löschen',
+                  onPressed: () => _showDeleteCustomBlockDialog(blockId, title),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // DE-Text
+            Text('DE:', style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.primary,
+            )),
+            const SizedBox(height: 2),
+            Text(
+              textDe.length > 120 ? '${textDe.substring(0, 120)}...' : textDe,
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+
+            // EN-Text
+            Text('EN:', style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.primary,
+            )),
+            const SizedBox(height: 2),
+            Text(
+              textEn.length > 120 ? '${textEn.substring(0, 120)}...' : textEn,
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+
+            // Standardmässig aktiv
+            Row(
+              children: [
+                Text('Standardmässig aktiv:', style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                )),
+                const Spacer(),
+                Switch(
+                  value: activeByDefault,
+                  onChanged: (value) async {
+                    try {
+                      await AdditionalTextsManager.updateCustomTextBlock(
+                        blockId: blockId,
+                        title: title,
+                        textDe: textDe,
+                        textEn: textEn,
+                        activeByDefault: value,
+                      );
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
+                        );
+                      }
+                    }
+                  },
+                  activeColor: Theme.of(context).colorScheme.primary,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditCustomBlockDialog({Map<String, dynamic>? block}) {
+    final isNew = block == null;
+    final titleController = TextEditingController(text: block?['title'] ?? '');
+    final textDeController = TextEditingController(text: block?['text_de'] ?? '');
+    final textEnController = TextEditingController(text: block?['text_en'] ?? '');
+    bool activeByDefault = block?['active_by_default'] ?? false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(isNew ? 'Neuer Textbaustein' : 'Textbaustein bearbeiten'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(
+                    labelText: 'Titel',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: textDeController,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Text DE',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: textEnController,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Text EN',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  title: const Text('Standardmässig aktiv'),
+                  value: activeByDefault,
+                  onChanged: (value) {
+                    setDialogState(() => activeByDefault = value);
+                  },
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Abbrechen'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (titleController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Bitte einen Titel eingeben'), backgroundColor: Colors.orange),
+                  );
+                  return;
+                }
+
+                try {
+                  if (isNew) {
+                    await AdditionalTextsManager.createCustomTextBlock(
+                      title: titleController.text.trim(),
+                      textDe: textDeController.text.trim(),
+                      textEn: textEnController.text.trim(),
+                      activeByDefault: activeByDefault,
+                    );
+                  } else {
+                    await AdditionalTextsManager.updateCustomTextBlock(
+                      blockId: block!['id'],
+                      title: titleController.text.trim(),
+                      textDe: textDeController.text.trim(),
+                      textEn: textEnController.text.trim(),
+                      activeByDefault: activeByDefault,
+                    );
+                  }
+                  Navigator.pop(ctx);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(isNew ? 'Textbaustein erstellt' : 'Textbaustein aktualisiert'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
+                    );
+                  }
+                }
+              },
+              child: const Text('Speichern'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDeleteCustomBlockDialog(String blockId, String title) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Textbaustein löschen'),
+        content: Text("Möchtest du '$title' wirklich löschen?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                await AdditionalTextsManager.deleteCustomTextBlock(blockId);
+                Navigator.pop(ctx);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Textbaustein gelöscht'), backgroundColor: Colors.green),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            child: const Text('Löschen'),
           ),
         ],
       ),

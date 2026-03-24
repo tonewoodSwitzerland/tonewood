@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'quote_model.dart';
 import '../services/icon_helper.dart';
@@ -39,9 +40,34 @@ extension QuoteViewStatusExtension on QuoteViewStatus {
     }
   }
 }
-
 class QuoteFilterService {
-  static const String _filterDocId = 'quote_filter_settings';
+
+  // ─── NEU: BENUTZERSPEZIFISCHE PFADE ────────────────────────────────────────
+
+  static String? get _userId => FirebaseAuth.instance.currentUser?.uid;
+
+  // Referenz für den aktuellen Filter des eingeloggten Users
+  static DocumentReference? get _userFilterDoc {
+    final uid = _userId;
+    if (uid == null) return null;
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('settings')
+        .doc('quote_filters');
+  }
+
+  // Referenz für die Favoriten des eingeloggten Users
+  static CollectionReference? get _userFavoritesCollection {
+    final uid = _userId;
+    if (uid == null) return null;
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('quote_filter_favorites');
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
 
   // Filter Model
   static Map<String, dynamic> createEmptyFilter() {
@@ -56,37 +82,67 @@ class QuoteFilterService {
     };
   }
 
-  // Lade gespeicherte Filter
+  // Lade gespeicherte Filter (User-Spezifisch)
   static Stream<Map<String, dynamic>> loadSavedFilters() {
-    return FirebaseFirestore.instance
-        .collection('general_data')
-        .doc(_filterDocId)
-        .snapshots()
-        .map((snapshot) {
+    final docRef = _userFilterDoc;
+    if (docRef == null) {
+      // Fallback: Wenn kein User eingeloggt ist, gib leeren Filter zurück
+      return Stream.value(createEmptyFilter());
+    }
+
+    return docRef.snapshots().map((snapshot) {
       if (snapshot.exists && snapshot.data() != null) {
-        return snapshot.data()!;
+        return snapshot.data() as Map<String, dynamic>;
       }
       return createEmptyFilter();
     });
   }
 
-  // Speichere Filter
+  // Speichere Filter (User-Spezifisch)
   static Future<void> saveFilters(Map<String, dynamic> filters) async {
-    await FirebaseFirestore.instance
-        .collection('general_data')
-        .doc(_filterDocId)
-        .set({
+    final docRef = _userFilterDoc;
+    if (docRef == null) return;
+
+    await docRef.set({
       ...filters,
       'lastUpdated': FieldValue.serverTimestamp(),
     });
   }
 
-  // Reset Filter
+  // Reset Filter (User-Spezifisch)
   static Future<void> resetFilters() async {
-    await FirebaseFirestore.instance
-        .collection('general_data')
-        .doc(_filterDocId)
-        .delete();
+    final docRef = _userFilterDoc;
+    if (docRef == null) return;
+
+    await docRef.delete();
+  }
+
+  // Favoriten Management (User-Spezifisch)
+  static Future<void> saveFavorite(String name, Map<String, dynamic> filters) async {
+    final colRef = _userFavoritesCollection;
+    if (colRef == null) throw Exception('Benutzer nicht angemeldet');
+
+    await colRef.add({
+      'name': name,
+      'filters': filters,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  static Stream<QuerySnapshot> getFavorites() {
+    final colRef = _userFavoritesCollection;
+    if (colRef == null) {
+      return const Stream.empty(); // Leerer Stream, falls nicht eingeloggt
+    }
+
+    return colRef.orderBy('createdAt', descending: true).snapshots();
+  }
+
+  static Future<void> deleteFavorite(String favoriteId) async {
+    final colRef = _userFavoritesCollection;
+    if (colRef == null) return;
+
+    await colRef.doc(favoriteId).delete();
   }
 
   // Helper: Bestimme den View-Status eines Angebots

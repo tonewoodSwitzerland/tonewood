@@ -31,7 +31,8 @@ class OrderX {
   final DateTime? deliveryDate;
   final Map<String, String> documents;
   final Map<String, dynamic> metadata;
-  final Map<String, dynamic>? costCenter;  // NEU
+  final Map<String, dynamic>? costCenter;
+  final DateTime? shippedAt; // Versanddatum für Auswertungen
 
   OrderX({
     required this.id,
@@ -46,7 +47,8 @@ class OrderX {
     this.deliveryDate,
     required this.documents,
     required this.metadata,
-    this.costCenter,  // NEU
+    this.costCenter,
+    this.shippedAt,
   });
 
   factory OrderX.fromFirestore(DocumentSnapshot doc) {
@@ -112,7 +114,10 @@ class OrderX {
       metadata: Map<String, dynamic>.from(data['metadata'] ?? {}),
       costCenter: data['costCenter'] != null
           ? Map<String, dynamic>.from(data['costCenter'])
-          : null,  // NEU
+          : null,
+      shippedAt: data['shippedAt'] != null
+          ? (data['shippedAt'] as Timestamp).toDate()
+          : null,
     );
   }
 
@@ -129,7 +134,8 @@ class OrderX {
       'deliveryDate': deliveryDate != null ? Timestamp.fromDate(deliveryDate!) : null,
       'documents': documents,
       'metadata': metadata,
-      if (costCenter != null) 'costCenter': costCenter,  // NEU
+      if (costCenter != null) 'costCenter': costCenter,
+      if (shippedAt != null) 'shippedAt': Timestamp.fromDate(shippedAt!),
     };
   }
 
@@ -147,6 +153,7 @@ class OrderX {
     Map<String, String>? documents,
     Map<String, dynamic>? metadata,
     Map<String, dynamic>? costCenter,
+    DateTime? shippedAt,
   }) {
     return OrderX(
       id: id ?? this.id,
@@ -162,6 +169,7 @@ class OrderX {
       documents: documents ?? this.documents,
       metadata: metadata ?? this.metadata,
       costCenter: costCenter ?? this.costCenter,
+      shippedAt: shippedAt ?? this.shippedAt,
     );
   }
 }

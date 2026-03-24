@@ -101,7 +101,7 @@ class StartScreenState extends State<StartScreen> {
       if (_permissions.hasAccess(_userGroup, 'nav_product'))
         BottomNavigationBarItem(
           icon: getAdaptiveIcon(iconName: 'precision_manufacturing', defaultIcon: Icons.precision_manufacturing),
-          label: "Produkt",
+          label: "Produktion",
         ),
       if (_permissions.hasAccess(_userGroup, 'nav_sales'))
         BottomNavigationBarItem(
@@ -184,7 +184,7 @@ class StartScreenState extends State<StartScreen> {
         if (_permissions.hasAccess(userGroup, 'nav_product')) {
           items.add(BottomNavigationBarItem(
             icon: getAdaptiveIcon(iconName: 'precision_manufacturing', defaultIcon: Icons.precision_manufacturing),
-            label: "Produkt",
+            label: "Produktion",
           ));
         }
         if (_permissions.hasAccess(userGroup, 'nav_sales')) {

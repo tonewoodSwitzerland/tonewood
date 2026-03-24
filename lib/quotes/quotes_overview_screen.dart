@@ -12,15 +12,15 @@ import 'package:tonewood/sales/sales_screen.dart';
 import 'package:tonewood/quotes/quote_details_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../orders/order_service.dart';
-import '../services/order_configuration_sheet.dart';
+import '../orders/order_configuration_sheet.dart';
 import 'info_help_sheet.dart';
 import 'quote_model.dart';
 // Oben bei den Imports ergänzen:
 import '../constants.dart';
-import '../services/additional_text_manager.dart';
+import 'additional_text_manager.dart';
 import '../services/icon_helper.dart';
 import '../services/pdf_generators/invoice_generator.dart';
-import '../services/preview_pdf_viewer_screen.dart';
+import '../services/pdf_services/preview_pdf_viewer_screen.dart';
 import '../services/swiss_rounding.dart';
 import '../services/price_formatter.dart';
 
@@ -536,18 +536,19 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const SizedBox(height: 60);
 
-        // Alle Angebote laden
         final allQuotes = snapshot.data!.docs
             .map((doc) => Quote.fromFirestore(doc))
             .toList();
 
-        // Filter anwenden (wichtig für Datumsfilter!)
+        // Filter OHNE quickStatus anwenden → Zahlen bleiben immer sichtbar
+        final filtersWithoutQuick = Map<String, dynamic>.from(_activeFilters);
+        filtersWithoutQuick.remove('quickStatus');
+
         final filteredQuotes = QuoteFilterService.applyClientSideFilters(
-            allQuotes,
-            _activeFilters
+          allQuotes,
+          filtersWithoutQuick,
         );
 
-        // Statistiken basierend auf gefilterten Angeboten
         final openQuotes = filteredQuotes.where((q) {
           final viewStatus = _getViewStatus(q);
           return viewStatus == QuoteViewStatus.open;
@@ -590,7 +591,6 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
       },
     );
   }
-
   Widget _buildCompactStatCard(String title, String value, IconData icon, String iconName, Color color, QuoteViewStatus targetStatus) {
     // Prüfe ob dieser Status aktiv ist
     final bool isActive = _quickFilterStatus == targetStatus;
@@ -866,30 +866,33 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                     tooltip: 'Kopieren',
                     color: goldenColour,
                   ),
-                  const SizedBox(width: 4),
-                  _buildCompactActionButton(
-                      icon: Icons.edit,
-                      iconName: 'edit',
-                      onPressed: () => _editQuote(quote),
-                      tooltip: 'Bearbeiten',
-                      color: goldenColour
-                  ),
-                  const SizedBox(width: 4),
-                  _buildCompactActionButton(
-                    icon: Icons.shopping_cart,
-                    iconName:'shopping_cart',
-                    onPressed: () => _convertToOrder(quote),
-                    tooltip: 'Beauftragen',
-                    color: QuoteColors.accepted,
-                  ),
-                  const SizedBox(width: 4),
-                  _buildCompactActionButton(
-                    icon: Icons.cancel,
-                    iconName:'cancel',
-                    onPressed: () => _rejectQuote(quote),
-                    tooltip: 'Ablehnen',
-                    color: QuoteColors.rejected,
-                  ),
+                  const SizedBox(width: 4),// Zeile 869-892: Diese 3 Blöcke mit Condition umschließen
+                  if (viewStatus == QuoteViewStatus.open) ...[
+                    const SizedBox(width: 4),
+                    _buildCompactActionButton(
+                        icon: Icons.edit,
+                        iconName: 'edit',
+                        onPressed: () => _editQuote(quote),
+                        tooltip: 'Bearbeiten',
+                        color: goldenColour
+                    ),
+                    const SizedBox(width: 4),
+                    _buildCompactActionButton(
+                      icon: Icons.shopping_cart,
+                      iconName:'shopping_cart',
+                      onPressed: () => _convertToOrder(quote),
+                      tooltip: 'Beauftragen',
+                      color: QuoteColors.accepted,
+                    ),
+                    const SizedBox(width: 4),
+                    _buildCompactActionButton(
+                      icon: Icons.cancel,
+                      iconName:'cancel',
+                      onPressed: () => _rejectQuote(quote),
+                      tooltip: 'Ablehnen',
+                      color: QuoteColors.rejected,
+                    ),
+                  ],
                   const SizedBox(width: 4),
                   _buildCompactActionButton(
                     icon: Icons.delete_forever,
@@ -1165,6 +1168,13 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                           color = Colors.red;
                           title = 'Auftrag storniert';
                           subtitle = 'Auftragsnummer: ${data['order_number'] ?? 'Unbekannt'}';
+                          break;
+                        case 'order_revise':
+                          icon = Icons.edit_note;
+                          iconName = 'edit_note';
+                          color = Colors.green;
+                          title = 'Auftrag korrigiert';
+                          subtitle = 'Angebot wieder als Entwurf geöffnet';
                           break;
                         case 'status_change':
                           icon = Icons.swap_horiz;

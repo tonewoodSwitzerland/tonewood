@@ -1,4 +1,4 @@
-// File: services/document_selection_manager.dart (Erweiterte Version)
+// File: services/quote_doc_selection_manager.dart (Erweiterte Version)
 
 /// Info, hier ist der Angeobtsbereich
 
@@ -14,23 +14,24 @@ import 'package:tonewood/services/pdf_generators/delivery_note_generator.dart';
 import 'package:tonewood/services/pdf_generators/packing_list_generator.dart';
 import 'package:tonewood/services/product_sorting_manager.dart';
 import 'package:tonewood/services/swiss_rounding.dart';
+import '../services/user_basket_service.dart';
 import 'additional_text_manager.dart';
-import 'countries.dart';
-import 'pdf_generators/invoice_generator.dart';
+import '../services/countries.dart';
+import '../services/pdf_generators/invoice_generator.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:tonewood/services/preview_pdf_viewer_screen.dart';
-import 'package:tonewood/services/shipping_costs_manager.dart';
+import 'package:tonewood/services/pdf_services/preview_pdf_viewer_screen.dart';
+import 'package:tonewood/quotes/shipping_costs_manager.dart';
 import '../services/icon_helper.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'download_helper_mobile.dart';
-import 'pdf_generators/quote_generator.dart';
+import '../services/pdf_services/download_helper_mobile.dart';
+import '../services/pdf_generators/quote_generator.dart';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:intl/intl.dart';
-// Am Anfang von document_selection_manager.dart:
+// Am Anfang von quote_doc_selection_manager.dart:
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
@@ -48,8 +49,8 @@ class DocumentSelectionManager {
   // Speichert die Auswahl in Firestore
   static Future<void> saveDocumentSelection(Map<String, bool> selection) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('temporary_document_selection')
+      await
+      UserBasketService.temporaryDocumentSelection
           .doc('current_selection')
           .set({
         'selection': selection,
@@ -63,8 +64,8 @@ class DocumentSelectionManager {
   // Lädt die aktuelle Auswahl aus Firestore
   static Future<Map<String, bool>> loadDocumentSelection() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('temporary_document_selection')
+      final doc = await
+      UserBasketService.temporaryDocumentSelection
           .doc('current_selection')
           .get();
 
@@ -88,8 +89,8 @@ class DocumentSelectionManager {
   // Prüft, ob bereits eine Auswahl getroffen wurde
   static Future<bool> hasSelection() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('temporary_document_selection')
+      final doc =
+      await UserBasketService.temporaryDocumentSelection
           .doc('current_selection')
           .get();
 
@@ -111,8 +112,8 @@ class DocumentSelectionManager {
         };
       }).toList();
 
-      await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      await
+      UserBasketService.temporaryDocumentSettings
           .doc('packing_list_settings')
           .set({
         'packages': packagesWithStandardInfo,
@@ -125,8 +126,8 @@ class DocumentSelectionManager {
 
   static Future<Map<String, dynamic>> loadPackingListSettings() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      final doc =
+      await   UserBasketService.temporaryDocumentSettings
           .doc('packing_list_settings')
           .get();
 
@@ -248,8 +249,8 @@ class DocumentSelectionManager {
       if (taraSettings['commercial_invoice_currency'] != null){
         currency = taraSettings['commercial_invoice_currency'] as String;;
       }else{
-      final currencySettings = await loadCurrencySettings();
-      currency = currencySettings['currency'] as String;}
+        final currencySettings = await loadCurrencySettings();
+        currency = currencySettings['currency'] as String;}
 
       final exchangeRates = await _fetchCurrentExchangeRates();
 
@@ -285,8 +286,7 @@ class DocumentSelectionManager {
   }
   static Future<void> saveTaraSettings(int numberOfPackages, double packagingWeight) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      await UserBasketService.temporaryDocumentSettings
           .doc('tara_settings')
           .set({
         'number_of_packages': numberOfPackages,
@@ -301,8 +301,7 @@ class DocumentSelectionManager {
   static Future<Map<String, dynamic>> loadTaraSettings() async {
     try {
       // 1. Lade zuerst die gespeicherten Tara-Einstellungen
-      final doc = await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      final doc = await UserBasketService.temporaryDocumentSettings
           .doc('tara_settings')
           .get();
 
@@ -414,14 +413,12 @@ class DocumentSelectionManager {
   static Future<void> clearSelection() async {
     try {
       // 1. Lösche die Dokumentauswahl
-      await FirebaseFirestore.instance
-          .collection('temporary_document_selection')
+      await UserBasketService.temporaryDocumentSelection
           .doc('current_selection')
           .delete();
 
       // 2. Lösche ALLE Dokument-Einstellungen
-      final settingsCollection = FirebaseFirestore.instance
-          .collection('temporary_document_settings');
+      final settingsCollection = UserBasketService.temporaryDocumentSettings;
 
       // Hole alle Dokumente in der Collection
       final snapshot = await settingsCollection.get();
@@ -471,8 +468,7 @@ class DocumentSelectionManager {
       }
 
       // Lade Gesamtrabatt aus temporary_discounts/total_discount
-      final totalDiscountDoc = await FirebaseFirestore.instance
-          .collection('temporary_discounts')
+      final totalDiscountDoc = await  UserBasketService.temporaryDiscounts
           .doc('total_discount')
           .get();
 
@@ -542,13 +538,11 @@ class DocumentSelectionManager {
 
     if (preservePaymentDate) {
       // Nur delivery_date updaten, payment_date beibehalten
-      await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      await UserBasketService.temporaryDocumentSettings
           .doc('delivery_note_settings')
           .update({'delivery_date': data['delivery_date']});
     } else {
-      await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      await UserBasketService.temporaryDocumentSettings
           .doc('delivery_note_settings')
           .set(data);
     }
@@ -556,8 +550,7 @@ class DocumentSelectionManager {
 
 // Erweitere loadDeliveryNoteSettings:
   static Future<Map<String, dynamic>> loadDeliveryNoteSettings() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('temporary_document_settings')
+    final doc = await UserBasketService.temporaryDocumentSettings
         .doc('delivery_note_settings')
         .get();
 
@@ -575,11 +568,10 @@ class DocumentSelectionManager {
     };
   }
 
-  // In document_selection_manager.dart, nach den anderen save-Methoden hinzufügen:
+  // In quote_doc_selection_manager.dart, nach den anderen save-Methoden hinzufügen:
   static Future<void> saveInvoiceSettings(Map<String, dynamic> settings) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      await UserBasketService.temporaryDocumentSettings
           .doc('invoice_settings')
           .set({
         'invoice_date': settings['invoice_date'], // <-- NEU!
@@ -600,8 +592,7 @@ class DocumentSelectionManager {
 
   static Future<Map<String, dynamic>> loadInvoiceSettings() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      final doc = await  UserBasketService.temporaryDocumentSettings
           .doc('invoice_settings')
           .get();
 
@@ -643,8 +634,7 @@ class DocumentSelectionManager {
 
   static Future<void> saveQuoteSettings(Map<String, dynamic> settings) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      await UserBasketService.temporaryDocumentSettings
           .doc('quote_settings')
           .set({
         'validity_date': settings['validity_date'],
@@ -659,8 +649,8 @@ class DocumentSelectionManager {
 
   static Future<Map<String, dynamic>> loadQuoteSettings() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      final doc = await
+      UserBasketService.temporaryDocumentSettings
           .doc('quote_settings')
           .get();
 
@@ -748,7 +738,7 @@ class DocumentSelectionManager {
         exchangeRates: exchangeRates,
         language: documentLanguage,
         deliveryNoteNumber: 'PREVIEW',
-         deliveryDate: effectiveDeliveryDate, // NEU: Verwende das effektive Datum
+        deliveryDate: effectiveDeliveryDate, // NEU: Verwende das effektive Datum
         paymentDate: deliveryNoteSettings['payment_date'],
       );
 
@@ -888,8 +878,8 @@ class DocumentSelectionManager {
   static Future<Map<String, dynamic>?> _loadPreviewData(BuildContext context) async {
     try {
       // Kunde laden
-      final customerSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_customer')
+      final customerSnapshot = await
+      UserBasketService.temporaryCustomer
           .limit(1)
           .get();
 
@@ -898,14 +888,14 @@ class DocumentSelectionManager {
       }
 
       // Kostenstelle laden
-      final costCenterSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_cost_center')
+      final costCenterSnapshot = await
+      UserBasketService.temporaryCostCenter
           .limit(1)
           .get();
 
       // Warenkorb laden
-      final basketSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_basket')
+      final basketSnapshot = await
+      UserBasketService.temporaryBasket
           .get();
 
       if (basketSnapshot.docs.isEmpty) {
@@ -913,14 +903,14 @@ class DocumentSelectionManager {
       }
 
       // Messe laden (optional)
-      final fairSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_fair')
+      final fairSnapshot = await
+      UserBasketService.temporaryFair
           .limit(1)
           .get();
 
       // NEU: Lade Steuereinstellungen
-      final taxDoc = await FirebaseFirestore.instance
-          .collection('temporary_tax')
+      final taxDoc = await
+      UserBasketService.temporaryTax
           .doc('current_tax')
           .get();
 
@@ -1211,22 +1201,22 @@ class DocumentSelectionManager {
       final costCenterCode = costCenter != null ? costCenter['code'] : '00000';
 
       final pdfBytes = await InvoiceGenerator.generateInvoicePdf(
-        downPaymentSettings: invoiceSettings,
-        items: items,
-        customerData: data['customer'],
-        fairData: data['fair'],
-        costCenterCode: costCenterCode,
-        currency: currency,
-        exchangeRates: exchangeRates,
-        language: documentLanguage,
-        invoiceNumber: 'PREVIEW',
-        shippingCosts: shippingCosts,
-        calculations: calculations, // <-- Jetzt mit echten Rabatten
-        paymentTermDays: paymentTermDays,
-        taxOption: taxOption,  // NEU (falls InvoiceGenerator das unterstützt)
-        vatRate: vatRate,
-        additionalTexts: additionalTexts,
-        roundingSettings: roundingSettings
+          downPaymentSettings: invoiceSettings,
+          items: items,
+          customerData: data['customer'],
+          fairData: data['fair'],
+          costCenterCode: costCenterCode,
+          currency: currency,
+          exchangeRates: exchangeRates,
+          language: documentLanguage,
+          invoiceNumber: 'PREVIEW',
+          shippingCosts: shippingCosts,
+          calculations: calculations, // <-- Jetzt mit echten Rabatten
+          paymentTermDays: paymentTermDays,
+          taxOption: taxOption,  // NEU (falls InvoiceGenerator das unterstützt)
+          vatRate: vatRate,
+          additionalTexts: additionalTexts,
+          roundingSettings: roundingSettings
       );
 
       if (context.mounted) {
@@ -1336,7 +1326,7 @@ class DocumentSelectionManager {
     );
   }
 }
-// Am Ende der document_selection_manager.dart Datei:
+// Am Ende der quote_doc_selection_manager.dart Datei:
 
 
 // In der showDocumentSelectionBottomSheet Funktion, fügen Sie diese neue Funktion hinzu:
@@ -1395,7 +1385,7 @@ Widget _buildPackageCard(
 
     double netWeight = 0.0;
     final packageItems = package['items'] as List<dynamic>? ?? [];
-print(packageItems);
+    print(packageItems);
     for (final item in packageItems) {
       final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
       final unit = item['unit'] ?? 'Stk';
@@ -1414,7 +1404,7 @@ print(packageItems);
           final length = (item['custom_length'] as num?)?.toDouble() ?? 0.0;
           final width = (item['custom_width'] as num?)?.toDouble() ?? 0.0;
           final thickness = (item['custom_thickness'] as num?)?.toDouble() ?? 0.0;
-print("yippiyeayeah");
+          print("yippiyeayeah");
           print("density$density");
           print("l:$length");
           print("w:$width");
@@ -1422,7 +1412,7 @@ print("yippiyeayeah");
 
           if (length > 0 && width > 0 && thickness > 0) {
             volumePerPiece = (length / 1000) * (width / 1000) * (thickness / 1000);
-        print(" volumePerPiece:$volumePerPiece");
+            print(" volumePerPiece:$volumePerPiece");
 
           }
         }
@@ -2214,123 +2204,123 @@ void _showQuantityDialog(
 
 // Hilfsfunktion zum Laden der Standardtexte
 Future<String> _loadDefaultTextForType(String textType, String language) async {
-try {
-final doc = await FirebaseFirestore.instance
-    .collection('general_data')
-    .doc('additional_texts')
-    .get();
+  try {
+    final doc = await FirebaseFirestore.instance
+        .collection('general_data')
+        .doc('additional_texts')
+        .get();
 
-if (doc.exists) {
-final data = doc.data()!;
-final texts = data[textType] as Map<String, dynamic>?;
-if (texts != null) {
-final langTexts = texts[language] as Map<String, dynamic>?;
-if (langTexts != null) {
-return langTexts['standard'] ?? 'Kein Standardtext hinterlegt';
-}
-}
-}
-} catch (e) {
-print('Fehler beim Laden des Standardtexts: $e');
-}
+    if (doc.exists) {
+      final data = doc.data()!;
+      final texts = data[textType] as Map<String, dynamic>?;
+      if (texts != null) {
+        final langTexts = texts[language] as Map<String, dynamic>?;
+        if (langTexts != null) {
+          return langTexts['standard'] ?? 'Kein Standardtext hinterlegt';
+        }
+      }
+    }
+  } catch (e) {
+    print('Fehler beim Laden des Standardtexts: $e');
+  }
 
-return 'Kein Standardtext hinterlegt';
+  return 'Kein Standardtext hinterlegt';
 }
-// In document_selection_manager.dart, nach anderen Methoden hinzufügen:
+// In quote_doc_selection_manager.dart, nach anderen Methoden hinzufügen:
 
 Future<Map<String, dynamic>> _calculateDiscountsForPreview(List<Map<String, dynamic>> basketItems) async {
-try {
-double itemDiscounts = 0.0;
-double totalDiscountAmount = 0.0;
+  try {
+    double itemDiscounts = 0.0;
+    double totalDiscountAmount = 0.0;
 
 // Berechne Item-Rabatte direkt aus den basketItems
-for (final item in basketItems) {
-final customPriceValue = item['custom_price_per_unit'];
-final pricePerUnit = customPriceValue != null
-? (customPriceValue as num).toDouble()
-    : (item['price_per_unit'] as num).toDouble();
+    for (final item in basketItems) {
+      final customPriceValue = item['custom_price_per_unit'];
+      final pricePerUnit = customPriceValue != null
+          ? (customPriceValue as num).toDouble()
+          : (item['price_per_unit'] as num).toDouble();
 
-final quantity = item['quantity'];
-final quantityDouble = quantity is int ? quantity.toDouble() : quantity as double;
-final itemSubtotal = quantityDouble * pricePerUnit;
+      final quantity = item['quantity'];
+      final quantityDouble = quantity is int ? quantity.toDouble() : quantity as double;
+      final itemSubtotal = quantityDouble * pricePerUnit;
 
 // Rabatt ist direkt im Item gespeichert
-final discount = item['discount'] as Map<String, dynamic>?;
-if (discount != null) {
-final percentage = (discount['percentage'] as num? ?? 0).toDouble();
-final absolute = (discount['absolute'] as num? ?? 0).toDouble();
-final discountAmount = (itemSubtotal * (percentage / 100)) + absolute;
-itemDiscounts += discountAmount;
-}
-}
+      final discount = item['discount'] as Map<String, dynamic>?;
+      if (discount != null) {
+        final percentage = (discount['percentage'] as num? ?? 0).toDouble();
+        final absolute = (discount['absolute'] as num? ?? 0).toDouble();
+        final discountAmount = (itemSubtotal * (percentage / 100)) + absolute;
+        itemDiscounts += discountAmount;
+      }
+    }
 
 // Lade Gesamtrabatt aus temporary_discounts/total_discount
-final totalDiscountDoc = await FirebaseFirestore.instance
-    .collection('temporary_discounts')
-    .doc('total_discount')
-    .get();
+    final totalDiscountDoc = await
+    UserBasketService.temporaryDiscounts
+        .doc('total_discount')
+        .get();
 
-if (totalDiscountDoc.exists) {
-final totalDiscountData = totalDiscountDoc.data()!;
-final totalPercentage = (totalDiscountData['percentage'] as num? ?? 0).toDouble();
-final totalAbsolute = (totalDiscountData['absolute'] as num? ?? 0).toDouble();
+    if (totalDiscountDoc.exists) {
+      final totalDiscountData = totalDiscountDoc.data()!;
+      final totalPercentage = (totalDiscountData['percentage'] as num? ?? 0).toDouble();
+      final totalAbsolute = (totalDiscountData['absolute'] as num? ?? 0).toDouble();
 
 // Berechne Subtotal nach Item-Rabatten
-final subtotal = basketItems.fold<double>(0.0, (sum, item) {
-final customPriceValue = item['custom_price_per_unit'];
-final pricePerUnit = customPriceValue != null
-? (customPriceValue as num).toDouble()
-    : (item['price_per_unit'] as num).toDouble();
-final qty = item['quantity'];
-final qtyDouble = qty is int ? qty.toDouble() : qty as double;
-return sum + (qtyDouble * pricePerUnit);
-});
+      final subtotal = basketItems.fold<double>(0.0, (sum, item) {
+        final customPriceValue = item['custom_price_per_unit'];
+        final pricePerUnit = customPriceValue != null
+            ? (customPriceValue as num).toDouble()
+            : (item['price_per_unit'] as num).toDouble();
+        final qty = item['quantity'];
+        final qtyDouble = qty is int ? qty.toDouble() : qty as double;
+        return sum + (qtyDouble * pricePerUnit);
+      });
 
-final subtotalAfterItemDiscounts = subtotal - itemDiscounts;
-totalDiscountAmount = (subtotalAfterItemDiscounts * (totalPercentage / 100)) + totalAbsolute;
-}
+      final subtotalAfterItemDiscounts = subtotal - itemDiscounts;
+      totalDiscountAmount = (subtotalAfterItemDiscounts * (totalPercentage / 100)) + totalAbsolute;
+    }
 
-return {
-'item_discounts': itemDiscounts,
-'total_discount_amount': totalDiscountAmount,
-};
-} catch (e) {
-print('Fehler beim Berechnen der Rabatte: $e');
-return {
-'item_discounts': 0.0,
-'total_discount_amount': 0.0,
-};
-}
+    return {
+      'item_discounts': itemDiscounts,
+      'total_discount_amount': totalDiscountAmount,
+    };
+  } catch (e) {
+    print('Fehler beim Berechnen der Rabatte: $e');
+    return {
+      'item_discounts': 0.0,
+      'total_discount_amount': 0.0,
+    };
+  }
 }
 
 // Neue Methode zum Laden der aktuellen Währungseinstellungen
- Future<Map<String, dynamic>> loadCurrencySettings() async {
-try {
-final doc = await FirebaseFirestore.instance
-    .collection('general_data')
-    .doc('currency_settings')
-    .get();
+Future<Map<String, dynamic>> loadCurrencySettings() async {
+  try {
+    final doc = await FirebaseFirestore.instance
+        .collection('general_data')
+        .doc('currency_settings')
+        .get();
 
-if (doc.exists) {
-final data = doc.data()!;
-return {
-'currency': data['selected_currency'] ?? 'CHF',
-'exchangeRates': {
-'CHF': 1.0,
-'EUR': (data['exchange_rates']?['EUR'] ?? 0.96).toDouble(),
-'USD': (data['exchange_rates']?['USD'] ?? 1.08).toDouble(),
-}
-};
-}
-} catch (e) {
-print('Fehler beim Laden der Währungseinstellungen: $e');
-}
+    if (doc.exists) {
+      final data = doc.data()!;
+      return {
+        'currency': data['selected_currency'] ?? 'CHF',
+        'exchangeRates': {
+          'CHF': 1.0,
+          'EUR': (data['exchange_rates']?['EUR'] ?? 0.96).toDouble(),
+          'USD': (data['exchange_rates']?['USD'] ?? 1.08).toDouble(),
+        }
+      };
+    }
+  } catch (e) {
+    print('Fehler beim Laden der Währungseinstellungen: $e');
+  }
 
 // Fallback-Werte
-return {
-'currency': 'CHF',
-'exchangeRates': {'CHF': 1.0, 'EUR': 0.96, 'USD': 1.08}
-};
+  return {
+    'currency': 'CHF',
+    'exchangeRates': {'CHF': 1.0, 'EUR': 0.96, 'USD': 1.08}
+  };
 }
 
 
@@ -2363,7 +2353,7 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
   }
 
 
-        print("yuppp");
+  print("yuppp");
   print("documentLanguageNotifier passed: $documentLanguageNotifier");
   final hasSelection = documentSelection.values.any((selected) => selected == true);
   selectionCompleteNotifier.value = hasSelection;
@@ -2439,8 +2429,8 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       roundingSettings = await SwissRounding.loadRoundingSettings();
 
       // Berechne den Gesamtbetrag
-      final basketSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_basket')
+      final basketSnapshot = await
+      UserBasketService.temporaryBasket
           .get();
 
       final calculations = await _calculateDiscountsForPreview(
@@ -2471,8 +2461,8 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       }
 
       // MwSt hinzufügen (Standard 8.1%)
-      final taxDoc = await FirebaseFirestore.instance
-          .collection('temporary_tax')
+      final taxDoc = await
+      UserBasketService.temporaryTax
           .doc('current_tax')
           .get();
 
@@ -2489,11 +2479,11 @@ Future<void> showDocumentSelectionBottomSheet(BuildContext context, {
       if (currency != 'CHF' && exchangeRates.containsKey(currency)) {
         totalAmount = totalAmount * exchangeRates[currency]!;
       }
-totalAmount = SwissRounding.round(
-  totalAmount,
-  currency: currency,
-  roundingSettings: roundingSettings,
-);
+      totalAmount = SwissRounding.round(
+        totalAmount,
+        currency: currency,
+        roundingSettings: roundingSettings,
+      );
 
 
     } catch (e) {
@@ -4009,8 +3999,8 @@ totalAmount = SwissRounding.round(
                             print('useAsCommercialInvoiceDate: $useAsCommercialInvoiceDate');
 
                             // Speichere Lieferschein-Einstellungen
-                            await FirebaseFirestore.instance
-                                .collection('temporary_document_settings')
+                            await
+                            UserBasketService.temporaryDocumentSettings
                                 .doc('delivery_note_settings')
                                 .set({
                               'delivery_date': selectedDeliveryDate != null
@@ -4025,8 +4015,8 @@ totalAmount = SwissRounding.round(
 
                             // NEU: Wenn Checkbox aktiv, auch Handelsrechnungsdatum aktualisieren
                             if (useAsCommercialInvoiceDate && selectedDeliveryDate != null) {
-                              await FirebaseFirestore.instance
-                                  .collection('temporary_document_settings')
+                              await
+                              UserBasketService.temporaryDocumentSettings
                                   .doc('tara_settings')
                                   .set({
                                 'commercial_invoice_date': Timestamp.fromDate(selectedDeliveryDate!),
@@ -4201,8 +4191,8 @@ totalAmount = SwissRounding.round(
               defaultText.startsWith('Domizil Käufer,');
 
           if (defaultText.isEmpty || isDomicile) {
-            final customerSnapshot = await FirebaseFirestore.instance
-                .collection('temporary_customer')
+            final customerSnapshot = await
+            UserBasketService.temporaryCustomer
                 .limit(1)
                 .get();
 
@@ -5055,8 +5045,8 @@ totalAmount = SwissRounding.round(
 
                                                   String initialText = '';
                                                   if (name == 'DAP') {
-                                                    FirebaseFirestore.instance
-                                                        .collection('temporary_customer')
+
+                                                    UserBasketService.temporaryCustomer
                                                         .limit(1)
                                                         .get()
                                                         .then((snapshot) {
@@ -5432,15 +5422,15 @@ totalAmount = SwissRounding.round(
                         child: ElevatedButton.icon(
                           onPressed: () async {
                             // Erweiterte Tara-Einstellungen speichern
-                            await FirebaseFirestore.instance
-                                .collection('temporary_document_settings')
+                            await
+                            UserBasketService.temporaryDocumentSettings
                                 .doc('tara_settings')
                                 .set({
                               'number_of_packages': numberOfPackages,
                               'packaging_weight': packagingWeight,
                               'packaging_volume': packagingVolume,
                               'commercial_invoice_date'
-                              'commercial_invoice_origin_declaration': originDeclaration,
+                                  'commercial_invoice_origin_declaration': originDeclaration,
                               'commercial_invoice_cites': cites,
                               'commercial_invoice_export_reason': exportReason,
                               'commercial_invoice_incoterms': incoterms,
@@ -5466,8 +5456,8 @@ totalAmount = SwissRounding.round(
                             if (useAsDeliveryDate && commercialInvoiceDate != null) {
                               // Lade zuerst bestehende Einstellungen um payment_date zu erhalten
                               final existingDeliverySettings = await DocumentSelectionManager.loadDeliveryNoteSettings();
-                              await FirebaseFirestore.instance
-                                  .collection('temporary_document_settings')
+                              await
+                              UserBasketService.temporaryDocumentSettings
                                   .doc('delivery_note_settings')
                                   .set({
                                 'delivery_date': Timestamp.fromDate(commercialInvoiceDate!),
@@ -5578,8 +5568,8 @@ totalAmount = SwissRounding.round(
     final Map<String, Map<String, TextEditingController>> packageControllers = {};
 
 // Lade die Produkte aus temporary_basket (wie bei den anderen Dokumenten)
-    final basketSnapshot = await FirebaseFirestore.instance
-        .collection('temporary_basket')
+    final basketSnapshot = await
+    UserBasketService.temporaryBasket
         .get();
 
 // WICHTIG: Stelle sicher, dass ALLE Felder kopiert werden
@@ -5757,400 +5747,400 @@ totalAmount = SwissRounding.round(
                       top: Radius.circular(20),
                     ),
                   ),
-              child: Column(
-                children: [
-                  // Drag Handle
-                  Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.outline.withOpacity(0.4),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
+                  child: Column(
+                    children: [
+                      // Drag Handle
+                      Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.outline.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
 
-                  // Header
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primaryContainer,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: getAdaptiveIcon(
-                            iconName: 'view_list',
-                            defaultIcon: Icons.view_list,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Packliste',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(dialogContext),
-                          icon: getAdaptiveIcon(
-                            iconName: 'close',
-                            defaultIcon: Icons.close,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Content
-                  Expanded(
-                    child: SingleChildScrollView(
-                        controller: scrollController,
-                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Übersicht verfügbare Produkte
-                          // Übersicht verfügbare Produkte
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(8),
+                      // Header
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: getAdaptiveIcon(
+                                iconName: 'view_list',
+                                defaultIcon: Icons.view_list,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        'Verfügbare Produkte',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
-                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ),
-                                    // NEU: Schnell-Button
-                                    if (packages.isNotEmpty)
-                                      TextButton.icon(
-                                        onPressed: () {
-                                          _assignAllItemsToPackage(
-                                            packages.first, // Paket 1
-                                            items,
-                                            packages,
-                                            setDialogState,
-                                          );
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('Alle Produkte wurden Paket 1 zugewiesen'),
-                                              duration: Duration(seconds: 2),
-                                            ),
-                                          );
-                                        },
-                                        icon:getAdaptiveIcon(iconName: 'inbox', defaultIcon:
-                                          Icons.inbox,
-                                          size: 16,
-                                        ),
-                                        label: const Text(
-                                          'Alle → Paket 1',
-                                          style: TextStyle(fontSize: 12),
-                                        ),
-                                        style: TextButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          minimumSize: Size.zero,
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                ...items.map((item) {
-                                  final assignedQuantity = _getAssignedQuantity(item, packages);
-                                  final remainingQuantity = (item['quantity'] as num? ?? 0).toDouble() - assignedQuantity;
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Packliste',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              icon: getAdaptiveIcon(
+                                iconName: 'close',
+                                defaultIcon: Icons.close,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
 
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 2),
-                                    child: Row(
+                      // Content
+                      Expanded(
+                        child: SingleChildScrollView(
+                          controller: scrollController,
+                          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Übersicht verfügbare Produkte
+                              // Übersicht verfügbare Produkte
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
                                       children: [
                                         Expanded(
                                           child: Text(
-                                            item['product_name'] ?? '',
-                                            style: const TextStyle(fontSize: 12),
-                                          ),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: remainingQuantity > 0
-                                                ? Colors.orange.withOpacity(0.2)
-                                                : Colors.green.withOpacity(0.2),
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: Text(
-                                            '$remainingQuantity/${item['quantity']} verbleibend',
+                                            'Verfügbare Produkte',
                                             style: TextStyle(
-                                              fontSize: 10,
-                                              color: remainingQuantity > 0 ? Colors.orange[700] : Colors.green[700],
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                                             ),
                                           ),
                                         ),
+                                        // NEU: Schnell-Button
+                                        if (packages.isNotEmpty)
+                                          TextButton.icon(
+                                            onPressed: () {
+                                              _assignAllItemsToPackage(
+                                                packages.first, // Paket 1
+                                                items,
+                                                packages,
+                                                setDialogState,
+                                              );
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('Alle Produkte wurden Paket 1 zugewiesen'),
+                                                  duration: Duration(seconds: 2),
+                                                ),
+                                              );
+                                            },
+                                            icon:getAdaptiveIcon(iconName: 'inbox', defaultIcon:
+                                            Icons.inbox,
+                                              size: 16,
+                                            ),
+                                            label: const Text(
+                                              'Alle → Paket 1',
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                            style: TextButton.styleFrom(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                              minimumSize: Size.zero,
+                                            ),
+                                          ),
                                       ],
                                     ),
-                                  );
-                                }).toList(),
-                              ],
-                            ),
-                          ),
+                                    const SizedBox(height: 8),
+                                    ...items.map((item) {
+                                      final assignedQuantity = _getAssignedQuantity(item, packages);
+                                      final remainingQuantity = (item['quantity'] as num? ?? 0).toDouble() - assignedQuantity;
 
-                          const SizedBox(height: 24),
-
-                          // Pakete verwalten
-                          Row(
-                            children: [
-                              Text(
-                                'Pakete',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Theme.of(context).colorScheme.primary,
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 2),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                item['product_name'] ?? '',
+                                                style: const TextStyle(fontSize: 12),
+                                              ),
+                                            ),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: remainingQuantity > 0
+                                                    ? Colors.orange.withOpacity(0.2)
+                                                    : Colors.green.withOpacity(0.2),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                '$remainingQuantity/${item['quantity']} verbleibend',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: remainingQuantity > 0 ? Colors.orange[700] : Colors.green[700],
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ],
                                 ),
                               ),
-                              const Spacer(),
-                              ElevatedButton.icon(
-                                onPressed: () async {
-                                  final newPackageId = DateTime.now().millisecondsSinceEpoch.toString();
 
-                                  // Lade Standardpaket "Karton" aus Firestore
-                                  String? defaultPackageId;
-                                  String defaultPackagingType = '';
-                                  String defaultPackagingTypeEn = '';
-                                  double defaultLength = 0.0;
-                                  double defaultWidth = 0.0;
-                                  double defaultHeight = 0.0;
-                                  double defaultWeight = 0.0;
+                              const SizedBox(height: 24),
 
-                                  try {
-                                    // Zuerst Standardpaket suchen (isDefault: true)
-                                    var defaultPackageQuery = await FirebaseFirestore.instance
-                                        .collection('standardized_packages')
-                                        .where('isDefault', isEqualTo: true)
-                                        .limit(1)
-                                        .get();
+                              // Pakete verwalten
+                              Row(
+                                children: [
+                                  Text(
+                                    'Pakete',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  ElevatedButton.icon(
+                                    onPressed: () async {
+                                      final newPackageId = DateTime.now().millisecondsSinceEpoch.toString();
 
-                                    // Fallback auf "Karton" falls kein Standard definiert
-                                    if (defaultPackageQuery.docs.isEmpty) {
-                                      defaultPackageQuery = await FirebaseFirestore.instance
-                                          .collection('standardized_packages')
-                                          .where('name', isEqualTo: 'Karton')
-                                          .limit(1)
-                                          .get();
-                                    }
+                                      // Lade Standardpaket "Karton" aus Firestore
+                                      String? defaultPackageId;
+                                      String defaultPackagingType = '';
+                                      String defaultPackagingTypeEn = '';
+                                      double defaultLength = 0.0;
+                                      double defaultWidth = 0.0;
+                                      double defaultHeight = 0.0;
+                                      double defaultWeight = 0.0;
 
-                                    if (defaultPackageQuery.docs.isNotEmpty) {
-                                      final defaultDoc = defaultPackageQuery.docs.first;
-                                      final defaultData = defaultDoc.data();
-                                      defaultPackageId = defaultDoc.id;
-                                      defaultPackagingType = defaultData['name'] ?? '';
-                                      defaultPackagingTypeEn = defaultData['nameEn'] ?? '';
-                                      defaultLength = (defaultData['length'] as num?)?.toDouble() ?? 0.0;
-                                      defaultWidth = (defaultData['width'] as num?)?.toDouble() ?? 0.0;
-                                      defaultHeight = (defaultData['height'] as num?)?.toDouble() ?? 0.0;
-                                      defaultWeight = (defaultData['weight'] as num?)?.toDouble() ?? 0.0;
-                                    }
-                                  } catch (e) {
-                                    print('Fehler beim Laden des Standardpakets: $e');
-                                  }
-                                  setDialogState(() {
-                                    // Erstelle Controller für das neue Paket mit Standardwerten
-                                    packageControllers[newPackageId] = {
-                                      'length': TextEditingController(text: defaultLength.toString()),
-                                      'width': TextEditingController(text: defaultWidth.toString()),
-                                      'height': TextEditingController(text: defaultHeight.toString()),
-                                      'weight': TextEditingController(text: defaultWeight.toStringAsFixed(2)),
-                                      'custom_name': TextEditingController(text: ''),
-                                      'gross_weight': TextEditingController(text: ''),
-                                    };
+                                      try {
+                                        // Zuerst Standardpaket suchen (isDefault: true)
+                                        var defaultPackageQuery = await FirebaseFirestore.instance
+                                            .collection('standardized_packages')
+                                            .where('isDefault', isEqualTo: true)
+                                            .limit(1)
+                                            .get();
 
-                                    packages.add({
-                                      'id': newPackageId,
-                                      'name': '${packages.length + 1}',
-                                      'packaging_type': defaultPackagingType,
-                                      'packaging_type_en': defaultPackagingTypeEn,
-                                      'length': defaultLength,
-                                      'width': defaultWidth,
-                                      'height': defaultHeight,
-                                      'tare_weight': defaultWeight,
-                                      'items': <Map<String, dynamic>>[],
-                                      'standard_package_id': defaultPackageId,
-                                      'gross_weight': null,
-                                    });
-                                  });
-                                },
-                                icon: getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add, size: 16),
-                                label: const Text('Paket hinzufügen'),
-                                style: ElevatedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                  minimumSize: Size.zero,
-                                ),
+                                        // Fallback auf "Karton" falls kein Standard definiert
+                                        if (defaultPackageQuery.docs.isEmpty) {
+                                          defaultPackageQuery = await FirebaseFirestore.instance
+                                              .collection('standardized_packages')
+                                              .where('name', isEqualTo: 'Karton')
+                                              .limit(1)
+                                              .get();
+                                        }
+
+                                        if (defaultPackageQuery.docs.isNotEmpty) {
+                                          final defaultDoc = defaultPackageQuery.docs.first;
+                                          final defaultData = defaultDoc.data();
+                                          defaultPackageId = defaultDoc.id;
+                                          defaultPackagingType = defaultData['name'] ?? '';
+                                          defaultPackagingTypeEn = defaultData['nameEn'] ?? '';
+                                          defaultLength = (defaultData['length'] as num?)?.toDouble() ?? 0.0;
+                                          defaultWidth = (defaultData['width'] as num?)?.toDouble() ?? 0.0;
+                                          defaultHeight = (defaultData['height'] as num?)?.toDouble() ?? 0.0;
+                                          defaultWeight = (defaultData['weight'] as num?)?.toDouble() ?? 0.0;
+                                        }
+                                      } catch (e) {
+                                        print('Fehler beim Laden des Standardpakets: $e');
+                                      }
+                                      setDialogState(() {
+                                        // Erstelle Controller für das neue Paket mit Standardwerten
+                                        packageControllers[newPackageId] = {
+                                          'length': TextEditingController(text: defaultLength.toString()),
+                                          'width': TextEditingController(text: defaultWidth.toString()),
+                                          'height': TextEditingController(text: defaultHeight.toString()),
+                                          'weight': TextEditingController(text: defaultWeight.toStringAsFixed(2)),
+                                          'custom_name': TextEditingController(text: ''),
+                                          'gross_weight': TextEditingController(text: ''),
+                                        };
+
+                                        packages.add({
+                                          'id': newPackageId,
+                                          'name': '${packages.length + 1}',
+                                          'packaging_type': defaultPackagingType,
+                                          'packaging_type_en': defaultPackagingTypeEn,
+                                          'length': defaultLength,
+                                          'width': defaultWidth,
+                                          'height': defaultHeight,
+                                          'tare_weight': defaultWeight,
+                                          'items': <Map<String, dynamic>>[],
+                                          'standard_package_id': defaultPackageId,
+                                          'gross_weight': null,
+                                        });
+                                      });
+                                    },
+                                    icon: getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add, size: 16),
+                                    label: const Text('Paket hinzufügen'),
+                                    style: ElevatedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      minimumSize: Size.zero,
+                                    ),
+                                  ),
+                                ],
                               ),
+
+                              const SizedBox(height: 16),
+
+                              // Pakete anzeigen
+                              ...packages.asMap().entries.map((entry) {
+                                final index = entry.key;
+                                final package = entry.value;
+                                package['name'] = '${index + 1}';
+                                return _buildPackageCard(
+                                  context,
+                                  package,
+                                  index,
+                                  items,
+                                  packages,
+                                  setDialogState,
+                                  packageControllers, // NEU: Controller Map übergeben
+                                );
+                              }).toList(),
                             ],
                           ),
-
-                          const SizedBox(height: 16),
-
-                          // Pakete anzeigen
-                          ...packages.asMap().entries.map((entry) {
-                            final index = entry.key;
-                            final package = entry.value;
-                            package['name'] = '${index + 1}';
-                            return _buildPackageCard(
-                              context,
-                              package,
-                              index,
-                              items,
-                              packages,
-                              setDialogState,
-                              packageControllers, // NEU: Controller Map übergeben
-                            );
-                          }).toList(),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
 
-                  // Action Buttons
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 36),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () {
-                              // Schließe den Dialog
-                              Navigator.pop(dialogContext);
+                      // Action Buttons
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 36),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  // Schließe den Dialog
+                                  Navigator.pop(dialogContext);
 
-                              // Dispose alle Controller nach dem Schließen
-                              Future.delayed(const Duration(milliseconds: 100), () {
-                                packageControllers.forEach((packageId, controllers) {
-                                  controllers.forEach((_, controller) {
-                                    try {
-                                      controller.dispose();
-                                    } catch (e) {
-                                      // Controller war bereits disposed
-                                    }
-                                  });
-                                });
-                                packageControllers.clear();
-                              });
-                            },
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text('Abbrechen'),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () async {
-                              // Speichere die Packlisten-Einstellungen
-                              await DocumentSelectionManager.savePackingListSettings(packages);
-
-                              // NEU: Berechne Gesamtgewicht und Volumen aus allen Paketen
-                              double totalPackagingWeight = 0.0;
-                              double totalPackagingVolume = 0.0;
-
-                              for (final package in packages) {
-                                // Tara-Gewicht addieren
-                                totalPackagingWeight += (package['tare_weight'] as num?)?.toDouble() ?? 0.0;
-
-                                // Volumen berechnen: Länge × Breite × Höhe (cm → m³)
-                                // Die Werte sind in cm gespeichert, also cm³ → m³ = / 1.000.000
-                                final length = (package['length'] as num?)?.toDouble() ?? 0.0;
-                                final width = (package['width'] as num?)?.toDouble() ?? 0.0;
-                                final height = (package['height'] as num?)?.toDouble() ?? 0.0;
-
-                                // cm³ zu m³: dividiere durch 1.000.000
-                                final volumeM3 = (length * width * height) / 1000000;
-                                totalPackagingVolume += volumeM3;
-                              }
-
-                              // NEU: Aktualisiere die Handelsrechnungs-Einstellungen mit den berechneten Werten
-                              await FirebaseFirestore.instance
-                                  .collection('temporary_document_settings')
-                                  .doc('tara_settings')
-                                  .set({
-                                'number_of_packages': packages.length,
-                                'packaging_weight': totalPackagingWeight,
-                                'packaging_volume': totalPackagingVolume,
-                                'timestamp': FieldValue.serverTimestamp(),
-                              }, SetOptions(merge: true));
-
-                              print('Packliste gespeichert: ${packages.length} Pakete, '
-                                  '${totalPackagingWeight.toStringAsFixed(2)} kg, '
-                                  '${totalPackagingVolume.toStringAsFixed(6)} m³');
-
-                              // Schließe den Dialog
-                              if (dialogContext.mounted) {
-                                Navigator.pop(dialogContext);
-
-                                // Zeige Erfolgsmeldung
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Packliste gespeichert (${packages.length} Pakete, '
-                                          '${totalPackagingWeight.toStringAsFixed(2)} kg)',
-                                    ),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-
-                                // Dispose ALLE Controller nach dem Schließen des Dialogs
-                                Future.delayed(const Duration(milliseconds: 100), () {
-                                  packageControllers.forEach((packageId, controllers) {
-                                    controllers.forEach((_, controller) {
-                                      try {
-                                        controller.dispose();
-                                      } catch (e) {
-                                        // Controller war bereits disposed
-                                      }
+                                  // Dispose alle Controller nach dem Schließen
+                                  Future.delayed(const Duration(milliseconds: 100), () {
+                                    packageControllers.forEach((packageId, controllers) {
+                                      controllers.forEach((_, controller) {
+                                        try {
+                                          controller.dispose();
+                                        } catch (e) {
+                                          // Controller war bereits disposed
+                                        }
+                                      });
                                     });
+                                    packageControllers.clear();
                                   });
-                                  packageControllers.clear();
-                                });
-                              }
-                            },
-                            icon: getAdaptiveIcon(
-                              iconName: 'save',
-                              defaultIcon: Icons.save,
-                              color: Theme.of(context).colorScheme.onPrimary,
-                            ),
-                            label: const Text('Speichern'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Theme.of(context).colorScheme.primary,
-                              foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text('Abbrechen'),
                               ),
                             ),
-                          ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  // Speichere die Packlisten-Einstellungen
+                                  await DocumentSelectionManager.savePackingListSettings(packages);
+
+                                  // NEU: Berechne Gesamtgewicht und Volumen aus allen Paketen
+                                  double totalPackagingWeight = 0.0;
+                                  double totalPackagingVolume = 0.0;
+
+                                  for (final package in packages) {
+                                    // Tara-Gewicht addieren
+                                    totalPackagingWeight += (package['tare_weight'] as num?)?.toDouble() ?? 0.0;
+
+                                    // Volumen berechnen: Länge × Breite × Höhe (cm → m³)
+                                    // Die Werte sind in cm gespeichert, also cm³ → m³ = / 1.000.000
+                                    final length = (package['length'] as num?)?.toDouble() ?? 0.0;
+                                    final width = (package['width'] as num?)?.toDouble() ?? 0.0;
+                                    final height = (package['height'] as num?)?.toDouble() ?? 0.0;
+
+                                    // cm³ zu m³: dividiere durch 1.000.000
+                                    final volumeM3 = (length * width * height) / 1000000;
+                                    totalPackagingVolume += volumeM3;
+                                  }
+
+                                  // NEU: Aktualisiere die Handelsrechnungs-Einstellungen mit den berechneten Werten
+                                  await
+                                  UserBasketService.temporaryDocumentSettings
+                                      .doc('tara_settings')
+                                      .set({
+                                    'number_of_packages': packages.length,
+                                    'packaging_weight': totalPackagingWeight,
+                                    'packaging_volume': totalPackagingVolume,
+                                    'timestamp': FieldValue.serverTimestamp(),
+                                  }, SetOptions(merge: true));
+
+                                  print('Packliste gespeichert: ${packages.length} Pakete, '
+                                      '${totalPackagingWeight.toStringAsFixed(2)} kg, '
+                                      '${totalPackagingVolume.toStringAsFixed(6)} m³');
+
+                                  // Schließe den Dialog
+                                  if (dialogContext.mounted) {
+                                    Navigator.pop(dialogContext);
+
+                                    // Zeige Erfolgsmeldung
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Packliste gespeichert (${packages.length} Pakete, '
+                                              '${totalPackagingWeight.toStringAsFixed(2)} kg)',
+                                        ),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+
+                                    // Dispose ALLE Controller nach dem Schließen des Dialogs
+                                    Future.delayed(const Duration(milliseconds: 100), () {
+                                      packageControllers.forEach((packageId, controllers) {
+                                        controllers.forEach((_, controller) {
+                                          try {
+                                            controller.dispose();
+                                          } catch (e) {
+                                            // Controller war bereits disposed
+                                          }
+                                        });
+                                      });
+                                      packageControllers.clear();
+                                    });
+                                  }
+                                },
+                                icon: getAdaptiveIcon(
+                                  iconName: 'save',
+                                  defaultIcon: Icons.save,
+                                  color: Theme.of(context).colorScheme.onPrimary,
+                                ),
+                                label: const Text('Speichern'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Theme.of(context).colorScheme.primary,
+                                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-          ));
+                ),
+              ));
         },
       ),
     );
@@ -6335,7 +6325,7 @@ totalAmount = SwissRounding.round(
                           child: Row(
                             children: [
                               getAdaptiveIcon(iconName: 'warning', defaultIcon:
-                                Icons.warning,
+                              Icons.warning,
                                 color: Colors.orange[700],
                                 size: 20,
                               ),

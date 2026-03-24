@@ -60,8 +60,8 @@ class OrderService {
       if (quote == null) throw Exception('Angebot nicht gefunden');
 
       // Prüfe Verfügbarkeit nochmals
-      final availability = await QuoteService.checkAvailability(quote.items, excludeQuoteId: quoteId);
-
+      final availabilityResult = await QuoteService.checkAvailability(quote.items, excludeQuoteId: quoteId);
+      final availability = availabilityResult.quantities;
       // Sammle die benötigten Mengen pro Produkt (nur für normale Lagerprodukte)
       final Map<String, double> requiredQuantities = {};
 
@@ -78,6 +78,12 @@ class OrderService {
           final available = availability[barcode] ?? 0.0;
 
           if (available < 1) {
+            final cartUserName = availabilityResult.cartUserNames[barcode];
+            if (cartUserName != null) {
+              throw Exception(
+                  'Das Online-Shop-Produkt "${item['product_name']}" liegt im Warenkorb von $cartUserName.'
+              );
+            }
             throw Exception(
                 'Das Online-Shop-Produkt "${item['product_name']}" ist nicht mehr verfügbar.'
             );
@@ -241,6 +247,9 @@ class OrderService {
               'order_id': orderId,
               'order_number': orderNumber,
               'in_cart': false,
+              'cart_timestamp': FieldValue.delete(),
+              'cart_user_id': FieldValue.delete(),
+              'cart_user_name': FieldValue.delete(),
             });
 
             // Online-Shop Menge im Inventory reduzieren
@@ -252,6 +261,7 @@ class OrderService {
             print('🛒 Online-Shop Item als verkauft markiert: $onlineShopBarcode');
           }
         }
+
 
         // Aktualisiere Lagerbestände für NICHT-reservierte Produkte
         for (final item in quote.items) {
@@ -285,7 +295,33 @@ class OrderService {
               'status': StockMovementStatus.confirmed.name,
               'timestamp': FieldValue.serverTimestamp(),
               'confirmedAt': FieldValue.serverTimestamp(),
+              // Online-Shop Barcode mitspeichern für Stornierung
+              if (item['online_shop_barcode'] != null)
+                'onlineShopBarcode': item['online_shop_barcode'],
             });
+
+            // NEU: Online-Shop Items als verkauft markieren
+            if (item['is_online_shop_item'] == true && item['online_shop_barcode'] != null) {
+              final onlineShopBarcode = item['online_shop_barcode'] as String;
+              final onlineShopRef = _firestore.collection('onlineshop').doc(onlineShopBarcode);
+
+              transaction.update(onlineShopRef, {
+                'sold': true,
+                'sold_at': FieldValue.serverTimestamp(),
+                'order_id': orderId,
+                'order_number': orderNumber,
+                'in_cart': false,
+                'cart_timestamp': FieldValue.delete(),
+                'cart_user_id': FieldValue.delete(),
+                'cart_user_name': FieldValue.delete(),
+              });
+
+              transaction.update(inventoryRef, {
+                'quantity_online_shop': FieldValue.increment(-1),
+              });
+
+              print('🛒 Online-Shop Item als verkauft markiert (nicht reserviert): $onlineShopBarcode');
+            }
           }
         }
       });
@@ -331,7 +367,7 @@ class OrderService {
         }
       });
       final roundingSettings = await SwissRounding.loadRoundingSettings();
-      
+
       // Generiere PDF basierend auf Dokumenttyp
       switch (documentType.toLowerCase()) {
         case 'rechnung':
@@ -481,17 +517,77 @@ class OrderService {
   }
 
   // Aktualisiere Auftragsstatus
-  static Future<void> updateOrderStatus(String orderId, OrderStatus status) async {
+  static Future<void> updateOrderStatus(
+      String orderId,
+      OrderStatus status, {
+        DateTime? shippedAt,
+      }) async {
+    final updateData = <String, dynamic>{
+      'status': status.name,
+      'status_updated_at': FieldValue.serverTimestamp(),
+    };
+    if (shippedAt != null) {
+      updateData['shippedAt'] = Timestamp.fromDate(shippedAt);
+    }
     await _firestore
         .collection('orders')
         .doc(orderId)
-        .update({
-      'status': status.name,
-      'status_updated_at': FieldValue.serverTimestamp(),
-    });
+        .update(updateData);
   }
 
 
+
+  // ─── Migration: shippedAt für alle shipped-Orders ohne shippedAt setzen ───────
+  // Setzt shippedAt = status_updated_at (bzw. orderDate als Fallback).
+  // Einmalig aufrufbar z.B. über einen Admin-Button.
+  static Future<Map<String, int>> migrateShippedAtDates() async {
+    int updated = 0;
+    int skipped = 0;
+    int errors = 0;
+
+    try {
+      final snapshot = await _firestore
+          .collection('orders')
+          .where('status', isEqualTo: 'shipped')
+          .get();
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+
+        // Überspringen wenn shippedAt bereits gesetzt
+        if (data['shippedAt'] != null) {
+          skipped++;
+          continue;
+        }
+
+        // Bestes verfügbares Datum: status_updated_at > orderDate
+        Timestamp? fallback = data['status_updated_at'] as Timestamp?;
+        fallback ??= data['orderDate'] as Timestamp?;
+
+        if (fallback == null) {
+          errors++;
+          continue;
+        }
+
+        try {
+          await _firestore.collection('orders').doc(doc.id).update({
+            'shippedAt': fallback,
+            'shippedAt_migrated': true, // Markierung dass migriert (nicht manuell gesetzt)
+          });
+          updated++;
+        } catch (e) {
+          print('❌ Migration Fehler für ${doc.id}: $e');
+          errors++;
+        }
+      }
+    } catch (e) {
+      print('❌ Migration abgebrochen: $e');
+    }
+
+    print('✅ Migration abgeschlossen: $updated aktualisiert, $skipped übersprungen, $errors Fehler');
+    return {'updated': updated, 'skipped': skipped, 'errors': errors};
+  }
+  // ─────────────────────────────────────────────────────────────────────────────
 
   // Lade Auftrag
   static Future<OrderX?> getOrder(String orderId) async {

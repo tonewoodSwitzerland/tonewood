@@ -2,6 +2,7 @@
 
 import 'dart:typed_data';
 import 'dart:io';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:intl/intl.dart';
@@ -13,11 +14,13 @@ import 'package:tonewood/analytics/sales/screens/sales_kpi_view.dart';
 import 'package:tonewood/analytics/sales/screens/sales_product_view.dart';
 import 'package:tonewood/analytics/sales/widgets/sales_info_dialog.dart';
 import 'package:tonewood/analytics/sales/widgets/sales_filter_dialog.dart';
-
+import 'package:tonewood/analytics/sales/screens/sales_customer_view.dart';
 import '../../../services/icon_helper.dart';
 import '../../../services/countries.dart';
-import '../../services/download_helper_web.dart';
 
+import '../../services/pdf_services/download_helper_stub.dart'
+if (dart.library.html) '../../services/pdf_services/download_helper_web.dart'
+if (dart.library.io) '../../services/pdf_services/download_helper_mobile.dart';
 import 'models/sales_filter.dart';
 import 'models/sales_analytics_models.dart';
 import 'services/sales_analytics_service.dart';
@@ -74,14 +77,15 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Column(
       children: [
-        // Navigation Bar
+        // Navigation Bar — kompakt mit Overflow-Menü
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             border: Border(
@@ -90,6 +94,7 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
           ),
           child: Row(
             children: [
+              // Nav-Tabs (scrollbar)
               Expanded(
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -98,15 +103,18 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
                       _buildNavButton(id: 'kpi', icon: Icons.dashboard, iconName: 'dashboard', label: 'Übersicht', tooltip: 'KPI-Übersicht'),
                       _buildNavButton(id: 'country', icon: Icons.public, iconName: 'public', label: 'Länder', tooltip: 'Länder-Analyse'),
                       _buildNavButton(id: 'product', icon: Icons.category, iconName: 'category', label: 'Produkte', tooltip: 'Produkt-Analyse'),
+                      _buildNavButton(id: 'customer', icon: Icons.people, iconName: 'people', label: 'Kunden', tooltip: 'Kunden-Analyse'),
                     ],
                   ),
                 ),
               ),
-              _buildExportButton(theme),
-              const SizedBox(width: 4),
+
+              // Filter-Button (bleibt sichtbar wegen Badge)
               _buildFilterButton(theme),
-              const SizedBox(width: 4),
-              _buildInfoButton(theme),
+
+
+              // Overflow-Menü (⋮) für Export + Info
+              _buildOverflowMenu(theme),
             ],
           ),
         ),
@@ -125,7 +133,8 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
   Widget _buildNavButton({
     required String id, required IconData icon, required String iconName,
     required String label, required String tooltip,
-  }) {
+  })
+  {
     final isSelected = _selectedView == id;
     final theme = Theme.of(context);
     final isCompact = MediaQuery.of(context).size.width < 500;
@@ -138,7 +147,7 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
           onTap: () => setState(() => _selectedView = id),
           borderRadius: BorderRadius.circular(8),
           child: Container(
-            padding: EdgeInsets.symmetric(horizontal: isCompact ? 8 : 12, vertical: 8),
+            padding: EdgeInsets.symmetric(horizontal: isCompact ? 6 : 8, vertical: 8),
             decoration: BoxDecoration(
               color: isSelected ? theme.colorScheme.primaryContainer : Colors.transparent,
               borderRadius: BorderRadius.circular(8),
@@ -148,7 +157,7 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
               children: [
                 getAdaptiveIcon(iconName: iconName, defaultIcon: icon, size: isCompact ? 18 : 20,
                     color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
-                const SizedBox(width: 6),
+                const SizedBox(width: 3),
                 Text(label, style: TextStyle(fontSize: isCompact ? 12 : 14,
                     color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal)),
@@ -327,7 +336,8 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
 
       } else if (format == 'detail_csv') {
         final sales = await _loadFilteredOrders();
-        bytes = Uint8List.fromList(await SalesCsvService.generateSalesDetailList(sales));
+
+        bytes = Uint8List.fromList(await SalesCsvService.generateSalesDetailList(sales, filter: _currentFilter));
         filename = 'Artikelliste_$dateStr.csv';
 
       } else {
@@ -393,13 +403,22 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
       final data = doc.data() as Map<String, dynamic>;
       if (data['status'] == 'cancelled') continue;
 
-      DateTime? orderDate;
-      final od = data['orderDate'];
-      if (od is Timestamp) orderDate = od.toDate();
-      if (orderDate == null) continue;
+      // FIX: Nur versendete Aufträge
+      if (data['status'] != 'shipped') continue;
 
-      if (filterStart != null && orderDate.isBefore(filterStart)) continue;
-      if (filterEnd != null && orderDate.isAfter(DateTime(filterEnd.year, filterEnd.month, filterEnd.day, 23, 59, 59))) continue;
+      // FIX: shippedAt bevorzugt, Fallback auf orderDate
+      DateTime? relevantDate;
+      final shippedAtRaw = data['shippedAt'];
+      final orderDateRaw = data['orderDate'];
+      if (shippedAtRaw is Timestamp) {
+        relevantDate = shippedAtRaw.toDate();
+      } else if (orderDateRaw is Timestamp) {
+        relevantDate = orderDateRaw.toDate();
+      }
+      if (relevantDate == null) continue;
+
+      if (filterStart != null && relevantDate.isBefore(filterStart)) continue;
+      if (filterEnd != null && relevantDate.isAfter(DateTime(filterEnd.year, filterEnd.month, filterEnd.day, 23, 59, 59))) continue;
 
       // Kostenstelle
       if (_currentFilter.costCenters?.isNotEmpty ?? false) {
@@ -414,15 +433,29 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
         if (dc == null || !_currentFilter.distributionChannels!.contains(dc['name']?.toString())) continue;
       }
 
+      // NEU: Länder-Filter
+      if (_currentFilter.countries?.isNotEmpty ?? false) {
+        final customer = data['customer'] as Map<String, dynamic>? ?? {};
+        final countryCode = customer['countryCode']?.toString() ?? customer['country']?.toString() ?? '';
+        if (!_currentFilter.countries!.contains(countryCode)) continue;
+      }
+
+      // NEU: Betrags-Filter
+      if (_currentFilter.minAmount != null || _currentFilter.maxAmount != null) {
+        final calculations = data['calculations'] as Map<String, dynamic>? ?? {};
+        final subtotal = (calculations['subtotal'] as num?)?.toDouble() ?? 0;
+        if (_currentFilter.minAmount != null && subtotal < _currentFilter.minAmount!) continue;
+        if (_currentFilter.maxAmount != null && subtotal > _currentFilter.maxAmount!) continue;
+      }
+
       result.add(data);
     }
 
     return result;
   }
-
   Future<void> _downloadOrShare(Uint8List bytes, String filename) async {
     if (kIsWeb) {
-      await DownloadHelper.downloadFile(bytes, filename);
+      DownloadHelper.downloadFile(bytes, filename);
     } else {
       final tempDir = await getTemporaryDirectory();
       final file = File('${tempDir.path}/$filename');
@@ -430,7 +463,61 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
       await Share.shareXFiles([XFile(file.path)], subject: filename);
     }
   }
-
+  Widget _buildOverflowMenu(ThemeData theme) {
+    return PopupMenuButton<String>(
+      icon: getAdaptiveIcon(
+        iconName: 'more_vert',
+        defaultIcon: Icons.more_vert,
+        size: 20,
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+      tooltip: 'Weitere Optionen',
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      offset: const Offset(0, 40),
+      onSelected: (value) {
+        switch (value) {
+          case 'export':
+            _showExportDialog();
+            break;
+          case 'info':
+            SalesInfoDialog.show(context, isDesktop: widget.isDesktopLayout);
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'export',
+          child: Row(
+            children: [
+              getAdaptiveIcon(
+                iconName: 'file_download',
+                defaultIcon: Icons.file_download,
+                size: 20,
+                color: theme.colorScheme.onSurface,
+              ),
+              const SizedBox(width: 12),
+              const Text('Exportieren'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'info',
+          child: Row(
+            children: [
+              getAdaptiveIcon(
+                iconName: 'info',
+                defaultIcon: Icons.info,
+                size: 20,
+                color: theme.colorScheme.onSurface,
+              ),
+              const SizedBox(width: 12),
+              const Text('Hilfe & Info'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
   // ============================================================
   // FILTER
   // ============================================================
@@ -471,11 +558,35 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
   }
 
   Future<void> _openFilterDialog() async {
-    final result = await showDialog<SalesFilter>(
-      context: context,
-      builder: (context) => SalesFilterDialog(initialFilter: _currentFilter),
-    );
-    if (result != null) setState(() => _currentFilter = result);
+    SalesFilter? result;
+
+    if (widget.isDesktopLayout || kIsWeb) {
+      // Desktop/Web: Dialog wie bisher
+      result = await showDialog<SalesFilter>(
+        context: context,
+        builder: (context) => SalesFilterDialog(initialFilter: _currentFilter),
+      );
+    } else {
+      // Mobile: Bottom Sheet
+      result = await showModalBottomSheet<SalesFilter>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => DraggableScrollableSheet(
+          initialChildSize: 0.92,
+          minChildSize: 0.5,
+          maxChildSize: 0.97,
+          expand: false,
+          builder: (context, scrollController) => ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            child: SalesFilterDialog(initialFilter: _currentFilter),
+          ),
+        ),
+      );
+    }
+
+    if (result != null) setState(() => _currentFilter = result!);
   }
 
   Widget _buildActiveFilterBar(ThemeData theme) {
@@ -517,6 +628,7 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
           // Chips
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
+            dragStartBehavior: DragStartBehavior.down, // <-- Scroll startet erst bei erkanntem Drag, nicht bei Tap
             child: Row(
               children: _buildFilterChipsList(theme),
             ),
@@ -769,9 +881,13 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
             const SizedBox(width: 4),
             Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: brandColor)),
             const SizedBox(width: 4),
-            GestureDetector(
+            InkWell(
               onTap: onRemove,
-              child: Icon(Icons.close, size: 13, color: brandColor.withOpacity(0.6)),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Icon(Icons.close, size: 13, color: brandColor.withOpacity(0.6)),
+              ),
             ),
           ],
         ),
@@ -831,6 +947,7 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
     switch (_selectedView) {
       case 'country': return SalesCountryView(filter: _currentFilter);
       case 'product': return SalesProductView(filter: _currentFilter);
+      case 'customer': return SalesCustomerView(filter: _currentFilter);
       case 'kpi':
       default: return SalesKpiView(filter: _currentFilter);
     }

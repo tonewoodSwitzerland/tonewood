@@ -1,8 +1,4 @@
 // lib/analytics/production/production_screen_analytics_new.dart
-//
-// Hauptscreen für Produktionsauswertung (Analytics).
-// Verwendet die neue flache production_batches Collection.
-// Export über den neuen ProductionExportService (Web + Mobile).
 
 import 'package:flutter/material.dart';
 import 'package:tonewood/production/production_batch_service.dart';
@@ -10,8 +6,9 @@ import 'package:tonewood/production/production_batch_service.dart';
 import '../../constants.dart';
 import '../../services/icon_helper.dart';
 import 'services/production_export_service.dart';
-import '../../production/production_overview_new.dart';
+import 'production_overview_new.dart';
 import '../../production/production_logs_view.dart';
+import 'widgets/production_info_dialog.dart';
 
 class ProductionAnalyticsScreen extends StatefulWidget {
   final bool isDesktopLayout;
@@ -22,7 +19,8 @@ class ProductionAnalyticsScreen extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<ProductionAnalyticsScreen> createState() => _ProductionAnalyticsScreenState();
+  State<ProductionAnalyticsScreen> createState() =>
+      _ProductionAnalyticsScreenState();
 }
 
 class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
@@ -46,6 +44,8 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = widget.isDesktopLayout;
+
     return Column(
       children: [
         // Tab Bar Header
@@ -61,11 +61,13 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
           ),
           child: Row(
             children: [
+              // Tabs
               Expanded(
                 child: TabBar(
                   controller: _tabController,
                   labelColor: Theme.of(context).colorScheme.primary,
-                  unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                  unselectedLabelColor:
+                  Theme.of(context).colorScheme.onSurfaceVariant,
                   indicatorColor: Theme.of(context).colorScheme.primary,
                   indicatorWeight: 3,
                   tabs: [
@@ -73,7 +75,10 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
                       icon: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          getAdaptiveIcon(iconName: 'dashboard', defaultIcon: Icons.dashboard, size: 20),
+                          getAdaptiveIcon(
+                              iconName: 'dashboard',
+                              defaultIcon: Icons.dashboard,
+                              size: 20),
                           const SizedBox(width: 8),
                           const Text('Übersicht'),
                         ],
@@ -83,7 +88,10 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
                       icon: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          getAdaptiveIcon(iconName: 'forest', defaultIcon: Icons.forest, size: 20),
+                          getAdaptiveIcon(
+                              iconName: 'forest',
+                              defaultIcon: Icons.forest,
+                              size: 20),
                           const SizedBox(width: 8),
                           const Text('Stämme'),
                         ],
@@ -92,33 +100,61 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
                   ],
                 ),
               ),
-              // Export Button (nur bei Stämme-Tab sichtbar)
+
+              // Aktions-Buttons rechts der Tabs
               ListenableBuilder(
                 listenable: _tabController,
                 builder: (context, child) {
-                  return AnimatedOpacity(
-                    opacity: _tabController.index == 1 ? 1.0 : 0.0,
-                    duration: const Duration(milliseconds: 200),
-                    child: IgnorePointer(
-                      ignoring: _tabController.index != 1,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: _isExporting
-                            ? const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                  final isLogsTab = _tabController.index == 1;
+
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Info-Button – immer sichtbar, Inhalt je nach Tab
+                      IconButton(
+                        icon: getAdaptiveIcon(
+                          iconName: 'info_outline',
+                          defaultIcon: Icons.info_outline,
+                          color: const Color(0xFF0F4A29),
+                        ),
+                        onPressed: () => ProductionInfoDialog.show(
+                          context,
+                          isDesktop: isDesktop,
+                          tab: isLogsTab ? 'logs' : 'overview',
+                        ),
+                        tooltip: 'Erklärung',
+                      ),
+
+                      // Export-Button – nur bei Stämme-Tab
+                      AnimatedOpacity(
+                        opacity: isLogsTab ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 200),
+                        child: IgnorePointer(
+                          ignoring: !isLogsTab,
+                          child: Padding(
+                            padding:
+                            const EdgeInsets.only(right: 8),
+                            child: _isExporting
+                                ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2),
+                              ),
+                            )
+                                : IconButton(
+                              onPressed: _showExportDialog,
+                              icon: getAdaptiveIcon(
+                                  iconName: 'download',
+                                  defaultIcon: Icons.download),
+                              tooltip: 'Exportieren',
+                            ),
                           ),
-                        )
-                            : IconButton(
-                          onPressed: _showExportDialog,
-                          icon: getAdaptiveIcon(iconName: 'download', defaultIcon: Icons.download),
-                          tooltip: 'Exportieren',
                         ),
                       ),
-                    ),
+                    ],
                   );
                 },
               ),
@@ -146,7 +182,7 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
   }
 
   // =============================================
-  // EXPORT DIALOG & METHODEN
+  // EXPORT
   // =============================================
 
   Future<void> _showExportDialog() async {
@@ -181,7 +217,10 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
                   color: Colors.blue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: getAdaptiveIcon(iconName: 'table_chart', defaultIcon: Icons.table_chart, color: Colors.blue),
+                child: getAdaptiveIcon(
+                    iconName: 'table_chart',
+                    defaultIcon: Icons.table_chart,
+                    color: Colors.blue),
               ),
               title: const Text('CSV'),
               subtitle: const Text('Alle Produktionsdaten als CSV'),
@@ -198,7 +237,10 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
                   color: Colors.red.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: getAdaptiveIcon(iconName: 'picture_as_pdf', defaultIcon: Icons.picture_as_pdf, color: Colors.red),
+                child: getAdaptiveIcon(
+                    iconName: 'picture_as_pdf',
+                    defaultIcon: Icons.picture_as_pdf,
+                    color: Colors.red),
               ),
               title: const Text('PDF Report'),
               subtitle: const Text('Chargenliste mit Zusammenfassung'),
@@ -215,7 +257,10 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
                   color: Colors.deepPurple.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: getAdaptiveIcon(iconName: 'analytics', defaultIcon: Icons.analytics, color: Colors.deepPurple),
+                child: getAdaptiveIcon(
+                    iconName: 'analytics',
+                    defaultIcon: Icons.analytics,
+                    color: Colors.deepPurple),
               ),
               title: const Text('PDF mit Analyse'),
               subtitle: const Text('Chargenliste + Verteilungsanalyse'),
@@ -256,7 +301,9 @@ class _ProductionAnalyticsScreenState extends State<ProductionAnalyticsScreen>
       await ProductionExportService.exportPdf(
         batches,
         includeAnalytics: includeAnalytics,
-        activeFilters: {'years': [_selectedYear.toString()]},
+        activeFilters: {
+          'years': [_selectedYear.toString()]
+        },
       );
       if (mounted) AppToast.show(message: 'PDF Export erfolgreich', height: h);
     } catch (e) {

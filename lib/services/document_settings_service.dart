@@ -6,7 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import '../orders/order_model.dart';
 import '../services/icon_helper.dart';
-import '../services/additional_text_manager.dart';
+import '../quotes/additional_text_manager.dart';
 
 class DocumentSettingsService {
 

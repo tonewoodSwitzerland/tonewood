@@ -370,6 +370,26 @@ class PackageCardWidget extends StatelessWidget {
                 });
               },
             ),
+
+            // ── Stapelbar ──
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: CheckboxListTile(
+                title: const Text('Stapelbar', style: TextStyle(fontSize: 14)),
+                subtitle: const Text('Kann diese Palette gestapelt werden?', style: TextStyle(fontSize: 12)),
+                value: package['stackable'] ?? false,
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                onChanged: (value) {
+                  setModalState(() {
+                    package['stackable'] = value ?? false;
+                  });
+                },
+              ),
+            ),
+
+
             if (selectedStandardPackageId != null && selectedStandardPackageId != 'custom')
               Padding(
                 padding: const EdgeInsets.only(top: 8),

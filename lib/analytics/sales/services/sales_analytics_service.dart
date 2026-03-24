@@ -81,13 +81,50 @@ class SalesAnalyticsService {
         }
       }
 
-      // Aggregations-Variablen — Warenwert (subtotal)
+      // Aggregations-Variablen — Warenwert (net_amount, nach Rabatten)
       double totalRevenue = 0;
       double yearRevenue = 0;
       double monthRevenue = 0;
       double previousYearRevenue = 0;
       double previousMonthRevenue = 0;
       Map<String, double> monthlyRevenue = {};
+
+      // Aggregations-Variablen — Rabatt (subtotal - net_amount)
+      double totalDiscount = 0;
+      double yearDiscount = 0;
+      double monthDiscount = 0;
+
+      double totalGratisValue = 0;
+      double yearGratisValue = 0;
+      double monthGratisValue = 0;
+
+      // Aggregations-Variablen — Fracht
+      double totalFreight = 0;
+      double yearFreight = 0;
+      double monthFreight = 0;
+
+      // Aggregations-Variablen — Phytosanitary
+      double totalPhytosanitary = 0;
+      double yearPhytosanitary = 0;
+      double monthPhytosanitary = 0;
+
+      // Aggregations-Variablen — MwSt
+      double totalVat = 0;
+      double yearVat = 0;
+      double monthVat = 0;
+
+      // Aggregations-Variablen — Abschläge & Zuschläge
+      double totalDeductions = 0;
+      double yearDeductions = 0;
+      double monthDeductions = 0;
+      double totalSurcharges = 0;
+      double yearSurcharges = 0;
+      double monthSurcharges = 0;
+
+      // Aggregations-Variablen — Dienstleistungen
+      double totalServiceRevenue = 0;
+      double yearServiceRevenue = 0;
+      double monthServiceRevenue = 0;
 
       // Aggregations-Variablen — Brutto/Gesamtbetrag (total)
       double totalRevenueGross = 0;
@@ -98,10 +135,22 @@ class SalesAnalyticsService {
       Map<String, double> monthlyRevenueGross = {};
 
       int orderCount = 0;
+      Map<String, int> monthlyOrderCount = {};
+      int yearOrderCount = 0;
+      int monthOrderCount = 0;
+      int previousYearOrderCount = 0;
+      int previousMonthOrderCount = 0;
+
+      final List<OrderSummary> orders = []; // Detailtabelle
 
       int thermoItemCount = 0;
       int totalItemCount = 0;
       double thermoRevenue = 0;
+
+      int serviceItemCount = 0;
+      double serviceRevenue = 0;
+      List<Map<String, dynamic>> thermoDetails = [];
+      List<Map<String, dynamic>> serviceDetails = [];
 
       Map<String, CountryStats> countryStats = {};
       Map<String, WoodTypeStats> woodTypeStats = {};
@@ -111,14 +160,25 @@ class SalesAnalyticsService {
         final data = doc.data() as Map<String, dynamic>;
 
         // Order-Datum parsen
+        // Auswertungsdatum: shippedAt bevorzugt, Fallback auf orderDate
+        final shippedAtRaw = data['shippedAt'];
         final orderDateRaw = data['orderDate'];
+        DateTime? relevantDate;
+        if (shippedAtRaw is Timestamp) {
+          relevantDate = shippedAtRaw.toDate();
+        } else if (orderDateRaw is Timestamp) {
+          relevantDate = orderDateRaw.toDate();
+        } else if (orderDateRaw is String) {
+          relevantDate = DateTime.tryParse(orderDateRaw);
+        }
+        // orderDate für Detailinfos (Thermo/Service History-Einträge)
         DateTime? orderDate;
         if (orderDateRaw is Timestamp) {
           orderDate = orderDateRaw.toDate();
         } else if (orderDateRaw is String) {
           orderDate = DateTime.tryParse(orderDateRaw);
         }
-        if (orderDate == null) continue;
+        if (relevantDate == null) continue;
 
         // Stornierte Aufträge überspringen
         if (data['status'] == 'cancelled') continue;
@@ -131,8 +191,8 @@ class SalesAnalyticsService {
         // ============================================================
 
         // Zeitraum-Filter
-        if (filterStartDate != null && orderDate.isBefore(filterStartDate)) continue;
-        if (filterEndDate != null && orderDate.isAfter(
+        if (filterStartDate != null && relevantDate.isBefore(filterStartDate)) continue;
+        if (filterEndDate != null && relevantDate.isAfter(
             DateTime(filterEndDate.year, filterEndDate.month, filterEndDate.day, 23, 59, 59)
         )) continue;
 
@@ -202,10 +262,48 @@ class SalesAnalyticsService {
         final items = data['items'] as List<dynamic>? ?? [];
         if (items.isEmpty) continue;
 
-        // FIX: Umsatz aus calculations statt aus qty * price_per_unit
+        // Warenwert item-level — identisch zum CSV-Export
         final calculations = data['calculations'] as Map<String, dynamic>? ?? {};
-        final orderSubtotal = (calculations['subtotal'] as num?)?.toDouble() ?? 0;
         final orderTotal = (calculations['total'] as num?)?.toDouble() ?? 0;
+        final orderFreight = (calculations['freight'] as num?)?.toDouble() ?? 0;
+        final orderPhytosanitary = (calculations['phytosanitary'] as num?)?.toDouble() ?? 0;
+        final orderVat = (calculations['vat_amount'] as num?)?.toDouble() ?? 0;
+        final orderDeductions = (calculations['total_deductions'] as num?)?.toDouble() ?? 0;
+        final orderSurcharges = (calculations['total_surcharges'] as num?)?.toDouble() ?? 0;
+        final orderTotalDiscountAmount = (calculations['total_discount_amount'] as num?)?.toDouble() ?? 0;
+        double orderSubtotal = 0;
+        double orderItemDiscount = 0;
+        double orderServiceRev = 0;
+        double orderGratisValue = 0;
+        for (final rawItem in items) {
+          final it = rawItem as Map<String, dynamic>;
+          final qty      = (it['quantity']              as num?)?.toDouble() ?? 0;
+          final price    = (it['custom_price_per_unit'] as num?)?.toDouble()
+              ?? (it['price_per_unit']                  as num?)?.toDouble() ?? 0;
+          final disc     = it['discount'] as Map<String, dynamic>?;
+          final discPct  = (disc?['percentage']         as num?)?.toDouble() ?? 0;
+          final discAbs  = (disc?['absolute']           as num?)?.toDouble() ?? 0;
+          final lineDiscount = qty * price * discPct / 100 + discAbs;
+
+          if (it['is_service'] == true) {
+            orderServiceRev += qty * price - lineDiscount;
+          } else if (it['is_gratisartikel'] == true) {
+            // Gratisartikel: nicht in Warenwert
+            final gratisLineTotal = qty * price - lineDiscount;
+            orderGratisValue += gratisLineTotal;
+          } else {
+            orderSubtotal     += qty * price - lineDiscount;
+            orderItemDiscount += lineDiscount;
+          }
+        }
+// Order-Level Rabatt abziehen
+        final orderDiscount = orderItemDiscount + orderTotalDiscountAmount;
+        orderSubtotal -= orderTotalDiscountAmount;
+        totalGratisValue += orderGratisValue;
+
+
+
+
 
         bool hasMatchingItems = false;
         int orderItemCount = 0;
@@ -218,8 +316,17 @@ class SalesAnalyticsService {
           hasMatchingItems = true;
 
           final quantity = (itemData['quantity'] as num?)?.toInt() ?? 0;
-          final pricePerUnit = (itemData['price_per_unit'] as num?)?.toDouble() ?? 0;
-          final itemRevenue = quantity * pricePerUnit;
+          final pricePerUnit = (itemData['custom_price_per_unit'] as num?)?.toDouble()
+              ?? (itemData['price_per_unit'] as num?)?.toDouble() ?? 0;
+          final itemDisc = itemData['discount'] as Map<String, dynamic>?;
+          final itemDiscPct = (itemDisc?['percentage'] as num?)?.toDouble() ?? 0;
+          final itemDiscAbs = (itemDisc?['absolute'] as num?)?.toDouble() ?? 0;
+          // Umsatz für Stats: Gratisartikel mit 0 CHF
+          final itemRevenue = (itemData['is_gratisartikel'] == true)
+              ? 0.0
+              : quantity * pricePerUnit
+              - (quantity * pricePerUnit * itemDiscPct / 100)
+              - itemDiscAbs;
           final volumePerUnit = (itemData['volume_per_unit'] as num?)?.toDouble() ?? 0;
           final itemVolume = quantity * volumePerUnit; // m³ pro Item
 
@@ -238,6 +345,27 @@ class SalesAnalyticsService {
           if (hasThermal) {
             thermoItemCount++;
             thermoRevenue += itemRevenue;
+            thermoDetails.add({
+              'orderNumber': data['orderNumber'] ?? '',
+              'productName': itemData['product_name']?.toString() ?? 'Unbekannt',
+              'quantity': quantity,
+              'revenue': itemRevenue,
+              'orderDate': orderDate,
+            });
+          }
+
+          // Service-Stats
+          final isService = itemData['is_service'] == true;
+          if (isService) {
+            serviceItemCount++;
+            serviceRevenue += itemRevenue;
+            serviceDetails.add({
+              'orderNumber': data['orderNumber'] ?? '',
+              'productName': itemData['name']?.toString() ?? 'Unbekannt',
+              'quantity': quantity,
+              'revenue': itemRevenue,
+              'orderDate': orderDate,
+            });
           }
 
           // Holzart-Stats — NEU: mit Volume
@@ -288,31 +416,86 @@ class SalesAnalyticsService {
 
         // Order zählen — mit BEIDEN Umsatz-Werten
         orderCount++;
+
         totalRevenue += orderSubtotal;
         totalRevenueGross += orderTotal;
+        totalDiscount += orderDiscount;
+        totalFreight += orderFreight;
+        totalPhytosanitary += orderPhytosanitary;
+        totalVat += orderVat;
+        totalDeductions += orderDeductions;
+        totalSurcharges += orderSurcharges;
+        totalServiceRevenue += orderServiceRev;
 
-        // Zeitraum-Umsätze
-        if (orderDate.isAfter(currentYearStart) || orderDate.isAtSameMomentAs(currentYearStart)) {
+        // Detailtabelle befüllen
+        final firstName = customer['firstName'] as String? ?? '';
+        final lastName = customer['lastName'] as String? ?? '';
+        final company = customer['company'] as String? ?? '';
+        final customerName = company.isNotEmpty ? company : '$firstName $lastName'.trim();
+        final metadata = data['metadata'] as Map<String, dynamic>? ?? {};
+        orders.add(OrderSummary(
+          orderId: doc.id,
+          orderNumber: data['orderNumber']?.toString() ?? '',
+          customerName: customerName.isEmpty ? 'Unbekannt' : customerName,
+          countryCode: countryCode,
+          relevantDate: relevantDate,
+          subtotal: orderSubtotal,
+          total: orderTotal,
+          discount: orderDiscount,
+          itemCount: orderItemCount,
+          currency: metadata['currency']?.toString() ?? 'CHF',
+          freight: orderFreight,
+          phytosanitary: orderPhytosanitary,
+          serviceRevenue: orderServiceRev,
+          vat: orderVat,
+          deductions: orderDeductions,
+          surcharges: orderSurcharges,
+          netAmount: (calculations['net_amount'] as num?)?.toDouble() ?? 0,
+        ));
+
+        // Zeitraum-Umsätze + Order-Counts
+        if (relevantDate.isAfter(currentYearStart) || relevantDate.isAtSameMomentAs(currentYearStart)) {
           yearRevenue += orderSubtotal;
           yearRevenueGross += orderTotal;
+          yearDiscount += orderDiscount;
+          yearFreight += orderFreight;
+          yearPhytosanitary += orderPhytosanitary;
+          yearVat += orderVat;
+          yearDeductions += orderDeductions;
+          yearSurcharges += orderSurcharges;
+          yearServiceRevenue += orderServiceRev;
+          yearOrderCount++;
+          yearGratisValue += orderGratisValue;
         }
-        if (orderDate.isAfter(currentMonthStart) || orderDate.isAtSameMomentAs(currentMonthStart)) {
+        if (relevantDate.isAfter(currentMonthStart) || relevantDate.isAtSameMomentAs(currentMonthStart)) {
           monthRevenue += orderSubtotal;
           monthRevenueGross += orderTotal;
+          monthDiscount += orderDiscount;
+          monthFreight += orderFreight;
+          monthPhytosanitary += orderPhytosanitary;
+          monthVat += orderVat;
+          monthDeductions += orderDeductions;
+          monthSurcharges += orderSurcharges;
+          monthServiceRevenue += orderServiceRev;
+          monthOrderCount++;
+          monthGratisValue += orderGratisValue;
         }
-        if (orderDate.isAfter(previousYearStart) && orderDate.isBefore(previousYearEnd)) {
+        if (relevantDate.isAfter(previousYearStart) && relevantDate.isBefore(previousYearEnd)) {
           previousYearRevenue += orderSubtotal;
           previousYearRevenueGross += orderTotal;
+          previousYearOrderCount++;
         }
-        if (orderDate.isAfter(previousMonthStart) && orderDate.isBefore(previousMonthEnd)) {
+        if (relevantDate.isAfter(previousMonthStart) && relevantDate.isBefore(previousMonthEnd)) {
           previousMonthRevenue += orderSubtotal;
           previousMonthRevenueGross += orderTotal;
+          previousMonthOrderCount++;
         }
 
-        // Monatliche Umsätze
-        final monthKey = '${orderDate.year}-${orderDate.month.toString().padLeft(2, '0')}';
+        // Monatliche Umsätze + Order-Counts
+        final monthKey = '${relevantDate.year}-${relevantDate.month.toString().padLeft(2, '0')}';
         monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] ?? 0) + orderSubtotal;
         monthlyRevenueGross[monthKey] = (monthlyRevenueGross[monthKey] ?? 0) + orderTotal;
+        monthlyOrderCount[monthKey] = (monthlyOrderCount[monthKey] ?? 0) + 1;
 
         // Länder-Stats
         if (!countryStats.containsKey(countryCode)) {
@@ -345,12 +528,41 @@ class SalesAnalyticsService {
           previousYearRevenue: previousYearRevenue,
           previousMonthRevenue: previousMonthRevenue,
           monthlyRevenue: monthlyRevenue,
+          totalDiscount: totalDiscount,
+          yearDiscount: yearDiscount,
+          monthDiscount: monthDiscount,
+          totalGratisValue: totalGratisValue,
+          yearGratisValue: yearGratisValue,
+          monthGratisValue: monthGratisValue,
+          totalFreight: totalFreight,
+          yearFreight: yearFreight,
+          monthFreight: monthFreight,
+          totalPhytosanitary: totalPhytosanitary,
+          yearPhytosanitary: yearPhytosanitary,
+          monthPhytosanitary: monthPhytosanitary,
+          totalVat: totalVat,
+          yearVat: yearVat,
+          monthVat: monthVat,
+          totalDeductions: totalDeductions,
+          yearDeductions: yearDeductions,
+          monthDeductions: monthDeductions,
+          totalSurcharges: totalSurcharges,
+          yearSurcharges: yearSurcharges,
+          monthSurcharges: monthSurcharges,
+          totalServiceRevenue: totalServiceRevenue,
+          yearServiceRevenue: yearServiceRevenue,
+          monthServiceRevenue: monthServiceRevenue,
           totalRevenueGross: totalRevenueGross,
           yearRevenueGross: yearRevenueGross,
           monthRevenueGross: monthRevenueGross,
           previousYearRevenueGross: previousYearRevenueGross,
           previousMonthRevenueGross: previousMonthRevenueGross,
           monthlyRevenueGross: monthlyRevenueGross,
+          monthlyOrderCount: monthlyOrderCount,
+          yearOrderCount: yearOrderCount,
+          monthOrderCount: monthOrderCount,
+          previousYearOrderCount: previousYearOrderCount,
+          previousMonthOrderCount: previousMonthOrderCount,
         ),
         orderCount: orderCount,
         averageOrderValue: orderCount > 0 ? totalRevenue / orderCount : 0,
@@ -360,10 +572,19 @@ class SalesAnalyticsService {
           totalItemCount: totalItemCount,
           thermoRevenue: thermoRevenue,
           totalRevenue: totalRevenue,
+          details: thermoDetails,
+        ),
+        serviceStats: ServiceStats(
+          serviceItemCount: serviceItemCount,
+          totalItemCount: totalItemCount,
+          serviceRevenue: serviceRevenue,
+          totalRevenue: totalRevenue,
+          details: serviceDetails,
         ),
         countryStats: countryStats,
         woodTypeStats: woodTypeStats,
         topProductCombos: sortedCombos.take(10).toList(),
+        orders: orders..sort((a, b) => b.relevantDate.compareTo(a.relevantDate)),
       );
     });
   }

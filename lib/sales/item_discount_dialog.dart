@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/discount.dart';
+import '../services/user_basket_service.dart';
 
 class ItemDiscountDialog extends StatefulWidget {
   final String itemId;
@@ -139,8 +140,7 @@ class _ItemDiscountDialogState extends State<ItemDiscountDialog> {
     }
 
     // Firestore Update
-    await FirebaseFirestore.instance
-        .collection('temporary_basket')
+    await UserBasketService.temporaryBasket
         .doc(widget.itemId)
         .update({
       'discount': {

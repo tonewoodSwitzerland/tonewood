@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import '../services/icon_helper.dart';
 
 /// Zeigt den Roundwood-Selection als Sheet (Mobile) oder Dialog (Desktop)
@@ -8,7 +9,7 @@ void showRoundwoodSelection({
   required BuildContext context,
   required String productId,
   required Map<String, dynamic> productData,
-  required Function(int quantity, String? roundwoodId, Map<String, dynamic>? roundwoodData) onConfirm,
+  required Function(int quantity, String? roundwoodId, Map<String, dynamic>? roundwoodData, DateTime stockEntryDate) onConfirm,
 }) {
   final isMobile = MediaQuery.of(context).size.width < 600;
 
@@ -56,7 +57,7 @@ void showRoundwoodSelection({
 class _RoundwoodSelectionContent extends StatefulWidget {
   final String productId;
   final Map<String, dynamic> productData;
-  final Function(int, String?, Map<String, dynamic>?) onConfirm;
+  final Function(int, String?, Map<String, dynamic>?, DateTime) onConfirm;
   final ScrollController? scrollController;
   final bool isSheet;
 
@@ -82,6 +83,7 @@ class _RoundwoodSelectionContentState extends State<_RoundwoodSelectionContent> 
   List<Map<String, dynamic>> _filteredList = [];
   bool _isLoading = true;
   bool _skipRoundwood = false;
+  DateTime _selectedDate = DateTime.now();
   int? _selectedYear;
   List<int> _availableYears = [];
 
@@ -470,6 +472,58 @@ class _RoundwoodSelectionContentState extends State<_RoundwoodSelectionContent> 
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Buchungsdatum ──────────────────────────────────────
+          Row(
+            children: [
+              getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today, color: const Color(0xFF0F4A29)),
+              const SizedBox(width: 8),
+              const Text('Produktionsdatum', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: _selectedDate,
+                firstDate: DateTime(2000),
+                lastDate: DateTime.now(),
+                locale: const Locale('de', 'CH'),
+                builder: (context, child) => Theme(
+                  data: Theme.of(context).copyWith(
+                    colorScheme: const ColorScheme.light(
+                      primary: Color(0xFF0F4A29),
+                      onPrimary: Colors.white,
+                    ),
+                  ),
+                  child: child!,
+                ),
+              );
+              if (picked != null) setState(() => _selectedDate = picked);
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey[400]!),
+                borderRadius: BorderRadius.circular(8),
+                color: Colors.white,
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    DateFormat('dd. MMMM yyyy', 'de_CH').format(_selectedDate),
+                    style: const TextStyle(fontSize: 15),
+                  ),
+                  const Spacer(),
+                  Icon(Icons.edit_calendar, size: 18, color: Colors.grey[500]),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // ── Menge ──────────────────────────────────────────────
           Row(
             children: [
               getAdaptiveIcon(iconName: 'add_box', defaultIcon: Icons.add_box, color: const Color(0xFF0F4A29)),
@@ -548,7 +602,7 @@ class _RoundwoodSelectionContentState extends State<_RoundwoodSelectionContent> 
       return;
     }
     Navigator.pop(context);
-    widget.onConfirm(quantity, _skipRoundwood ? null : _selectedRoundwoodId, _skipRoundwood ? null : _selectedRoundwoodData);
+    widget.onConfirm(quantity, _skipRoundwood ? null : _selectedRoundwoodId, _skipRoundwood ? null : _selectedRoundwoodData, _selectedDate);
   }
 
   @override

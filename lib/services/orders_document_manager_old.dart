@@ -15,11 +15,12 @@ import 'package:tonewood/services/postal_document_service.dart';
 import 'package:tonewood/services/swiss_rounding.dart';
 import 'dart:typed_data';
 import '../customers/customer.dart';
+import '../orders/order_document_preview_manager.dart';
 import '../services/icon_helper.dart';
 import '../orders/order_model.dart';
 import 'countries.dart';
-import 'order_configuration_sheet.dart';
-import 'order_document_preview_manager.dart';
+import '../orders/order_configuration_sheet.dart';
+
 import 'pdf_generators/invoice_generator.dart';
 import 'pdf_generators/delivery_note_generator.dart';
 import 'pdf_generators/commercial_invoice_generator.dart';
@@ -27,13 +28,8 @@ import 'pdf_generators/packing_list_generator.dart';
 import
 
 
-
-
-
-
-
-'shipping_costs_manager.dart';
-import '../services/additional_text_manager.dart';
+'../quotes/shipping_costs_manager.dart';
+import '../quotes/additional_text_manager.dart';
 class OrderDocumentManager {
   static const List<String> availableDocuments = [
     'Rechnung',
@@ -67,6 +63,8 @@ class OrderDocumentManager {
       'commercial_invoice': <String, dynamic>{
         'number_of_packages': 1,
         'packaging_weight': 0.0,
+        'commercial_invoice_date': null,
+        'use_as_delivery_date': true,
         'origin_declaration': false,
         'cites': false,
         'export_reason': false,
@@ -81,6 +79,7 @@ class OrderDocumentManager {
         'carrier_text': 'Swiss Post',
         'signature': false,
         'selected_signature': null,
+        'currency': null,
       },
       'packing_list': <String, dynamic>{
         'packages': <Map<String, dynamic>>[],
@@ -126,7 +125,8 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
   bool _isCreating = false;
   bool _isLoadingSettings = true; // NEU
   String _shipmentMode = 'total'; // 'total' = Gesamtversand, 'per_shipment' = Einzelversand
-
+// Sprache pro Dokument
+  late Map<String, String> _documentLanguages;
   final Map<String, Map<String, TextEditingController>> packageControllers = {};
   late Map<String, dynamic> _additionalTextsConfig;
 
@@ -137,6 +137,16 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
     _selection = Map.from(widget.documentSelection);
     _selection['Rechnung'] = true;
     _settings = Map.from(widget.documentSettings);
+    // Standard-Sprache aus Order-Metadata oder Kunden-Sprache
+    final defaultLang = widget.order.metadata['language']
+        ?? widget.order.customer['language']
+        ?? 'DE';
+    _documentLanguages = {
+      'Rechnung': defaultLang,
+      'Lieferschein': defaultLang,
+      'Handelsrechnung': defaultLang,
+      'Packliste': defaultLang,
+    };
     _customerData = Map<String, dynamic>.from(widget.order.customer ?? {});
 // Zusatztexte aus Order laden
     final orderAdditionalTexts = widget.order.metadata['additionalTexts'] as Map<String, dynamic>?;
@@ -170,6 +180,8 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
         'free_text': {'type': 'custom', 'custom_text': '', 'selected': defaults['free_text'] ?? false},
       };
     }
+    // Custom Blocks sicherstellen
+    AdditionalTextsManager.ensureCustomBlocks(_additionalTextsConfig);
 
     _loadExistingSettings();
   }
@@ -242,27 +254,26 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
         setState(() {
           _settings['commercial_invoice'] = {
             'number_of_packages': data['number_of_packages'] ?? 1,
-            // packaging_weight wird NICHT mehr geladen!
             'commercial_invoice_date': data['commercial_invoice_date'] != null
                 ? (data['commercial_invoice_date'] as Timestamp).toDate()
                 : null,
-            'use_as_delivery_date': data['use_as_delivery_date'] ?? true, // NEU
-            'origin_declaration': data['origin_declaration'] ?? false,
-            'cites': data['cites'] ?? false,
-            'export_reason': data['export_reason'] ?? false,
-            'export_reason_text': data['export_reason_text'] ?? 'Ware',
-            'incoterms': data['incoterms'] ?? false,
-            'selected_incoterms': List<String>.from(data['selected_incoterms'] ?? []),
-            'incoterms_freetexts': Map<String, String>.from(data['incoterms_freetexts'] ?? {}),
-            'delivery_date': data['delivery_date'] ?? false,
-            'delivery_date_value': data['delivery_date_value'] != null
-                ? (data['delivery_date_value'] as Timestamp).toDate()
+            'use_as_delivery_date': data['use_as_delivery_date'] ?? true,
+            'origin_declaration': data['commercial_invoice_origin_declaration'] ?? data['origin_declaration'] ?? false,
+            'cites': data['commercial_invoice_cites'] ?? data['cites'] ?? false,
+            'export_reason': data['commercial_invoice_export_reason'] ?? data['export_reason'] ?? false,
+            'export_reason_text': data['commercial_invoice_export_reason_text'] ?? data['export_reason_text'] ?? 'Ware',
+            'incoterms': data['commercial_invoice_incoterms'] ?? data['incoterms'] ?? false,
+            'selected_incoterms': List<String>.from(data['commercial_invoice_selected_incoterms'] ?? data['selected_incoterms'] ?? []),
+            'incoterms_freetexts': Map<String, String>.from(data['commercial_invoice_incoterms_freetexts'] ?? data['incoterms_freetexts'] ?? {}),
+            'delivery_date': data['commercial_invoice_delivery_date'] ?? data['delivery_date'] ?? false,
+            'delivery_date_value': (data['commercial_invoice_delivery_date_value'] ?? data['delivery_date_value']) != null
+                ? ((data['commercial_invoice_delivery_date_value'] ?? data['delivery_date_value']) as Timestamp).toDate()
                 : null,
-            'delivery_date_month_only': data['delivery_date_month_only'] ?? false,
-            'carrier': data['carrier'] ?? false,
-            'carrier_text': data['carrier_text'] ?? 'Swiss Post',
-            'signature': data['signature'] ?? false,
-            'selected_signature': data['selected_signature'],
+            'delivery_date_month_only': data['commercial_invoice_delivery_date_month_only'] ?? data['delivery_date_month_only'] ?? false,
+            'carrier': data['commercial_invoice_carrier'] ?? data['carrier'] ?? false,
+            'carrier_text': data['commercial_invoice_carrier_text'] ?? data['carrier_text'] ?? 'Swiss Post',
+            'signature': data['commercial_invoice_signature'] ?? data['signature'] ?? false,
+            'selected_signature': data['commercial_invoice_selected_signature'] ?? data['selected_signature'],
             'currency': data['commercial_invoice_currency'],
           };
         });
@@ -391,17 +402,22 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             ),
                           )
                         else
-                          const SizedBox(width: 56),
-
+                          const SizedBox(width: 10),
+// Sprach-Auswahl
+                        if (!alreadyExists)
+                          _buildLanguageSelector(docType)
+                        else
+                          const SizedBox(width: 10),
                         // Checkbox
                         Expanded(
                           child: CheckboxListTile(
                             title: Text(
                               docType,
                               style: TextStyle(
-                                color: alreadyExists
-                                    ? Theme.of(context).colorScheme.onSurface.withOpacity(0.5)
-                                    : null,
+                                  color: alreadyExists
+                                      ? Theme.of(context).colorScheme.onSurface.withOpacity(0.5)
+                                      : null,
+                                  fontSize: 14
                               ),
                             ),
                             subtitle: _getDocumentSubtitle(docType, alreadyExists),
@@ -425,6 +441,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                 context: context,
                                 order: _getOrderWithCurrentCustomerData(),
                                 documentType: _getDocumentKey(docType),
+                                language: _documentLanguages[docType],
                               );
                             },
                             icon:
@@ -703,6 +720,77 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
       );
     }
 
+    // Custom Text Blocks
+    final customBlocks = AdditionalTextsManager.getCachedCustomTextBlocks();
+    if (customBlocks.isNotEmpty) {
+      // Stelle sicher, dass custom_blocks in config existiert
+      if (config['custom_blocks'] == null) {
+        config['custom_blocks'] = {};
+      }
+      final customBlocksConfig = config['custom_blocks'] as Map<String, dynamic>;
+
+      tiles.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 8),
+          child: Row(
+            children: [
+              Icon(Icons.library_books, size: 18, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Weitere Textbausteine',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      for (final block in customBlocks) {
+        final blockId = block['id'] as String;
+        final title = block['title'] ?? '';
+        final textDe = block['text_de'] ?? '';
+
+        if (!customBlocksConfig.containsKey(blockId)) {
+          customBlocksConfig[blockId] = {
+            'selected': block['active_by_default'] ?? false,
+          };
+        }
+
+        final isSelected = customBlocksConfig[blockId]?['selected'] == true;
+
+        tiles.add(
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isSelected
+                    ? Theme.of(context).colorScheme.primary.withOpacity(0.3)
+                    : Theme.of(context).colorScheme.outline.withOpacity(0.15),
+              ),
+            ),
+            child: SwitchListTile(
+              title: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+              subtitle: isSelected
+                  ? Text(textDe, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)), maxLines: 2, overflow: TextOverflow.ellipsis)
+                  : null,
+              value: isSelected,
+              dense: true,
+              onChanged: (value) {
+                setModalState(() {
+                  customBlocksConfig[blockId] = {'selected': value};
+                });
+              },
+            ),
+          ),
+        );
+      }
+    }
+
     return tiles;
   }
 // NEU: Hilfsmethode für Order mit aktuellen Kundendaten
@@ -843,6 +931,50 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
   bool _hasSelection() {
     return _selection.values.any((selected) => selected == true);
   }
+  Widget _buildLanguageSelector(String docType) {
+    final lang = _documentLanguages[docType] ?? 'DE';
+    final languages = ['DE', 'EN'];
+
+    return PopupMenuButton<String>(
+      onSelected: (value) {
+        setState(() {
+          _documentLanguages[docType] = value;
+        });
+      },
+      itemBuilder: (context) => languages.map((l) => PopupMenuItem(
+        value: l,
+        child: Text(l, style: TextStyle(
+          fontWeight: l == lang ? FontWeight.bold : FontWeight.normal,
+        )),
+      )).toList(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              lang,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            Icon(Icons.arrow_drop_down, size: 16,
+                color: Theme.of(context).colorScheme.primary),
+          ],
+        ),
+      ),
+    );
+  }
+
 
   Future<void> _showDocumentSettings(String docType) async {
     switch (docType) {
@@ -988,12 +1120,29 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
   Future<void> _showDeliveryNoteSettings() async {
     DateTime? deliveryDate = _settings['delivery_note']['delivery_date'];
     DateTime? paymentDate = _settings['delivery_note']['payment_date'];
-    // NEU: Wenn kein Lieferdatum gesetzt, lade aus Handelsrechnung-Einstellungen
 
-    bool useAsCommercialInvoiceDate = false; // NEU
-    DateTime? existingCommercialInvoiceDate; // NEU: Datum aus Handelsrechnung
+    bool useAsCommercialInvoiceDate = false;
+    DateTime? existingCommercialInvoiceDate;
 
-    if (deliveryDate == null) {
+    // Prüfe ob das Lieferdatum explizit gesetzt/gelöscht wurde
+    bool deliveryDateExplicitlyManaged = false;
+    try {
+      final deliverySettingsDoc = await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(widget.order.id)
+          .collection('settings')
+          .doc('delivery_settings')
+          .get();
+
+      if (deliverySettingsDoc.exists) {
+        deliveryDateExplicitlyManaged = true; // Es wurde schon mal gespeichert
+      }
+    } catch (e) {
+      print('Fehler beim Prüfen der Liefereinstellungen: $e');
+    }
+
+    // Nur aus HR vorbelegen wenn NOCH NIE manuell gespeichert wurde
+    if (deliveryDate == null && !deliveryDateExplicitlyManaged) {
       final commercialInvoiceSettings = _settings['commercial_invoice'];
       if (commercialInvoiceSettings != null && commercialInvoiceSettings['commercial_invoice_date'] != null) {
         final timestamp = commercialInvoiceSettings['commercial_invoice_date'];
@@ -1004,7 +1153,6 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
         }
       }
 
-      // Falls nicht in _settings, versuche aus Firebase zu laden
       if (deliveryDate == null) {
         try {
           final taraSettingsDoc = await FirebaseFirestore.instance
@@ -1025,7 +1173,6 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
         }
       }
     }
-
 // NEU: Lade Handelsrechnungsdatum für Vergleich
     try {
       final taraSettingsDoc = await FirebaseFirestore.instance
@@ -1084,7 +1231,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                   padding: const EdgeInsets.all(24),
                   child: Row(
                     children: [
-                       getAdaptiveIcon(iconName: 'local_shipping',defaultIcon:Icons.local_shipping,
+                      getAdaptiveIcon(iconName: 'local_shipping',defaultIcon:Icons.local_shipping,
                           color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 12),
                       const Text('Lieferschein Einstellungen',
@@ -1113,57 +1260,115 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             child: Column(
                               children: [
                                 // Lieferdatum
-                                InkWell(
-                                  onTap: () async {
-                                    final date = await showDatePicker(
-                                      context: context,
-                                      initialDate: deliveryDate ?? DateTime.now(),
-                                      firstDate: DateTime(2020),
-                                      lastDate: DateTime(2100),
-                                    );
-                                    if (date != null) {
-                                      setModalState(() {
-                                        deliveryDate = date;
-                                      });
-                                    }
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      border: Border.all(
-                                        color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
-                                      ),
-                                      borderRadius: BorderRadius.circular(8),
+                                // Lieferdatum – UI wie Handelsrechnung
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
                                     ),
-                                    child: Row(
-                                      children: [
-                                        getAdaptiveIcon(iconName: 'calendar_today', defaultIcon: Icons.calendar_today),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              const Text('Lieferdatum', style: TextStyle(fontSize: 12)),
-                                              Text(
-                                                deliveryDate != null
-                                                    ? DateFormat('dd.MM.yyyy').format(deliveryDate!)
-                                                    : 'Datum auswählen',
-                                                style: const TextStyle(fontSize: 16),
-                                              ),
-                                            ],
-                                          ),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Lieferdatum',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         ),
-                                        if (deliveryDate != null)
-                                          IconButton(
-                                            icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          // Datepicker Button
+                                          Expanded(
+                                            child: InkWell(
+                                              onTap: () async {
+                                                final DateTime? picked = await showDatePicker(
+                                                  context: context,
+                                                  initialDate: deliveryDate ?? DateTime.now(),
+                                                  firstDate: DateTime(2020),
+                                                  lastDate: DateTime(2100),
+                                                  locale: const Locale('de', 'DE'),
+                                                );
+                                                if (picked != null) {
+                                                  setModalState(() {
+                                                    deliveryDate = picked;
+                                                  });
+                                                }
+                                              },
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                                decoration: BoxDecoration(
+                                                  border: Border.all(
+                                                    color: deliveryDate != null
+                                                        ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+                                                        : Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                                  ),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: Row(
+                                                  children: [
+                                                    getAdaptiveIcon(
+                                                      iconName: 'calendar_today',
+                                                      defaultIcon: Icons.calendar_today,
+                                                      size: 18,
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Text(
+                                                      deliveryDate != null
+                                                          ? DateFormat('dd.MM.yyyy').format(deliveryDate!)
+                                                          : 'Datum auswählen',
+                                                      style: TextStyle(
+                                                        fontSize: 15,
+                                                        color: deliveryDate != null
+                                                            ? null
+                                                            : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          // "Heute" Schnellbutton
+                                          OutlinedButton(
                                             onPressed: () {
                                               setModalState(() {
-                                                deliveryDate = null;
+                                                deliveryDate = DateTime.now();
                                               });
                                             },
+                                            style: OutlinedButton.styleFrom(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                              side: BorderSide(
+                                                color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                                              ),
+                                            ),
+                                            child: Text(
+                                              'Heute',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Theme.of(context).colorScheme.primary,
+                                              ),
+                                            ),
                                           ),
-                                      ],
-                                    ),
+                                          // Löschen Button (nur wenn Datum gesetzt)
+                                          if (deliveryDate != null)
+                                            IconButton(
+                                              icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear, size: 18),
+                                              onPressed: () {
+                                                setModalState(() {
+                                                  deliveryDate = null;
+                                                });
+                                              },
+                                              visualDensity: VisualDensity.compact,
+                                            ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
                                 ),
                                 const SizedBox(height: 8),
@@ -1357,57 +1562,115 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                 const SizedBox(height: 16),
 
                                 // Zahlungsdatum
-                                InkWell(
-                                  onTap: () async {
-                                    final date = await showDatePicker(
-                                      context: context,
-                                      initialDate: paymentDate ?? DateTime.now(),
-                                      firstDate: DateTime(2020),
-                                      lastDate: DateTime(2100),
-                                    );
-                                    if (date != null) {
-                                      setModalState(() {
-                                        paymentDate = date;
-                                      });
-                                    }
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      border: Border.all(
-                                        color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
-                                      ),
-                                      borderRadius: BorderRadius.circular(8),
+                                // Zahlungsdatum – UI wie Handelsrechnung
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
                                     ),
-                                    child: Row(
-                                      children: [
-                                        getAdaptiveIcon(iconName: 'payment', defaultIcon: Icons.payment),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              const Text('Zahlungsdatum', style: TextStyle(fontSize: 12)),
-                                              Text(
-                                                paymentDate != null
-                                                    ? DateFormat('dd.MM.yyyy').format(paymentDate!)
-                                                    : 'Datum auswählen',
-                                                style: const TextStyle(fontSize: 16),
-                                              ),
-                                            ],
-                                          ),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Zahlungsdatum',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         ),
-                                        if (paymentDate != null)
-                                          IconButton(
-                                            icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          // Datepicker Button
+                                          Expanded(
+                                            child: InkWell(
+                                              onTap: () async {
+                                                final DateTime? picked = await showDatePicker(
+                                                  context: context,
+                                                  initialDate: paymentDate ?? DateTime.now(),
+                                                  firstDate: DateTime(2020),
+                                                  lastDate: DateTime(2100),
+                                                  locale: const Locale('de', 'DE'),
+                                                );
+                                                if (picked != null) {
+                                                  setModalState(() {
+                                                    paymentDate = picked;
+                                                  });
+                                                }
+                                              },
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                                decoration: BoxDecoration(
+                                                  border: Border.all(
+                                                    color: paymentDate != null
+                                                        ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+                                                        : Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                                  ),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: Row(
+                                                  children: [
+                                                    getAdaptiveIcon(
+                                                      iconName: 'payment',
+                                                      defaultIcon: Icons.payment,
+                                                      size: 18,
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Text(
+                                                      paymentDate != null
+                                                          ? DateFormat('dd.MM.yyyy').format(paymentDate!)
+                                                          : 'Datum auswählen',
+                                                      style: TextStyle(
+                                                        fontSize: 15,
+                                                        color: paymentDate != null
+                                                            ? null
+                                                            : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          // "Heute" Schnellbutton
+                                          OutlinedButton(
                                             onPressed: () {
                                               setModalState(() {
-                                                paymentDate = null;
+                                                paymentDate = DateTime.now();
                                               });
                                             },
+                                            style: OutlinedButton.styleFrom(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                              side: BorderSide(
+                                                color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                                              ),
+                                            ),
+                                            child: Text(
+                                              'Heute',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Theme.of(context).colorScheme.primary,
+                                              ),
+                                            ),
                                           ),
-                                      ],
-                                    ),
+                                          // Löschen Button (nur wenn Datum gesetzt)
+                                          if (paymentDate != null)
+                                            IconButton(
+                                              icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear, size: 18),
+                                              onPressed: () {
+                                                setModalState(() {
+                                                  paymentDate = null;
+                                                });
+                                              },
+                                              visualDensity: VisualDensity.compact,
+                                            ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -1486,6 +1749,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
       ),
     );
   }
+
   Future<void> _compareAndUpdateCustomerAddress() async {
     // 1. Hole Kunden-ID aus dem Auftrag
     final orderCustomer = _customerData;
@@ -1536,6 +1800,18 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
       }
     }
 
+    void compareBool(String fieldName, bool? oldValue, bool? newValue) {
+      final oldVal = oldValue ?? false;
+      final newVal = newValue ?? false;
+      if (oldVal != newVal) {
+        differences.add({
+          'field': fieldName,
+          'old': oldVal ? 'Ja' : 'Nein',
+          'new': newVal ? 'Ja' : 'Nein',
+        });
+      }
+    }
+
     // Rechnungsadresse vergleichen
     compare('Firma', orderCustomer['company'], currentCustomer.company);
     compare('Vorname', orderCustomer['firstName'], currentCustomer.firstName);
@@ -1550,6 +1826,32 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
     compare('Telefon 1', orderCustomer['phone1'], currentCustomer.phone1);
     compare('Telefon 2', orderCustomer['phone2'], currentCustomer.phone2);
 
+    // Dokumentenoptionen vergleichen
+    // DEBUG: Typen und Werte prüfen
+    print('=== DEBUG KUNDENABGLEICH ===');
+    print('orderCustomer showEoriOnDocuments: ${orderCustomer['showEoriOnDocuments']} (${orderCustomer['showEoriOnDocuments'].runtimeType})');
+    print('currentCustomer showEoriOnDocuments: ${currentCustomer.showEoriOnDocuments} (${currentCustomer.showEoriOnDocuments.runtimeType})');
+    print('orderCustomer eoriNumber: ${orderCustomer['eoriNumber']} (${orderCustomer['eoriNumber'].runtimeType})');
+    print('currentCustomer eoriNumber: ${currentCustomer.eoriNumber} (${currentCustomer.eoriNumber.runtimeType})');
+    print('orderCustomer showVatOnDocuments: ${orderCustomer['showVatOnDocuments']} (${orderCustomer['showVatOnDocuments'].runtimeType})');
+    print('currentCustomer showVatOnDocuments: ${currentCustomer.showVatOnDocuments} (${currentCustomer.showVatOnDocuments.runtimeType})');
+    print('orderCustomer vatNumber: ${orderCustomer['vatNumber']} (${orderCustomer['vatNumber'].runtimeType})');
+    print('currentCustomer vatNumber: ${currentCustomer.vatNumber} (${currentCustomer.vatNumber.runtimeType})');
+    print('=== ALLE ORDER CUSTOMER KEYS ===');
+    print(orderCustomer.keys.toList());
+    print('============================');
+
+    compare('EORI-Nummer', orderCustomer['eoriNumber'], currentCustomer.eoriNumber);
+    compareBool('EORI auf Dokumenten anzeigen', orderCustomer['showEoriOnDocuments'], currentCustomer.showEoriOnDocuments);
+    compare('MwSt-Nummer', orderCustomer['vatNumber'], currentCustomer.vatNumber);
+    compareBool('MwSt auf Dokumenten anzeigen', orderCustomer['showVatOnDocuments'], currentCustomer.showVatOnDocuments);
+    compareBool('Eigenes Feld auf Dokumenten anzeigen', orderCustomer['showCustomFieldOnDocuments'], currentCustomer.showCustomFieldOnDocuments);
+    compare('Eigenes Feld Titel', orderCustomer['customFieldTitle'], currentCustomer.customFieldTitle);
+    compare('Eigenes Feld Wert', orderCustomer['customFieldValue'], currentCustomer.customFieldValue);
+
+    // Sprache vergleichen
+    compare('Sprache', orderCustomer['language'], currentCustomer.language);
+
     // Lieferadresse vergleichen (falls vorhanden)
     if (currentCustomer.hasDifferentShippingAddress) {
       compare('Lieferadresse Firma', orderCustomer['shippingCompany'], currentCustomer.shippingCompany);
@@ -1558,6 +1860,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
       compare('Lieferadresse Straße', orderCustomer['shippingStreet'], currentCustomer.shippingStreet);
       compare('Lieferadresse PLZ', orderCustomer['shippingZipCode'], currentCustomer.shippingZipCode);
       compare('Lieferadresse Ort', orderCustomer['shippingCity'], currentCustomer.shippingCity);
+      compare('Lieferadresse Provinz', orderCustomer['shippingProvince'], currentCustomer.shippingProvince);
       compare('Lieferadresse Land', orderCustomer['shippingCountry'], currentCustomer.shippingCountry);
     }
 
@@ -1586,7 +1889,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
           ],
         ),
         content: differences.isEmpty
-            ? const Text('Die Adressdaten im Auftrag stimmen mit der Datenbank überein.')
+            ? const Text('Die Kundendaten im Auftrag stimmen mit der Datenbank überein.')
             : SizedBox(
           width: double.maxFinite,
           child: Column(
@@ -1785,7 +2088,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
 
     DateTime? commercialInvoiceDate;
 
-    bool useAsDeliveryDate = true; // NEU: Standardmäßig aktiviert
+    bool useAsDeliveryDate = settings['use_as_delivery_date'] ?? false;
     if (settings['commercial_invoice_date'] != null) {
       commercialInvoiceDate = settings['commercial_invoice_date'] is Timestamp
           ? (settings['commercial_invoice_date'] as Timestamp).toDate()
@@ -1905,6 +2208,8 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
         'free_text': {'type': 'custom', 'custom_text': '', 'selected': defaults['free_text'] ?? false},
       };
     }
+    // Custom Blocks sicherstellen
+    AdditionalTextsManager.ensureCustomBlocks(additionalTextsConfig);
     // NEU: Lade Lieferschein-Einstellungen für Vergleich
     try {
       final deliverySettingsDoc = await FirebaseFirestore.instance
@@ -1965,7 +2270,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                   padding: const EdgeInsets.all(24),
                   child: Row(
                     children: [
-                       getAdaptiveIcon(iconName: 'inventory',defaultIcon:Icons.inventory,
+                      getAdaptiveIcon(iconName: 'inventory',defaultIcon:Icons.inventory,
                           color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 12),
                       const Text('Handelsrechnung Einstellungen',
@@ -2013,7 +2318,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             child: Row(
                               children: [
                                 getAdaptiveIcon(iconName: 'info', defaultIcon:
-                                  Icons.info,
+                                Icons.info,
                                   size: 16,
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
@@ -2137,69 +2442,120 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                         const SizedBox(height: 24),
 
                         // Datum der Handelsrechnung
-                        InkWell(
-                          onTap: () async {
-                            final DateTime? picked = await showDatePicker(
-                              context: context,
-                              initialDate: commercialInvoiceDate ?? DateTime.now(),
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2100),
-                              locale: const Locale('de', 'DE'),
-                            );
-                            if (picked != null) {
-                              setModalState(() {
-                                commercialInvoiceDate = picked;
-                                settings['commercial_invoice_date'] = picked;
-                              });
-                            }
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
-                              ),
-                              borderRadius: BorderRadius.circular(8),
+                        // Datum der Handelsrechnung
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
                             ),
-                            child: Row(
-                              children: [
-                                getAdaptiveIcon(iconName: 'calendar_today',defaultIcon:Icons.calendar_today),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Datum der Handelsrechnung',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Datum der Handelsrechnung',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  // Datepicker Button
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: () async {
+                                        final DateTime? picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: commercialInvoiceDate ?? DateTime.now(),
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime(2100),
+                                          locale: const Locale('de', 'DE'),
+                                        );
+                                        if (picked != null) {
+                                          setModalState(() {
+                                            commercialInvoiceDate = picked;
+                                            settings['commercial_invoice_date'] = picked;
+                                          });
+                                        }
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: commercialInvoiceDate != null
+                                                ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+                                                : Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                          ),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            getAdaptiveIcon(
+                                              iconName: 'calendar_today',
+                                              defaultIcon: Icons.calendar_today,
+                                              size: 18,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              commercialInvoiceDate != null
+                                                  ? DateFormat('dd.MM.yyyy').format(commercialInvoiceDate!)
+                                                  : 'Datum auswählen',
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                color: commercialInvoiceDate != null
+                                                    ? null
+                                                    : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      Text(
-                                        commercialInvoiceDate != null
-                                            ? DateFormat('dd.MM.yyyy').format(commercialInvoiceDate!)
-                                            : 'Aktuelles Datum verwenden',
-                                        style: const TextStyle(fontSize: 16),
-                                      ),
-                                    ],
+                                    ),
                                   ),
-                                ),
-                                if (commercialInvoiceDate != null)
-                                  IconButton(
-                                    icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:Icons.clear),
+                                  const SizedBox(width: 8),
+                                  // "Heute" Schnellbutton
+                                  OutlinedButton(
                                     onPressed: () {
                                       setModalState(() {
-                                        commercialInvoiceDate = null;
-                                        settings['commercial_invoice_date'] = null;
+                                        commercialInvoiceDate = DateTime.now();
+                                        settings['commercial_invoice_date'] = commercialInvoiceDate;
                                       });
                                     },
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                      side: BorderSide(
+                                        color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'Heute',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Theme.of(context).colorScheme.primary,
+                                      ),
+                                    ),
                                   ),
-                              ],
-                            ),
+                                  // Löschen Button (nur wenn Datum gesetzt)
+                                  if (commercialInvoiceDate != null)
+                                    IconButton(
+                                      icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear, size: 18),
+                                      onPressed: () {
+                                        setModalState(() {
+                                          commercialInvoiceDate = null;
+                                          settings['commercial_invoice_date'] = null;
+                                        });
+                                      },
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-
                         const SizedBox(height: 8),
 
 // NEU: Checkbox für Übernahme als Lieferdatum
@@ -2402,7 +2758,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             ),
                             IconButton(
                               icon: getAdaptiveIcon(iconName: 'info', defaultIcon:
-                                Icons.info,
+                              Icons.info,
                                 color: Theme.of(context).colorScheme.primary,
                               ),
                               onPressed: () async {
@@ -2420,7 +2776,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                     title: Row(
                                       children: [
                                         getAdaptiveIcon(iconName: 'info', defaultIcon:
-                                          Icons.info,
+                                        Icons.info,
                                           color: Theme.of(context).colorScheme.primary,
                                         ),
                                         const SizedBox(width: 8),
@@ -2447,7 +2803,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                           Row(
                                             children: [
                                               getAdaptiveIcon(iconName: 'edit', defaultIcon:
-                                                Icons.edit,
+                                              Icons.edit,
                                                 size: 16,
                                                 color: Theme.of(context).colorScheme.secondary,
                                               ),
@@ -2497,7 +2853,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             ),
                             IconButton(
                               icon:  getAdaptiveIcon(iconName: 'info', defaultIcon:
-                                Icons.info,
+                              Icons.info,
                                 color: Theme.of(context).colorScheme.primary,
                               ),
                               onPressed: () async {
@@ -2515,7 +2871,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                     title: Row(
                                       children: [
                                         getAdaptiveIcon(iconName: 'info', defaultIcon:
-                                          Icons.info,
+                                        Icons.info,
                                           color: Theme.of(context).colorScheme.primary,
                                         ),
                                         const SizedBox(width: 8),
@@ -2542,7 +2898,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                           Row(
                                             children: [
                                               getAdaptiveIcon(iconName: 'edit', defaultIcon:
-                                                Icons.edit,
+                                              Icons.edit,
                                                 size: 16,
                                                 color: Theme.of(context).colorScheme.secondary,
                                               ),
@@ -2755,22 +3111,21 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           title: const Text('Lieferdatum auf Handelsrechnung'),
                           subtitle: Text(
                             settings['delivery_date'] == true
-                                ? (useAsDeliveryDate && commercialInvoiceDate != null
+                                ? (useAsDeliveryDate
                                 ? (deliveryDateMonthOnly
-                                ? '${['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][commercialInvoiceDate!.month - 1]} ${commercialInvoiceDate!.year}'
-                                : DateFormat('dd.MM.yyyy').format(commercialInvoiceDate!))
+                                ? '${['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][(commercialInvoiceDate ?? DateTime.now()).month - 1]} ${(commercialInvoiceDate ?? DateTime.now()).year}'
+                                : DateFormat('dd.MM.yyyy').format(commercialInvoiceDate ?? DateTime.now()))
                                 : (selectedDeliveryDate != null
                                 ? (deliveryDateMonthOnly
                                 ? '${['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'][selectedDeliveryDate!.month - 1]} ${selectedDeliveryDate!.year}'
                                 : DateFormat('dd.MM.yyyy').format(selectedDeliveryDate!))
                                 : 'Datum auswählen'))
-                                : 'Lieferdatum auf der Handelsrechnung anzeigen',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: settings['delivery_date'] == true && (useAsDeliveryDate && commercialInvoiceDate != null || selectedDeliveryDate != null)
-                                  ? Colors.green[700]
-                                  : null,
-                            ),
+                                : 'Lieferdatum auf der Handelsrechnung anzeigen',  style: TextStyle(
+                            fontSize: 12,
+                            color: settings['delivery_date'] == true && (useAsDeliveryDate || selectedDeliveryDate != null)
+                                ? Colors.green[700]
+                                : null,
+                          ),
                           ),
                           value: settings['delivery_date'] ?? false,
                           onChanged: (value) {
@@ -2779,10 +3134,11 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                               if (!(settings['delivery_date'] ?? false)) {
                                 selectedDeliveryDate = null;
                                 settings['delivery_date_value'] = null;
-                              } else if (useAsDeliveryDate && commercialInvoiceDate != null) {
+                              } else if (useAsDeliveryDate) {
                                 // Übernimm automatisch das Handelsrechnungsdatum
-                                selectedDeliveryDate = commercialInvoiceDate;
-                                settings['delivery_date_value'] = commercialInvoiceDate;
+                                final effectiveDate = commercialInvoiceDate ?? DateTime.now();
+                                selectedDeliveryDate = effectiveDate;
+                                settings['delivery_date_value'] = effectiveDate;
                               }
                             });
                           },
@@ -2849,7 +3205,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                           ),
                         if (settings['delivery_date'] ?? false) ...[
                           // Info wenn Datum von oben übernommen wird
-                          if (useAsDeliveryDate && commercialInvoiceDate != null)
+                          if (useAsDeliveryDate)
                             Padding(
                               padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
                               child: Container(
@@ -3051,6 +3407,8 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                             Expanded(
                               child: ElevatedButton.icon(
                                 onPressed: () async {
+                                  settings['commercial_invoice_date'] = commercialInvoiceDate;
+
                                   // Speichere in Firebase
                                   await FirebaseFirestore.instance
                                       .collection('orders')
@@ -3073,9 +3431,11 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                     'commercial_invoice_selected_incoterms': settings['selected_incoterms'] ?? [],
                                     'commercial_invoice_incoterms_freetexts': settings['incoterms_freetexts'] ?? {},
                                     'commercial_invoice_delivery_date': settings['delivery_date'],
-                                    'commercial_invoice_delivery_date_value': selectedDeliveryDate != null
+                                    'commercial_invoice_delivery_date_value': useAsDeliveryDate
+                                        ? Timestamp.fromDate(commercialInvoiceDate!)
+                                        : (selectedDeliveryDate != null
                                         ? Timestamp.fromDate(selectedDeliveryDate!)
-                                        : null,
+                                        : null),
                                     'commercial_invoice_delivery_date_month_only': settings['delivery_date_month_only'] ?? false,
                                     'commercial_invoice_carrier': settings['carrier'],
                                     'commercial_invoice_carrier_text': settings['carrier_text'],
@@ -3086,19 +3446,20 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                   );
 
                                   // NEU: Wenn Checkbox aktiv, speichere auch in delivery_settings
-                                  if (useAsDeliveryDate && commercialInvoiceDate != null) {
+                                  if (useAsDeliveryDate) {
+                                    final effectiveDate = commercialInvoiceDate!;
                                     await FirebaseFirestore.instance
                                         .collection('orders')
                                         .doc(widget.order.id)
                                         .collection('settings')
                                         .doc('delivery_settings')
                                         .set({
-                                      'delivery_date': Timestamp.fromDate(commercialInvoiceDate!),
+                                      'delivery_date': Timestamp.fromDate(effectiveDate),
                                       'timestamp': FieldValue.serverTimestamp(),
                                     }, SetOptions(merge: true));
 
                                     // Update auch den lokalen State
-                                    _settings['delivery_note']['delivery_date'] = commercialInvoiceDate;
+                                    _settings['delivery_note']['delivery_date'] = effectiveDate;
                                   }
 // NEU: Zusatztexte in der Order speichern
                                   await FirebaseFirestore.instance
@@ -3107,6 +3468,16 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                       .update({
                                     'metadata.additionalTexts': additionalTextsConfig,
                                   });
+
+                                  // Lokale Variablen zurück in settings schreiben
+                                  settings['use_as_delivery_date'] = useAsDeliveryDate;
+                                  settings['commercial_invoice_date'] = commercialInvoiceDate;
+                                  settings['selected_incoterms'] = selectedIncoterms;
+                                  settings['incoterms_freetexts'] = incotermsFreeTexts;
+                                  settings['selected_signature'] = selectedSignature;
+                                  settings['delivery_date_value'] = selectedDeliveryDate;
+                                  settings['delivery_date_month_only'] = deliveryDateMonthOnly;
+                                  settings['currency'] = selectedCurrency;
 
                                   setState(() {
                                     _settings['commercial_invoice'] = settings;
@@ -3320,7 +3691,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                     padding: const EdgeInsets.all(24),
                     child: Row(
                       children: [
-                         getAdaptiveIcon(iconName: 'view_list',defaultIcon:Icons.view_list,
+                        getAdaptiveIcon(iconName: 'view_list',defaultIcon:Icons.view_list,
                             color: Theme.of(context).colorScheme.primary),
                         const SizedBox(width: 12),
                         const Text('Packliste Einstellungen',
@@ -3385,7 +3756,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
                                         },
                                         icon:
                                         getAdaptiveIcon(iconName: 'inbox', defaultIcon:
-                                          Icons.inbox,
+                                        Icons.inbox,
                                           size: 16,
                                         ),
                                         label: const Text(
@@ -3769,9 +4140,9 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
       if (_selection['Packliste'] == true) {
         final packagesRaw = _settings['packing_list']['packages'] as List<dynamic>? ?? [];
         final packages = packagesRaw.map((p) => Map<String, dynamic>.from(p as Map)).toList();
-final filteredItems = widget.order.items
-    .where((item) => item['is_service'] != true)
-    .toList();
+        final filteredItems = widget.order.items
+            .where((item) => item['is_service'] != true)
+            .toList();
         // Prüfe ob alle Produkte zugewiesen wurden
         final unassignedProducts = <String>[];
 
@@ -3794,7 +4165,7 @@ final filteredItems = widget.order.items
             builder: (context) => AlertDialog(
               title:  Row(
                 children: [
-                   getAdaptiveIcon(iconName: 'warning',defaultIcon:Icons.warning, color: Colors.orange),
+                  getAdaptiveIcon(iconName: 'warning',defaultIcon:Icons.warning, color: Colors.orange),
                   SizedBox(width: 8),
                   Text('Achtung'),
                 ],
@@ -4010,7 +4381,7 @@ final filteredItems = widget.order.items
       }
     });
     final costCenterCode = widget.order.costCenter?['code'] ?? '00000';
-   // print('DEBUG: Final costCenterCode = $costCenterCode');
+    // print('DEBUG: Final costCenterCode = $costCenterCode');
 
 
     // Bereite alle Daten für die Dokumentengenerierung vor
@@ -4028,12 +4399,13 @@ final filteredItems = widget.order.items
       'taxOption': metadata['taxOption'] ?? 0,
       'vatRate': (metadata['vatRate'] as num?)?.toDouble() ?? 8.1,
       'language': metadata['language'] ?? _customerData['language'] ?? 'DE',
+      'documentLanguages': _documentLanguages, // NEU
     };
   }
 
   Future<bool> _createDocument(String docType, Map<String, dynamic> orderData) async {
 
-   // print("yoooooo!");
+    // print("yoooooo!");
     try {
       Uint8List? pdfBytes;
       String? documentUrl;
@@ -4050,7 +4422,7 @@ final filteredItems = widget.order.items
       switch (docType) {
 
         case 'Rechnung':
-         /* print('=== DEBUG Rechnung erstellen ===');
+        /* print('=== DEBUG Rechnung erstellen ===');
           print('orderData costCenterCode: ${orderData['costCenterCode']}');
           print('orderData fair: ${orderData['fair']}');
           print('orderData currency: ${orderData['currency']}');
@@ -4074,14 +4446,14 @@ final filteredItems = widget.order.items
             costCenterCode: orderData['costCenterCode'],
             currency: orderData['currency'],
             exchangeRates: exchangeRates,
-            language: orderData['language'],
+            language: _documentLanguages[docType] ?? orderData['language'],
             invoiceNumber: widget.order.orderNumber,
             shippingCosts: orderData['shippingCosts'],
             calculations: orderData['calculations'],
             paymentTermDays: 30,
             taxOption: orderData['taxOption'],
             vatRate: orderData['vatRate'],
-              downPaymentSettings: invoiceSettings,
+            downPaymentSettings: invoiceSettings,
             roundingSettings: roundingSettings,
             additionalTexts: _additionalTextsConfig,
           );
@@ -4089,7 +4461,7 @@ final filteredItems = widget.order.items
 
         case 'Lieferschein':
 
-          // Generiere Lieferschein mit Settings
+        // Generiere Lieferschein mit Settings
           final settings = _settings['delivery_note'];
           pdfBytes = await DeliveryNoteGenerator.generateDeliveryNotePdf(
             items: orderData['items'],
@@ -4098,7 +4470,7 @@ final filteredItems = widget.order.items
             costCenterCode: orderData['costCenterCode'],
             currency: orderData['currency'],
             exchangeRates: exchangeRates,
-            language: orderData['language'],
+            language: _documentLanguages[docType] ?? orderData['language'],
             deliveryNoteNumber: '${widget.order.orderNumber}-LS',
             deliveryDate: settings['delivery_date'],
             paymentDate: settings['payment_date'],
@@ -4162,7 +4534,7 @@ final filteredItems = widget.order.items
             // Wenn use_as_delivery_date aktiv, dann commercial_invoice_date als Lieferdatum verwenden
             'commercial_invoice_delivery_date': settings['delivery_date'] == true || settings['use_as_delivery_date'] == true,
             'commercial_invoice_delivery_date_value': settings['use_as_delivery_date'] == true
-                ? settings['commercial_invoice_date']
+                ? (settings['commercial_invoice_date'] ?? DateTime.now())
                 : settings['delivery_date_value'],
             'commercial_invoice_delivery_date_month_only': settings['use_as_delivery_date'] == true
                 ? false  // Bei "als Lieferdatum übernehmen" volles Datum anzeigen
@@ -4180,7 +4552,7 @@ final filteredItems = widget.order.items
                 : (settings['commercial_invoice_date'] as Timestamp).toDate();
           }
 
-print("pV:$packagingVolume");
+          print("pV:$packagingVolume");
           print("invoiceDate:$invoiceDate");
 
           pdfBytes = await CommercialInvoiceGenerator.generateCommercialInvoicePdf(
@@ -4190,7 +4562,7 @@ print("pV:$packagingVolume");
             costCenterCode: orderData['costCenterCode'],
             currency: commercialInvoiceCurrency,
             exchangeRates: exchangeRates,
-            language: orderData['language'],
+            language: _documentLanguages[docType] ?? orderData['language'],
             invoiceNumber: '${widget.order.orderNumber}-CI',
             shippingCosts: orderData['shippingCosts'],
             calculations: orderData['calculations'],
@@ -4220,7 +4592,7 @@ print("pV:$packagingVolume");
           });
 
           pdfBytes = await PackingListGenerator.generatePackingListPdf(
-            language: orderData['language'],
+            language: _documentLanguages[docType] ?? orderData['language'],
             packingListNumber: '${widget.order.orderNumber}-PL',
             customerData: orderData['customer'],
             fairData: orderData['fair'],
@@ -4263,6 +4635,7 @@ print("pV:$packagingVolume");
             .doc(widget.order.id)
             .update({
           'documents.$documentKey': documentUrl,
+          'metadata.document_languages.$documentKey': _documentLanguages[docType] ?? 'DE', // NEU
           'updated_at': FieldValue.serverTimestamp(),
         });
 

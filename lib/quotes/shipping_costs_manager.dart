@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import '../services/icon_helper.dart';
+import '../services/user_basket_service.dart';
 
 class ShippingCostsManager {
-  static const String COLLECTION_NAME = 'temporary_shipping_costs';
+
   static const String DOCUMENT_ID = 'current_costs';
 
   // Standardwerte
@@ -24,8 +25,7 @@ class ShippingCostsManager {
   // Lade aus Firebase
   static Future<Map<String, dynamic>> loadShippingCosts() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection(COLLECTION_NAME)
+      final doc = await UserBasketService.temporaryShippingCosts
           .doc(DOCUMENT_ID)
           .get();
 
@@ -94,8 +94,7 @@ class ShippingCostsManager {
         'timestamp': FieldValue.serverTimestamp(),
       };
 
-      await FirebaseFirestore.instance
-          .collection(COLLECTION_NAME)
+      await UserBasketService.temporaryShippingCosts
           .doc(DOCUMENT_ID)
           .set(dataToSave, SetOptions(merge: true));
     } catch (e) {
@@ -192,8 +191,7 @@ class ShippingCostsManager {
   // Speichere Versandkosten direkt aus Daten (für Quote-Kopie)
   static Future<void> saveShippingCostsFromData(Map<String, dynamic> costsData) async {
     try {
-      await FirebaseFirestore.instance
-          .collection(COLLECTION_NAME)
+      await UserBasketService.temporaryShippingCosts
           .doc(DOCUMENT_ID)
           .set({
         ...costsData,
@@ -209,8 +207,7 @@ class ShippingCostsManager {
   // Lösche aus Firebase
   static Future<void> clearShippingCosts() async {
     try {
-      await FirebaseFirestore.instance
-          .collection(COLLECTION_NAME)
+      await UserBasketService.temporaryShippingCosts
           .doc(DOCUMENT_ID)
           .delete();
     } catch (e) {
@@ -294,8 +291,8 @@ class _ShippingCostsBottomSheetState extends State<_ShippingCostsBottomSheet> {
     List<Map<String, dynamic>> itemWeights = [];
 
     try {
-      final basketSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_basket')
+      final basketSnapshot = await
+          UserBasketService.temporaryBasket
           .get();
 
       for (var doc in basketSnapshot.docs) {

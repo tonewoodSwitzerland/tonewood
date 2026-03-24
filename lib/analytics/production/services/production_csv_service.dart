@@ -39,6 +39,8 @@ class ProductionCsvService {
         'Einheit',
         'Preis CHF',
         'Wert CHF',
+        'Volumen/Stück in m³',
+        'Gesamtvolumen m³',
         'Mondholz',
         'Haselfichte',
         'Therm. behandelt',
@@ -52,11 +54,35 @@ class ProductionCsvService {
         final quantity = (batch['quantity'] as num?)?.toDouble() ?? 0.0;
         final price = (batch['price_CHF'] as num?)?.toDouble() ?? 0.0;
         final value = (batch['value'] as num?)?.toDouble() ?? (quantity * price);
+        final unit = batch['unit'] as String? ?? 'Stk';
 
         // Produktionsnummer zusammenbauen
         final barcode = batch['barcode'] ?? '';
         final batchNumber = (batch['batch_number'] ?? 0).toString().padLeft(4, '0');
         final productionNumber = barcode.isNotEmpty ? '$barcode.$batchNumber' : batchNumber;
+
+        // Volumen/Stück – nur befüllt wenn Einheit Stück
+        final volumeM3 = batch['_volume_m3'] as double?;
+        final isStuck = unit == 'Stück' || unit == 'Stk';
+        final isM3 = unit == 'm³';
+
+        // Volumen/Stück in m³: nur bei Stück-Buchungen
+        final volumePerPieceStr = (isStuck && volumeM3 != null)
+            ? volumeM3.toStringAsFixed(7)
+            : '';
+
+        // Gesamtvolumen m³:
+        //   - m³:    quantity direkt (bereits in m³)
+        //   - Stück: volumeM3 * quantity (falls Standardprodukt vorhanden)
+        //   - sonst: leer
+        final String totalVolumeStr;
+        if (isM3) {
+          totalVolumeStr = quantity.toStringAsFixed(3);
+        } else if (isStuck && volumeM3 != null) {
+          totalVolumeStr = (volumeM3 * quantity).toStringAsFixed(7);
+        } else {
+          totalVolumeStr = '';
+        }
 
         return [
           date != null ? DateFormat('dd.MM.yyyy').format(date) : '',
@@ -67,9 +93,11 @@ class ProductionCsvService {
           batch['wood_name'] ?? '',
           batch['quality_name'] ?? '',
           quantity,
-          batch['unit'] ?? 'Stk',
+          unit,
           price.toStringAsFixed(2),
           value.toStringAsFixed(2),
+          volumePerPieceStr,
+          totalVolumeStr,
           (batch['moonwood'] == true) ? 'Ja' : 'Nein',
           (batch['haselfichte'] == true) ? 'Ja' : 'Nein',
           (batch['thermally_treated'] == true) ? 'Ja' : 'Nein',

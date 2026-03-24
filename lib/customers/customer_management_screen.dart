@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:tonewood/customers/widgets/customer_purchase_stats_header.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../components/country_dropdown_widget.dart';
 import 'customer.dart';
@@ -1407,117 +1408,21 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
   Widget _buildPurchaseHistoryTab(BuildContext context, Customer customer) {
     return Column(
       children: [
-        // Statistiken-Header bleibt gleich
-        FutureBuilder<Map<String, dynamic>>(
-          future: _getCustomerStats(customer.id),
-          builder: (context, snapshot) {
-            if (snapshot.hasData) {
-              final stats = snapshot.data!;
-              return Container(
-                margin: const EdgeInsets.all(16),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            children: [
-                              Text(
-                                '${stats['totalQuotes']}',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const Text('Angebote'),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            children: [
-                              Text(
-                                '${stats['totalOrders']}',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const Text('Aufträge'),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            children: [
-                              Text(
-                                'CHF ${stats['totalSpent'].toStringAsFixed(0)}',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const Text('Gesamt'),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    // Info-Text
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        getAdaptiveIcon(iconName: 'info', defaultIcon:
-                        Icons.info,
-                          size: 12,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Alle Beträge in CHF (Basis-Währung)',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            }
-            return const SizedBox(height: 80);
-          },
-        ),
+        // NEU: Eine Zeile statt 80 Zeilen
+        CustomerPurchaseStatsHeader(customerId: customer.id),
 
-        // Tab-Ansicht für Angebote und Aufträge
+        // Rest bleibt UNVERÄNDERT
         Expanded(
           child: DefaultTabController(
             length: 2,
             child: Column(
               children: [
-                TabBar(
-                  tabs: [
-                    Tab(text: 'Aufträge'),
-                    Tab(text: 'Angebote'),
-                  ],
-                ),
+                TabBar(tabs: [Tab(text: 'Aufträge'), Tab(text: 'Angebote')]),
                 Expanded(
-                  child: TabBarView(
-                    children: [
-                      // Aufträge Tab
-                      _buildOrdersList(customer),
-                      // Angebote Tab
-                      _buildQuotesList(customer),
-                    ],
-                  ),
+                  child: TabBarView(children: [
+                    _buildOrdersList(customer),
+                    _buildQuotesList(customer),
+                  ]),
                 ),
               ],
             ),
@@ -1526,7 +1431,6 @@ class CustomerManagementScreenState extends State<CustomerManagementScreen> {
       ],
     );
   }
-
 // Neue Methode für Aufträge
   Widget _buildOrdersList(Customer customer) {
     return StreamBuilder<QuerySnapshot>(

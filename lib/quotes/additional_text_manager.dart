@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/icon_helper.dart';
+import '../services/user_basket_service.dart';
 
 class AdditionalTextsManager {
-  static const String COLLECTION_NAME = 'temporary_additional_texts';
+
   static const String DOCUMENT_ID = 'current_texts';
 
   // Firebase Pfad für die Standardtexte
@@ -342,8 +343,7 @@ class AdditionalTextsManager {
   // GEÄNDERT: loadAdditionalTexts - verwendet jetzt die Firebase-Defaults
   static Future<Map<String, dynamic>> loadAdditionalTexts() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection(COLLECTION_NAME)
+      final doc = await UserBasketService.temporaryAdditionalTexts
           .doc(DOCUMENT_ID)
           .get();
 
@@ -366,7 +366,8 @@ class AdditionalTextsManager {
           };
           data.remove('legend');
         }
-        return data;
+        // Stelle sicher, dass custom_blocks vorhanden ist
+        return ensureCustomBlocks(data);
       }
     } catch (e) {
       print('Fehler beim Laden der Zusatztexte: $e');
@@ -416,6 +417,7 @@ class AdditionalTextsManager {
         'custom_text': '',
         'selected': defaults['free_text'] ?? false,
       },
+      'custom_blocks': _buildDefaultCustomBlockSelections(),
     };
   }
 
@@ -432,7 +434,8 @@ class AdditionalTextsManager {
         final metadata = data['metadata'] as Map<String, dynamic>? ?? {};
 
         if (metadata.containsKey('additionalTexts')) {
-          return metadata['additionalTexts'] as Map<String, dynamic>;
+          final texts = metadata['additionalTexts'] as Map<String, dynamic>;
+          return ensureCustomBlocks(texts);
         }
       }
     } catch (e) {
@@ -447,8 +450,7 @@ class AdditionalTextsManager {
   // Speichern der Texte in Firestore
   static Future<void> saveAdditionalTexts(Map<String, dynamic> texts) async {
     try {
-      await FirebaseFirestore.instance
-          .collection(COLLECTION_NAME)
+      await UserBasketService.temporaryAdditionalTexts
           .doc(DOCUMENT_ID)
           .set(texts, SetOptions(merge: true));
     } catch (e) {
@@ -459,8 +461,7 @@ class AdditionalTextsManager {
   // Prüfen, ob Texte ausgewählt wurden
   static Future<bool> hasTextsSelected() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection(COLLECTION_NAME)
+      final doc = await UserBasketService.temporaryAdditionalTexts
           .doc(DOCUMENT_ID)
           .get();
 
@@ -471,7 +472,8 @@ class AdditionalTextsManager {
             data['fsc']?['selected'] == true ||
             data['natural_product']?['selected'] == true ||
             data['bank_info']?['selected'] == true ||
-            data['free_text']?['selected'] == true;
+            data['free_text']?['selected'] == true ||
+            _hasAnyCustomBlockSelected(data);
       }
     } catch (e) {
       print('Fehler beim Prüfen der Zusatztexte: $e');
@@ -483,8 +485,7 @@ class AdditionalTextsManager {
   // Löschen der temporären Texte
   static Future<void> clearAdditionalTexts() async {
     try {
-      await FirebaseFirestore.instance
-          .collection(COLLECTION_NAME)
+      await UserBasketService.temporaryAdditionalTexts
           .doc(DOCUMENT_ID)
           .delete();
     } catch (e) {
@@ -587,7 +588,8 @@ class AdditionalTextsManager {
               additionalTexts['fsc']?['selected'] == true ||
               additionalTexts['natural_product']?['selected'] == true ||
               additionalTexts['bank_info']?['selected'] == true ||
-              additionalTexts['free_text']?['selected'] == true;
+              additionalTexts['free_text']?['selected'] == true ||
+              _hasAnyCustomBlockSelected(additionalTexts);
         }
       }
     } catch (e) {
@@ -597,8 +599,223 @@ class AdditionalTextsManager {
     return false;
   }
 
+  // ==========================================
+  // Custom Text Blocks
+  // ==========================================
 
+  /// Prüft ob irgendein Custom Block ausgewählt ist
+  static bool _hasAnyCustomBlockSelected(Map<String, dynamic> data) {
+    final customBlocks = data['custom_blocks'] as Map<String, dynamic>?;
+    if (customBlocks == null) return false;
+    return customBlocks.values.any((block) {
+      if (block is Map<String, dynamic>) {
+        return block['selected'] == true;
+      }
+      return false;
+    });
+  }
 
+  static const String CUSTOM_TEXT_BLOCKS_PATH = 'general_data/config/custom_text_blocks';
+
+  static List<Map<String, dynamic>>? _cachedCustomTextBlocks;
+
+  /// Lädt alle Custom Text Blocks aus Firebase, sortiert nach order
+  static Future<List<Map<String, dynamic>>> loadCustomTextBlocks() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection(CUSTOM_TEXT_BLOCKS_PATH)
+          .orderBy('order')
+          .get();
+
+      _cachedCustomTextBlocks = snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+
+      return _cachedCustomTextBlocks!;
+    } catch (e) {
+      print('Fehler beim Laden der Custom Text Blocks: $e');
+      return _cachedCustomTextBlocks ?? [];
+    }
+  }
+
+  /// Synchroner Zugriff auf Cache
+  static List<Map<String, dynamic>> getCachedCustomTextBlocks() {
+    return _cachedCustomTextBlocks ?? [];
+  }
+
+  /// Stream für Live-Updates
+  static Stream<List<Map<String, dynamic>>> streamCustomTextBlocks() {
+    return FirebaseFirestore.instance
+        .collection(CUSTOM_TEXT_BLOCKS_PATH)
+        .orderBy('order')
+        .snapshots()
+        .map((snapshot) {
+      _cachedCustomTextBlocks = snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+      return _cachedCustomTextBlocks!;
+    });
+  }
+
+  /// Neuen Block anlegen
+  static Future<String> createCustomTextBlock({
+    required String title,
+    required String textDe,
+    required String textEn,
+    bool activeByDefault = false,
+  }) async {
+    try {
+      // Nächste order-Nummer ermitteln
+      final existing = await FirebaseFirestore.instance
+          .collection(CUSTOM_TEXT_BLOCKS_PATH)
+          .orderBy('order', descending: true)
+          .limit(1)
+          .get();
+
+      int nextOrder = 0;
+      if (existing.docs.isNotEmpty) {
+        nextOrder = (existing.docs.first.data()['order'] ?? 0) + 1;
+      }
+
+      final docRef = await FirebaseFirestore.instance
+          .collection(CUSTOM_TEXT_BLOCKS_PATH)
+          .add({
+        'title': title,
+        'text_de': textDe,
+        'text_en': textEn,
+        'active_by_default': activeByDefault,
+        'order': nextOrder,
+        'created_at': FieldValue.serverTimestamp(),
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+
+      return docRef.id;
+    } catch (e) {
+      print('Fehler beim Erstellen des Custom Text Blocks: $e');
+      rethrow;
+    }
+  }
+
+  /// Block bearbeiten
+  static Future<void> updateCustomTextBlock({
+    required String blockId,
+    required String title,
+    required String textDe,
+    required String textEn,
+    bool? activeByDefault,
+  }) async {
+    try {
+      final updateData = <String, dynamic>{
+        'title': title,
+        'text_de': textDe,
+        'text_en': textEn,
+        'updated_at': FieldValue.serverTimestamp(),
+      };
+      if (activeByDefault != null) {
+        updateData['active_by_default'] = activeByDefault;
+      }
+
+      await FirebaseFirestore.instance
+          .collection(CUSTOM_TEXT_BLOCKS_PATH)
+          .doc(blockId)
+          .update(updateData);
+    } catch (e) {
+      print('Fehler beim Aktualisieren des Custom Text Blocks: $e');
+      rethrow;
+    }
+  }
+
+  /// Block löschen
+  static Future<void> deleteCustomTextBlock(String blockId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection(CUSTOM_TEXT_BLOCKS_PATH)
+          .doc(blockId)
+          .delete();
+    } catch (e) {
+      print('Fehler beim Löschen des Custom Text Blocks: $e');
+      rethrow;
+    }
+  }
+
+  /// Text in gewünschter Sprache holen
+  static String getCustomTextBlockContent(Map<String, dynamic> block, String language) {
+    if (language == 'EN') {
+      return block['text_en'] ?? block['text_de'] ?? '';
+    }
+    return block['text_de'] ?? '';
+  }
+
+  /// Alle aktiven Block-Texte aus einer textConfig holen (für PDF-Generierung)
+  static List<String> getActiveCustomBlockTexts(
+      Map<String, dynamic> textConfig, {
+        String language = 'DE',
+      }) {
+    final List<String> texts = [];
+    final customBlocks = textConfig['custom_blocks'] as Map<String, dynamic>?;
+    if (customBlocks == null) return texts;
+
+    final cachedBlocks = getCachedCustomTextBlocks();
+
+    for (final entry in customBlocks.entries) {
+      final blockId = entry.key;
+      final blockConfig = entry.value as Map<String, dynamic>?;
+      if (blockConfig?['selected'] == true) {
+        // Finde den Block in den gecachten Daten
+        final block = cachedBlocks.firstWhere(
+              (b) => b['id'] == blockId,
+          orElse: () => <String, dynamic>{},
+        );
+        if (block.isNotEmpty) {
+          final text = getCustomTextBlockContent(block, language);
+          if (text.isNotEmpty) {
+            texts.add(text);
+          }
+        }
+      }
+    }
+
+    return texts;
+  }
+
+  /// Default-Selections basierend auf active_by_default bauen
+  static Map<String, dynamic> _buildDefaultCustomBlockSelections() {
+    final blocks = getCachedCustomTextBlocks();
+    final Map<String, dynamic> selections = {};
+    for (final block in blocks) {
+      final id = block['id'] as String?;
+      if (id != null) {
+        selections[id] = {
+          'selected': block['active_by_default'] ?? false,
+        };
+      }
+    }
+    return selections;
+  }
+
+  /// Stellt sicher, dass custom_blocks in der textConfig vorhanden ist
+  static Map<String, dynamic> ensureCustomBlocks(Map<String, dynamic> textConfig) {
+    if (!textConfig.containsKey('custom_blocks')) {
+      textConfig['custom_blocks'] = _buildDefaultCustomBlockSelections();
+    } else {
+      // Prüfe ob neue Blocks hinzugekommen sind
+      final existing = textConfig['custom_blocks'] as Map<String, dynamic>;
+      final blocks = getCachedCustomTextBlocks();
+      for (final block in blocks) {
+        final id = block['id'] as String?;
+        if (id != null && !existing.containsKey(id)) {
+          existing[id] = {
+            'selected': block['active_by_default'] ?? false,
+          };
+        }
+      }
+    }
+    return textConfig;
+  }
 
 }
 
@@ -609,6 +826,7 @@ void showAdditionalTextsBottomSheet(BuildContext context, {
 }) async {
   // Lade die Standardtexte aus Firebase, bevor das Sheet angezeigt wird
   await AdditionalTextsManager.loadDefaultTextsFromFirebase();
+  await AdditionalTextsManager.loadCustomTextBlocks();
 
   // Der Rest der Funktion bleibt gleich...
   Map<String, dynamic> textConfig = {
@@ -919,6 +1137,135 @@ void showAdditionalTextsBottomSheet(BuildContext context, {
 
                       const SizedBox(height: 24),
 
+                      // Custom Text Blocks Sektion
+                      Builder(
+                        builder: (context) {
+                          final customBlocks = AdditionalTextsManager.getCachedCustomTextBlocks();
+                          if (customBlocks.isEmpty) return const SizedBox.shrink();
+
+                          // Stelle sicher, dass custom_blocks in der textConfig existiert
+                          if (textConfig['custom_blocks'] == null) {
+                            textConfig['custom_blocks'] = {};
+                          }
+                          final customBlocksConfig = textConfig['custom_blocks'] as Map<String, dynamic>;
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.library_books,
+                                      size: 20,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Weitere Textbausteine',
+                                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              ...customBlocks.map((block) {
+                                final blockId = block['id'] as String;
+                                final title = block['title'] ?? '';
+                                final textDe = block['text_de'] ?? '';
+
+                                // Initialisiere falls nicht vorhanden
+                                if (!customBlocksConfig.containsKey(blockId)) {
+                                  customBlocksConfig[blockId] = {
+                                    'selected': block['active_by_default'] ?? false,
+                                  };
+                                }
+
+                                final isSelected = customBlocksConfig[blockId]?['selected'] == true;
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).colorScheme.surfaceContainerLowest,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+                                            : Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                                        width: isSelected ? 2 : 1,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                title,
+                                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                            Switch(
+                                              value: isSelected,
+                                              onChanged: (value) {
+                                                setState(() {
+                                                  customBlocksConfig[blockId] = {
+                                                    'selected': value,
+                                                  };
+                                                });
+                                              },
+                                              activeColor: Theme.of(context).colorScheme.primary,
+                                            ),
+                                          ],
+                                        ),
+                                        if (isSelected && textDe.isNotEmpty) ...[
+                                          const SizedBox(height: 8),
+                                          Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context).colorScheme.surface,
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(
+                                                color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                              ),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'Vorschau:',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 12,
+                                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  textDe,
+                                                  style: const TextStyle(fontSize: 14),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }),
+                              const SizedBox(height: 12),
+                            ],
+                          );
+                        },
+                      ),
+
                       // 6. Freitext
                       Container(
                         padding: const EdgeInsets.all(16),
@@ -1018,12 +1365,24 @@ void showAdditionalTextsBottomSheet(BuildContext context, {
                             await AdditionalTextsManager.saveAdditionalTexts(textConfig);
 
                             // Aktualisiere den Notifier
-                            final hasSelection = textConfig['legend_origin']['selected'] == true ||
+                            bool hasSelection = textConfig['legend_origin']['selected'] == true ||
                                 textConfig['legend_temperature']['selected'] == true ||
                                 textConfig['fsc']['selected'] == true ||
                                 textConfig['natural_product']['selected'] == true ||
                                 textConfig['bank_info']['selected'] == true ||
                                 textConfig['free_text']['selected'] == true;
+
+                            // Prüfe auch custom_blocks
+                            final customBlocks = textConfig['custom_blocks'] as Map<String, dynamic>?;
+                            if (customBlocks != null) {
+                              for (final entry in customBlocks.entries) {
+                                if (entry.value is Map<String, dynamic> &&
+                                    entry.value['selected'] == true) {
+                                  hasSelection = true;
+                                  break;
+                                }
+                              }
+                            }
                             textsSelectedNotifier.value = hasSelection;
 
                             if (context.mounted) {

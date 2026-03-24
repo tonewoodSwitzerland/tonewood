@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../analytics/production/services/production_cache_service.dart';
+
 /// Service für die flache production_batches Collection
 /// Ermöglicht performante Aggregationen ohne N+1 Queries
 class ProductionBatchService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
+  FirebaseFirestore get firestore => _firestore;
   // Konstanten für die relevanten Instrument-Codes (Qualitätsverteilung nur Decke)
   static const List<String> qualityDistributionInstruments = [
     '10', // Steelstring Gitarre
@@ -21,11 +23,62 @@ class ProductionBatchService {
   // QUERIES
   // ===========================================
 
+
+
+  Future<List<int>> getAvailableRoundwoodYears() async {
+    final snapshot = await _firestore
+        .collection('roundwood')
+        .orderBy('year', descending: true)
+        .get();
+
+    final years = <int>{};
+    for (final doc in snapshot.docs) {
+      final year = doc.data()['year'] as int?;
+      if (year != null) years.add(year);
+    }
+
+    return years.toList()..sort((a, b) => b.compareTo(a));
+  }
+  Future<List<Map<String, dynamic>>> getBatchesForRoundwoodYear(int year) async {
+    // Schritt 1: Alle Stämme des Jahrgangs holen
+    final logsSnapshot = await _firestore
+        .collection('roundwood')
+        .where('year', isEqualTo: year)
+        .get();
+
+    if (logsSnapshot.docs.isEmpty) return [];
+
+    final roundwoodIds = logsSnapshot.docs.map((doc) => doc.id).toList();
+
+    // Schritt 2: Alle Batches dieser Stämme holen (whereIn max 30)
+    final allBatches = <Map<String, dynamic>>[];
+
+    for (int i = 0; i < roundwoodIds.length; i += 30) {
+      final chunk = roundwoodIds.sublist(
+        i,
+        i + 30 > roundwoodIds.length ? roundwoodIds.length : i + 30,
+      );
+
+      final batchSnapshot = await _firestore
+          .collection('production_batches')
+          .where('roundwood_id', whereIn: chunk)
+          .get();
+
+      for (final doc in batchSnapshot.docs) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        allBatches.add(data);
+      }
+    }
+
+    return allBatches;
+  }
   /// Holt alle Batches für ein Jahr (Basis-Query)
   Future<List<Map<String, dynamic>>> getBatchesForYear(int year) async {
     final snapshot = await _firestore
         .collection('production_batches')
-        .where('year', isEqualTo: year)
+        .where('stock_entry_date', isGreaterThanOrEqualTo: Timestamp.fromDate(DateTime(year, 1, 1)))
+        .where('stock_entry_date', isLessThan: Timestamp.fromDate(DateTime(year + 1, 1, 1)))
         .get();
 
     return snapshot.docs.map((doc) {
@@ -39,22 +92,24 @@ class ProductionBatchService {
   Stream<QuerySnapshot> getBatchesStream(int year) {
     return _firestore
         .collection('production_batches')
-        .where('year', isEqualTo: year)
+        .where('stock_entry_date', isGreaterThanOrEqualTo: Timestamp.fromDate(DateTime(year, 1, 1)))
+        .where('stock_entry_date', isLessThan: Timestamp.fromDate(DateTime(year + 1, 1, 1)))
         .orderBy('stock_entry_date', descending: true)
         .snapshots();
   }
 
-  /// Holt alle verfügbaren Jahre
   Future<List<int>> getAvailableYears() async {
     final snapshot = await _firestore
         .collection('production_batches')
-        .orderBy('year', descending: true)
+        .orderBy('stock_entry_date', descending: true)
         .get();
 
     final years = <int>{};
     for (final doc in snapshot.docs) {
-      final year = doc.data()['year'] as int?;
-      if (year != null) years.add(year);
+      final timestamp = doc.data()['stock_entry_date'];
+      if (timestamp != null && timestamp is Timestamp) {
+        years.add(timestamp.toDate().year);
+      }
     }
 
     return years.toList()..sort((a, b) => b.compareTo(a));
@@ -397,7 +452,12 @@ class ProductionBatchService {
   // BATCH ERSTELLEN (wird von _saveStockEntry aufgerufen)
   // ===========================================
 
-  /// Erstellt einen neuen Batch in der flachen Collection
+  // ============================================================
+// NUR DIESE METHODE in production_batch_service.dart ersetzen
+// Außerdem diesen Import oben hinzufügen:
+// import 'package:tonewood/analytics/production/services/production_cache_service.dart';
+// ============================================================
+
   Future<DocumentReference> createBatch({
     required String productId,
     required int batchNumber,
@@ -408,6 +468,7 @@ class ProductionBatchService {
   }) async {
     final price = (productData['price_CHF'] as num?)?.toDouble() ?? 0.0;
     final value = quantity * price;
+    final productionYear = DateTime.now().year;
 
     final batchData = {
       // Referenzen
@@ -419,7 +480,7 @@ class ProductionBatchService {
 
       // Zeitdaten
       'stock_entry_date': FieldValue.serverTimestamp(),
-      'year': productData['year'] ?? DateTime.now().year,
+      'year': productData['year'] ?? productionYear, // Stammjahr bleibt erhalten
 
       // Mengen
       'quantity': quantity,
@@ -444,7 +505,12 @@ class ProductionBatchService {
       'FSC_100': productData['FSC_100'] ?? false,
     };
 
-    return await _firestore.collection('production_batches').add(batchData);
+    final docRef = await _firestore.collection('production_batches').add(batchData);
+
+    // Cache für das Produktionsjahr invalidieren
+    await ProductionCacheService.invalidateYear(productionYear);
+
+    return docRef;
   }
 
   /// Aktualisiert die Stamm-Zuordnung eines bestehenden Batches

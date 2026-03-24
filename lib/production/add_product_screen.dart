@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -1251,9 +1250,9 @@ class AddProductScreenState extends State<AddProductScreen> {
 
       if (widget.onSave != null) {
         widget.onSave!();
-      }
-
-      if (mounted) {
+        // Kein Navigator.pop hier! onSave entfernt das Widget aus dem Tree (Desktop-Layout).
+        // Navigator.pop mit ungültigem Context würde den Hänger verursachen.
+      } else if (mounted) {
         Navigator.pop(context);
       }
     } catch (e) {

@@ -28,6 +28,7 @@ class OrderDetailsSheet extends StatelessWidget {
   final Function(OrderX) onCancel;
   final Function(OrderX, Map<String, dynamic>, int) onEditItemMeasurements;
   final Function(OrderX)? onVeranlagung;
+  final Function(OrderX)? onEditShippedAt;
 
   const OrderDetailsSheet({
     Key? key,
@@ -39,6 +40,7 @@ class OrderDetailsSheet extends StatelessWidget {
     required this.onCancel,
     required this.onEditItemMeasurements,
     this.onVeranlagung,
+    this.onEditShippedAt,
   }) : super(key: key);
 
   static void show(
@@ -51,6 +53,7 @@ class OrderDetailsSheet extends StatelessWidget {
         required Function(OrderX) onCancel,
         required Function(OrderX, Map<String, dynamic>, int) onEditItemMeasurements,
         Function(OrderX)? onVeranlagung,
+        Function(OrderX)? onEditShippedAt,
       }) {
     final isDesktop = MediaQuery.of(context).size.width > 800;
 
@@ -75,6 +78,7 @@ class OrderDetailsSheet extends StatelessWidget {
               onCancel: onCancel,
               onEditItemMeasurements: onEditItemMeasurements,
               onVeranlagung: onVeranlagung,
+              onEditShippedAt: onEditShippedAt,
               isDesktop: true,
             ),
           ),
@@ -100,6 +104,7 @@ class OrderDetailsSheet extends StatelessWidget {
             onCancel: onCancel,
             onEditItemMeasurements: onEditItemMeasurements,
             onVeranlagung: onVeranlagung,
+            onEditShippedAt: onEditShippedAt,
             isDesktop: false,
           ),
         ),
@@ -118,6 +123,7 @@ class OrderDetailsSheet extends StatelessWidget {
       onCancel: onCancel,
       onEditItemMeasurements: onEditItemMeasurements,
       onVeranlagung: onVeranlagung,
+      onEditShippedAt: onEditShippedAt,
       isDesktop: MediaQuery.of(context).size.width > 800,
     );
   }
@@ -132,6 +138,7 @@ class _OrderDetailsContent extends StatefulWidget {
   final Function(OrderX) onCancel;
   final Function(OrderX, Map<String, dynamic>, int) onEditItemMeasurements;
   final Function(OrderX)? onVeranlagung;
+  final Function(OrderX)? onEditShippedAt;
   final bool isDesktop;
 
   const _OrderDetailsContent({
@@ -143,6 +150,7 @@ class _OrderDetailsContent extends StatefulWidget {
     required this.onCancel,
     required this.onEditItemMeasurements,
     this.onVeranlagung,
+    this.onEditShippedAt,
     required this.isDesktop,
   });
 
@@ -281,6 +289,42 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
                         ],
                       ],
                     ),
+                    // Versanddatum (nur bei shipped)
+                    if (currentOrder.status == OrderStatus.shipped) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.local_shipping, size: 13, color: OrderColors.shipped.withOpacity(0.8)),
+                          const SizedBox(width: 4),
+                          Text(
+                            currentOrder.shippedAt != null
+                                ? 'Versendet: ${DateFormat('dd.MM.yyyy').format(currentOrder.shippedAt!)}'
+                                : 'Versanddatum nicht gesetzt',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: currentOrder.shippedAt != null
+                                  ? OrderColors.shipped.withOpacity(0.9)
+                                  : Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          InkWell(
+                            onTap: widget.onEditShippedAt != null
+                                ? () => widget.onEditShippedAt!(currentOrder)
+                                : null,
+                            borderRadius: BorderRadius.circular(4),
+                            child: Padding(
+                              padding: const EdgeInsets.all(2),
+                              child: Icon(
+                                Icons.edit,
+                                size: 12,
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1900,6 +1944,26 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
     compare('phone2', orderData['phone2'], masterData['phone2'], 'Telefon 2');
     compare('vatNumber', orderData['vatNumber'], masterData['vatNumber'], 'MwSt-Nummer');
     compare('eoriNumber', orderData['eoriNumber'], masterData['eoriNumber'], 'EORI-Nummer');
+
+    // Dokumentenoptionen vergleichen
+    void compareBool(String field, dynamic orderValue, dynamic masterValue, String label) {
+      final oVal = orderValue == true;
+      final mVal = masterValue == true;
+      if (oVal != mVal) {
+        differences[field] = {
+          'label': label,
+          'order': oVal ? 'Ja' : 'Nein',
+          'master': mVal ? 'Ja' : 'Nein',
+        };
+      }
+    }
+
+    compareBool('showEoriOnDocuments', orderData['showEoriOnDocuments'], masterData['showEoriOnDocuments'], 'EORI auf Dokumenten anzeigen');
+    compareBool('showVatOnDocuments', orderData['showVatOnDocuments'], masterData['showVatOnDocuments'], 'MwSt auf Dokumenten anzeigen');
+    compareBool('showCustomFieldOnDocuments', orderData['showCustomFieldOnDocuments'], masterData['showCustomFieldOnDocuments'], 'Eigenes Feld auf Dokumenten anzeigen');
+    compare('customFieldTitle', orderData['customFieldTitle'], masterData['customFieldTitle'], 'Eigenes Feld Titel');
+    compare('customFieldValue', orderData['customFieldValue'], masterData['customFieldValue'], 'Eigenes Feld Wert');
+    compare('language', orderData['language'], masterData['language'], 'Sprache');
 
     // === Lieferadresse ===
     // Prüfe ob Kundenstamm eine abweichende Lieferadresse hat

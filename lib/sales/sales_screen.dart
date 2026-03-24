@@ -1,62 +1,38 @@
-
-
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:tonewood/home/quote_order_flow_screen.dart';
+import 'package:tonewood/quotes/quote_order_flow_screen.dart';
 import 'package:tonewood/home/service_selection_sheet.dart';
 
 import 'package:tonewood/warehouse/warehouse_screen.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import '../cost_center/cost_center.dart';
 import '../cost_center/cost_center_picker.dart';
 import '../customers/customer.dart';
 import '../customers/customer_cache_service.dart';
+import '../fairs/fairs.dart';
 import '../services/price_formatter.dart';
 import '../services/swiss_rounding.dart'; // Pfad anpassen je nach Projektstruktur
-
-import 'package:path_provider/path_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../components/check_address.dart';
 import '../components/manual_product_dialog.dart';
-import '../services/additional_text_manager.dart';
-import '../services/document_selection_manager.dart';
-
-import 'package:firebase_storage/firebase_storage.dart';
+import '../quotes/additional_text_manager.dart';
+import '../quotes/quote_doc_selection_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-import 'package:share_plus/share_plus.dart';
-import '../analytics/sales/export_documents_integration.dart';
-import '../analytics/sales/export_module.dart';
 import '../constants.dart';
-import '../services/cost_center.dart';
-
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-
 import 'package:intl/intl.dart';
-
-import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
-
 import 'dart:typed_data';
-
 import '../services/discount.dart';
-import '../services/download_helper_mobile.dart' if (dart.library.html) '../services/download_helper_web.dart';
-import '../services/fair_management_screen.dart';
-import '../services/fairs.dart';
-
-import 'package:csv/csv.dart';
-
+import '../services/pdf_services/download_helper_mobile.dart' if (dart.library.html) '../services/pdf_services/download_helper_web.dart';
+import '../fairs/fair_management_screen.dart';
 import '../services/icon_helper.dart';
 import '../home/barcode_scanner.dart';
-import '../home/currency_converter_sheet.dart';
+import '../quotes/currency_converter_sheet.dart';
 import '../customers/customer_selection.dart';
-import '../services/shipping_costs_manager.dart';
+import '../quotes/shipping_costs_manager.dart';
+import '../services/user_basket_service.dart';
 import 'item_discount_dialog.dart';
 
 enum TaxOption {
@@ -75,8 +51,8 @@ class SalesScreen extends StatefulWidget {
     this.quoteToEdit,
   }) : super(key: key);
 
-@override
-SalesScreenState createState() => SalesScreenState();
+  @override
+  SalesScreenState createState() => SalesScreenState();
 }
 
 class SalesScreenState extends State<SalesScreen> {
@@ -88,28 +64,28 @@ class SalesScreenState extends State<SalesScreen> {
   final ValueNotifier<String> _documentLanguageNotifier = ValueNotifier<String>('DE');
   final ValueNotifier<double> _vatRateNotifier = ValueNotifier<double>(8.1);
 
-  bool _isDetailExpanded = false;
+  bool _isDetailExpanded = kIsWeb;
   String? _editingQuoteId;
   String? _editingQuoteNumber;
   final ValueNotifier<Fair?> _selectedFairNotifier = ValueNotifier<Fair?>(null);
-bool isLoading = false;
-final TextEditingController barcodeController = TextEditingController();
-final TextEditingController quantityController = TextEditingController();
-Customer? selectedCustomer;
-final TextEditingController customerSearchController = TextEditingController();
-final ValueNotifier<bool> _isLoading = ValueNotifier<bool>(true);
-CostCenter? selectedCostCenter;
-Map<String, dynamic>? selectedProduct;
+  bool isLoading = false;
+  final TextEditingController barcodeController = TextEditingController();
+  final TextEditingController quantityController = TextEditingController();
+  Customer? selectedCustomer;
+  final TextEditingController customerSearchController = TextEditingController();
+  final ValueNotifier<bool> _isLoading = ValueNotifier<bool>(true);
+  CostCenter? selectedCostCenter;
+  Map<String, dynamic>? selectedProduct;
 
   bool sendPdfToCustomer = true;
   bool sendCsvToCustomer = false;
   bool sendPdfToOffice = true;
   bool sendCsvToOffice = true;
 
-Stream<QuerySnapshot> get _basketStream => FirebaseFirestore.instance
-    .collection('temporary_basket')
-    .orderBy('timestamp', descending: true)
-    .snapshots();
+  Stream<QuerySnapshot> get _basketStream =>
+      UserBasketService.temporaryBasket
+          .orderBy('timestamp', descending: true)
+          .snapshots();
 
   final ValueNotifier<String> _currencyNotifier = ValueNotifier<String>('CHF');
   final ValueNotifier<Map<String, double>> _exchangeRatesNotifier = ValueNotifier<Map<String, double>>({
@@ -151,8 +127,8 @@ Stream<QuerySnapshot> get _basketStream => FirebaseFirestore.instance
   Future<void> _onCustomerUpdated(Customer updatedCustomer) async {
     print('🔔 _onCustomerUpdated aufgerufen für: ${updatedCustomer.id}');
 
-    final tempDocs = await FirebaseFirestore.instance
-        .collection('temporary_customer')
+    final tempDocs = await
+    UserBasketService.temporaryCustomer
         .limit(1)
         .get();
 
@@ -173,15 +149,15 @@ Stream<QuerySnapshot> get _basketStream => FirebaseFirestore.instance
   }
   Future<void> _onCustomerDeleted(String customerId) async {
     // Prüfe ob dieser Kunde der aktuelle temporary_customer ist
-    final tempDocs = await FirebaseFirestore.instance
-        .collection('temporary_customer')
+    final tempDocs = await
+    UserBasketService.temporaryCustomer
         .limit(1)
         .get();
 
     if (tempDocs.docs.isNotEmpty && tempDocs.docs.first.id == customerId) {
       // Ja! → Lösche temporary_customer
-      await FirebaseFirestore.instance
-          .collection('temporary_customer')
+      await
+      UserBasketService.temporaryCustomer
           .doc(customerId)
           .delete();
 
@@ -196,205 +172,205 @@ Stream<QuerySnapshot> get _basketStream => FirebaseFirestore.instance
     }
   }
 
-@override
-Widget build(BuildContext context) {
-final screenWidth = MediaQuery.of(context).size.width;
-final isDesktopLayout = screenWidth > ResponsiveBreakpoints.tablet;
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktopLayout = screenWidth > ResponsiveBreakpoints.tablet;
 
-return Scaffold(
-    appBar:
-    AppBar(
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+    return Scaffold(
+      appBar:
+      AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
 
-          StreamBuilder<CostCenter?>(
-            stream: _temporaryCostCenterStream,
-            builder: (context, snapshot) {
-              final costCenter = snapshot.data;
+            StreamBuilder<CostCenter?>(
+              stream: _temporaryCostCenterStream,
+              builder: (context, snapshot) {
+                final costCenter = snapshot.data;
 
-              return GestureDetector(
-                onTap: _showCostCenterSelection,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: costCenter != null
-                        ? Theme.of(context).colorScheme.primaryContainer
-                        : Theme.of(context).colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(12),
+                return GestureDetector(
+                  onTap: _showCostCenterSelection,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: costCenter != null
+                          ? Theme.of(context).colorScheme.primaryContainer
+                          : Theme.of(context).colorScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        getAdaptiveIcon(iconName: 'account_balance', defaultIcon: Icons.account_balance,),
+
+
+                        const SizedBox(width: 4),
+                        if (costCenter != null)
+                          Tooltip(
+                            message: '${costCenter.code} - ${costCenter.name}',
+                            child: Text(
+                              costCenter.code,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      getAdaptiveIcon(iconName: 'account_balance', defaultIcon: Icons.account_balance,),
+                );
+              },
+            ),
+            const SizedBox(width: 6),
 
+            // Messe - bleibt unverändert
+            StreamBuilder<Fair?>(
+              stream: _temporaryFairStream,
+              builder: (context, snapshot) {
+                final fair = snapshot.data;
+                if (fair == null) return const SizedBox.shrink();
 
-                      const SizedBox(width: 4),
-                      if (costCenter != null)
+                return GestureDetector(
+                  onTap: _showFairSelection,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.tertiaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        getAdaptiveIcon(iconName: 'event', defaultIcon: Icons.event,),
+
+                        const SizedBox(width: 4),
                         Tooltip(
-                          message: '${costCenter.code} - ${costCenter.name}',
+                          message: fair.name,
                           child: Text(
-                            costCenter.code,
+                            fair.name.substring(0, min(2, fair.name.length)).toUpperCase(),
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onPrimaryContainer,
-                              fontSize: 11,
+                              color: Theme.of(context).colorScheme.onTertiaryContainer,
                               fontWeight: FontWeight.bold,
+                              fontSize: 13,
                             ),
                           ),
                         ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
+          ],
+        ),
+        actions: [
+          // Messe-Icon
+          Tooltip(
+            message: 'Messe',
+            child: IconButton(
+              icon:    getAdaptiveIcon(iconName: 'event', defaultIcon: Icons.event,),
+              onPressed: _showFairSelection,
+            ),
           ),
-          const SizedBox(width: 6),
 
-          // Messe - bleibt unverändert
-          StreamBuilder<Fair?>(
-            stream: _temporaryFairStream,
-            builder: (context, snapshot) {
-              final fair = snapshot.data;
-              if (fair == null) return const SizedBox.shrink();
 
-              return GestureDetector(
-                onTap: _showFairSelection,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.tertiaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      getAdaptiveIcon(iconName: 'event', defaultIcon: Icons.event,),
 
-                      const SizedBox(width: 4),
-                      Tooltip(
-                        message: fair.name,
-                        child: Text(
-                          fair.name.substring(0, min(2, fair.name.length)).toUpperCase(),
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onTertiaryContainer,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
+          ValueListenableBuilder<String>(
+            valueListenable: _currencyNotifier,
+            builder: (context, currency, child) {
+              return IconButton(
+                icon: Stack(
+                  alignment: Alignment.bottomRight,
+                  children: [
+                    getAdaptiveIcon(iconName: 'currency_exchange', defaultIcon: Icons.currency_exchange,),
+
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Text(
+                        currency,
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
+                tooltip: 'Währungseinstellungen',
+                onPressed: _showCurrencyConverterDialog,
               );
             },
           ),
+
+          IconButton(
+            icon: getAdaptiveIcon(
+              iconName: 'delete',
+              defaultIcon: Icons.delete,
+            ),
+            tooltip: 'Warenkorb leeren',
+            onPressed: _showClearCartDialog,
+          ),
+
+
+
+
+
         ],
+
       ),
-      actions: [
-        // Messe-Icon
-        Tooltip(
-          message: 'Messe',
-          child: IconButton(
-            icon:    getAdaptiveIcon(iconName: 'event', defaultIcon: Icons.event,),
-            onPressed: _showFairSelection,
-          ),
-        ),
 
 
-
-        ValueListenableBuilder<String>(
-          valueListenable: _currencyNotifier,
-          builder: (context, currency, child) {
-            return IconButton(
-              icon: Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  getAdaptiveIcon(iconName: 'currency_exchange', defaultIcon: Icons.currency_exchange,),
-
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: Text(
-                      currency,
-                      style: TextStyle(
-                        fontSize: 8,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              tooltip: 'Währungseinstellungen',
-              onPressed: _showCurrencyConverterDialog,
-            );
-          },
-        ),
-
-        IconButton(
-          icon: getAdaptiveIcon(
-            iconName: 'delete',
-            defaultIcon: Icons.delete,
-          ),
-          tooltip: 'Warenkorb leeren',
-          onPressed: _showClearCartDialog,
-        ),
-
-
-
-
-
-      ],
-
-    ),
-
-
-  body: isDesktopLayout ? _buildDesktopLayout() : _buildMobileLayout(),
-);
-}
+      body: isDesktopLayout ? _buildDesktopLayout() : _buildMobileLayout(),
+    );
+  }
 
   Future<void> _clearAllDataWithoutUIUpdate() async {
     try {
       final batch = FirebaseFirestore.instance.batch();
 
       // 1. Warenkorb leeren
-      final basketDocs = await FirebaseFirestore.instance
-          .collection('temporary_basket')
+      final basketDocs = await
+      UserBasketService.temporaryBasket
           .get();
       for (var doc in basketDocs.docs) {
         batch.delete(doc.reference);
       }
 
       // 2. Kunde löschen
-      final customerDocs = await FirebaseFirestore.instance
-          .collection('temporary_customer')
+      final customerDocs = await
+      UserBasketService.temporaryCustomer
           .get();
       for (var doc in customerDocs.docs) {
         batch.delete(doc.reference);
       }
 
       // 3. Kostenstelle löschen
-      final costCenterDocs = await FirebaseFirestore.instance
-          .collection('temporary_cost_center')
+      final costCenterDocs = await
+      UserBasketService.temporaryCostCenter
           .get();
       for (var doc in costCenterDocs.docs) {
         batch.delete(doc.reference);
       }
 
       // 4. Messe löschen
-      final fairDocs = await FirebaseFirestore.instance
-          .collection('temporary_fair')
+      final fairDocs = await
+      UserBasketService.temporaryFair
           .get();
       for (var doc in fairDocs.docs) {
         batch.delete(doc.reference);
       }
 
       // 5. Rabatte löschen
-      final discountDoc = await FirebaseFirestore.instance
-          .collection('temporary_discounts')
+      final discountDoc = await
+      UserBasketService.temporaryDiscounts
           .doc('total_discount')
           .get();
       if (discountDoc.exists) {
@@ -430,6 +406,9 @@ return Scaffold(
       // Store quote info for later update
       _editingQuoteId = quoteData['quoteId'];
       _editingQuoteNumber = quoteData['quoteNumber'];
+      print('🔧 SALES-DEBUG: _loadQuoteDataForEdit');
+      print('🔧 SALES-DEBUG: _editingQuoteId=$_editingQuoteId');
+      print('🔧 SALES-DEBUG: _editingQuoteNumber=$_editingQuoteNumber');
 
       // Erst alles löschen (ohne UI Update)
       await _clearAllDataWithoutUIUpdate();
@@ -485,7 +464,7 @@ return Scaffold(
       for (final item in items) {
         try {
           // Bei Edit-Modus: Keine Verfügbarkeitsprüfung, da bereits reserviert
-          await FirebaseFirestore.instance.collection('temporary_basket').add({
+          await UserBasketService.temporaryBasket.add({
             ...item,
             'timestamp': FieldValue.serverTimestamp(),
           });
@@ -609,7 +588,7 @@ return Scaffold(
 
               if (serviceDoc.exists) {
                 // Füge Dienstleistung hinzu
-                await FirebaseFirestore.instance.collection('temporary_basket').add({
+                await UserBasketService.temporaryBasket.add({
                   ...item,
                   'timestamp': FieldValue.serverTimestamp(),
                   // Aktualisiere Preis falls nötig
@@ -624,7 +603,7 @@ return Scaffold(
           // Manuelles Produkt
           else if (item['is_manual_product'] == true) {
             // Manuelle Produkte können immer hinzugefügt werden
-            await FirebaseFirestore.instance.collection('temporary_basket').add({
+            await UserBasketService.temporaryBasket.add({
               ...item,
               'timestamp': FieldValue.serverTimestamp(),
             });
@@ -647,7 +626,7 @@ return Scaffold(
                 if (availableQuantity >= requestedQuantity) {
                   // Produkt mit aktualisierten Daten hinzufügen
                   final productData = inventoryDoc.data()!;
-                  await FirebaseFirestore.instance.collection('temporary_basket').add({
+                  await UserBasketService.temporaryBasket.add({
                     ...item,
                     'timestamp': FieldValue.serverTimestamp(),
                     // Aktualisiere Produktdaten falls sich etwas geändert hat
@@ -909,8 +888,8 @@ return Scaffold(
 
   Future<void> _saveDocumentLanguage() async {
     try {
-      await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      await
+      UserBasketService.temporaryDocumentSettings
           .doc('language_settings')
           .set({
         'document_language': _documentLanguageNotifier.value,
@@ -923,8 +902,8 @@ return Scaffold(
 
   Future<void> _loadDocumentLanguage() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      final doc = await
+      UserBasketService.temporaryDocumentSettings
           .doc('language_settings')
           .get();
 
@@ -940,8 +919,8 @@ return Scaffold(
 
   Future<void> _loadTemporaryTax() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('temporary_tax')
+      final doc = await
+      UserBasketService.temporaryTax
           .doc('current_tax')
           .get();
 
@@ -972,8 +951,8 @@ return Scaffold(
 
   Future<void> _saveTemporaryTax() async {
     try {
-      await FirebaseFirestore.instance
-          .collection('temporary_tax')
+      await
+      UserBasketService.temporaryTax
           .doc('current_tax')
           .set({
         'vat_rate': _vatRate,
@@ -997,8 +976,8 @@ return Scaffold(
 
   Future<void> _clearTemporaryTax() async {
     try {
-      await FirebaseFirestore.instance
-          .collection('temporary_tax')
+      await
+      UserBasketService.temporaryTax
           .doc('current_tax')
           .delete();
 
@@ -1013,8 +992,8 @@ return Scaffold(
     await _loadTemporaryTotalDiscount();
 
     // Lade Item-Rabatte aus dem Warenkorb
-    final basketSnapshot = await FirebaseFirestore.instance
-        .collection('temporary_basket')
+    final basketSnapshot = await
+    UserBasketService.temporaryBasket
         .get();
 
     final Map<String, Discount> loadedDiscounts = {};
@@ -1038,9 +1017,11 @@ return Scaffold(
       }
     }
 
-    setState(() {
-      _itemDiscounts = loadedDiscounts;
-    });
+    if (mounted) {
+      setState(() {
+        _itemDiscounts = loadedDiscounts;
+      });
+    }
   }
 
   Future<void> _checkAdditionalTexts() async {
@@ -1062,8 +1043,8 @@ return Scaffold(
   }
   Future<void> _checkShippingCosts() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('temporary_shipping_costs')
+      final doc = await
+      UserBasketService.temporaryShippingCosts
           .doc('current_costs')
           .get();
 
@@ -1075,8 +1056,8 @@ return Scaffold(
 
   Future<void> _loadCustomerLanguage() async {
     try {
-      final tempCustomerDoc = await FirebaseFirestore.instance
-          .collection('temporary_customer')
+      final tempCustomerDoc = await
+      UserBasketService.temporaryCustomer
           .limit(1)
           .get();
 
@@ -1156,8 +1137,8 @@ return Scaffold(
       final batch = FirebaseFirestore.instance.batch();
 
       // 1. Warenkorb leeren
-      final basketDocs = await FirebaseFirestore.instance
-          .collection('temporary_basket')
+      final basketDocs = await
+      UserBasketService.temporaryBasket
           .get();
       for (var doc in basketDocs.docs) {
         final data = doc.data();
@@ -1172,6 +1153,8 @@ return Scaffold(
                 .update({
               'in_cart': false,
               'cart_timestamp': FieldValue.delete(),
+              'cart_user_id': FieldValue.delete(),
+              'cart_user_name': FieldValue.delete(),
             });
           } catch (e) {
             print('Fehler beim Zurücksetzen von in_cart für $onlineShopBarcode: $e');
@@ -1182,32 +1165,32 @@ return Scaffold(
       }
 
       // 2. Kunde löschen
-      final customerDocs = await FirebaseFirestore.instance
-          .collection('temporary_customer')
+      final customerDocs = await
+      UserBasketService.temporaryCustomer
           .get();
       for (var doc in customerDocs.docs) {
         batch.delete(doc.reference);
       }
 
       // 3. Kostenstelle löschen
-      final costCenterDocs = await FirebaseFirestore.instance
-          .collection('temporary_cost_center')
+      final costCenterDocs = await
+      UserBasketService.temporaryCostCenter
           .get();
       for (var doc in costCenterDocs.docs) {
         batch.delete(doc.reference);
       }
 
       // 4. Messe löschen
-      final fairDocs = await FirebaseFirestore.instance
-          .collection('temporary_fair')
+      final fairDocs = await
+      UserBasketService.temporaryFair
           .get();
       for (var doc in fairDocs.docs) {
         batch.delete(doc.reference);
       }
 
       // 5. Rabatte löschen
-      final discountDoc = await FirebaseFirestore.instance
-          .collection('temporary_discounts')
+      final discountDoc = await
+      UserBasketService.temporaryDiscounts
           .doc('total_discount')
           .get();
       if (discountDoc.exists) {
@@ -1463,7 +1446,7 @@ return Scaffold(
                           ),
                         ),
 
-                       
+
                       ],
                     ),
                   ),
@@ -1649,23 +1632,23 @@ return Scaffold(
     );
   }
 
-  Stream<Fair?> get _temporaryFairStream => FirebaseFirestore.instance
-      .collection('temporary_fair')
-      .limit(1)
-      .snapshots()
-      .map((snapshot) {
-    if (snapshot.docs.isEmpty) return null;
-    return Fair.fromMap(
-      snapshot.docs.first.data(),
-      snapshot.docs.first.id,
-    );
-  });
+  Stream<Fair?> get _temporaryFairStream =>
+      UserBasketService.temporaryFair
+          .limit(1)
+          .snapshots()
+          .map((snapshot) {
+        if (snapshot.docs.isEmpty) return null;
+        return Fair.fromMap(
+          snapshot.docs.first.data(),
+          snapshot.docs.first.id,
+        );
+      });
 
   Future<void> _saveTemporaryFair(Fair fair) async {
     try {
       // Lösche vorherige temporäre Messe
-      final tempDocs = await FirebaseFirestore.instance
-          .collection('temporary_fair')
+      final tempDocs = await
+      UserBasketService.temporaryFair
           .get();
 
       final batch = FirebaseFirestore.instance.batch();
@@ -1675,7 +1658,7 @@ return Scaffold(
 
       // Füge neue temporäre Messe hinzu
       batch.set(
-        FirebaseFirestore.instance.collection('temporary_fair').doc(fair.id),
+        UserBasketService.temporaryFair.doc(fair.id),
         {
           ...fair.toMap(),
           'timestamp': FieldValue.serverTimestamp(),
@@ -1690,8 +1673,8 @@ return Scaffold(
 
   Future<void> _clearTemporaryFair() async {
     try {
-      final tempDocs = await FirebaseFirestore.instance
-          .collection('temporary_fair')
+      final tempDocs = await
+      UserBasketService.temporaryFair
           .get();
 
       final batch = FirebaseFirestore.instance.batch();
@@ -1938,17 +1921,17 @@ return Scaffold(
       ),
     );
   }
-  Stream<CostCenter?> get _temporaryCostCenterStream => FirebaseFirestore.instance
-      .collection('temporary_cost_center')
-      .limit(1)
-      .snapshots()
-      .map((snapshot) {
-    if (snapshot.docs.isEmpty) return null;
-    return CostCenter.fromMap(
-      snapshot.docs.first.data(),
-      snapshot.docs.first.id,
-    );
-  });
+  Stream<CostCenter?> get _temporaryCostCenterStream =>
+      UserBasketService.temporaryCostCenter
+          .limit(1)
+          .snapshots()
+          .map((snapshot) {
+        if (snapshot.docs.isEmpty) return null;
+        return CostCenter.fromMap(
+          snapshot.docs.first.data(),
+          snapshot.docs.first.id,
+        );
+      });
   void _showWarehouseDialog() {
     final isWeb = kIsWeb;
     final screenWidth = MediaQuery.of(context).size.width;
@@ -2120,8 +2103,8 @@ return Scaffold(
   Future<void> _saveTemporaryCostCenter(CostCenter costCenter) async {
     try {
       // Lösche vorherige temporäre Kostenstelle
-      final tempDocs = await FirebaseFirestore.instance
-          .collection('temporary_cost_center')
+      final tempDocs = await
+      UserBasketService.temporaryCostCenter
           .get();
 
       final batch = FirebaseFirestore.instance.batch();
@@ -2131,7 +2114,7 @@ return Scaffold(
 
       // Füge neue temporäre Kostenstelle hinzu
       batch.set(
-        FirebaseFirestore.instance.collection('temporary_cost_center').doc(),
+        UserBasketService.temporaryCostCenter.doc(),
         {
           ...costCenter.toMap(),
           'timestamp': FieldValue.serverTimestamp(),
@@ -2438,7 +2421,7 @@ return Scaffold(
                                 iconSize: 20,
                               ),
                             getAdaptiveIcon(iconName: 'arrow_drop_down', defaultIcon:
-                              Icons.arrow_drop_down,
+                            Icons.arrow_drop_down,
                               color: customer != null
                                   ? Theme.of(context).colorScheme.onSecondaryContainer
                                   : Theme.of(context).colorScheme.onErrorContainer,
@@ -2840,8 +2823,8 @@ return Scaffold(
   void _showCustomerSelection() async {
     // NEU: Hole aktuellen Kunden aus Firestore
     Customer? currentCustomer;
-    final tempDocs = await FirebaseFirestore.instance
-        .collection('temporary_customer')
+    final tempDocs = await
+    UserBasketService.temporaryCustomer
         .limit(1)
         .get();
 
@@ -2876,23 +2859,23 @@ return Scaffold(
       }
     }
   }
-  Stream<Customer?> get _temporaryCustomerStream => FirebaseFirestore.instance
-      .collection('temporary_customer')
-      .limit(1)
-      .snapshots()
-      .map((snapshot) {
-    if (snapshot.docs.isEmpty) return null;
-    return Customer.fromMap(
-      snapshot.docs.first.data(),
-      snapshot.docs.first.id,
-    );
-  });
+  Stream<Customer?> get _temporaryCustomerStream =>
+      UserBasketService.temporaryCustomer
+          .limit(1)
+          .snapshots()
+          .map((snapshot) {
+        if (snapshot.docs.isEmpty) return null;
+        return Customer.fromMap(
+          snapshot.docs.first.data(),
+          snapshot.docs.first.id,
+        );
+      });
 
   Future<void> _saveTemporaryCustomer(Customer customer) async {
     try {
       // Lösche vorherige temporäre Kunden
-      final tempDocs = await FirebaseFirestore.instance
-          .collection('temporary_customer')
+      final tempDocs = await
+      UserBasketService.temporaryCustomer
           .get();
 
       final batch = FirebaseFirestore.instance.batch();
@@ -2911,8 +2894,8 @@ return Scaffold(
       // Nicht-Schweizer = true (müssen vorauszahlen)
       // Schweizer = false (müssen nicht vorauszahlen)
 
-      await FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      await
+      UserBasketService.temporaryDocumentSettings
           .doc('quote_settings')
           .set({
         'show_validity_addition': !isSwissCustomer,
@@ -2921,7 +2904,7 @@ return Scaffold(
 
       // Füge neuen temporären Kunden hinzu
       batch.set(
-        FirebaseFirestore.instance.collection('temporary_customer').doc(customer.id),
+        UserBasketService.temporaryCustomer.doc(customer.id),
         {
           ...customer.toMap(),
           'timestamp': FieldValue.serverTimestamp(),
@@ -2942,8 +2925,8 @@ return Scaffold(
       onServiceSelected: (serviceData) async {
         try {
           // Füge die Dienstleistung zum temporären Warenkorb hinzu
-          await FirebaseFirestore.instance
-              .collection('temporary_basket')
+          await
+          UserBasketService.temporaryBasket
               .add(serviceData);
 
           if (mounted) {
@@ -3121,8 +3104,8 @@ return Scaffold(
       onProductAdded: (manualProductData) async {
         try {
           // Füge das manuelle Produkt direkt zum Warenkorb hinzu
-          await FirebaseFirestore.instance
-              .collection('temporary_basket')
+          await
+          UserBasketService.temporaryBasket
               .add(manualProductData);
 
           if (mounted) {
@@ -3184,7 +3167,7 @@ return Scaffold(
               if (!_itemDiscounts.containsKey(itemId)) {
                 _itemDiscounts[itemId] = itemDiscount;
 
-                
+
               }
             } else {
               itemDiscount = _itemDiscounts[itemId] ?? const Discount();
@@ -3505,7 +3488,7 @@ return Scaffold(
                                 return Row(
                                   children: [
                                     getAdaptiveIcon(iconName: 'discount', defaultIcon:
-                                      Icons.discount,
+                                    Icons.discount,
                                       size: 14,
                                       color: Theme.of(context).colorScheme.primary,
                                     ),
@@ -3555,7 +3538,7 @@ return Scaffold(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               getAdaptiveIcon(iconName: 'shopping_cart', defaultIcon:
-                                Icons.shopping_cart,
+                              Icons.shopping_cart,
                                 color: Colors.white,
                                 size: 12,
                               ),
@@ -3646,8 +3629,8 @@ return Scaffold(
                           double vatRoundingDifference = 0.0;
 
                           return StreamBuilder<DocumentSnapshot>(
-                            stream: FirebaseFirestore.instance
-                                .collection('temporary_shipping_costs')
+                            stream:
+                            UserBasketService.temporaryShippingCosts
                                 .doc('current_costs')
                                 .snapshots(),
                             builder: (context, shippingSnapshot) {
@@ -3774,21 +3757,42 @@ return Scaffold(
                                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                 children: [
                                                   // Toggle-Button links
-                                                  GestureDetector(
-                                                    onTap: () {
-                                                      setState(() {
-                                                        _isDetailExpanded = !_isDetailExpanded;
-                                                      });
-                                                    },
-                                                    child: Container(
+                                                  if (kIsWeb)
+                                                    IconButton(
+                                                      icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings, size: 20, color: Theme.of(context).colorScheme.primary),
+                                                      onPressed: _showTaxOptionsDialog,
+                                                      tooltip: 'Steuereinstellungen',
+                                                      constraints: const BoxConstraints(),
                                                       padding: const EdgeInsets.all(4),
-                                                      child:
-                                                      _isDetailExpanded
-                                                          ? getAdaptiveIcon(iconName: 'expand_less', defaultIcon:Icons.expand_less, size: 20, color: Theme.of(context).colorScheme.primary,)
-                                                          : getAdaptiveIcon(iconName: 'expand_more', defaultIcon:Icons.expand_more, size: 20, color: Theme.of(context).colorScheme.primary),
-
+                                                      iconSize: 20,
+                                                    )
+                                                  else
+                                                    Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        IconButton(
+                                                          icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings, size: 20, color: Theme.of(context).colorScheme.primary),
+                                                          onPressed: _showTaxOptionsDialog,
+                                                          tooltip: 'Steuereinstellungen',
+                                                          constraints: const BoxConstraints(),
+                                                          padding: const EdgeInsets.all(4),
+                                                          iconSize: 20,
+                                                        ),
+                                                        GestureDetector(
+                                                          onTap: () {
+                                                            setState(() {
+                                                              _isDetailExpanded = !_isDetailExpanded;
+                                                            });
+                                                          },
+                                                          child: Container(
+                                                            padding: const EdgeInsets.all(4),
+                                                            child: _isDetailExpanded
+                                                                ? getAdaptiveIcon(iconName: 'expand_less', defaultIcon: Icons.expand_less, size: 20, color: Theme.of(context).colorScheme.primary)
+                                                                : getAdaptiveIcon(iconName: 'expand_more', defaultIcon: Icons.expand_more, size: 20, color: Theme.of(context).colorScheme.primary),
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
-                                                  ),
                                                   const SizedBox(width: 16),
 
                                                   // Gesamtbetrag rechts
@@ -3992,11 +3996,11 @@ return Scaffold(
                                                       ),
                                                       Row(
                                                         children: [
-                                                          IconButton(
-                                                            icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
-                                                            onPressed: _showTaxOptionsDialog,
-                                                            tooltip: 'Steuereinstellungen ändern',
-                                                          ),
+                                                          // IconButton(
+                                                          //   icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings,),
+                                                          //   onPressed: _showTaxOptionsDialog,
+                                                          //   tooltip: 'Steuereinstellungen ändern',
+                                                          // ),
                                                           Text(_formatPriceNoRounding(vatAmount)),
                                                         ],
                                                       ),
@@ -4431,15 +4435,8 @@ return Scaffold(
       final currentStock = (inventoryDoc.data()?['quantity'] as num?)?.toDouble() ?? 0.0;
 
       // Temporär gebuchte Menge abrufen
-      final tempBasketDocs = await FirebaseFirestore.instance
-          .collection('temporary_basket')
-          .where('product_id', isEqualTo: shortBarcode)
-          .get();
-
-      final reservedQuantity = tempBasketDocs.docs.fold<double>(
-        0,
-            (sum, doc) => sum + ((doc.data()['quantity'] as num?)?.toDouble() ?? 0.0),
-      );
+      // Warenkorb-Menge ALLER User abrufen
+      final reservedQuantity = await UserBasketService.getTotalCartQuantity(shortBarcode);
 
       // Reservierte Menge aus stock_movements abrufen
       var reservationsQuery = FirebaseFirestore.instance
@@ -4485,7 +4482,7 @@ return Scaffold(
 
   void _showPriceEditDialog(String basketItemId, Map<String, dynamic> itemData) {
     bool densityLoaded = false;  // NEU
-
+    double? _cachedAvailableQuantity;
     String selectedFscStatus = itemData['fsc_status'] as String? ?? '-';
     // Sicheres Konvertieren von int oder double nach double
     final double originalPrice = (itemData['price_per_unit'] as num).toDouble();
@@ -4571,1329 +4568,1464 @@ return Scaffold(
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
             builder: (context, setDialogState) {
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.85,
-              decoration: BoxDecoration(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 10,
-                    spreadRadius: 0,
-                    offset: Offset(0, -1),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  // Drag Handle
-                  Container(
-                    margin: EdgeInsets.only(top: 12, bottom: 8),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
+
+
+              if (_cachedAvailableQuantity == null && itemData['is_manual_product'] != true && itemData['is_service'] != true) {
+                _getAvailableQuantity(itemData['product_id'] ?? '').then((available) {
+                  final currentQty = (itemData['quantity'] as num?)?.toDouble() ?? 1.0;
+                  setDialogState(() {
+                    _cachedAvailableQuantity = available + currentQty;
+                  });
+                });
+              }
+              return Container(
+                height: MediaQuery.of(context).size.height * 0.85,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 10,
+                      spreadRadius: 0,
+                      offset: Offset(0, -1),
                     ),
-                  ),
-            
-                  // Header
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    child: Row(
-                      children: [
-                        getAdaptiveIcon(
-                            iconName: isService ? 'engineering' : 'edit',
-                            defaultIcon: isService ? Icons.engineering : Icons.edit
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          isService ? 'Dienstleistung anpassen' : 'Artikel anpassen',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                          onPressed: () => Navigator.pop(dialogContext),
-                        ),
-                      ],
-                    ),
-                  ),
-            
-            
-                  Divider(height: 1),
-            
-                  // Scrollbarer Inhalt
-            Expanded(
-            child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-            // Produktinfo - angepasst für Dienstleistungen
-            Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    isService
-                        ? 'Dienstleistung: ${itemData['name'] ?? 'Unbenannt'}'
-                        : 'Artikel: ${itemData['product_name']}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  // Zeige englischen Namen falls vorhanden
-                  if (isService && itemData['name_en'] != null && itemData['name_en'].isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      'EN: ${itemData['name_en']}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontStyle: FontStyle.italic,
-                        color: Colors.grey[600],
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    // Drag Handle
+                    Container(
+                      margin: EdgeInsets.only(top: 12, bottom: 8),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                  ],
-                ],
-              ),
-            if (isService && itemData['description'] != null && itemData['description'].isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-            itemData['description'],
-            style: TextStyle(color: Colors.grey[600], fontSize: 14),
-            ),
-            ],
-            const SizedBox(height: 8),
-              Text('Originalpreis: ${PriceFormatter.formatAmount(amount: originalPrice, currency: 'CHF', roundingSettings: _roundingSettings)}'),
-            if (currentPriceInCHF != originalPrice)
-                Text(
-            'Aktueller Preis: ${PriceFormatter.formatAmount(amount: currentPriceInCHF, currency: 'CHF', roundingSettings: _roundingSettings)}',
-              style: TextStyle(color: Colors.green[700]),
-              ),
-            
-            const SizedBox(height: 8),
-              itemData['is_manual_product'] == true?SizedBox(width: 1,): Text('Menge: ${itemData['quantity']} ${itemData['unit'] ?? 'Stück'}'),
-            ],
-            ),
-            ),
 
-              // Menge anpassen - nur für manuelle Produkte
-              if (itemData['is_manual_product'] == true) ...[
-                const SizedBox(height: 24),
-
-                Text(
-                  'Menge anpassen',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                TextFormField(
-                  controller: quantityController,
-                  decoration: InputDecoration(
-                    labelText: 'Menge',
-                    suffixText: itemData['unit'] ?? 'Stück',
-                    border: const OutlineInputBorder(),
-                    filled: true,
-                    fillColor: Theme.of(context).colorScheme.surface,
-                    prefixIcon: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: getAdaptiveIcon(iconName: 'numbers', defaultIcon: Icons.numbers),
-                    ),
-                    helperText: 'Manuelles Produkt - Menge änderbar',
-                  ),
-                  keyboardType: TextInputType.numberWithOptions(decimal: itemData['unit'] != 'Stück'),
-                  inputFormatters: [
-                    if (itemData['unit'] == 'Stück')
-                      FilteringTextInputFormatter.digitsOnly
-                    else
-                      FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,3}')),
-                  ],
-                  onChanged: (value) {
-                    setDialogState(() {});
-                  },
-                ),
-              ],
-            const SizedBox(height: 24),
-            
-            // Preis anpassen
-            Text(
-            'Preis anpassen',
-            style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.primary,
-            ),
-            ),
-            
-              // Nach dem Preis-Eingabefeld und vor den Artikel-spezifischen Optionen:
-            
-            // Bei Dienstleistungen: Beschreibung bearbeiten
-              if (isService) ...[
-                const SizedBox(height: 24),
-
-                // Beschreibung bearbeiten
-                Text(
-                  'Beschreibung anpassen',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                TextFormField(
-                  controller: descriptionController,
-                  decoration: InputDecoration(
-                    labelText: 'Beschreibung (Deutsch)',
-                    border: const OutlineInputBorder(),
-                    filled: true,
-                    fillColor: Theme.of(context).colorScheme.surface,
-                    prefixIcon: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: getAdaptiveIcon(iconName: 'description', defaultIcon: Icons.description),
-                    ),
-                    helperText: 'Optionale Beschreibung der Dienstleistung',
-                  ),
-                  maxLines: 3,
-                  minLines: 2,
-                ),
-                const SizedBox(height: 12),
-
-                TextFormField(
-                  controller: descriptionEnController,
-                  decoration: InputDecoration(
-                    labelText: 'Beschreibung (English)',
-                    border: const OutlineInputBorder(),
-                    filled: true,
-                    fillColor: Theme.of(context).colorScheme.surface,
-                    prefixIcon: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: getAdaptiveIcon(iconName: 'language', defaultIcon: Icons.language),
-                    ),
-                    helperText: 'Optional description of the service',
-                  ),
-                  maxLines: 3,
-                  minLines: 2,
-                ),
-              ],
-            
-            const SizedBox(height: 8),
-            
-            ValueListenableBuilder<String>(
-            valueListenable: _currencyNotifier,
-            builder: (context, currency, child) {
-            return TextFormField(
-            controller: priceController,
-            decoration: InputDecoration(
-            labelText: 'Neuer Preis in $_selectedCurrency',
-            suffixText: _selectedCurrency,
-            border: const OutlineInputBorder(),
-            filled: true,
-            fillColor: Theme.of(context).colorScheme.surface,
-            prefixIcon: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: getAdaptiveIcon(iconName: 'money_bag', defaultIcon: Icons.savings),
-            ),
-            ),
-            keyboardType: TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
-            ],
-            );
-            },
-            ),
-
-
-              const SizedBox(height: 24),
-
-// Zolltarifnummer (für ALLE - Produkte UND Dienstleistungen)
-              Text(
-                'Zolltarifnummer',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 8),
-
-// Bei PRODUKTEN: Zeige Standard-Zolltarifnummer an
-              if (!isService) ...[
-                FutureBuilder<String>(
-                  future: _getStandardTariffNumber(itemData),
-                  builder: (context, snapshot) {
-                    final standardTariff = snapshot.data ?? 'Wird geladen...';
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      child: Row(
+                        children: [
+                          getAdaptiveIcon(
+                              iconName: isService ? 'engineering' : 'edit',
+                              defaultIcon: isService ? Icons.engineering : Icons.edit
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            isService ? 'Dienstleistung anpassen' : 'Artikel anpassen',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Standard-Zolltarifnummer',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      standardTariff,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                          const Spacer(),
+                          IconButton(
+                            icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                            onPressed: () => Navigator.pop(dialogContext),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                    );
-                  },
-                ),
-              ],
-
-// Bei DIENSTLEISTUNGEN: Info-Box
-              if (isService) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      getAdaptiveIcon(
-                        iconName: 'info',
-                        defaultIcon: Icons.info,
-                        color: Colors.blue,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Zolltarifnummer für Dienstleistungen (optional für Handelsrechnungen)',
-                          style: TextStyle(fontSize: 12, color: Colors.blue[800]),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-
-// Freitextfeld für BEIDE (Produkte UND Dienstleistungen)
-              TextFormField(
-                controller: customTariffController,
-                decoration: InputDecoration(
-                  labelText: isService
-                      ? 'Zolltarifnummer (optional)'
-                      : 'Individuelle Zolltarifnummer',
-                  hintText: 'z.B. 4407.1200',
-                  border: const OutlineInputBorder(),
-                  filled: true,
-                  fillColor: Theme.of(context).colorScheme.surface,
-                  prefixIcon: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: getAdaptiveIcon(
-                      iconName: 'local_shipping',
-                      defaultIcon: Icons.local_shipping,
-                    ),
-                  ),
-                  helperText: isService
-                      ? 'Für Handelsrechnungen'
-                      : 'Überschreibt die Standard-Zolltarifnummer',
-                  suffixIcon: customTariffController.text.isNotEmpty
-                      ? IconButton(
-                    icon: getAdaptiveIcon(
-                      iconName: 'clear',
-                      defaultIcon: Icons.clear,
-                    ),
-                    onPressed: () {
-                      setDialogState(() {
-                        customTariffController.clear();
-                      });
-                    },
-                  )
-                      : null,
-                ),
-                onChanged: (value) => setDialogState(() {}),
-              ),
-              const SizedBox(height: 24),
-
-
-
-            // NUR bei Artikeln (nicht bei Dienstleistungen) die weiteren Optionen anzeigen
-
-
-
-
-
-            if (!isService) ...[
-            const SizedBox(height: 24),
-            
-            // FSC-Auswahl
-            Text(
-            'FSC-Zertifizierung',
-            style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.primary,
-            ),
-            ),
-
-
-            const SizedBox(height: 8),
-            
-            // FSC Status Dropdown
-            DropdownButtonFormField<String>(
-            decoration: InputDecoration(
-            labelText: 'FSC-Status',
-            border: const OutlineInputBorder(),
-            filled: true,
-            fillColor: Theme.of(context).colorScheme.surface,
-            prefixIcon: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: getAdaptiveIcon(iconName: 'eco', defaultIcon: Icons.eco),
-            ),
-            ),
-            value: itemData['fsc_status'] as String? ?? '100%',
-            items: const [
-            DropdownMenuItem(value: '100%', child: Text('100% FSC')),
-            DropdownMenuItem(value: 'Mix', child: Text('FSC Mix')),
-            DropdownMenuItem(value: 'Recycled', child: Text('FSC Recycled')),
-            DropdownMenuItem(value: 'Controlled', child: Text('FSC Controlled Wood')),
-            DropdownMenuItem(value: '-', child: Text('Kein FSC')),
-            ],
-            onChanged: (value) {
-              setDialogState(() {  // NEU: StatefulBuilder's setState
-                selectedFscStatus = value ?? '-';
-              });
-            },
-            ),
-              const SizedBox(height: 24),
-
-
-
-
-
-
-
-            // NEU: Thermobehandlung
-              Text(
-                'Thermobehandlung',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 8),
-
-              Container(
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: CheckboxListTile(
-                  title: const Text('Thermobehandelt'),
-                  subtitle: const Text('Artikel wurde thermisch behandelt'),
-                  value: hasThermalTreatment,
-                  onChanged: (value) {
-                    setDialogState(() { // NEU: setDialogState statt setState
-                      hasThermalTreatment = value ?? false;
-                      if (!hasThermalTreatment) {
-                        temperatureController.clear();
-                      }
-                    });
-                  },
-                  secondary: getAdaptiveIcon(
-                    iconName: 'whatshot',
-                    defaultIcon: Icons.whatshot,
-                    color: hasThermalTreatment
-                        ? Theme.of(context).colorScheme.primary
-                        : Colors.grey,
-                  ),
-                ),
-              ),
-            
-            // Temperatur-Eingabe (nur wenn Thermobehandlung aktiviert)
-              if (hasThermalTreatment) ...[
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: temperatureController,
-                  decoration: InputDecoration(
-                    labelText: 'Temperatur (°C) *',  // Stern hinzufügen
-                    border: const OutlineInputBorder(),
-                    filled: true,
-                    fillColor: Theme.of(context).colorScheme.surface,
-                    prefixIcon: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: getAdaptiveIcon(
-                        iconName: 'thermostat',
-                        defaultIcon: Icons.thermostat,
+                        ],
                       ),
                     ),
-                    suffixText: '°C',
-                    helperText: 'Pflichtfeld - Behandlungstemperatur (z.B. 180, 200, 212)',  // Angepasster Hilfetext
-                    // Optional: Fehlerrahmen wenn leer
-                    errorText: temperatureController.text.isEmpty ? 'Temperatur erforderlich' : null,
-                  ),
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(3),
-                  ],
-                  onChanged: (value) {
-                    setDialogState(() {});  // UI aktualisieren für Fehleranzeige
-                  },
-                ),
-              ],
 
 
-              const SizedBox(height: 24),
+                    Divider(height: 1),
 
-
-              // Hinweise-Abschnitt
-              Text(
-                'Hinweise',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 8),
-
-              TextFormField(
-                controller: notesController,
-                decoration: InputDecoration(
-                  labelText: 'Spezielle Hinweise (optional)',
-                  hintText: 'z.B. besondere Qualitätsmerkmale, Lagerort, etc.',
-                  border: const OutlineInputBorder(),
-                  filled: true,
-                  fillColor: Theme.of(context).colorScheme.surface,
-                  prefixIcon: getAdaptiveIcon(
-                    iconName: 'note',
-                    defaultIcon: Icons.note_alt,
-                  ),
-                ),
-                maxLines: 3,
-                minLines: 2,
-              ),
-              const SizedBox(height: 24),
-
-
-
-
-            
-            
-            const SizedBox(height: 24),
-            
-                          // Maße anpassen - JETZT MIT FutureBuilder für Standard-Volumen
-              FutureBuilder<Map<String, dynamic>?>(
-                future: _getStandardVolumeForItem(itemData),
-                builder: (context, volumeSnapshot) {
-
-                  // HIER die Änderung:
-                  // Setze Volumen einmalig - priorisiere gespeichertes volume_per_unit aus Basket
-                  if (volumeController.text.isEmpty) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      // Prüfe zuerst ob bereits ein angepasstes Volumen im Basket existiert
-                      if (itemData['volume_per_unit'] != null && (itemData['volume_per_unit'] as num) > 0) {
-                        volumeController.text = (itemData['volume_per_unit'] as num).toDouble().toStringAsFixed(7);
-                      }
-                      // Sonst Standard-Volumen verwenden (falls vorhanden)
-                      else if (volumeSnapshot.connectionState == ConnectionState.done &&
-                          volumeSnapshot.hasData &&
-                          volumeSnapshot.data != null) {
-                        final standardVolume = volumeSnapshot.data!['volume'] ?? 0.0;
-                        if (standardVolume > 0) {
-                          volumeController.text = standardVolume.toStringAsFixed(7);
-                        }
-                      }
-                    });
-                  }
-            
-                              return Column(
+                    // Scrollbarer Inhalt
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Produktinfo - angepasst für Dienstleistungen
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'Maße anpassen',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Theme.of(context).colorScheme.primary,
-                                        ),
+                                        isService
+                                            ? 'Dienstleistung: ${itemData['name'] ?? 'Unbenannt'}'
+                                            : 'Artikel: ${itemData['product_name']}',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                                       ),
-                                      const SizedBox(width: 8),
-                                      if (volumeSnapshot.hasData && volumeSnapshot.data != null)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: Theme.of(context).colorScheme.primaryContainer,
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Text(
-                                            'Standardwerte',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Theme.of(context).colorScheme.onPrimaryContainer,
-                                            ),
+                                      // Zeige englischen Namen falls vorhanden
+                                      if (isService && itemData['name_en'] != null && itemData['name_en'].isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'EN: ${itemData['name_en']}',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontStyle: FontStyle.italic,
+                                            color: Colors.grey[600],
                                           ),
                                         ),
+                                      ],
                                     ],
                                   ),
+                                  if (isService && itemData['description'] != null && itemData['description'].isNotEmpty) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      itemData['description'],
+                                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                                    ),
+                                  ],
                                   const SizedBox(height: 8),
+                                  Text('Originalpreis: ${PriceFormatter.formatAmount(amount: originalPrice, currency: 'CHF', roundingSettings: _roundingSettings)}'),
+                                  if (currentPriceInCHF != originalPrice)
+                                    Text(
+                                      'Aktueller Preis: ${PriceFormatter.formatAmount(amount: currentPriceInCHF, currency: 'CHF', roundingSettings: _roundingSettings)}',
+                                      style: TextStyle(color: Colors.green[700]),
+                                    ),
 
-                                  // NEU: Anzahl Bauteile (Info-Feld)
-                                  // Anzahl Bauteile - editierbar für manuelle Produkte, Info für normale
-                                  const SizedBox(height: 12),
-                                  if (itemData['is_manual_product'] == true) ...[
-                                    // Editierbares Feld für manuelle Produkte
+                                  const SizedBox(height: 8),
+                                  itemData['is_manual_product'] == true?SizedBox(width: 1,): Text('Menge: ${itemData['quantity']} ${itemData['unit'] ?? 'Stück'}'),
+                                ],
+                              ),
+                            ),
+
+                            // Menge anpassen - nur für manuelle Produkte
+                            if (itemData['is_manual_product'] == true) ...[
+                              const SizedBox(height: 24),
+
+                              Text(
+                                'Menge anpassen',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+
+                              TextFormField(
+                                controller: quantityController,
+                                decoration: InputDecoration(
+                                  labelText: 'Menge',
+                                  suffixText: itemData['unit'] ?? 'Stück',
+                                  border: const OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: Theme.of(context).colorScheme.surface,
+                                  prefixIcon: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: getAdaptiveIcon(iconName: 'numbers', defaultIcon: Icons.numbers),
+                                  ),
+                                  helperText: 'Manuelles Produkt - Menge änderbar',
+                                ),
+                                keyboardType: TextInputType.numberWithOptions(decimal: itemData['unit'] != 'Stück'),
+                                inputFormatters: [
+                                  if (itemData['unit'] == 'Stück')
+                                    FilteringTextInputFormatter.digitsOnly
+                                  else
+                                    FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,3}')),
+                                ],
+                                onChanged: (value) {
+                                  setDialogState(() {});
+                                },
+                              ),
+                            ],
+                            const SizedBox(height: 24),
+                            // Menge anpassen - für reguläre Artikel (nicht manuell, nicht Service)
+                            // Menge anpassen - für reguläre Artikel (nicht manuell, nicht Service)
+                            if (itemData['is_manual_product'] != true && !isService) ...[
+                              const SizedBox(height: 24),
+
+                              Text(
+                                'Menge anpassen',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+
+                              // availableQuantity wird einmalig geladen (siehe unten)
+                              Builder(builder: (context) {
+                                final currentQuantity = (itemData['quantity'] as num?)?.toDouble() ?? 1.0;
+                                final enteredQty = double.tryParse(
+                                    quantityController.text.replaceAll(',', '.')) ?? currentQuantity;
+                                final exceeds = _cachedAvailableQuantity != null && enteredQty > _cachedAvailableQuantity!;
+
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
                                     TextFormField(
-                                      controller: partsController,
+                                      controller: quantityController,
                                       decoration: InputDecoration(
-                                        labelText: 'Anzahl Bauteile pro Einheit',
+                                        labelText: 'Menge',
+                                        suffixText: itemData['unit'] ?? 'Stück',
                                         border: const OutlineInputBorder(),
                                         filled: true,
                                         fillColor: Theme.of(context).colorScheme.surface,
                                         prefixIcon: Padding(
                                           padding: const EdgeInsets.all(8.0),
-                                          child: getAdaptiveIcon(
-                                            iconName: 'category',
-                                            defaultIcon: Icons.category,
-                                            size: 20,
-                                          ),
+                                          child: getAdaptiveIcon(iconName: 'numbers', defaultIcon: Icons.numbers),
                                         ),
-                                        helperText: 'z.B. 2 bei einem Set aus Decke und Boden',
+                                        helperText: _cachedAvailableQuantity == null
+                                            ? 'Verfügbarkeit wird geprüft...'
+                                            : 'Verfügbar: ${itemData['unit'] == 'Stück' ? _cachedAvailableQuantity!.toStringAsFixed(0) : _cachedAvailableQuantity!.toStringAsFixed(2)} ${itemData['unit'] ?? 'Stück'}',
+                                        helperStyle: TextStyle(
+                                          color: exceeds ? Colors.red : Colors.grey[600],
+                                        ),
                                       ),
-                                      keyboardType: TextInputType.number,
+                                      keyboardType: TextInputType.numberWithOptions(decimal: itemData['unit'] != 'Stück'),
                                       inputFormatters: [
-                                        FilteringTextInputFormatter.digitsOnly,
+                                        if (itemData['unit'] == 'Stück')
+                                          FilteringTextInputFormatter.digitsOnly
+                                        else
+                                          FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,3}')),
                                       ],
                                       onChanged: (value) {
-                                        calculateVolumeWithParts();
                                         setDialogState(() {});
                                       },
                                     ),
-                                    const SizedBox(height: 12),
-                                  ] else if (volumeSnapshot.connectionState == ConnectionState.done &&
-                                      volumeSnapshot.hasData &&
-                                      volumeSnapshot.data != null &&
-                                      volumeSnapshot.data!['parts'] != null) ...[
-                                    // Info-Anzeige für normale Produkte (bestehender Code)
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                          color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                                    if (exceeds) ...[
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 8.0),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: Colors.red.shade50,
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: Colors.red.shade200),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  'Die eingegebene Menge überschreitet den verfügbaren Bestand!',
+                                                  style: TextStyle(color: Colors.red.shade700, fontSize: 13),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
-                                      child: Row(
+                                    ],
+                                  ],
+                                );
+                              }),
+                            ],
+                            const SizedBox(height: 24),
+                            // Preis anpassen
+                            Text(
+                              'Preis anpassen',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+
+                            // Nach dem Preis-Eingabefeld und vor den Artikel-spezifischen Optionen:
+
+                            // Bei Dienstleistungen: Beschreibung bearbeiten
+                            if (isService) ...[
+                              const SizedBox(height: 24),
+
+                              // Beschreibung bearbeiten
+                              Text(
+                                'Beschreibung anpassen',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+
+                              TextFormField(
+                                controller: descriptionController,
+                                decoration: InputDecoration(
+                                  labelText: 'Beschreibung (Deutsch)',
+                                  border: const OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: Theme.of(context).colorScheme.surface,
+                                  prefixIcon: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: getAdaptiveIcon(iconName: 'description', defaultIcon: Icons.description),
+                                  ),
+                                  helperText: 'Optionale Beschreibung der Dienstleistung',
+                                ),
+                                maxLines: 3,
+                                minLines: 2,
+                              ),
+                              const SizedBox(height: 12),
+
+                              TextFormField(
+                                controller: descriptionEnController,
+                                decoration: InputDecoration(
+                                  labelText: 'Beschreibung (English)',
+                                  border: const OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: Theme.of(context).colorScheme.surface,
+                                  prefixIcon: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: getAdaptiveIcon(iconName: 'language', defaultIcon: Icons.language),
+                                  ),
+                                  helperText: 'Optional description of the service',
+                                ),
+                                maxLines: 3,
+                                minLines: 2,
+                              ),
+                            ],
+
+                            const SizedBox(height: 8),
+
+                            ValueListenableBuilder<String>(
+                              valueListenable: _currencyNotifier,
+                              builder: (context, currency, child) {
+                                return TextFormField(
+                                  controller: priceController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Neuer Preis in $_selectedCurrency',
+                                    suffixText: _selectedCurrency,
+                                    border: const OutlineInputBorder(),
+                                    filled: true,
+                                    fillColor: Theme.of(context).colorScheme.surface,
+                                    prefixIcon: Padding(
+                                      padding: const EdgeInsets.all(8.0),
+                                      child: getAdaptiveIcon(iconName: 'money_bag', defaultIcon: Icons.savings),
+                                    ),
+                                  ),
+                                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                                  ],
+                                );
+                              },
+                            ),
+
+
+                            const SizedBox(height: 24),
+
+// Zolltarifnummer (für ALLE - Produkte UND Dienstleistungen)
+                            Text(
+                              'Zolltarifnummer',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+
+// Bei PRODUKTEN: Zeige Standard-Zolltarifnummer an
+                            if (!isService) ...[
+                              FutureBuilder<String>(
+                                future: _getStandardTariffNumber(itemData),
+                                builder: (context, snapshot) {
+                                  final standardTariff = snapshot.data ?? 'Wird geladen...';
+
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    'Standard-Zolltarifnummer',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.grey[600],
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    standardTariff,
+                                                    style: const TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ],
+                                  );
+                                },
+                              ),
+                            ],
+
+// Bei DIENSTLEISTUNGEN: Info-Box
+                            if (isService) ...[
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    getAdaptiveIcon(
+                                      iconName: 'info',
+                                      defaultIcon: Icons.info,
+                                      color: Colors.blue,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Zolltarifnummer für Dienstleistungen (optional für Handelsrechnungen)',
+                                        style: TextStyle(fontSize: 12, color: Colors.blue[800]),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+
+// Freitextfeld für BEIDE (Produkte UND Dienstleistungen)
+                            TextFormField(
+                              controller: customTariffController,
+                              decoration: InputDecoration(
+                                labelText: isService
+                                    ? 'Zolltarifnummer (optional)'
+                                    : 'Individuelle Zolltarifnummer',
+                                hintText: 'z.B. 4407.1200',
+                                border: const OutlineInputBorder(),
+                                filled: true,
+                                fillColor: Theme.of(context).colorScheme.surface,
+                                prefixIcon: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: getAdaptiveIcon(
+                                    iconName: 'local_shipping',
+                                    defaultIcon: Icons.local_shipping,
+                                  ),
+                                ),
+                                helperText: isService
+                                    ? 'Für Handelsrechnungen'
+                                    : 'Überschreibt die Standard-Zolltarifnummer',
+                                suffixIcon: customTariffController.text.isNotEmpty
+                                    ? IconButton(
+                                  icon: getAdaptiveIcon(
+                                    iconName: 'clear',
+                                    defaultIcon: Icons.clear,
+                                  ),
+                                  onPressed: () {
+                                    setDialogState(() {
+                                      customTariffController.clear();
+                                    });
+                                  },
+                                )
+                                    : null,
+                              ),
+                              onChanged: (value) => setDialogState(() {}),
+                            ),
+                            const SizedBox(height: 24),
+
+
+
+                            // NUR bei Artikeln (nicht bei Dienstleistungen) die weiteren Optionen anzeigen
+
+
+
+
+
+                            if (!isService) ...[
+                              const SizedBox(height: 24),
+
+                              // FSC-Auswahl
+                              Text(
+                                'FSC-Zertifizierung',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+
+
+                              const SizedBox(height: 8),
+
+                              // FSC Status Dropdown
+                              DropdownButtonFormField<String>(
+                                decoration: InputDecoration(
+                                  labelText: 'FSC-Status',
+                                  border: const OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: Theme.of(context).colorScheme.surface,
+                                  prefixIcon: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: getAdaptiveIcon(iconName: 'eco', defaultIcon: Icons.eco),
+                                  ),
+                                ),
+                                value: itemData['fsc_status'] as String? ?? '100%',
+                                items: const [
+                                  DropdownMenuItem(value: '100%', child: Text('100% FSC')),
+                                  DropdownMenuItem(value: 'Mix', child: Text('FSC Mix')),
+                                  DropdownMenuItem(value: 'Recycled', child: Text('FSC Recycled')),
+                                  DropdownMenuItem(value: 'Controlled', child: Text('FSC Controlled Wood')),
+                                  DropdownMenuItem(value: '-', child: Text('Kein FSC')),
+                                ],
+                                onChanged: (value) {
+                                  setDialogState(() {  // NEU: StatefulBuilder's setState
+                                    selectedFscStatus = value ?? '-';
+                                  });
+                                },
+                              ),
+                              const SizedBox(height: 24),
+
+
+
+
+
+
+
+                              // NEU: Thermobehandlung
+                              Text(
+                                'Thermobehandlung',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+
+                              Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: CheckboxListTile(
+                                  title: const Text('Thermobehandelt'),
+                                  subtitle: const Text('Artikel wurde thermisch behandelt'),
+                                  value: hasThermalTreatment,
+                                  onChanged: (value) {
+                                    setDialogState(() { // NEU: setDialogState statt setState
+                                      hasThermalTreatment = value ?? false;
+                                      if (!hasThermalTreatment) {
+                                        temperatureController.clear();
+                                      }
+                                    });
+                                  },
+                                  secondary: getAdaptiveIcon(
+                                    iconName: 'whatshot',
+                                    defaultIcon: Icons.whatshot,
+                                    color: hasThermalTreatment
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Colors.grey,
+                                  ),
+                                ),
+                              ),
+
+                              // Temperatur-Eingabe (nur wenn Thermobehandlung aktiviert)
+                              if (hasThermalTreatment) ...[
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: temperatureController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Temperatur (°C) *',  // Stern hinzufügen
+                                    border: const OutlineInputBorder(),
+                                    filled: true,
+                                    fillColor: Theme.of(context).colorScheme.surface,
+                                    prefixIcon: Padding(
+                                      padding: const EdgeInsets.all(8.0),
+                                      child: getAdaptiveIcon(
+                                        iconName: 'thermostat',
+                                        defaultIcon: Icons.thermostat,
+                                      ),
+                                    ),
+                                    suffixText: '°C',
+                                    helperText: 'Pflichtfeld - Behandlungstemperatur (z.B. 180, 200, 212)',  // Angepasster Hilfetext
+                                    // Optional: Fehlerrahmen wenn leer
+                                    errorText: temperatureController.text.isEmpty ? 'Temperatur erforderlich' : null,
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(3),
+                                  ],
+                                  onChanged: (value) {
+                                    setDialogState(() {});  // UI aktualisieren für Fehleranzeige
+                                  },
+                                ),
+                              ],
+
+
+                              const SizedBox(height: 24),
+
+
+                              // Hinweise-Abschnitt
+                              Text(
+                                'Hinweise',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+
+                              TextFormField(
+                                controller: notesController,
+                                decoration: InputDecoration(
+                                  labelText: 'Spezielle Hinweise (optional)',
+                                  hintText: 'z.B. besondere Qualitätsmerkmale, Lagerort, etc.',
+                                  border: const OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: Theme.of(context).colorScheme.surface,
+                                  prefixIcon: getAdaptiveIcon(
+                                    iconName: 'note',
+                                    defaultIcon: Icons.note_alt,
+                                  ),
+                                ),
+                                maxLines: 3,
+                                minLines: 2,
+                              ),
+                              const SizedBox(height: 24),
+
+
+
+
+
+
+                              const SizedBox(height: 24),
+
+                              // Maße anpassen - JETZT MIT FutureBuilder für Standard-Volumen
+                              FutureBuilder<Map<String, dynamic>?>(
+                                future: _getStandardVolumeForItem(itemData),
+                                builder: (context, volumeSnapshot) {
+
+                                  // HIER die Änderung:
+                                  // Setze Volumen einmalig - priorisiere gespeichertes volume_per_unit aus Basket
+                                  if (volumeController.text.isEmpty) {
+                                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                                      // Prüfe zuerst ob bereits ein angepasstes Volumen im Basket existiert
+                                      if (itemData['volume_per_unit'] != null && (itemData['volume_per_unit'] as num) > 0) {
+                                        volumeController.text = (itemData['volume_per_unit'] as num).toDouble().toStringAsFixed(7);
+                                      }
+                                      // Sonst Standard-Volumen verwenden (falls vorhanden)
+                                      else if (volumeSnapshot.connectionState == ConnectionState.done &&
+                                          volumeSnapshot.hasData &&
+                                          volumeSnapshot.data != null) {
+                                        final standardVolume = volumeSnapshot.data!['volume'] ?? 0.0;
+                                        if (standardVolume > 0) {
+                                          volumeController.text = standardVolume.toStringAsFixed(7);
+                                        }
+                                      }
+                                    });
+                                  }
+
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
                                         children: [
-                                          getAdaptiveIcon(
-                                            iconName: 'category',
-                                            defaultIcon: Icons.category,
-                                            size: 20,
-                                            color: Theme.of(context).colorScheme.primary,
+                                          Text(
+                                            'Maße anpassen',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: Theme.of(context).colorScheme.primary,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          if (volumeSnapshot.hasData && volumeSnapshot.data != null)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Theme.of(context).colorScheme.primaryContainer,
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: Text(
+                                                'Standardwerte',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+
+                                      // NEU: Anzahl Bauteile (Info-Feld)
+                                      // Anzahl Bauteile - editierbar für manuelle Produkte, Info für normale
+                                      const SizedBox(height: 12),
+                                      if (itemData['is_manual_product'] == true) ...[
+                                        // Editierbares Feld für manuelle Produkte
+                                        TextFormField(
+                                          controller: partsController,
+                                          decoration: InputDecoration(
+                                            labelText: 'Anzahl Bauteile pro Einheit',
+                                            border: const OutlineInputBorder(),
+                                            filled: true,
+                                            fillColor: Theme.of(context).colorScheme.surface,
+                                            prefixIcon: Padding(
+                                              padding: const EdgeInsets.all(8.0),
+                                              child: getAdaptiveIcon(
+                                                iconName: 'category',
+                                                defaultIcon: Icons.category,
+                                                size: 20,
+                                              ),
+                                            ),
+                                            helperText: 'z.B. 2 bei einem Set aus Decke und Boden',
+                                          ),
+                                          keyboardType: TextInputType.number,
+                                          inputFormatters: [
+                                            FilteringTextInputFormatter.digitsOnly,
+                                          ],
+                                          onChanged: (value) {
+                                            calculateVolumeWithParts();
+                                            setDialogState(() {});
+                                          },
+                                        ),
+                                        const SizedBox(height: 12),
+                                      ] else if (volumeSnapshot.connectionState == ConnectionState.done &&
+                                          volumeSnapshot.hasData &&
+                                          volumeSnapshot.data != null &&
+                                          volumeSnapshot.data!['parts'] != null) ...[
+                                        // Info-Anzeige für normale Produkte (bestehender Code)
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              getAdaptiveIcon(
+                                                iconName: 'category',
+                                                defaultIcon: Icons.category,
+                                                size: 20,
+                                                color: Theme.of(context).colorScheme.primary,
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      'Anzahl Bauteile',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Theme.of(context).colorScheme.primary,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      '${volumeSnapshot.data!['parts']} Teile',
+                                                      style: TextStyle(
+                                                        fontSize: 14,
+                                                        fontWeight: FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                      ],
+                                      const SizedBox(height: 8),
+
+                                      // Maß-Eingabefelder
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: TextFormField(
+                                              controller: lengthController,
+                                              decoration: InputDecoration(
+                                                labelText: 'Länge (mm)',
+                                                border: const OutlineInputBorder(),
+                                                filled: true,
+                                                fillColor: Theme.of(context).colorScheme.surface,
+                                                prefixIcon:   Padding(
+                                                  padding: const EdgeInsets.all(8.0),
+                                                  child: getAdaptiveIcon(iconName: 'straighten', defaultIcon:Icons.straighten, size: 20),
+                                                ),
+                                              ),
+                                              keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                              inputFormatters: [
+                                                FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                                              ],
+                                              onChanged: (_) {
+                                                calculateVolume();
+                                                setDialogState(() {});
+                                              },
+                                            ),
                                           ),
                                           const SizedBox(width: 12),
                                           Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  'Anzahl Bauteile',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Theme.of(context).colorScheme.primary,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  '${volumeSnapshot.data!['parts']} Teile',
-                                                  style: TextStyle(
-                                                    fontSize: 14,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                  ],
-                                  const SizedBox(height: 8),
-
-                                  // Maß-Eingabefelder
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextFormField(
-                                          controller: lengthController,
-                                          decoration: InputDecoration(
-                                            labelText: 'Länge (mm)',
-                                            border: const OutlineInputBorder(),
-                                            filled: true,
-                                            fillColor: Theme.of(context).colorScheme.surface,
-                                            prefixIcon:   Padding(
-                                              padding: const EdgeInsets.all(8.0),
-                                              child: getAdaptiveIcon(iconName: 'straighten', defaultIcon:Icons.straighten, size: 20),
-                                            ),
-                                          ),
-                                          keyboardType: TextInputType.numberWithOptions(decimal: true),
-                                          inputFormatters: [
-                                            FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
-                                          ],
-                                          onChanged: (_) {
-                                            calculateVolume();
-                                            setDialogState(() {});
-                                          },
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: TextFormField(
-                                          controller: widthController,
-                                          decoration: InputDecoration(
-                                            labelText: 'Breite (mm)',
-                                            border: const OutlineInputBorder(),
-                                            filled: true,
-                                            fillColor: Theme.of(context).colorScheme.surface,
-                                            prefixIcon:   Padding(
-                                              padding: const EdgeInsets.all(8.0),
-                                              child: getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon:Icons.swap_horiz, size: 20),
-                                            ),
-                                          ),
-                                          keyboardType: TextInputType.numberWithOptions(decimal: true),
-                                          inputFormatters: [
-                                            FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
-                                          ],
-                                          onChanged: (_) {
-                                            calculateVolume();
-                                            setDialogState(() {});
-                                          },
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 12),
-                                  TextFormField(
-                                    controller: thicknessController,
-                                    decoration: InputDecoration(
-                                      labelText: 'Dicke (mm)',
-                                      border: const OutlineInputBorder(),
-                                      filled: true,
-                                      fillColor: Theme.of(context).colorScheme.surface,
-                                      prefixIcon:   Padding(
-                                        padding: const EdgeInsets.all(8.0),
-                                        child: getAdaptiveIcon(iconName: 'layers', defaultIcon:Icons.layers, size: 20),
-                                      ),
-                                    ),
-                                    keyboardType: TextInputType.numberWithOptions(decimal: true),
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
-                                    ],
-                                    onChanged: (_) {
-                                      calculateVolume();
-                                      setDialogState(() {});
-                                    },
-                                  ),
-            
-                                  // Volumen-Feld mit Standard-Volumen
-                                  const SizedBox(height: 12),
-                                  TextFormField(
-                                    controller: volumeController,
-                                    decoration: InputDecoration(
-                                      labelText: 'Volumen (m³)',
-                                      border: const OutlineInputBorder(),
-                                      filled: true,
-                                      fillColor: Theme.of(context).colorScheme.surface,
-                                      prefixIcon: Padding(
-                                        padding: const EdgeInsets.all(8.0),
-                                        child: getAdaptiveIcon(iconName: 'view_in_ar', defaultIcon:Icons.view_in_ar, size: 20),
-                                      ),
-                                      helperText: itemData['volume_per_unit'] != null && (itemData['volume_per_unit'] as num) > 0
-                                          ? 'Angepasstes Volumen - kann weiter bearbeitet werden'
-                                          : (volumeSnapshot.hasData && volumeSnapshot.data != null
-                                          ? 'Standardvolumen geladen - kann angepasst werden'
-                                          : 'Optional: Manuelles Volumen überschreibt berechneten Wert'),
-                                    ),
-                                    keyboardType: TextInputType.numberWithOptions(decimal: true),
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,7}')),
-                                    ],
-
-                                  ),
-                                  const SizedBox(height: 12),
-                                  FutureBuilder<double?>(
-                                    future: _getDensityForProduct(itemData),
-                                    builder: (context, densitySnapshot) {
-                                      // NUR setzen wenn: Daten da, noch nicht geladen, UND kein custom_density existiert
-                                      if (densitySnapshot.hasData &&
-                                          densitySnapshot.data != null &&
-                                          !densityLoaded &&
-                                          itemData['custom_density'] == null) {  // <-- NEU: prüfen ob custom_density existiert
-                                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                                          if (!densityLoaded) {  // Doppelcheck
-                                            densityController.text = densitySnapshot.data!.toStringAsFixed(0);
-                                            densityLoaded = true;
-                                          }
-                                        });
-                                      }
-
-                                      // Falls custom_density existiert, Flag auch setzen
-                                      if (itemData['custom_density'] != null) {
-                                        densityLoaded = true;
-                                      }
-
-                                      return Column(
-                                        children: [
-                                          TextFormField(
-                                            controller: densityController,
-                                            decoration: InputDecoration(
-                                              labelText: 'Spezifisches Gewicht (kg/m³)',
-                                              border: const OutlineInputBorder(),
-                                              filled: true,
-                                              fillColor: Theme.of(context).colorScheme.surface,
-                                              prefixIcon: Padding(
-                                                padding: const EdgeInsets.all(8.0),
-                                                child: getAdaptiveIcon(
-                                                    iconName: 'grain',
-                                                    defaultIcon: Icons.grain,
-                                                    size: 20
+                                            child: TextFormField(
+                                              controller: widthController,
+                                              decoration: InputDecoration(
+                                                labelText: 'Breite (mm)',
+                                                border: const OutlineInputBorder(),
+                                                filled: true,
+                                                fillColor: Theme.of(context).colorScheme.surface,
+                                                prefixIcon:   Padding(
+                                                  padding: const EdgeInsets.all(8.0),
+                                                  child: getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon:Icons.swap_horiz, size: 20),
                                                 ),
                                               ),
-                                              helperText: densitySnapshot.hasData
-                                                  ? 'Dichte aus Holzart: ${densitySnapshot.data} kg/m³'
-                                                  : 'Manuell eingeben falls nicht automatisch geladen',
+                                              keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                              inputFormatters: [
+                                                FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                                              ],
+                                              onChanged: (_) {
+                                                calculateVolume();
+                                                setDialogState(() {});
+                                              },
                                             ),
-                                            keyboardType: TextInputType.numberWithOptions(decimal: true),
-                                            inputFormatters: [
-                                              FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,0}')),
-                                            ],
-                                            onChanged: (value) {
-                                              setDialogState(() {});
-                                            },
-                                          ),
-
-                                          // NEU: Gewichtsberechnung
-                                          const SizedBox(height: 16),
-
-                                          // Berechne und zeige das Gewicht
-                                          Builder(
-                                            builder: (context) {
-                                              // Parse Werte
-                                              final quantityText = quantityController.text.replaceAll(',', '.');
-                                              final volumeText = volumeController.text.replaceAll(',', '.');
-                                              final densityText = densityController.text.replaceAll(',', '.');
-
-                                              final quantity = double.tryParse(quantityText) ?? 0.0;
-                                              final volumePerUnit = double.tryParse(volumeText) ?? 0.0;
-                                              final density = double.tryParse(densityText) ?? 0.0;
-
-                                              // Berechne Gewicht
-                                              final weightPerUnit = volumePerUnit * density; // kg pro Einheit
-                                              final totalWeight = weightPerUnit * quantity; // Gesamtgewicht
-
-                                              if (volumePerUnit > 0 && density > 0) {
-                                                return Container(
-                                                  padding: const EdgeInsets.all(12),
-                                                  decoration: BoxDecoration(
-                                                    color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
-                                                    borderRadius: BorderRadius.circular(8),
-                                                    border: Border.all(
-                                                      color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-                                                    ),
-                                                  ),
-                                                  child: Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Row(
-                                                        children: [
-                                                          getAdaptiveIcon(iconName: 'scale', defaultIcon:
-                                                          Icons.scale,
-                                                            size: 20,
-                                                            color: Theme.of(context).colorScheme.primary,
-                                                          ),
-                                                          const SizedBox(width: 8),
-                                                          Text(
-                                                            'Gewichtsberechnung',
-                                                            style: TextStyle(
-                                                              fontWeight: FontWeight.bold,
-                                                              color: Theme.of(context).colorScheme.primary,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                      const SizedBox(height: 8),
-                                                      Text(
-                                                        'Volumen: ${volumePerUnit.toStringAsFixed(7)} m³ × Dichte: ${density.toStringAsFixed(0)} kg/m³',
-                                                        style: TextStyle(fontSize: 12),
-                                                      ),
-                                                      const SizedBox(height: 4),
-                                                      Row(
-                                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                        children: [
-                                                          Text('Gewicht pro ${itemData['unit'] ?? 'Stück'}:'),
-                                                          Text(
-                                                            '${weightPerUnit.toStringAsFixed(2)} kg',
-                                                            style: TextStyle(fontWeight: FontWeight.bold),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                      if (quantity > 0) ...[
-                                                        const SizedBox(height: 4),
-                                                        Divider(),
-                                                        const SizedBox(height: 4),
-                                                        Row(
-                                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                          children: [
-                                                            Text(
-                                                              'Gesamtgewicht:',
-                                                              style: TextStyle(
-                                                                fontWeight: FontWeight.bold,
-                                                                fontSize: 14,
-                                                              ),
-                                                            ),
-                                                            Text(
-                                                              '${totalWeight.toStringAsFixed(2)} kg',
-                                                              style: TextStyle(
-                                                                fontWeight: FontWeight.bold,
-                                                                fontSize: 16,
-                                                                color: Theme.of(context).colorScheme.primary,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ],
-                                                    ],
-                                                  ),
-                                                );
-                                              } else {
-                                                return Container(
-                                                  padding: const EdgeInsets.all(12),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.orange.withOpacity(0.1),
-                                                    borderRadius: BorderRadius.circular(8),
-                                                    border: Border.all(
-                                                      color: Colors.orange.withOpacity(0.3),
-                                                    ),
-                                                  ),
-                                                  child: Row(
-                                                    children: [
-                                                      getAdaptiveIcon(iconName: 'info', defaultIcon:
-                                                      Icons.info,
-                                                        size: 16,
-                                                        color: Colors.orange,
-                                                      ),
-                                                      const SizedBox(width: 8),
-                                                      Expanded(
-                                                        child: Text(
-                                                          'Gewichtsberechnung erfordert Volumen und Dichte',
-                                                          style: TextStyle(
-                                                            fontSize: 12,
-                                                            color: Colors.orange[800],
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                );
-                                              }
-                                            },
                                           ),
                                         ],
-                                      );
-                                    },
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'Maße sind optional und werden nur gespeichert, wenn sie eingegeben werden.',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontStyle: FontStyle.italic,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                        ],
-            ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      TextFormField(
+                                        controller: thicknessController,
+                                        decoration: InputDecoration(
+                                          labelText: 'Dicke (mm)',
+                                          border: const OutlineInputBorder(),
+                                          filled: true,
+                                          fillColor: Theme.of(context).colorScheme.surface,
+                                          prefixIcon:   Padding(
+                                            padding: const EdgeInsets.all(8.0),
+                                            child: getAdaptiveIcon(iconName: 'layers', defaultIcon:Icons.layers, size: 20),
+                                          ),
+                                        ),
+                                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                                        ],
+                                        onChanged: (_) {
+                                          calculateVolume();
+                                          setDialogState(() {});
+                                        },
+                                      ),
+
+                                      // Volumen-Feld mit Standard-Volumen
+                                      const SizedBox(height: 12),
+                                      TextFormField(
+                                        controller: volumeController,
+                                        decoration: InputDecoration(
+                                          labelText: 'Volumen (m³)',
+                                          border: const OutlineInputBorder(),
+                                          filled: true,
+                                          fillColor: Theme.of(context).colorScheme.surface,
+                                          prefixIcon: Padding(
+                                            padding: const EdgeInsets.all(8.0),
+                                            child: getAdaptiveIcon(iconName: 'view_in_ar', defaultIcon:Icons.view_in_ar, size: 20),
+                                          ),
+                                          helperText: itemData['volume_per_unit'] != null && (itemData['volume_per_unit'] as num) > 0
+                                              ? 'Angepasstes Volumen - kann weiter bearbeitet werden'
+                                              : (volumeSnapshot.hasData && volumeSnapshot.data != null
+                                              ? 'Standardvolumen geladen - kann angepasst werden'
+                                              : 'Optional: Manuelles Volumen überschreibt berechneten Wert'),
+                                        ),
+                                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,7}')),
+                                        ],
+
+                                      ),
+                                      const SizedBox(height: 12),
+                                      FutureBuilder<double?>(
+                                        future: _getDensityForProduct(itemData),
+                                        builder: (context, densitySnapshot) {
+                                          // NUR setzen wenn: Daten da, noch nicht geladen, UND kein custom_density existiert
+                                          if (densitySnapshot.hasData &&
+                                              densitySnapshot.data != null &&
+                                              !densityLoaded &&
+                                              itemData['custom_density'] == null) {  // <-- NEU: prüfen ob custom_density existiert
+                                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                                              if (!densityLoaded) {  // Doppelcheck
+                                                densityController.text = densitySnapshot.data!.toStringAsFixed(0);
+                                                densityLoaded = true;
+                                              }
+                                            });
+                                          }
+
+                                          // Falls custom_density existiert, Flag auch setzen
+                                          if (itemData['custom_density'] != null) {
+                                            densityLoaded = true;
+                                          }
+
+                                          return Column(
+                                            children: [
+                                              TextFormField(
+                                                controller: densityController,
+                                                decoration: InputDecoration(
+                                                  labelText: 'Spezifisches Gewicht (kg/m³)',
+                                                  border: const OutlineInputBorder(),
+                                                  filled: true,
+                                                  fillColor: Theme.of(context).colorScheme.surface,
+                                                  prefixIcon: Padding(
+                                                    padding: const EdgeInsets.all(8.0),
+                                                    child: getAdaptiveIcon(
+                                                        iconName: 'grain',
+                                                        defaultIcon: Icons.grain,
+                                                        size: 20
+                                                    ),
+                                                  ),
+                                                  helperText: densitySnapshot.hasData
+                                                      ? 'Dichte aus Holzart: ${densitySnapshot.data} kg/m³'
+                                                      : 'Manuell eingeben falls nicht automatisch geladen',
+                                                ),
+                                                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                                inputFormatters: [
+                                                  FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,0}')),
+                                                ],
+                                                onChanged: (value) {
+                                                  setDialogState(() {});
+                                                },
+                                              ),
+
+                                              // NEU: Gewichtsberechnung
+                                              const SizedBox(height: 16),
+
+                                              // Berechne und zeige das Gewicht
+                                              Builder(
+                                                builder: (context) {
+                                                  // Parse Werte
+                                                  final quantityText = quantityController.text.replaceAll(',', '.');
+                                                  final volumeText = volumeController.text.replaceAll(',', '.');
+                                                  final densityText = densityController.text.replaceAll(',', '.');
+
+                                                  final quantity = double.tryParse(quantityText) ?? 0.0;
+                                                  final volumePerUnit = double.tryParse(volumeText) ?? 0.0;
+                                                  final density = double.tryParse(densityText) ?? 0.0;
+
+                                                  // Berechne Gewicht
+                                                  final weightPerUnit = volumePerUnit * density; // kg pro Einheit
+                                                  final totalWeight = weightPerUnit * quantity; // Gesamtgewicht
+
+                                                  if (volumePerUnit > 0 && density > 0) {
+                                                    return Container(
+                                                      padding: const EdgeInsets.all(12),
+                                                      decoration: BoxDecoration(
+                                                        color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        border: Border.all(
+                                                          color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                                                        ),
+                                                      ),
+                                                      child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                          Row(
+                                                            children: [
+                                                              getAdaptiveIcon(iconName: 'scale', defaultIcon:
+                                                              Icons.scale,
+                                                                size: 20,
+                                                                color: Theme.of(context).colorScheme.primary,
+                                                              ),
+                                                              const SizedBox(width: 8),
+                                                              Text(
+                                                                'Gewichtsberechnung',
+                                                                style: TextStyle(
+                                                                  fontWeight: FontWeight.bold,
+                                                                  color: Theme.of(context).colorScheme.primary,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                          const SizedBox(height: 8),
+                                                          Text(
+                                                            'Volumen: ${volumePerUnit.toStringAsFixed(7)} m³ × Dichte: ${density.toStringAsFixed(0)} kg/m³',
+                                                            style: TextStyle(fontSize: 12),
+                                                          ),
+                                                          const SizedBox(height: 4),
+                                                          Row(
+                                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                            children: [
+                                                              Text('Gewicht pro ${itemData['unit'] ?? 'Stück'}:'),
+                                                              Text(
+                                                                '${weightPerUnit.toStringAsFixed(2)} kg',
+                                                                style: TextStyle(fontWeight: FontWeight.bold),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                          if (quantity > 0) ...[
+                                                            const SizedBox(height: 4),
+                                                            Divider(),
+                                                            const SizedBox(height: 4),
+                                                            Row(
+                                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                              children: [
+                                                                Text(
+                                                                  'Gesamtgewicht:',
+                                                                  style: TextStyle(
+                                                                    fontWeight: FontWeight.bold,
+                                                                    fontSize: 14,
+                                                                  ),
+                                                                ),
+                                                                Text(
+                                                                  '${totalWeight.toStringAsFixed(2)} kg',
+                                                                  style: TextStyle(
+                                                                    fontWeight: FontWeight.bold,
+                                                                    fontSize: 16,
+                                                                    color: Theme.of(context).colorScheme.primary,
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ],
+                                                        ],
+                                                      ),
+                                                    );
+                                                  } else {
+                                                    return Container(
+                                                      padding: const EdgeInsets.all(12),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.orange.withOpacity(0.1),
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        border: Border.all(
+                                                          color: Colors.orange.withOpacity(0.3),
+                                                        ),
+                                                      ),
+                                                      child: Row(
+                                                        children: [
+                                                          getAdaptiveIcon(iconName: 'info', defaultIcon:
+                                                          Icons.info,
+                                                            size: 16,
+                                                            color: Colors.orange,
+                                                          ),
+                                                          const SizedBox(width: 8),
+                                                          Expanded(
+                                                            child: Text(
+                                                              'Gewichtsberechnung erfordert Volumen und Dichte',
+                                                              style: TextStyle(
+                                                                fontSize: 12,
+                                                                color: Colors.orange[800],
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    );
+                                                  }
+                                                },
+                                              ),
+                                            ],
+                                          );
+                                        },
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'Maße sind optional und werden nur gespeichert, wenn sie eingegeben werden.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontStyle: FontStyle.italic,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-            
-                  // Action Buttons (bleibt unverändert)
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).scaffoldBackgroundColor,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 10,
-                          spreadRadius: 0,
-                          offset: const Offset(0, -2),
-                        ),
-                      ],
-                    ),
-                    child: SafeArea(
-                      child: Row(
-                        children: [
 
-                          // Zurücksetzen Button
-                          if (currentPriceInCHF != originalPrice ||
-                              (!isService && (itemData['custom_length'] != null ||
-                                  itemData['custom_width'] != null ||
-                                  itemData['custom_thickness'] != null ||
-                                  itemData['custom_volume'] != null ||
-                                  itemData['has_thermal_treatment'] == true ||
-              itemData['custom_tariff_number'] != null)) ||
-                              (isService && (descriptionController.text != (itemData['description'] ?? '') ||
-                                  descriptionEnController.text != (itemData['description_en'] ?? ''))))
+                    // Action Buttons (bleibt unverändert)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 10,
+                            spreadRadius: 0,
+                            offset: const Offset(0, -2),
+                          ),
+                        ],
+                      ),
+                      child: SafeArea(
+                        child: Row(
+                          children: [
+
+                            // Zurücksetzen Button
+                            if (currentPriceInCHF != originalPrice ||
+                                (!isService && (itemData['custom_length'] != null ||
+                                    itemData['custom_width'] != null ||
+                                    itemData['custom_thickness'] != null ||
+                                    itemData['custom_volume'] != null ||
+                                    itemData['has_thermal_treatment'] == true ||
+                                    itemData['custom_tariff_number'] != null)) ||
+                                (isService && (descriptionController.text != (itemData['description'] ?? '') ||
+                                    descriptionEnController.text != (itemData['description_en'] ?? ''))))
+
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () async {
+                                    try {
+                                      Map<String, dynamic> updateData = {
+                                        'custom_price_per_unit': FieldValue.delete(),
+                                        'is_price_customized': false,
+                                      };
+
+                                      // Nur bei Artikeln die Maße löschen
+                                      if (!isService) {
+                                        updateData['custom_length'] = FieldValue.delete();
+                                        updateData['custom_width'] = FieldValue.delete();
+                                        updateData['custom_thickness'] = FieldValue.delete();
+                                        updateData['custom_volume'] = FieldValue.delete();
+                                        updateData['fsc_status'] = '-';
+                                        updateData['has_thermal_treatment'] = false;
+                                        updateData['thermal_treatment_temperature'] = FieldValue.delete();
+                                        updateData['custom_tariff_number'] = FieldValue.delete();
+
+
+
+
+
+                                      }
+
+                                      // Bei Dienstleistungen: Beschreibung aus Originaldaten wiederherstellen
+                                      if (isService) {
+                                        // Hole die Original-Dienstleistungsdaten aus Firebase
+                                        final serviceDoc = await FirebaseFirestore.instance
+                                            .collection('services')
+                                            .doc(itemData['service_id'])
+                                            .get();
+
+                                        if (serviceDoc.exists) {
+                                          updateData['description'] = serviceDoc.data()!['description'] ?? '';
+                                          updateData['description_en'] = serviceDoc.data()!['description_en'] ?? '';
+                                        }
+                                      }
+
+                                      await
+                                      UserBasketService.temporaryBasket
+                                          .doc(basketItemId)
+                                          .update(updateData);
+
+                                      Navigator.pop(context);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(isService
+                                              ? 'Dienstleistung wurde auf Original zurückgesetzt'
+                                              : 'Artikel wurde auf Original zurückgesetzt'),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    } catch (e) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Fehler beim Zurücksetzen: $e'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  icon: getAdaptiveIcon(iconName: 'refresh', defaultIcon: Icons.refresh),
+                                  label: const Text('Zurücksetzen'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.red,
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                  ),
+                                ),
+                              ),
+                            if (currentPriceInCHF != originalPrice ||
+                                itemData['custom_length'] != null ||
+                                itemData['custom_width'] != null ||
+                                itemData['custom_thickness'] != null ||
+                                itemData['custom_volume'] != null)
+                              const SizedBox(width: 16),
 
                             Expanded(
-                              child: OutlinedButton.icon(
+                              child: ElevatedButton.icon(
                                 onPressed: () async {
                                   try {
-                                    Map<String, dynamic> updateData = {
-                                      'custom_price_per_unit': FieldValue.delete(),
-                                      'is_price_customized': false,
-                                    };
-            
-                                    // Nur bei Artikeln die Maße löschen
-                                    if (!isService) {
-                                      updateData['custom_length'] = FieldValue.delete();
-                                      updateData['custom_width'] = FieldValue.delete();
-                                      updateData['custom_thickness'] = FieldValue.delete();
-                                      updateData['custom_volume'] = FieldValue.delete();
-                                      updateData['fsc_status'] = '-';
-                                      updateData['has_thermal_treatment'] = false;
-                                      updateData['thermal_treatment_temperature'] = FieldValue.delete();
-                                      updateData['custom_tariff_number'] = FieldValue.delete();
-
-
-
-
-
+                                    // NEU: Validierung für Thermobehandlung
+                                    if (!isService && hasThermalTreatment && temperatureController.text.isEmpty) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Bitte Behandlungstemperatur eingeben'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                      return; // Abbruch wenn Temperatur fehlt
                                     }
-            
-                                    // Bei Dienstleistungen: Beschreibung aus Originaldaten wiederherstellen
-                                    if (isService) {
-                                      // Hole die Original-Dienstleistungsdaten aus Firebase
-                                      final serviceDoc = await FirebaseFirestore.instance
-                                          .collection('services')
-                                          .doc(itemData['service_id'])
-                                          .get();
 
-                                      if (serviceDoc.exists) {
-                                        updateData['description'] = serviceDoc.data()!['description'] ?? '';
-                                        updateData['description_en'] = serviceDoc.data()!['description_en'] ?? '';
+
+
+                                    // Neuen Preis parsen (Komma oder Punkt akzeptieren)
+                                    final String normalizedInput = priceController.text.replaceAll(',', '.');
+                                    final newPrice = double.tryParse(normalizedInput) ?? 0.0;
+                                    if (newPrice <= 0) {
+                                      throw Exception('Bitte gib einen gültigen Preis ein');
+                                    }
+
+                                    // Umrechnen in CHF für die Speicherung
+                                    double priceInCHF = newPrice;
+                                    if (_selectedCurrency != 'CHF') {
+                                      priceInCHF = newPrice / _exchangeRates[_selectedCurrency]!;
+                                    }
+
+                                    // Update-Map vorbereiten
+                                    Map<String, dynamic> updateData = {
+                                      'custom_price_per_unit': priceInCHF,
+                                      'is_price_customized': true,
+                                    };
+
+                                    if (itemData['is_manual_product'] == true && quantityController.text.isNotEmpty) {
+                                      final quantity = itemData['unit'] == 'Stück'
+                                          ? int.tryParse(quantityController.text)
+                                          : double.tryParse(quantityController.text.replaceAll(',', '.'));
+                                      if (quantity != null && quantity > 0) {
+                                        updateData['quantity'] = quantity;
                                       }
                                     }
-            
-                                    await FirebaseFirestore.instance
-                                        .collection('temporary_basket')
+// Menge für reguläre Artikel speichern (mit Verfügbarkeitsprüfung)
+                                    if (itemData['is_manual_product'] != true && !isService && quantityController.text.isNotEmpty) {
+                                      final newQuantity = itemData['unit'] == 'Stück'
+                                          ? int.tryParse(quantityController.text)?.toDouble()
+                                          : double.tryParse(quantityController.text.replaceAll(',', '.'));
+                                      if (newQuantity != null && newQuantity > 0) {
+                                        // Verfügbarkeit prüfen
+                                        final currentQuantity = (itemData['quantity'] as num?)?.toDouble() ?? 1.0;
+                                        final availableStock = await _getAvailableQuantity(itemData['product_id'] ?? '');
+                                        final totalAvailable = availableStock + currentQuantity;
+
+                                        if (newQuantity > totalAvailable) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                'Menge überschreitet verfügbaren Bestand (${itemData['unit'] == 'Stück' ? totalAvailable.toStringAsFixed(0) : totalAvailable.toStringAsFixed(2)} ${itemData['unit'] ?? 'Stück'} verfügbar)',
+                                              ),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                          return;
+                                        }
+                                        updateData['quantity'] = itemData['unit'] == 'Stück' ? newQuantity.toInt() : newQuantity;
+                                      }
+                                    }
+                                    if (!isService) {
+                                      // Maße hinzufügen, wenn sie eingegeben wurden
+                                      if (lengthController.text.isNotEmpty) {
+                                        final length = double.tryParse(lengthController.text.replaceAll(',', '.'));
+                                        if (length != null && length > 0) {
+                                          updateData['custom_length'] = length;
+                                        }
+                                      } else {
+                                        updateData['custom_length'] = FieldValue.delete();
+                                      }
+
+                                      if (widthController.text.isNotEmpty) {
+                                        final width = double.tryParse(widthController.text.replaceAll(',', '.'));
+                                        if (width != null && width > 0) {
+                                          updateData['custom_width'] = width;
+                                        }
+                                      } else {
+                                        updateData['custom_width'] = FieldValue.delete();
+                                      }
+
+                                      if (thicknessController.text.isNotEmpty) {
+                                        final thickness = double.tryParse(thicknessController.text.replaceAll(',', '.'));
+                                        if (thickness != null && thickness > 0) {
+                                          updateData['custom_thickness'] = thickness;
+                                        }
+                                      } else {
+                                        updateData['custom_thickness'] = FieldValue.delete();
+                                      }
+
+                                      // NEU: Anzahl Bauteile speichern (für manuelle Produkte)
+                                      if (itemData['is_manual_product'] == true && partsController.text.isNotEmpty) {
+                                        final parts = int.tryParse(partsController.text);
+                                        if (parts != null && parts > 0) {
+                                          updateData['parts'] = parts;
+                                        }
+                                      }
+                                      print("volumenCC:$volumeController");
+                                      // Volumen hinzufügen
+
+// Volumen hinzufügen
+                                      if (volumeController.text.isNotEmpty) {
+                                        final volume = double.tryParse(volumeController.text.replaceAll(',', '.'));
+                                        if (volume != null && volume > 0) {
+                                          updateData['volume_per_unit'] = volume;
+                                        }
+                                      } else {
+                                        updateData['volume_per_unit'] = FieldValue.delete();
+                                      }
+                                      if (customTariffController.text.trim().isNotEmpty) {
+                                        updateData['custom_tariff_number'] = customTariffController.text.trim();
+                                      } else {
+                                        updateData['custom_tariff_number'] = FieldValue.delete();
+                                      }
+
+                                      // NEU: Dichte speichern
+                                      if (densityController.text.isNotEmpty) {
+                                        final density = double.tryParse(densityController.text.replaceAll(',', '.'));
+                                        if (density != null && density > 0) {
+                                          updateData['custom_density'] = density;
+                                        }
+                                      } else {
+                                        updateData['custom_density'] = FieldValue.delete();
+                                      }
+                                    }
+
+
+                                    updateData['has_thermal_treatment'] = hasThermalTreatment;
+                                    if (hasThermalTreatment && temperatureController.text.isNotEmpty) {
+                                      final temperature = int.tryParse(temperatureController.text);
+                                      if (temperature != null && temperature > 0) {
+                                        updateData['thermal_treatment_temperature'] = temperature;
+                                      }
+                                    } else {
+                                      updateData['thermal_treatment_temperature'] = FieldValue.delete();
+                                    }
+
+                                    // NEU: FSC-Status und notes Sppeichern speichern
+                                    if (!isService) {
+                                      updateData['fsc_status'] = selectedFscStatus;
+                                      updateData['notes'] =notesController.text.trim();
+                                    }
+
+
+                                    // Bei Dienstleistungen die Beschreibung mit updaten
+                                    // Bei Dienstleistungen die Beschreibungen mit updaten
+                                    if (isService) {
+                                      if (descriptionController.text != itemData['description']) {
+                                        updateData['description'] = descriptionController.text.trim();
+                                      }
+                                      if (descriptionEnController.text != (itemData['description_en'] ?? '')) {
+                                        updateData['description_en'] = descriptionEnController.text.trim();
+                                      }
+                                    }
+                                    // Speichere die Änderungen
+                                    await
+                                    UserBasketService.temporaryBasket
                                         .doc(basketItemId)
                                         .update(updateData);
-            
+
                                     Navigator.pop(context);
+
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text(isService
-                                            ? 'Dienstleistung wurde auf Original zurückgesetzt'
-                                            : 'Artikel wurde auf Original zurückgesetzt'),
+                                            ? 'Dienstleistung wurde aktualisiert'
+                                            : 'Artikel wurde aktualisiert'),
                                         backgroundColor: Colors.green,
                                       ),
                                     );
                                   } catch (e) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text('Fehler beim Zurücksetzen: $e'),
+                                        content: Text('Fehler: $e'),
                                         backgroundColor: Colors.red,
                                       ),
                                     );
                                   }
                                 },
-                                icon: getAdaptiveIcon(iconName: 'refresh', defaultIcon: Icons.refresh),
-                                label: const Text('Zurücksetzen'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.red,
+                                icon: getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save),
+                                label: const Text('Speichern'),
+                                style: ElevatedButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(vertical: 12),
+                                  backgroundColor: Theme.of(context).colorScheme.primary,
+                                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                                 ),
                               ),
                             ),
-                          if (currentPriceInCHF != originalPrice ||
-                              itemData['custom_length'] != null ||
-                              itemData['custom_width'] != null ||
-                              itemData['custom_thickness'] != null ||
-                              itemData['custom_volume'] != null)
-                            const SizedBox(width: 16),
-            
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () async {
-                                try {
-                                  // NEU: Validierung für Thermobehandlung
-                                  if (!isService && hasThermalTreatment && temperatureController.text.isEmpty) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Bitte Behandlungstemperatur eingeben'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                    return; // Abbruch wenn Temperatur fehlt
-                                  }
-
-
-
-                                  // Neuen Preis parsen (Komma oder Punkt akzeptieren)
-                                  final String normalizedInput = priceController.text.replaceAll(',', '.');
-                                  final newPrice = double.tryParse(normalizedInput) ?? 0.0;
-                                  if (newPrice <= 0) {
-                                    throw Exception('Bitte gib einen gültigen Preis ein');
-                                  }
-            
-                                  // Umrechnen in CHF für die Speicherung
-                                  double priceInCHF = newPrice;
-                                  if (_selectedCurrency != 'CHF') {
-                                    priceInCHF = newPrice / _exchangeRates[_selectedCurrency]!;
-                                  }
-            
-                                  // Update-Map vorbereiten
-                                  Map<String, dynamic> updateData = {
-                                    'custom_price_per_unit': priceInCHF,
-                                    'is_price_customized': true,
-                                  };
-
-                                  if (itemData['is_manual_product'] == true && quantityController.text.isNotEmpty) {
-                                    final quantity = itemData['unit'] == 'Stück'
-                                        ? int.tryParse(quantityController.text)
-                                        : double.tryParse(quantityController.text.replaceAll(',', '.'));
-                                    if (quantity != null && quantity > 0) {
-                                      updateData['quantity'] = quantity;
-                                    }
-                                  }
-
-            if (!isService) {
-                                  // Maße hinzufügen, wenn sie eingegeben wurden
-                                  if (lengthController.text.isNotEmpty) {
-                                    final length = double.tryParse(lengthController.text.replaceAll(',', '.'));
-                                    if (length != null && length > 0) {
-                                      updateData['custom_length'] = length;
-                                    }
-                                  } else {
-                                    updateData['custom_length'] = FieldValue.delete();
-                                  }
-            
-                                  if (widthController.text.isNotEmpty) {
-                                    final width = double.tryParse(widthController.text.replaceAll(',', '.'));
-                                    if (width != null && width > 0) {
-                                      updateData['custom_width'] = width;
-                                    }
-                                  } else {
-                                    updateData['custom_width'] = FieldValue.delete();
-                                  }
-            
-                                  if (thicknessController.text.isNotEmpty) {
-                                    final thickness = double.tryParse(thicknessController.text.replaceAll(',', '.'));
-                                    if (thickness != null && thickness > 0) {
-                                      updateData['custom_thickness'] = thickness;
-                                    }
-                                  } else {
-                                    updateData['custom_thickness'] = FieldValue.delete();
-                                  }
-
-                                  // NEU: Anzahl Bauteile speichern (für manuelle Produkte)
-                                  if (itemData['is_manual_product'] == true && partsController.text.isNotEmpty) {
-                                    final parts = int.tryParse(partsController.text);
-                                    if (parts != null && parts > 0) {
-                                      updateData['parts'] = parts;
-                                    }
-                                  }
-                                  print("volumenCC:$volumeController");
-                                  // Volumen hinzufügen
-
-// Volumen hinzufügen
-              if (volumeController.text.isNotEmpty) {
-                final volume = double.tryParse(volumeController.text.replaceAll(',', '.'));
-                if (volume != null && volume > 0) {
-                  updateData['volume_per_unit'] = volume;
-                }
-              } else {
-                updateData['volume_per_unit'] = FieldValue.delete();
-              }
-                                  if (customTariffController.text.trim().isNotEmpty) {
-                                    updateData['custom_tariff_number'] = customTariffController.text.trim();
-                                  } else {
-                                    updateData['custom_tariff_number'] = FieldValue.delete();
-                                  }
-
-                                  // NEU: Dichte speichern
-                                  if (densityController.text.isNotEmpty) {
-                                    final density = double.tryParse(densityController.text.replaceAll(',', '.'));
-                                    if (density != null && density > 0) {
-                                      updateData['custom_density'] = density;
-                                    }
-                                  } else {
-                                    updateData['custom_density'] = FieldValue.delete();
-                                  }
-            }
-
-            
-            updateData['has_thermal_treatment'] = hasThermalTreatment;
-            if (hasThermalTreatment && temperatureController.text.isNotEmpty) {
-            final temperature = int.tryParse(temperatureController.text);
-            if (temperature != null && temperature > 0) {
-            updateData['thermal_treatment_temperature'] = temperature;
-            }
-            } else {
-            updateData['thermal_treatment_temperature'] = FieldValue.delete();
-            }
-
-                                  // NEU: FSC-Status und notes Sppeichern speichern
-                                  if (!isService) {
-                                    updateData['fsc_status'] = selectedFscStatus;
-                                    updateData['notes'] =notesController.text.trim();
-                                  }
-
-            
-                                  // Bei Dienstleistungen die Beschreibung mit updaten
-                                  // Bei Dienstleistungen die Beschreibungen mit updaten
-                                  if (isService) {
-                                    if (descriptionController.text != itemData['description']) {
-                                      updateData['description'] = descriptionController.text.trim();
-                                    }
-                                    if (descriptionEnController.text != (itemData['description_en'] ?? '')) {
-                                      updateData['description_en'] = descriptionEnController.text.trim();
-                                    }
-                                  }
-                                  // Speichere die Änderungen
-                                  await FirebaseFirestore.instance
-                                      .collection('temporary_basket')
-                                      .doc(basketItemId)
-                                      .update(updateData);
-            
-                                  Navigator.pop(context);
-            
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(isService
-                                          ? 'Dienstleistung wurde aktualisiert'
-                                          : 'Artikel wurde aktualisiert'),
-                                      backgroundColor: Colors.green,
-                                    ),
-                                  );
-                                } catch (e) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Fehler: $e'),
-                                      backgroundColor: Colors.red,
-                                    ),
-                                  );
-                                }
-                              },
-                              icon: getAdaptiveIcon(iconName: 'save', defaultIcon: Icons.save),
-                              label: const Text('Speichern'),
-                              style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                backgroundColor: Theme.of(context).colorScheme.primary,
-                                foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                              ),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          }
+                  ],
+                ),
+              );
+            }
         );
       },
     );
   }
 
-  Future<String> _getStandardTariffNumber(Map<String, dynamic> itemData) async {
+  static Future<String> _getStandardTariffNumber(Map<String, dynamic> itemData) async {
     try {
       final woodCode = itemData['wood_code'] as String?;
-      if (woodCode == null) return 'Keine Zolltarifnummer';
+      if (woodCode == null || woodCode.isEmpty) return 'Keine Holzart hinterlegt';
 
-      // Lade Holzart-Info
+      // DEBUG
+      print('🔍 _getStandardTariffNumber');
+      print('   wood_code: $woodCode');
+      print('   custom_thickness: ${itemData['custom_thickness']}');
+      print('   Alle Keys: ${itemData.keys.toList()}');
+
       final woodTypeDoc = await FirebaseFirestore.instance
           .collection('wood_types')
           .doc(woodCode)
           .get();
 
-      if (!woodTypeDoc.exists) return 'Keine Zolltarifnummer';
+      if (!woodTypeDoc.exists) {
+        print('   ❌ wood_types/$woodCode existiert nicht');
+        return 'Holzart nicht in DB gefunden';
+      }
 
       final woodInfo = woodTypeDoc.data()!;
+      print('   z_tares_1: ${woodInfo['z_tares_1']}');
+      print('   z_tares_2: ${woodInfo['z_tares_2']}');
 
-      // Bestimme Zolltarifnummer basierend auf Dicke
-      final thickness = (itemData['custom_thickness'] != null)
-          ? (itemData['custom_thickness'] is int
-          ? (itemData['custom_thickness'] as int).toDouble()
-          : itemData['custom_thickness'] as double)
-          : 0.0;
+      // Dicke ermitteln
+      final thickness = (itemData['custom_thickness'] as num?)?.toDouble() ?? 0.0;
+      print('   thickness parsed: $thickness');
+
+      if (thickness <= 0) {
+        // Keine Dicke → zeige beide Optionen
+        final t1 = woodInfo['z_tares_1']?.toString() ?? 'N/A';
+        final t2 = woodInfo['z_tares_2']?.toString() ?? 'N/A';
+        return '≤6mm: $t1 | >6mm: $t2 (keine Dicke angegeben)';
+      }
 
       if (thickness <= 6.0) {
-        return woodInfo['z_tares_1'] ?? '4408.1000';
+        final result = woodInfo['z_tares_1']?.toString() ?? '4408.1000';
+        print('   ✅ ≤6mm → $result');
+        return result;
       } else {
-        return woodInfo['z_tares_2'] ?? '4407.1200';
+        final result = woodInfo['z_tares_2']?.toString() ?? '4407.1200';
+        print('   ✅ >6mm → $result');
+        return result;
       }
     } catch (e) {
-      print('Fehler beim Laden der Zolltarifnummer: $e');
-      return 'Fehler beim Laden';
+      print('   ❌ Error: $e');
+      return 'Fehler: $e';
     }
   }
-
   Future<Map<String, dynamic>?> _getStandardVolumeForItem(Map<String, dynamic> itemData) async {
     try {
       final instrumentCode = itemData['instrument_code'] as String?;
@@ -5954,8 +6086,8 @@ return Scaffold(
   /// Prüft ob ein Online-Shop-Item bereits im Warenkorb oder in einem Angebot reserviert ist
   Future<Map<String, dynamic>> _checkOnlineShopItemAvailability(String onlineShopBarcode) async {
     // 1. Prüfe ob bereits im aktuellen Warenkorb
-    final cartCheck = await FirebaseFirestore.instance
-        .collection('temporary_basket')
+    final cartCheck = await
+    UserBasketService.temporaryBasket
         .where('online_shop_barcode', isEqualTo: onlineShopBarcode)
         .limit(1)
         .get();
@@ -5994,11 +6126,18 @@ return Scaffold(
         .get();
 
     if (shopDoc.exists && shopDoc.data()?['in_cart'] == true) {
-      return {
-        'available': false,
-        'reason': 'in_cart_flag',
-        'message': 'Dieses Produkt ist als "im Warenkorb" markiert',
-      };
+      final cartUserId = shopDoc.data()?['cart_user_id'] as String?;
+      final currentUserId = UserBasketService.uid;
+      // Nur blockieren wenn ein ANDERER User es im Warenkorb hat
+      if (cartUserId != null && cartUserId != currentUserId) {
+        final cartUserName = shopDoc.data()?['cart_user_name'] ?? 'Unbekannt';
+        return {
+          'available': false,
+          'reason': 'in_cart_flag',
+          'message': 'Dieses Produkt liegt im Warenkorb von $cartUserName',
+        };
+      }
+      // Eigener Warenkorb → kein Problem
     }
 
     return {
@@ -6010,8 +6149,8 @@ return Scaffold(
 
   Future<void> _addToTemporaryBasket(String shortBarcode, Map<String, dynamic> productData, num quantity, String? onlineShopBarcode) async {
     print("quan:$quantity");
-    await FirebaseFirestore.instance
-        .collection('temporary_basket')
+    await
+    UserBasketService.temporaryBasket
         .add({
 
       if (productData.containsKey('notes') && productData['notes'] != null && productData['notes'].toString().isNotEmpty)
@@ -6086,8 +6225,8 @@ return Scaffold(
 
   Future<void> _removeFromBasket(String basketItemId) async {
     // Hole die Artikeldaten für die Anzeige
-    final itemDoc = await FirebaseFirestore.instance
-        .collection('temporary_basket')
+    final itemDoc = await
+    UserBasketService.temporaryBasket
         .doc(basketItemId)
         .get();
 
@@ -6264,12 +6403,14 @@ return Scaffold(
                       .update({
                     'in_cart': false,
                     'cart_timestamp': FieldValue.delete(),
+                    'cart_user_id': FieldValue.delete(),
+                    'cart_user_name': FieldValue.delete(),
                   });
                 }
 
                 // 1. Lösche aus temporary_basket
-                await FirebaseFirestore.instance
-                    .collection('temporary_basket')
+                await
+                UserBasketService.temporaryBasket
                     .doc(basketItemId)
                     .delete();
 
@@ -6306,8 +6447,8 @@ return Scaffold(
 
   Future<void> _removeItemFromPackingList(String productId) async {
     try {
-      final docRef = FirebaseFirestore.instance
-          .collection('temporary_document_settings')
+      final docRef =
+      UserBasketService.temporaryDocumentSettings
           .doc('packing_list_settings');
 
       final doc = await docRef.get();
@@ -6386,7 +6527,7 @@ return Scaffold(
   }
 
 
-  void _showQuantityDialog(String barcode, Map<String, dynamic> productData,{bool isOnlineShopItem = false}) {
+  Future<void> _showQuantityDialog(String barcode, Map<String, dynamic> productData,{bool isOnlineShopItem = false}) async {
 
     int? loadedParts; // NEU: Variable für Parts
 
@@ -6405,6 +6546,18 @@ return Scaffold(
     final notesController = TextEditingController();
     final volumeController = TextEditingController();
     final densityController = TextEditingController();
+
+    final preloadedVolume = await _getStandardVolumeForItem(productData);
+    if (preloadedVolume != null) {
+      final standardVolume = preloadedVolume['volume'] ?? 0.0;
+      if (standardVolume > 0) {
+        volumeController.text = standardVolume.toStringAsFixed(7);
+      }
+      if (preloadedVolume['parts'] != null) {
+        loadedParts = preloadedVolume['parts'] as int;
+      }
+    }
+
 
     final qualityName = productData['quality_name'] as String?;
 
@@ -6610,7 +6763,7 @@ return Scaffold(
                                 color: Theme.of(context).colorScheme.primary,
                               ),
                             ),
-                             const SizedBox(height: 8),
+                            const SizedBox(height: 8),
                             // // NEU: Info-Banner für Online-Shop-Items
                             // if (isOnlineShopItem) ...[
                             //   Container(
@@ -7048,16 +7201,16 @@ return Scaffold(
                                           ),
                                           keyboardType: TextInputType.numberWithOptions(decimal: true),
                                           onChanged: (value) {
-                                              setState(() {
-                                                print("hallo");
-                                                // NEU: Volumen automatisch berechnen
-                                                _updateVolumeFromDimensions(
-                                                  lengthController,
-                                                  widthController,
-                                                  thicknessController,
-                                                  volumeController,
-                                                );
-                                              });
+                                            setState(() {
+                                              print("hallo");
+                                              // NEU: Volumen automatisch berechnen
+                                              _updateVolumeFromDimensions(
+                                                lengthController,
+                                                widthController,
+                                                thicknessController,
+                                                volumeController,
+                                              );
+                                            });
                                           },
                                         ),
 
@@ -7181,7 +7334,7 @@ return Scaffold(
                                                             Row(
                                                               children: [
                                                                 getAdaptiveIcon(iconName: 'scale', defaultIcon:
-                                                                  Icons.scale,
+                                                                Icons.scale,
                                                                   size: 20,
                                                                   color: Theme.of(context).colorScheme.primary,
                                                                 ),
@@ -7252,7 +7405,7 @@ return Scaffold(
                                                         child: Row(
                                                           children: [
                                                             getAdaptiveIcon(iconName: 'info', defaultIcon:
-                                                              Icons.info,
+                                                            Icons.info,
                                                               size: 16,
                                                               color: Colors.orange,
                                                             ),
@@ -7500,7 +7653,13 @@ return Scaffold(
                                         await FirebaseFirestore.instance
                                             .collection('onlineshop')
                                             .doc(productData['online_shop_barcode'])
-                                            .update({'in_cart': true});
+                                            .update({
+                                          'in_cart': true,
+                                          'cart_timestamp': FieldValue.serverTimestamp(),
+                                          'cart_user_id': UserBasketService.uid,
+                                          'cart_user_name': UserBasketService.displayName,
+
+                                        });
                                       }
 
                                       Navigator.pop(context);
@@ -7543,41 +7702,54 @@ return Scaffold(
 
   Future<Map<String, dynamic>?> _getStandardMeasurements(Map<String, dynamic> productData) async {
     try {
-      // Erstelle die Artikelnummer aus Instrument- und Bauteil-Code
       final instrumentCode = productData['instrument_code'] as String?;
       final partCode = productData['part_code'] as String?;
 
+      print('🔍 _getStandardMeasurements');
+      print('   instrument_code: $instrumentCode');
+      print('   part_code: $partCode');
+
       if (instrumentCode == null || partCode == null) {
+        print('   ❌ instrument_code oder part_code ist null');
         return null;
       }
 
       final articleNumber = instrumentCode + partCode;
+      print('   articleNumber: $articleNumber');
 
-      // Suche in der standardized_products Collection
       final querySnapshot = await FirebaseFirestore.instance
           .collection('standardized_products')
           .where('articleNumber', isEqualTo: articleNumber)
           .limit(1)
           .get();
 
+      print('   Docs gefunden: ${querySnapshot.docs.length}');
+
       if (querySnapshot.docs.isNotEmpty) {
         final standardProduct = querySnapshot.docs.first.data();
 
-        // Extrahiere die Standardmaße (ohne Zumaß)
-        return {
+        print('   dimensions: ${standardProduct['dimensions']}');
+        print('   length: ${standardProduct['dimensions']?['length']}');
+        print('   width: ${standardProduct['dimensions']?['width']}');
+        print('   thickness: ${standardProduct['dimensions']?['thickness']}');
+
+        final result = {
           'length': standardProduct['dimensions']?['length']?['withAddition'],
           'width': standardProduct['dimensions']?['width']?['withAddition'],
           'thickness': standardProduct['dimensions']?['thickness']?['value'],
         };
+
+        print('   ✅ Result: $result');
+        return result;
       }
 
+      print('   ❌ Kein standardized_product gefunden');
       return null;
     } catch (e) {
-      print('Fehler beim Abrufen der Standardmaße: $e');
+      print('   ❌ Error: $e');
       return null;
     }
   }
-
   Future<void> _fetchProductAndShowQuantityDialog(String barcode) async {
     try {
       // Prüfe zuerst, ob es ein Online-Shop-Item ist
@@ -7661,67 +7833,70 @@ return Scaffold(
       );
     }
   }
-    void _showBarcodeInputDialog() {
-barcodeController.clear();
-showDialog(
-context: context,
-builder: (BuildContext context) {
-return AlertDialog(
-title: const Text('Barcode eingeben'),
-content: TextFormField(
-controller: barcodeController,
-decoration: const InputDecoration(
-labelText: 'Barcode',
-border: OutlineInputBorder(),
-),
-keyboardType: TextInputType.number,
+  void _showBarcodeInputDialog() {
+    barcodeController.clear();
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Barcode eingeben'),
+          content: TextFormField(
+            controller: barcodeController,
+            decoration: const InputDecoration(
+              labelText: 'Barcode',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.number,
 //inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-autofocus: true,
-),
-actions: [
-TextButton(
-onPressed: () => Navigator.pop(context),
-child: const Text('Abbrechen'),
-),
-ElevatedButton(
-onPressed: () {
-if (barcodeController.text.isNotEmpty) {
-Navigator.pop(context);
-_fetchProductAndShowQuantityDialog(barcodeController.text);
-}
-},
-child: const Text('Suchen'),
-),
-],
-);
-},
-);
-}
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Abbrechen'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (barcodeController.text.isNotEmpty) {
+                  Navigator.pop(context);
+                  _fetchProductAndShowQuantityDialog(barcodeController.text);
+                }
+              },
+              child: const Text('Suchen'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-    Future<void> _scanProduct() async {
-try {
-  final String? barcodeResult = await Navigator.push<String>(
-    context,
-    MaterialPageRoute(
-      builder: (context) => SimpleBarcodeScannerPage(),
-    ),
-  );
+  Future<void> _scanProduct() async {
+    try {
+      final String? barcodeResult = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SimpleBarcodeScannerPage(),
+        ),
+      );
 
-if (barcodeResult != '-1') {
-await _fetchProductAndShowQuantityDialog(barcodeResult!);
-}
-} on PlatformException {
-if (!mounted) return;
-ScaffoldMessenger.of(context).showSnackBar(
-const SnackBar(
-content: Text('Fehler beim Scannen'),
-backgroundColor: Colors.red,
-),
-);
-}
-}
+      if (barcodeResult != '-1') {
+        await _fetchProductAndShowQuantityDialog(barcodeResult!);
+      }
+    } on PlatformException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Fehler beim Scannen'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   Future<void> _processTransaction() async {
+    print('🔧 SALES-DEBUG: _processTransaction aufgerufen');
+    print('🔧 SALES-DEBUG: _editingQuoteId=$_editingQuoteId');
+    print('🔧 SALES-DEBUG: _editingQuoteNumber=$_editingQuoteNumber');
     // Navigiere zum neuen Flow
     await Navigator.push(
       context,
@@ -7784,47 +7959,47 @@ backgroundColor: Colors.red,
         .join('&');
   }
 
-Widget _buildSelectedProductInfo() {
-  if (selectedProduct == null) return const SizedBox.shrink();
+  Widget _buildSelectedProductInfo() {
+    if (selectedProduct == null) return const SizedBox.shrink();
 
-  return Padding(
-    padding: const EdgeInsets.all(16.0),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          selectedProduct!['product_name'] ?? 'Unbekanntes Produkt',
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            selectedProduct!['product_name'] ?? 'Unbekanntes Produkt',
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        FutureBuilder<double>(
-          future: _getAvailableQuantity(selectedProduct!['barcode']),
-          builder: (context, snapshot) {
-            if (snapshot.hasData) {
-              return Text(
-                'Verfügbar: ${selectedProduct!['unit']?.toLowerCase() == 'stück'
-                    ? snapshot.data!.toStringAsFixed(0)
-                    : snapshot.data!.toStringAsFixed(3)} ${selectedProduct!['unit'] ?? 'Stück'}',
-              );
-            }
-            return const CircularProgressIndicator();
-          },
-        ),
-        Text(
-          'Preis: ${_formatPrice(selectedProduct!['price_CHF'] ?? 0.0)}',
-        ),
-      ],
-    ),
-  );
-}
+          const SizedBox(height: 8),
+          FutureBuilder<double>(
+            future: _getAvailableQuantity(selectedProduct!['barcode']),
+            builder: (context, snapshot) {
+              if (snapshot.hasData) {
+                return Text(
+                  'Verfügbar: ${selectedProduct!['unit']?.toLowerCase() == 'stück'
+                      ? snapshot.data!.toStringAsFixed(0)
+                      : snapshot.data!.toStringAsFixed(3)} ${selectedProduct!['unit'] ?? 'Stück'}',
+                );
+              }
+              return const CircularProgressIndicator();
+            },
+          ),
+          Text(
+            'Preis: ${_formatPrice(selectedProduct!['price_CHF'] ?? 0.0)}',
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _saveTemporaryTotalDiscount() async {
     try {
-      await FirebaseFirestore.instance
-          .collection('temporary_discounts')
+      await
+      UserBasketService.temporaryDiscounts
           .doc('total_discount')
           .set({
         'percentage': _totalDiscount.percentage,
@@ -7838,27 +8013,29 @@ Widget _buildSelectedProductInfo() {
 
   Future<void> _loadTemporaryTotalDiscount() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('temporary_discounts')
+      final doc = await
+      UserBasketService.temporaryDiscounts
           .doc('total_discount')
           .get();
 
       if (doc.exists) {
         final data = doc.data()!;
-        setState(() {
-          _totalDiscount = Discount(
-            percentage: (data['percentage'] != null)
-                ? (data['percentage'] is int
-                ? (data['percentage'] as int).toDouble()
-                : data['percentage'] as double)
-                : 0.0,
-            absolute: (data['absolute'] != null)
-                ? (data['absolute'] is int
-                ? (data['absolute'] as int).toDouble()
-                : data['absolute'] as double)
-                : 0.0,
-          );
-        });
+        if (mounted) {
+          setState(() {
+            _totalDiscount = Discount(
+              percentage: (data['percentage'] != null)
+                  ? (data['percentage'] is int
+                  ? (data['percentage'] as int).toDouble()
+                  : data['percentage'] as double)
+                  : 0.0,
+              absolute: (data['absolute'] != null)
+                  ? (data['absolute'] is int
+                  ? (data['absolute'] as int).toDouble()
+                  : data['absolute'] as double)
+                  : 0.0,
+            );
+          });
+        }
       }
     } catch (e) {
       print('Fehler beim Laden des Gesamtrabatts: $e');
@@ -8291,7 +8468,7 @@ Widget _buildSelectedProductInfo() {
                                         child: Row(
                                           children: [
                                             getAdaptiveIcon(iconName: 'info', defaultIcon:
-                                              Icons.info,
+                                            Icons.info,
                                               size: 16,
                                               color: Theme.of(context).colorScheme.primary,
                                             ),
@@ -8473,7 +8650,7 @@ Widget _buildSelectedProductInfo() {
                                     final newPercentage = existingDiscount.percentage + effectiveDiscountPercentage;
 
                                     batch.update(
-                                        FirebaseFirestore.instance.collection('temporary_basket').doc(doc.id),
+                                        UserBasketService.temporaryBasket.doc(doc.id),
                                         {
                                           'discount': {
                                             'percentage': newPercentage,
@@ -8557,24 +8734,24 @@ Widget _buildSelectedProductInfo() {
     );
   }
 
-@override
-void dispose() {
-  CustomerCacheService.removeOnCustomerUpdatedListener(_onCustomerUpdated);
-  CustomerCacheService.removeOnCustomerDeletedListener(_onCustomerDeleted);
+  @override
+  void dispose() {
+    CustomerCacheService.removeOnCustomerUpdatedListener(_onCustomerUpdated);
+    CustomerCacheService.removeOnCustomerDeletedListener(_onCustomerDeleted);
 
-  _currencyNotifier.dispose();
-  _exchangeRatesNotifier.dispose();
-  _taxOptionNotifier.dispose();
-  _isLoading.dispose();
-  _vatRateNotifier.dispose();
-  _selectedFairNotifier.dispose();
-  customerSearchController.dispose();
-  _documentSelectionCompleteNotifier.dispose();
-  _additionalTextsSelectedNotifier.dispose();
-  barcodeController.dispose();
-  quantityController.dispose();
-  _documentLanguageNotifier.dispose();
-  _shippingCostsConfiguredNotifier.dispose();
-  super.dispose();
-}
+    _currencyNotifier.dispose();
+    _exchangeRatesNotifier.dispose();
+    _taxOptionNotifier.dispose();
+    _isLoading.dispose();
+    _vatRateNotifier.dispose();
+    _selectedFairNotifier.dispose();
+    customerSearchController.dispose();
+    _documentSelectionCompleteNotifier.dispose();
+    _additionalTextsSelectedNotifier.dispose();
+    barcodeController.dispose();
+    quantityController.dispose();
+    _documentLanguageNotifier.dispose();
+    _shippingCostsConfiguredNotifier.dispose();
+    super.dispose();
+  }
 }

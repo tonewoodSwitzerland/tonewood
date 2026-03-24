@@ -41,6 +41,22 @@ class SalesPdfService {
     // Verkäufe nach Filter filtern
     final filteredSales = _filterSales(sales, filter);
 
+    // Nach Versanddatum sortieren (neueste zuerst)
+    filteredSales.sort((a, b) {
+      final aShipped = a['shippedAt'];
+      final aOrder = a['orderDate'];
+      final bShipped = b['shippedAt'];
+      final bOrder = b['orderDate'];
+      DateTime? dateA;
+      DateTime? dateB;
+      if (aShipped is Timestamp) { dateA = aShipped.toDate(); } else if (aOrder is Timestamp) { dateA = aOrder.toDate(); }
+      if (bShipped is Timestamp) { dateB = bShipped.toDate(); } else if (bOrder is Timestamp) { dateB = bOrder.toDate(); }
+      if (dateA == null && dateB == null) return 0;
+      if (dateA == null) return 1;
+      if (dateB == null) return -1;
+      return dateB.compareTo(dateA);
+    });
+
     pw.MemoryImage? logo;
     try {
       final logoData = await rootBundle.load('images/logo.png');
@@ -73,7 +89,7 @@ class SalesPdfService {
 
           // Zusammenfassung
           pw.Container(
-            padding: const pw.EdgeInsets.all(10),
+            padding: const pw.EdgeInsets.all(12),
             decoration: pw.BoxDecoration(
               color: PdfColors.grey100,
               borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
@@ -83,27 +99,82 @@ class SalesPdfService {
               children: [
                 pw.Text('Zusammenfassung',
                     style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 8),
+                pw.SizedBox(height: 10),
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
                     _buildSummaryItem('Anzahl Aufträge', stats['salesCount'].toString()),
-                    _buildSummaryItem('Warenwert', _formatCurrency(stats['totalSubtotal'])),
-                  ],
-                ),
-                pw.SizedBox(height: 8),
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildSummaryItem('Gesamtbetrag', _formatCurrency(stats['totalRevenue'])),
                     _buildSummaryItem('Zeitraum', _getFilterTimeRange(filter)),
                   ],
+                ),
+                pw.SizedBox(height: 10),
+                pw.Divider(color: PdfColors.grey300),
+                pw.SizedBox(height: 6),
+                _buildSummaryLine(
+                  'Warenwert (netto Ware) *',
+                  _formatCurrency(stats['totalSubtotal'] as double),
+                ),
+                if ((stats['totalGratisValue'] as double? ?? 0) > 0)
+                  _buildSummaryLine(
+                    '  * inkl. ${_formatCurrency(stats['totalGratisValue'])} Gratisartikel (bereits abgezogen)',
+                    '',
+                    color: PdfColors.grey600,
+                  ),
+                if ((stats['totalServiceRevenue'] as double) > 0)
+                  _buildSummaryLine(
+                    '+ Dienstleistungen',
+                    _formatCurrency(stats['totalServiceRevenue']),
+                  ),
+                if ((stats['totalFreight'] as double? ?? 0) > 0)
+                  _buildSummaryLine(
+                    '+ Fracht',
+                    _formatCurrency(stats['totalFreight']),
+                  ),
+                if ((stats['totalPhyto'] as double? ?? 0) > 0)
+                  _buildSummaryLine(
+                    '+ Phytosanitary',
+                    _formatCurrency(stats['totalPhyto']),
+                  ),
+                if ((stats['totalDeductions'] as double? ?? 0) > 0)
+                  _buildSummaryLine(
+                    '- Abschläge',
+                    _formatCurrency(stats['totalDeductions']),
+                    color: PdfColors.deepOrange,
+                  ),
+                if ((stats['totalSurcharges'] as double? ?? 0) > 0)
+                  _buildSummaryLine(
+                    '+ Zuschläge',
+                    _formatCurrency(stats['totalSurcharges']),
+                    color: PdfColors.teal,
+                  ),
+                pw.SizedBox(height: 4),
+                pw.Divider(color: PdfColors.grey400),
+                pw.SizedBox(height: 4),
+                _buildSummaryLine(
+                  '= Rechnungsbetrag netto',
+                  _formatCurrency(stats['totalNetAmount']),
+                  bold: true,
+                ),
+                if ((stats['totalVat'] as double? ?? 0) > 0)
+                  _buildSummaryLine(
+                    '+ MwSt',
+                    _formatCurrency(stats['totalVat']),
+                  ),
+                _buildSummaryLine(
+                  '= Rechnungsbetrag brutto',
+                  _formatCurrency(stats['totalRevenue']),
+                  bold: true,
                 ),
               ],
             ),
           ),
+          pw.SizedBox(height: 6),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            '* Warenwert bereits nach Rabatten (${_formatCurrency(stats['totalDiscount'] as double)}) & Gratisartikeln (${_formatCurrency(stats['totalGratisValue'] as double)})',
+            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+          ),
           pw.SizedBox(height: 20),
-
           // Aktive Filter anzeigen
           if (_hasActiveFilter(filter))
             ..._buildFilterChips(filter),
@@ -112,22 +183,47 @@ class SalesPdfService {
 
           // Tabelle — FIX: MwSt/Total raus, Land nach Kunde eingefügt
           pw.Table.fromTextArray(
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
-            cellStyle: const pw.TextStyle(fontSize: 7),
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
+            cellStyle: const pw.TextStyle(fontSize: 6.5),
             headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
-            headers: ['Datum', 'Nr.', 'Kunde', 'Land', 'Bestellart', 'Artikel', 'Netto CHF'],
+            headers: [
+              'Versand', 'Nr.', 'Kunde', 'Land', 'Bestellart', 'Artikel',
+              'Warenwert', 'Rechn. netto', 'Rechn. brutto',
+            ],
             data: filteredSales.where((s) => s['status'] != 'cancelled').map((sale) {
-              final items = (sale['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+              final items        = (sale['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
               final calculations = sale['calculations'] as Map<String, dynamic>? ?? {};
-              final metadata = sale['metadata'] as Map<String, dynamic>? ?? {};
-              final customer = sale['customer'] as Map<String, dynamic>? ?? {};
-              final distChannel = metadata['distributionChannel'] as Map<String, dynamic>?;
+              final metadata     = sale['metadata'] as Map<String, dynamic>? ?? {};
+              final customer     = sale['customer'] as Map<String, dynamic>? ?? {};
+              final distChannel  = metadata['distributionChannel'] as Map<String, dynamic>?;
 
               DateTime? ts;
+              final shippedAt = sale['shippedAt'];
               final od = sale['orderDate'];
-              if (od is Timestamp) ts = od.toDate();
+              if (shippedAt is Timestamp) {
+                ts = shippedAt.toDate();
+              } else if (od is Timestamp) {
+                ts = od.toDate();
+              }
 
-              // Land aus Customer
+              // Warenwert: item-by-item ohne Service + ohne Gratisartikel
+              final orderTotalDisc = (calculations['total_discount_amount'] as num?)?.toDouble() ?? 0;
+              double warenwert = 0;
+              for (final it in items) {
+                if (it['is_service'] == true || it['is_gratisartikel'] == true) continue;
+                final qty   = (it['quantity']              as num?)?.toDouble() ?? 0;
+                final price = (it['custom_price_per_unit'] as num?)?.toDouble()
+                    ?? (it['price_per_unit']               as num?)?.toDouble() ?? 0;
+                final disc    = it['discount'] as Map<String, dynamic>?;
+                final discPct = (disc?['percentage']       as num?)?.toDouble() ?? 0;
+                final discAbs = (disc?['absolute']         as num?)?.toDouble() ?? 0;
+                warenwert += qty * price - (qty * price * discPct / 100) - discAbs;
+              }
+              warenwert -= orderTotalDisc;
+
+              final netAmount  = (calculations['net_amount'] as num?)?.toDouble() ?? 0;
+              final totalGross = (calculations['total']      as num?)?.toDouble() ?? 0;
+
               final countryCode = customer['countryCode']?.toString() ??
                   customer['country']?.toString() ?? '';
               final country = Countries.getCountryByCode(countryCode);
@@ -139,7 +235,9 @@ class SalesPdfService {
                 country.name.isNotEmpty ? country.name : countryCode,
                 distChannel?['name'] ?? '-',
                 '${items.length} Pos.',
-                _formatCurrency(((calculations['subtotal'] as num?) ?? 0).toDouble()),
+                _formatCurrency(warenwert),
+                _formatCurrency(netAmount),
+                _formatCurrency(totalGross),
               ];
             }).toList(),
             cellAlignments: {
@@ -148,8 +246,21 @@ class SalesPdfService {
               2: pw.Alignment.centerLeft,
               3: pw.Alignment.centerLeft,
               4: pw.Alignment.centerLeft,
-              5: pw.Alignment.centerRight,
+              5: pw.Alignment.centerLeft,
               6: pw.Alignment.centerRight,
+              7: pw.Alignment.centerRight,
+              8: pw.Alignment.centerRight,
+            },
+            columnWidths: {
+              0: const pw.FlexColumnWidth(1.0),
+              1: const pw.FlexColumnWidth(1.2),
+              2: const pw.FlexColumnWidth(2.8),
+              3: const pw.FlexColumnWidth(1.3),
+              4: const pw.FlexColumnWidth(1.5),
+              5: const pw.FlexColumnWidth(1.0),
+              6: const pw.FlexColumnWidth(1.6),
+              7: const pw.FlexColumnWidth(1.6),
+              8: const pw.FlexColumnWidth(1.6),
             },
           ),
         ],
@@ -171,7 +282,27 @@ class SalesPdfService {
 
     return pdf.save();
   }
-
+  static pw.Widget _buildSummaryLine(String label, String value,
+      {bool bold = false, PdfColor? color}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 2),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(label, style: pw.TextStyle(
+            fontSize: 9,
+            fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            color: color,
+          )),
+          pw.Text(value, style: pw.TextStyle(
+            fontSize: 9,
+            fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            color: color,
+          )),
+        ],
+      ),
+    );
+  }
   // ============================================================
   // 2) ANALYTICS-BERICHT: KPI + Länder + Produkte (3 Seiten)
   // ============================================================
@@ -226,14 +357,12 @@ class SalesPdfService {
             _buildDataTable(
               headers: ['Kennzahl', 'Wert', 'Veränderung'],
               widths: {0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(2), 2: const pw.FlexColumnWidth(2)},
-              rows: [
-                ['Warenwert ${DateTime.now().year}', _formatCurrency(analytics.revenue.yearRevenue),
-                  '${_changeStr(analytics.revenue.yearChangePercent)} vs. Vorjahr'],
-                ['Warenwert ${_monthName(DateTime.now().month)}', _formatCurrency(analytics.revenue.monthRevenue),
-                  '${_changeStr(analytics.revenue.monthChangePercent)} vs. Vormonat'],
-                ['Anzahl Aufträge', analytics.orderCount.toString(), ''],
-                ['Ø Warenwert / Auftrag', _formatCurrency(analytics.averageOrderValue), ''],
-              ],
+              rows: _buildRevenueRows(analytics, filter),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(
+              '* Warenwert bereits nach Rabatten (${_formatCurrency(analytics.revenue.totalDiscount)}) & Gratisartikeln (${_formatCurrency(analytics.revenue.totalGratisValue)})',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
             ),
             pw.SizedBox(height: 16),
 
@@ -243,35 +372,31 @@ class SalesPdfService {
             _buildDataTable(
               headers: ['Kennzahl', 'Wert', 'Veränderung'],
               widths: {0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(2), 2: const pw.FlexColumnWidth(2)},
-              rows: [
-                ['Gesamtbetrag ${DateTime.now().year}', _formatCurrency(analytics.revenue.yearRevenueGross),
-                  '${_changeStr(analytics.revenue.yearChangePercentGross)} vs. Vorjahr'],
-                ['Gesamtbetrag ${_monthName(DateTime.now().month)}', _formatCurrency(analytics.revenue.monthRevenueGross),
-                  '${_changeStr(analytics.revenue.monthChangePercentGross)} vs. Vormonat'],
-                ['Ø Gesamtbetrag / Auftrag', _formatCurrency(analytics.averageOrderValueGross), ''],
-              ],
+              rows: _buildRevenueGrossRows(analytics, filter),
             ),
             pw.SizedBox(height: 16),
 
-            // Thermo
-            pw.Text('Thermobehandlung', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 8),
-            _buildDataTable(
-              headers: ['Kennzahl', 'Wert', 'Detail'],
-              widths: {0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(2), 2: const pw.FlexColumnWidth(2)},
-              rows: [
-                ['Anteil Artikel', '${analytics.thermoStats.itemSharePercent.toStringAsFixed(1)}%',
-                  '${analytics.thermoStats.thermoItemCount} von ${analytics.thermoStats.totalItemCount}'],
-                ['Anteil Umsatz', '${analytics.thermoStats.revenueSharePercent.toStringAsFixed(1)}%',
-                  _formatCurrency(analytics.thermoStats.thermoRevenue)],
-              ],
-            ),
-            pw.SizedBox(height: 16),
+            // Dienstleistungen
+            if (analytics.serviceStats.serviceItemCount > 0) ...[
+              pw.Text('Dienstleistungen', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 8),
+              _buildDataTable(
+                headers: ['Kennzahl', 'Wert', 'Detail'],
+                widths: {0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(2), 2: const pw.FlexColumnWidth(2)},
+                rows: [
+                  ['Anteil Artikel', '${analytics.serviceStats.itemSharePercent.toStringAsFixed(1)}%',
+                    '${analytics.serviceStats.serviceItemCount} von ${analytics.serviceStats.totalItemCount}'],
+                  ['Anteil Umsatz', '${analytics.serviceStats.revenueSharePercent.toStringAsFixed(1)}%',
+                    _formatCurrency(analytics.serviceStats.serviceRevenue)],
+                ],
+              ),
+              pw.SizedBox(height: 16),
+            ],
 
             // Monatliche Umsätze
             pw.Text('Monatliche Umsätze (Warenwert)', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 8),
-            _buildMonthlyTable(analytics.revenue.monthlyRevenue),
+            _buildMonthlyTable(analytics.revenue.monthlyRevenue, analytics.revenue.monthlyRevenueLastYear),
 
             pw.Expanded(child: pw.SizedBox()),
             _buildFooter(),
@@ -411,6 +536,22 @@ class SalesPdfService {
               ],
             ),
 
+            pw.SizedBox(height: 20),
+
+            // Thermobehandlung
+            pw.Text('Thermobehandlung', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 8),
+            _buildDataTable(
+              headers: ['Kennzahl', 'Wert', 'Detail'],
+              widths: {0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(2), 2: const pw.FlexColumnWidth(2)},
+              rows: [
+                ['Anteil Artikel', '${analytics.thermoStats.itemSharePercent.toStringAsFixed(1)}%',
+                  '${analytics.thermoStats.thermoItemCount} von ${analytics.thermoStats.totalItemCount}'],
+                ['Anteil Umsatz', '${analytics.thermoStats.revenueSharePercent.toStringAsFixed(1)}%',
+                  _formatCurrency(analytics.thermoStats.thermoRevenue)],
+              ],
+            ),
+
             pw.Expanded(child: pw.SizedBox()),
             _buildFooter(),
           ],
@@ -431,7 +572,7 @@ class SalesPdfService {
     } else if (filter.startDate != null || filter.endDate != null) {
       final start = filter.startDate != null ? _dateFormat.format(filter.startDate!) : '...';
       final end = filter.endDate != null ? _dateFormat.format(filter.endDate!) : '...';
-      chips.add('Zeitraum: $start – $end');
+      chips.add('Zeitraum: $start - $end');
     }
 
     if (filter.minAmount != null && filter.maxAmount != null) {
@@ -569,17 +710,50 @@ class SalesPdfService {
     );
   }
 
-  static pw.Widget _buildMonthlyTable(Map<String, double> monthlyRevenue) {
+  static pw.Widget _buildMonthlyTable(
+      Map<String, double> monthlyRevenue,
+      Map<String, double> monthlyRevenueLastYear,
+      ) {
     final sorted = monthlyRevenue.keys.toList()..sort();
     final last12 = sorted.length > 12 ? sorted.sublist(sorted.length - 12) : sorted;
     if (last12.isEmpty) return pw.Text('Keine Daten', style: const pw.TextStyle(fontSize: 9));
 
+    final currentYear = DateTime.now().year;
+    final lastYear = currentYear - 1;
+
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-      columnWidths: {0: const pw.FlexColumnWidth(2), 1: const pw.FlexColumnWidth(3)},
+      columnWidths: {
+        0: const pw.FlexColumnWidth(2),
+        1: const pw.FlexColumnWidth(2.5),
+        2: const pw.FlexColumnWidth(2.5),
+        3: const pw.FlexColumnWidth(1.5),
+      },
       children: [
-        _buildHeaderRow(['Monat', 'Warenwert CHF']),
-        ...last12.map((k) => _buildRow([_formatMonthKey(k), _formatCurrency(monthlyRevenue[k] ?? 0)])),
+        _buildHeaderRow(['Monat', 'Warenwert $currentYear', 'Warenwert $lastYear', '+/- %']),
+        ...last12.map((k) {
+          final parts = k.split('-');
+          final month = int.tryParse(parts.length == 2 ? parts[1] : '1') ?? 1;
+          // Vorjahr-Key: gleicher Monat, Jahr -1
+          final lastYearKey = '${lastYear}-${month.toString().padLeft(2, '0')}';
+          final current = monthlyRevenue[k] ?? 0;
+          final previous = monthlyRevenueLastYear[lastYearKey] ?? 0;
+
+          String changeStr = '-';
+          if (previous > 0) {
+            final pct = ((current - previous) / previous) * 100;
+            changeStr = '${pct >= 0 ? "+" : ""}${pct.toStringAsFixed(1)}%';
+          }
+
+          return pw.TableRow(
+            children: [
+              _cell(_formatMonthKey(k)),
+              _cell(_formatCurrency(current)),
+              _cell(previous > 0 ? _formatCurrency(previous) : '-'),
+              _cell(changeStr),
+            ],
+          );
+        }),
       ],
     );
   }
@@ -607,24 +781,83 @@ class SalesPdfService {
   // ============================================================
   // HILFSFUNKTIONEN
   // ============================================================
-
-  /// FIX: Berechnet jetzt sowohl subtotal (Warenwert) als auch total (Gesamtbetrag)
   static Map<String, dynamic> _calculateSalesStats(List<Map<String, dynamic>> sales) {
     double totalRevenue = 0;
+    double totalNetAmount = 0;
     double totalSubtotal = 0;
+    double totalServiceRevenue = 0;
+    double totalFreight = 0;
+    double totalPhyto = 0;
+    double totalDeductions = 0;
+    double totalSurcharges = 0;
+    double totalDiscount = 0;
+    double totalVat = 0;
+    double totalGratisValue = 0;  // NEU
     int count = 0;
+
     for (var sale in sales) {
       if (sale['status'] == 'cancelled') continue;
       final calculations = sale['calculations'] as Map<String, dynamic>? ?? {};
-      totalRevenue += (calculations['total'] as num?)?.toDouble() ?? 0;
-      totalSubtotal += (calculations['subtotal'] as num?)?.toDouble() ?? 0;
+      final items = (sale['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+      final orderFreight       = (calculations['freight']               as num?)?.toDouble() ?? 0;
+      final orderPhyto         = (calculations['phytosanitary']         as num?)?.toDouble() ?? 0;
+      final orderDeductions    = (calculations['total_deductions']      as num?)?.toDouble() ?? 0;
+      final orderSurcharges    = (calculations['total_surcharges']      as num?)?.toDouble() ?? 0;
+      final orderTotalDiscount = (calculations['total_discount_amount'] as num?)?.toDouble() ?? 0;
+      final orderVat           = (calculations['vat_amount']            as num?)?.toDouble() ?? 0;
+
+      totalRevenue   += (calculations['total']      as num?)?.toDouble() ?? 0;
+      totalNetAmount += (calculations['net_amount'] as num?)?.toDouble() ?? 0;
+      totalFreight    += orderFreight;
+      totalPhyto      += orderPhyto;
+      totalDeductions += orderDeductions;
+      totalSurcharges += orderSurcharges;
+      totalDiscount   += orderTotalDiscount;
+      totalVat        += orderVat;
+
+      double orderSubtotal = 0;
+      double orderServiceRev = 0;
+
+      for (final it in items) {
+        final qty      = (it['quantity']              as num?)?.toDouble() ?? 0;
+        final price    = (it['custom_price_per_unit'] as num?)?.toDouble()
+            ?? (it['price_per_unit']                  as num?)?.toDouble() ?? 0;
+        final disc     = it['discount'] as Map<String, dynamic>?;
+        final discPct  = (disc?['percentage']         as num?)?.toDouble() ?? 0;
+        final discAbs  = (disc?['absolute']           as num?)?.toDouble() ?? 0;
+        final lineDiscount = qty * price * discPct / 100 + discAbs;
+        final lineTotal = qty * price - lineDiscount;
+
+        if (it['is_service'] == true) {
+          orderServiceRev += lineTotal;
+        } else if (it['is_gratisartikel'] == true) {
+          totalGratisValue += lineTotal;  // NEU: Gratisartikel-Wert merken
+        } else {
+          orderSubtotal += lineTotal;
+        }
+      }
+
+      orderSubtotal -= orderTotalDiscount;
+      totalSubtotal       += orderSubtotal;
+      totalServiceRevenue += orderServiceRev;
       count++;
     }
+
     return {
-      'salesCount': count,
-      'totalRevenue': totalRevenue,
-      'totalSubtotal': totalSubtotal,
-      'averageOrderValue': count == 0 ? 0.0 : totalSubtotal / count,
+      'salesCount':          count,
+      'totalRevenue':        totalRevenue,
+      'totalNetAmount':      totalNetAmount,
+      'totalSubtotal':       totalSubtotal,
+      'totalServiceRevenue': totalServiceRevenue,
+      'totalFreight':        totalFreight,
+      'totalPhyto':          totalPhyto,
+      'totalDeductions':     totalDeductions,
+      'totalSurcharges':     totalSurcharges,
+      'totalDiscount':       totalDiscount,
+      'totalVat':            totalVat,
+      'totalGratisValue':    totalGratisValue,  // NEU
+      'averageOrderValue':   count == 0 ? 0.0 : totalSubtotal / count,
     };
   }
 
@@ -662,18 +895,21 @@ class SalesPdfService {
       // FIX: Nur versendete Aufträge
       if (sale['status'] != 'shipped') return false;
 
-      // Zeitraum-Filter
-      DateTime? orderDate;
+      // Zeitraum-Filter — FIX: shippedAt bevorzugt, Fallback auf orderDate
+      DateTime? relevantDate;
+      final shippedAtRaw = sale['shippedAt'];
       final orderDateRaw = sale['orderDate'];
-      if (orderDateRaw is Timestamp) {
-        orderDate = orderDateRaw.toDate();
+      if (shippedAtRaw is Timestamp) {
+        relevantDate = shippedAtRaw.toDate();
+      } else if (orderDateRaw is Timestamp) {
+        relevantDate = orderDateRaw.toDate();
       } else {
         final metadata = sale['metadata'] as Map<String, dynamic>? ?? {};
         final metaTimestamp = metadata['timestamp'];
-        if (metaTimestamp is Timestamp) orderDate = metaTimestamp.toDate();
+        if (metaTimestamp is Timestamp) relevantDate = metaTimestamp.toDate();
       }
 
-      if (orderDate != null) {
+      if (relevantDate != null) {
         DateTime? filterStart = filter.startDate;
         DateTime? filterEnd = filter.endDate;
 
@@ -698,8 +934,8 @@ class SalesPdfService {
           }
         }
 
-        if (filterStart != null && orderDate.isBefore(filterStart)) return false;
-        if (filterEnd != null && orderDate.isAfter(
+        if (filterStart != null && relevantDate.isBefore(filterStart)) return false;
+        if (filterEnd != null && relevantDate.isAfter(
             DateTime(filterEnd.year, filterEnd.month, filterEnd.day, 23, 59, 59)
         )) return false;
       }
@@ -804,6 +1040,86 @@ class SalesPdfService {
     final fullName = '$first $last'.trim();
     if (fullName.isNotEmpty) return fullName;
     return customer['fullName']?.toString() ?? '-';
+  }
+
+  /// Ob ein expliziter Datumsfilter (kein timeRange-Shortcut) gesetzt ist
+  static bool _hasDateFilter(SalesFilter? filter) {
+    if (filter == null) return false;
+    return filter.startDate != null || filter.endDate != null || filter.timeRange != null;
+  }
+
+  /// Label für den gefilterten Zeitraum (kurz, für Tabellenzeile)
+  static String _filterPeriodLabel(SalesFilter? filter) {
+    if (filter == null) return 'Gesamtzeitraum';
+    if (filter.timeRange != null) return _getFilterTimeRange(filter);
+    if (filter.startDate != null && filter.endDate != null) {
+      return '${_dateFormat.format(filter.startDate!)} - ${_dateFormat.format(filter.endDate!)}';
+    }
+    if (filter.startDate != null) return 'ab ${_dateFormat.format(filter.startDate!)}';
+    if (filter.endDate != null) return 'bis ${_dateFormat.format(filter.endDate!)}';
+    return 'Gesamtzeitraum';
+  }
+
+  /// KPI-Zeilen Warenwert — filterbewusst
+  static List<List<String>> _buildRevenueRows(SalesAnalytics analytics, SalesFilter? filter) {
+    final now = DateTime.now();
+    final rev = analytics.revenue;
+
+    if (_hasDateFilter(filter)) {
+      return [
+        ['Warenwert ${_filterPeriodLabel(filter)}',  _formatCurrency(rev.totalRevenue), ''],
+        if (rev.totalServiceRevenue > 0)
+          ['+ Dienstleistungen',                     _formatCurrency(rev.totalServiceRevenue),  ''],
+        if (rev.totalFreight > 0)
+          ['+ Fracht',                               _formatCurrency(rev.totalFreight),         ''],
+        if (rev.totalPhytosanitary > 0)
+          ['+ Phytosanitary',                        _formatCurrency(rev.totalPhytosanitary),   ''],
+        if (rev.totalDeductions > 0)
+          ['- Abschläge',                            _formatCurrency(rev.totalDeductions),      ''],
+        if (rev.totalSurcharges > 0)
+          ['+ Zuschläge',                            _formatCurrency(rev.totalSurcharges),      ''],
+        ['Anzahl Aufträge',                          analytics.orderCount.toString(),           ''],
+        ['Ø Warenwert / Auftrag',                    _formatCurrency(analytics.averageOrderValue), ''],
+
+      ];
+    }
+
+    return [
+      ['Warenwert ${now.year}',                      _formatCurrency(rev.yearRevenue),
+        '${_changeStr(rev.yearChangePercent)} vs. Vorjahr'],
+      ['Warenwert ${_monthName(now.month)}',         _formatCurrency(rev.monthRevenue),
+        '${_changeStr(rev.monthChangePercent)} vs. Vormonat'],
+      if (rev.yearServiceRevenue > 0)
+        ['+ Dienstleistungen ${now.year}',           _formatCurrency(rev.yearServiceRevenue),  ''],
+      if (rev.yearFreight > 0)
+        ['+ Fracht ${now.year}',                     _formatCurrency(rev.yearFreight),         ''],
+      if (rev.yearPhytosanitary > 0)
+        ['+ Phytosanitary ${now.year}',              _formatCurrency(rev.yearPhytosanitary),   ''],
+      if (rev.yearDeductions > 0)
+        ['- Abschläge ${now.year}',                  _formatCurrency(rev.yearDeductions),      ''],
+      if (rev.yearSurcharges > 0)
+        ['+ Zuschläge ${now.year}',                  _formatCurrency(rev.yearSurcharges),      ''],
+      ['Anzahl Aufträge',                            analytics.orderCount.toString(),           ''],
+      ['Ø Warenwert / Auftrag',                      _formatCurrency(analytics.averageOrderValue), ''],
+
+    ];
+  }
+  /// KPI-Zeilen Gesamtbetrag — filterbewusst
+  static List<List<String>> _buildRevenueGrossRows(SalesAnalytics analytics, SalesFilter? filter) {
+    final now = DateTime.now();
+    if (_hasDateFilter(filter)) {
+      return [
+        ['Gesamtbetrag ${_filterPeriodLabel(filter)}', _formatCurrency(analytics.revenue.totalRevenueGross), ''],
+        ['Ø Gesamtbetrag / Auftrag', _formatCurrency(analytics.averageOrderValueGross), ''],
+      ];
+    }
+    return [
+      ['Gesamtbetrag ${now.year}', _formatCurrency(analytics.revenue.yearRevenueGross),
+        '${_changeStr(analytics.revenue.yearChangePercentGross)} vs. Vorjahr'],
+      ['Gesamtbetrag ${_monthName(now.month)}', _formatCurrency(analytics.revenue.monthRevenueGross),
+        '${_changeStr(analytics.revenue.monthChangePercentGross)} vs. Vormonat'],
+      ['Ø Gesamtbetrag / Auftrag', _formatCurrency(analytics.averageOrderValueGross), ''],
+    ];
   }
 
   static String _changeStr(double pct) => '${pct >= 0 ? "+" : ""}${pct.toStringAsFixed(1)}%';

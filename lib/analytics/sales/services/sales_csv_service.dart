@@ -17,7 +17,22 @@ class SalesCsvService {
       List<Map<String, dynamic>> sales, {
         SalesFilter? filter,
       }) async {
-    final filteredSales = filter != null ? _filterSales(sales, filter) : sales;
+    final filteredSales = filter != null ? _filterSales(sales, filter) : List<Map<String, dynamic>>.from(sales);
+
+    filteredSales.sort((a, b) {
+      final aShipped = a['shippedAt'];
+      final aOrder = a['orderDate'];
+      final bShipped = b['shippedAt'];
+      final bOrder = b['orderDate'];
+      DateTime? dateA;
+      DateTime? dateB;
+      if (aShipped is Timestamp) { dateA = aShipped.toDate(); } else if (aOrder is Timestamp) { dateA = aOrder.toDate(); }
+      if (bShipped is Timestamp) { dateB = bShipped.toDate(); } else if (bOrder is Timestamp) { dateB = bOrder.toDate(); }
+      if (dateA == null && dateB == null) return 0;
+      if (dateA == null) return 1;
+      if (dateB == null) return -1;
+      return dateB.compareTo(dateA);
+    });
 
     final csvData = [
       [
@@ -33,6 +48,7 @@ class SalesCsvService {
         'Instrument',
         'Bauteil',
         'Thermo',
+        'Gratisartikel',
         'Menge',
         'Einheit',
         'Einzelpreis',
@@ -50,14 +66,15 @@ class SalesCsvService {
       final distChannel = metadata['distributionChannel'] as Map<String, dynamic>?;
 
       DateTime? timestamp;
+      final shippedAtRaw = sale['shippedAt'];
       final orderDateRaw = sale['orderDate'];
-      if (orderDateRaw is Timestamp) {
+      if (shippedAtRaw is Timestamp) {
+        timestamp = shippedAtRaw.toDate();
+      } else if (orderDateRaw is Timestamp) {
         timestamp = orderDateRaw.toDate();
       } else {
         final metaTimestamp = metadata['timestamp'];
-        if (metaTimestamp is Timestamp) {
-          timestamp = metaTimestamp.toDate();
-        }
+        if (metaTimestamp is Timestamp) timestamp = metaTimestamp.toDate();
       }
 
       final dateStr = timestamp != null
@@ -80,13 +97,16 @@ class SalesCsvService {
       for (final item in items) {
         if (sale['status'] == 'cancelled') continue;
 
+        final isGratis = item['is_gratisartikel'] == true;
         final quantity = (item['quantity'] as num?)?.toDouble() ?? 0;
         final pricePerUnit = (item['custom_price_per_unit'] as num?)?.toDouble()
             ?? (item['price_per_unit'] as num?)?.toDouble() ?? 0;
         final discount = item['discount'] as Map<String, dynamic>?;
         final discountPct = (discount?['percentage'] as num?)?.toDouble() ?? 0;
         final discountAbs = (discount?['absolute'] as num?)?.toDouble() ?? 0;
-        final itemTotal = quantity * pricePerUnit - (quantity * pricePerUnit * discountPct / 100) - discountAbs;
+        final itemTotal = isGratis
+            ? 0.0
+            : quantity * pricePerUnit - (quantity * pricePerUnit * discountPct / 100) - discountAbs;
 
         final row = [
           dateStr,
@@ -101,6 +121,7 @@ class SalesCsvService {
           _escapeCsv(item['instrument_name'] ?? ''),
           _escapeCsv(item['part_name'] ?? ''),
           item['has_thermal_treatment'] == true ? 'Ja' : 'Nein',
+          isGratis ? 'Ja' : 'Nein',
           quantity.toString(),
           item['unit'] ?? 'Stk',
           pricePerUnit.toStringAsFixed(2),
@@ -117,32 +138,55 @@ class SalesCsvService {
   }
 
   // ============================================================
-  // 2) ANALYTICS-EXPORT: Zusammenfassung — NEU: Dual-Revenue + m³
+  // 2) ANALYTICS-EXPORT: Zusammenfassung
   // ============================================================
 
   static List<int> generateAnalyticsSummary(SalesAnalytics analytics) {
     final buffer = StringBuffer();
+    final now = DateTime.now();
+    final rev = analytics.revenue;
 
     buffer.writeln('Verkaufsanalyse - Zusammenfassung');
-    buffer.writeln('Exportiert am;${DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now())}');
+    buffer.writeln('Exportiert am;${DateFormat('dd.MM.yyyy HH:mm').format(now)}');
     buffer.writeln('');
 
-    // Warenwert
+    // Warenwert Aufschlüsselung
     buffer.writeln('Warenwert (netto Ware)');
     buffer.writeln('Kennzahl;Wert;Veränderung');
-    buffer.writeln('Warenwert ${DateTime.now().year};${analytics.revenue.yearRevenue.toStringAsFixed(2)};${_changeStr(analytics.revenue.yearChangePercent)}');
-    buffer.writeln('Warenwert ${_monthName(DateTime.now().month)};${analytics.revenue.monthRevenue.toStringAsFixed(2)};${_changeStr(analytics.revenue.monthChangePercent)}');
-    buffer.writeln('Vorjahres-Warenwert;${analytics.revenue.previousYearRevenue.toStringAsFixed(2)};');
-    buffer.writeln('Anzahl Aufträge;${analytics.orderCount};');
-    buffer.writeln('Ø Warenwert / Auftrag;${analytics.averageOrderValue.toStringAsFixed(2)};');
+    buffer.writeln('Warenwert (nach Rabatten) ${now.year};${rev.yearRevenue.toStringAsFixed(2)};${_changeStr(rev.yearChangePercent)}');
+    buffer.writeln('Warenwert (nach Rabatten) ${_monthName(now.month)};${rev.monthRevenue.toStringAsFixed(2)};${_changeStr(rev.monthChangePercent)}');
+    if (rev.yearGratisValue > 0)
+      buffer.writeln('* Gratisartikel bereits abgezogen;${rev.yearGratisValue.toStringAsFixed(2)};');
+    buffer.writeln('Vorjahres-Warenwert;${rev.previousYearRevenue.toStringAsFixed(2)};');
     buffer.writeln('');
 
-    // Gesamtbetrag
-    buffer.writeln('Gesamtbetrag (inkl. Versand, MwSt)');
+    // Rechnungsbetrag netto Aufschlüsselung
+    buffer.writeln('Rechnungsbetrag netto (Aufschlüsselung)');
+    buffer.writeln('Kennzahl;Wert');
+    buffer.writeln('Warenwert (nach Rabatten) ${now.year};${rev.yearRevenue.toStringAsFixed(2)}');
+    if (rev.yearServiceRevenue > 0)
+      buffer.writeln('+ Dienstleistungen;${rev.yearServiceRevenue.toStringAsFixed(2)}');
+    if (rev.yearFreight > 0)
+      buffer.writeln('+ Fracht;${rev.yearFreight.toStringAsFixed(2)}');
+    if (rev.yearPhytosanitary > 0)
+      buffer.writeln('+ Phytosanitary;${rev.yearPhytosanitary.toStringAsFixed(2)}');
+    if (rev.yearDeductions > 0)
+      buffer.writeln('- Abschläge;${rev.yearDeductions.toStringAsFixed(2)}');
+    if (rev.yearSurcharges > 0)
+      buffer.writeln('+ Zuschläge;${rev.yearSurcharges.toStringAsFixed(2)}');
+    final netRevenue = rev.yearRevenue + rev.yearServiceRevenue + rev.yearFreight
+        + rev.yearPhytosanitary - rev.yearDeductions + rev.yearSurcharges;
+    buffer.writeln('= Rechnungsbetrag netto;${netRevenue.toStringAsFixed(2)}');
+    buffer.writeln('');
+
+    // Gesamtbetrag (Brutto)
+    buffer.writeln('Gesamtbetrag (inkl. MwSt)');
     buffer.writeln('Kennzahl;Wert;Veränderung');
-    buffer.writeln('Gesamtbetrag ${DateTime.now().year};${analytics.revenue.yearRevenueGross.toStringAsFixed(2)};${_changeStr(analytics.revenue.yearChangePercentGross)}');
-    buffer.writeln('Gesamtbetrag ${_monthName(DateTime.now().month)};${analytics.revenue.monthRevenueGross.toStringAsFixed(2)};${_changeStr(analytics.revenue.monthChangePercentGross)}');
+    buffer.writeln('Gesamtbetrag ${now.year};${rev.yearRevenueGross.toStringAsFixed(2)};${_changeStr(rev.yearChangePercentGross)}');
+    buffer.writeln('Gesamtbetrag ${_monthName(now.month)};${rev.monthRevenueGross.toStringAsFixed(2)};${_changeStr(rev.monthChangePercentGross)}');
     buffer.writeln('Ø Gesamtbetrag / Auftrag;${analytics.averageOrderValueGross.toStringAsFixed(2)};');
+    buffer.writeln('Anzahl Aufträge;${analytics.orderCount};');
+    buffer.writeln('Ø Warenwert / Auftrag;${analytics.averageOrderValue.toStringAsFixed(2)};');
     buffer.writeln('');
 
     // Thermo
@@ -155,10 +199,10 @@ class SalesCsvService {
     // Monatliche Umsätze
     buffer.writeln('Monatliche Umsätze');
     buffer.writeln('Monat;Warenwert CHF;Gesamtbetrag CHF');
-    final sortedMonths = analytics.revenue.monthlyRevenue.keys.toList()..sort();
+    final sortedMonths = rev.monthlyRevenue.keys.toList()..sort();
     for (final month in sortedMonths) {
-      final subtotal = analytics.revenue.monthlyRevenue[month]?.toStringAsFixed(2) ?? '0.00';
-      final total = analytics.revenue.monthlyRevenueGross[month]?.toStringAsFixed(2) ?? '0.00';
+      final subtotal = rev.monthlyRevenue[month]?.toStringAsFixed(2) ?? '0.00';
+      final total = rev.monthlyRevenueGross[month]?.toStringAsFixed(2) ?? '0.00';
       buffer.writeln('${_formatMonthKey(month)};$subtotal;$total');
     }
     buffer.writeln('');
@@ -171,29 +215,21 @@ class SalesCsvService {
     buffer.writeln('Umsatz nach Land');
     buffer.writeln('Land;Ländercode;Warenwert CHF;Anteil;Aufträge;Artikel');
     for (final c in countries) {
-      final pct = totalRevenue > 0 ? (c.revenue / totalRevenue * 100).toStringAsFixed(1) : '0.0';
-      buffer.writeln('${c.countryName};${c.countryCode};${c.revenue.toStringAsFixed(2)};$pct%;${c.orderCount};${c.itemCount}');
+      final pct = totalRevenue > 0
+          ? '${(c.revenue / totalRevenue * 100).toStringAsFixed(1)}%'
+          : '0.0%';
+      buffer.writeln('${_escapeCsv(c.countryName)};${c.countryCode};${c.revenue.toStringAsFixed(2)};$pct;${c.orderCount};${c.itemCount}');
     }
     buffer.writeln('');
 
-    // Top-Produkte
-    buffer.writeln('Top Produkte');
-    buffer.writeln('Rang;Produkt;Stück;Umsatz CHF');
-    for (int i = 0; i < analytics.topProductCombos.length; i++) {
-      final p = analytics.topProductCombos[i];
-      buffer.writeln('${i + 1};${p.displayName};${p.quantity};${p.revenue.toStringAsFixed(2)}');
-    }
-    buffer.writeln('');
-
-    // Holzarten — NEU: mit m³
+    // Holzarten
     final woodTypes = analytics.woodTypeStats.values.toList()
       ..sort((a, b) => b.revenue.compareTo(a.revenue));
-
     buffer.writeln('Umsatz nach Holzart');
     buffer.writeln('Holzart;Code;Stück;m³;Umsatz CHF');
     for (final w in woodTypes) {
       final volumeStr = w.volume > 0 ? w.volume.toStringAsFixed(4) : '0.0000';
-      buffer.writeln('${w.woodName};${w.woodCode};${w.quantity};$volumeStr;${w.revenue.toStringAsFixed(2)}');
+      buffer.writeln('${_escapeCsv(w.woodName)};${w.woodCode};${w.quantity};$volumeStr;${w.revenue.toStringAsFixed(2)}');
     }
 
     return _addBom(buffer.toString());
@@ -233,19 +269,18 @@ class SalesCsvService {
     return '${short[m - 1]} ${parts[0]}';
   }
 
-  /// FIX: Filtert jetzt nur shipped Aufträge
   static List<Map<String, dynamic>> _filterSales(
       List<Map<String, dynamic>> sales, SalesFilter filter) {
     return sales.where((sale) {
       if (sale['status'] == 'cancelled') return false;
-
-      // FIX: Nur versendete Aufträge
       if (sale['status'] != 'shipped') return false;
 
-      // Zeitraum-Filter
       DateTime? orderDate;
+      final shippedAtRaw = sale['shippedAt'];
       final orderDateRaw = sale['orderDate'];
-      if (orderDateRaw is Timestamp) {
+      if (shippedAtRaw is Timestamp) {
+        orderDate = shippedAtRaw.toDate();
+      } else if (orderDateRaw is Timestamp) {
         orderDate = orderDateRaw.toDate();
       } else {
         final metadata = sale['metadata'] as Map<String, dynamic>? ?? {};
@@ -284,21 +319,18 @@ class SalesCsvService {
         )) return false;
       }
 
-      // Kunden-Filter
       if (filter.selectedCustomers != null && filter.selectedCustomers!.isNotEmpty) {
         final customer = sale['customer'] as Map<String, dynamic>? ?? {};
         final customerId = customer['id']?.toString() ?? '';
         if (!filter.selectedCustomers!.contains(customerId)) return false;
       }
 
-      // Messe-Filter
       if (filter.selectedFairs != null && filter.selectedFairs!.isNotEmpty) {
         final fair = sale['fair'] as Map<String, dynamic>?;
         final fairId = fair?['id']?.toString() ?? '';
         if (!filter.selectedFairs!.contains(fairId)) return false;
       }
 
-      // Länder-Filter
       if (filter.countries != null && filter.countries!.isNotEmpty) {
         final customer = sale['customer'] as Map<String, dynamic>? ?? {};
         final countryCode = customer['countryCode']?.toString() ??
@@ -306,7 +338,6 @@ class SalesCsvService {
         if (!filter.countries!.contains(countryCode)) return false;
       }
 
-      // Kostenstellen-Filter
       if (filter.costCenters != null && filter.costCenters!.isNotEmpty) {
         final costCenter = sale['costCenter'] as Map<String, dynamic>?;
         if (costCenter == null) return false;
@@ -315,7 +346,6 @@ class SalesCsvService {
         if (!filter.costCenters!.any((f) => f == id || f == code)) return false;
       }
 
-      // Bestellart-Filter
       if (filter.distributionChannels != null && filter.distributionChannels!.isNotEmpty) {
         final metadata = sale['metadata'] as Map<String, dynamic>? ?? {};
         final distChannel = metadata['distributionChannel'] as Map<String, dynamic>?;
@@ -325,14 +355,12 @@ class SalesCsvService {
         if (!filter.distributionChannels!.any((f) => f == id || f == name)) return false;
       }
 
-      // Item-Level Filter
       if (_hasItemLevelFilters(filter)) {
         final items = (sale['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
         final hasMatch = items.any((item) => _itemMatchesFilter(item, filter));
         if (!hasMatch) return false;
       }
 
-      // Betrags-Filter — auf Warenwert (subtotal)
       if (filter.minAmount != null || filter.maxAmount != null) {
         final calculations = sale['calculations'] as Map<String, dynamic>? ?? {};
         final subtotal = (calculations['subtotal'] as num?)?.toDouble() ?? 0;

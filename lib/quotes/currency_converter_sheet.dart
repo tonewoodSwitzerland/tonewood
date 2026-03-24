@@ -22,7 +22,7 @@ class CurrencyConverterSheet {
 
     Map<String, bool>? roundingEnabled;
     bool? showExchangeRateOnDocuments;
-
+    bool? showRoundingOnDocuments;
     Widget _buildRoundingRow(String from, String to, String currency) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
@@ -142,7 +142,7 @@ class CurrencyConverterSheet {
                     'USD': settings['USD'] ?? false,
                   };
                   showExchangeRateOnDocuments = doc.data()!['show_exchange_rate_on_documents'] ?? false;
-
+                  showRoundingOnDocuments = doc.data()!['show_rounding_on_documents'] ?? true;
                 });
               }
             });
@@ -403,7 +403,40 @@ class CurrencyConverterSheet {
                             ),
                           ),
                         ),
-
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.tertiaryContainer.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.tertiary.withOpacity(0.3),
+                            ),
+                          ),
+                          child: CheckboxListTile(
+                            title: const Text(
+                              'Rundungshinweis auf Dokumenten anzeigen',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: const Text(
+                              'Zeigt ob und wie stark gerundet wurde auf Rechnungen, Angeboten etc.',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            value: showRoundingOnDocuments ?? true,
+                            onChanged: (value) {
+                              setState(() {
+                                showRoundingOnDocuments = value ?? true;
+                              });
+                            },
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                            secondary: getAdaptiveIcon(
+                              iconName: 'rule',
+                              defaultIcon: Icons.rule,
+                              color: Theme.of(context).colorScheme.tertiary,
+                            ),
+                          ),
+                        ),
 
                         const SizedBox(height: 16),
 // Wechselkurse
@@ -1157,7 +1190,7 @@ class CurrencyConverterSheet {
                                     'USD': false,
                                   },  // NEU
                                   'show_exchange_rate_on_documents': showExchangeRateOnDocuments ?? false, // NEU
-
+                                  'show_rounding_on_documents': showRoundingOnDocuments ?? true,
                                   'last_updated': FieldValue.serverTimestamp(),
                                 }, SetOptions(merge: true));
 

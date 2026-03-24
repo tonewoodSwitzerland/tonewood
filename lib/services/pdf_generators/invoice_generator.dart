@@ -3,11 +3,12 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import '../document_selection_manager.dart';
-import '../pdf_settings_screen.dart';
+import '../../quotes/quote_doc_selection_manager.dart';
+import '../pdf_services/pdf_settings_screen.dart';
+import '../pdf_services/pdf_header_footer_settings_screen.dart';
 import '../product_sorting_manager.dart';
 import 'base_pdf_generator.dart';
-import '../additional_text_manager.dart';
+import '../../quotes/additional_text_manager.dart';
 import '../swiss_rounding.dart';
 
 class InvoiceGenerator extends BasePdfGenerator {
@@ -56,7 +57,7 @@ class InvoiceGenerator extends BasePdfGenerator {
       });
     } catch (e) {
       print('Fehler beim Erstellen der Rechnungs-Nummer: $e');
-      return '${DateTime.now().year}-1000';
+      rethrow;
     }
   }
 
@@ -81,6 +82,7 @@ class InvoiceGenerator extends BasePdfGenerator {
   }) async {
     final pdf = pw.Document();
     final logo = await BasePdfGenerator.loadLogo();
+    final hfSettings = await PdfHeaderFooterSettings.load();
 
     print("paymentTermDayas:$paymentTermDays");
     // Generiere Rechnungs-Nummer falls nicht übergeben
@@ -99,6 +101,7 @@ class InvoiceGenerator extends BasePdfGenerator {
     final showDimensions = invoiceSettings['show_dimensions'] ?? false;
 
     bool showExchangeRateOnDocument = false;
+    bool showRoundingOnDocument = true;
     try {
       final currencySettings = await FirebaseFirestore.instance
           .collection('general_data')
@@ -107,6 +110,7 @@ class InvoiceGenerator extends BasePdfGenerator {
 
       if (currencySettings.exists) {
         showExchangeRateOnDocument = currencySettings.data()?['show_exchange_rate_on_documents'] ?? false;
+        showRoundingOnDocument = currencySettings.data()?['show_rounding_on_documents'] ?? true;
       }
     } catch (e) {
       print('Fehler beim Laden der Currency Settings: $e');
@@ -188,6 +192,7 @@ class InvoiceGenerator extends BasePdfGenerator {
                 pageNumber: context.pageNumber,
                 totalPages: context.pagesCount,
                 language: language,
+                hfSettings: hfSettings,
               ),
               pw.SizedBox(height: 10),
             ],
@@ -197,6 +202,7 @@ class InvoiceGenerator extends BasePdfGenerator {
           pageNumber: context.pageNumber,
           totalPages: context.pagesCount,
           language: language,
+          hfSettings: hfSettings,
         ),
         build: (pw.Context context) {
           final columnWidths = _calculateOptimalColumnWidths(
@@ -216,6 +222,7 @@ class InvoiceGenerator extends BasePdfGenerator {
               logo: logo,
               costCenter: costCenterCode,
               language: language,
+              hfSettings: hfSettings,
             ),
             pw.SizedBox(height: 20),
 
@@ -254,7 +261,7 @@ class InvoiceGenerator extends BasePdfGenerator {
             pw.SizedBox(height: 10),
 
             // Summen-Bereich
-            _buildTotalsSection(items, currency, exchangeRates, language, shippingCosts, calculations, taxOption, vatRate, downPaymentSettings, paymentDue, roundingSettings),
+            _buildTotalsSection(items, currency, exchangeRates, language, shippingCosts, calculations, taxOption, vatRate, downPaymentSettings, paymentDue, roundingSettings, showRoundingOnDocument),
 
             pw.SizedBox(height: 10),
 
@@ -970,6 +977,7 @@ class InvoiceGenerator extends BasePdfGenerator {
       Map<String, dynamic>? downPaymentSettings,
       DateTime? paymentDue,
       Map<String, bool> roundingSettings,
+      bool showRoundingOnDocument,
       ) {
     double subtotal = 0.0;
     double actualItemDiscounts = 0.0;
@@ -1115,8 +1123,7 @@ class InvoiceGenerator extends BasePdfGenerator {
       }
 
       downPaymentDate = downPaymentSettings?['down_payment_date'] ??
-          downPaymentSettings?['full_payment_date'] ??
-          DateTime.now();
+          downPaymentSettings?['full_payment_date'];
     } else {
       downPaymentAmount = downPaymentSettings != null
           ? ((downPaymentSettings['down_payment_amount'] as num?) ?? 0.0).toDouble()
@@ -1357,7 +1364,7 @@ class InvoiceGenerator extends BasePdfGenerator {
                         (language == 'EN'
                             ? 'VAT (${vatRate.toStringAsFixed(1)}%)'
                             : 'MwSt (${vatRate.toStringAsFixed(1)}%)')
-                            + (roundingSettings[currency] == true && vatRoundingDifference != 0
+                            + (roundingSettings[currency] == true && vatRoundingDifference != 0 && showRoundingOnDocument
                             ? '  (${language == 'EN' ? 'rounded' : 'gerundet'} ${vatRoundingDifference > 0 ? '+' : ''}${vatRoundingDifference.toStringAsFixed(2)})'
                             : ''),
                         style: const pw.TextStyle(fontSize: 9),
@@ -1431,7 +1438,7 @@ class InvoiceGenerator extends BasePdfGenerator {
             ] else if (taxOption == 1) ...[
               pw.Divider(color: PdfColors.blueGrey300),
 
-              if (roundingSettings[currency] == true && roundingDifference != 0) ...[
+              if (roundingSettings[currency] == true && roundingDifference != 0 && showRoundingOnDocument) ...[
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
@@ -1510,7 +1517,7 @@ class InvoiceGenerator extends BasePdfGenerator {
             ] else ...[
               pw.Divider(color: PdfColors.blueGrey300),
 
-              if (roundingSettings[currency] == true && roundingDifference != 0) ...[
+              if (roundingSettings[currency] == true && roundingDifference != 0 && showRoundingOnDocument) ...[
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
@@ -1681,6 +1688,26 @@ class InvoiceGenerator extends BasePdfGenerator {
         );
       }
 
+      // Custom Text Blocks
+      final customBlockTexts = AdditionalTextsManager.getActiveCustomBlockTexts(
+        textsToUse,
+        language: language,
+      );
+      for (final blockText in customBlockTexts) {
+        textWidgets.add(
+          pw.Container(
+            alignment: pw.Alignment.centerLeft,
+            margin: const pw.EdgeInsets.only(bottom: 3),
+            child: pw.Text(
+              blockText,
+              style: const pw.TextStyle(fontSize: 7, color: PdfColors.blueGrey600),
+              textAlign: pw.TextAlign.left,
+            ),
+          ),
+        );
+      }
+
+
       if (textsToUse['bank_info']?['selected'] == true) {
         textWidgets.add(
           pw.Container(
@@ -1714,6 +1741,8 @@ class InvoiceGenerator extends BasePdfGenerator {
           ),
         );
       }
+
+
 
       if (textWidgets.isEmpty) {
         return pw.SizedBox.shrink();

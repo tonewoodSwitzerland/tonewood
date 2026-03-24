@@ -3,14 +3,14 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:tonewood/services/swiss_rounding.dart';
-import '../orders/order_model.dart';
-import 'pdf_generators/quote_generator.dart';
-import 'pdf_generators/invoice_generator.dart';
-import 'pdf_generators/commercial_invoice_generator.dart';
-import 'pdf_generators/delivery_note_generator.dart';
-import 'pdf_generators/packing_list_generator.dart';
-import 'preview_pdf_viewer_screen.dart';
-import 'shipping_costs_manager.dart';
+import 'order_model.dart';
+import '../services/pdf_generators/quote_generator.dart';
+import '../services/pdf_generators/invoice_generator.dart';
+import '../services/pdf_generators/commercial_invoice_generator.dart';
+import '../services/pdf_generators/delivery_note_generator.dart';
+import '../services/pdf_generators/packing_list_generator.dart';
+import '../services/pdf_services/preview_pdf_viewer_screen.dart';
+import '../quotes/shipping_costs_manager.dart';
 import '../services/icon_helper.dart';
 
 class OrderDocumentPreviewManager {
@@ -21,6 +21,7 @@ class OrderDocumentPreviewManager {
     required BuildContext context,
     required OrderX order,
     required String documentType,
+    String? language,
   }) async {
     print('=== showDocumentPreview RECEIVED ===');
     print('order.id: ${order.id}');
@@ -50,6 +51,7 @@ class OrderDocumentPreviewManager {
         context: context,
         order: order,
         documentType: documentType,
+        language: language,
       );
     } catch (e) {
       if (context.mounted) {
@@ -324,6 +326,7 @@ class OrderDocumentPreviewManager {
       );
 
       final orderData = await _loadOrderData(order);
+
       if (orderData == null) {
         if (context.mounted) Navigator.pop(context);
         return;
@@ -433,9 +436,8 @@ class OrderDocumentPreviewManager {
       taraSettingsRaw['commercial_invoice_delivery_date'] == true ||
           taraSettingsRaw['use_as_delivery_date'] == true,
       'commercial_invoice_delivery_date_value': taraSettingsRaw['use_as_delivery_date'] == true
-          ? taraSettingsRaw['commercial_invoice_date']
-          : taraSettingsRaw['commercial_invoice_delivery_date_value'],
-      'commercial_invoice_delivery_date_month_only': taraSettingsRaw['use_as_delivery_date'] == true
+          ? (taraSettingsRaw['commercial_invoice_date'] ?? DateTime.now())
+          : taraSettingsRaw['commercial_invoice_delivery_date_value'],'commercial_invoice_delivery_date_month_only': taraSettingsRaw['use_as_delivery_date'] == true
           ? false
           : (taraSettingsRaw['commercial_invoice_delivery_date_month_only'] ?? false),
       'commercial_invoice_carrier': taraSettingsRaw['commercial_invoice_carrier'],
@@ -704,6 +706,7 @@ class OrderDocumentPreviewManager {
     required BuildContext context,
     required OrderX order,
     required String documentType,
+    String? language,  // NEU
   }) async {
     try {
       // Zeige Loading-Dialog
@@ -717,7 +720,10 @@ class OrderDocumentPreviewManager {
 
       // Lade Auftragsdaten
       final orderData = await _loadOrderData(order);
-
+      if (language != null && orderData != null) {
+        orderData['metadata'] = Map<String, dynamic>.from(orderData['metadata'] ?? {});
+        orderData['metadata']['language'] = language;
+      }
       if (context.mounted) {
         Navigator.pop(context); // Schließe Loading-Dialog
       }
@@ -944,7 +950,8 @@ class OrderDocumentPreviewManager {
       BuildContext context,
       Map<String, dynamic> orderData,
       OrderX order,
-      ) async {
+      ) async
+  {
     try {
       final customer = orderData['customer'] as Map<String, dynamic>;
       final language = orderData['metadata']?['language'] ?? customer['language'] ?? 'DE';
@@ -1015,8 +1022,10 @@ class OrderDocumentPreviewManager {
       BuildContext context,
       Map<String, dynamic> orderData,
       OrderX order,
-      ) async {
-    try {
+      ) async
+  {
+    try
+    {
       final customer = orderData['customer'] as Map<String, dynamic>?;
       final language = orderData['metadata']?['language'] ?? customer?['language'] ?? 'DE';
       final metadata = orderData['metadata'] as Map<String, dynamic>?;

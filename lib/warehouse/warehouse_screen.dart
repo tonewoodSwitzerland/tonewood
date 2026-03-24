@@ -17,6 +17,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../services/icon_helper.dart';
 import '../home/barcode_scanner.dart';
+import '../services/user_basket_service.dart';
 
 class WarehouseScreen extends StatefulWidget {
   final bool isDialog;
@@ -78,6 +79,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   bool isQuickFilterActive = false;
   String? _shopFilter; // null = alle, 'sold' = verkauft, 'available' = nicht verkauft
   bool _isOnlineShopView = false;
+  bool _isDesktopLayout = false;  // NEU
   String _activeSearchText = '';
   String get _userId => FirebaseAuth.instance.currentUser!.uid;
   DocumentReference get _filterDoc => FirebaseFirestore.instance
@@ -219,6 +221,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         }
 
         setState(() {
+          _isOnlineShopView = data['isOnlineShopView'] ?? false;
+          _shopFilter = data['shopFilter'];
+
           // Wenn Suchtext vorhanden ist, überschreibt er die manuellen Filter
           if (savedSearchText.isNotEmpty) {
             selectedInstrumentCodes.clear();
@@ -270,6 +275,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           'woodCodes': [],
           'qualityCodes': [],
           'unit': null,
+          'isOnlineShopView': _isOnlineShopView,    // NEU
+          'shopFilter': _shopFilter,                 // NEU
           'lastUpdated': FieldValue.serverTimestamp(),
         });
       } else {
@@ -281,6 +288,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           'woodCodes': selectedWoodCodes,
           'qualityCodes': selectedQualityCodes,
           'unit': selectedUnit,
+          'isOnlineShopView': _isOnlineShopView,    // NEU
+          'shopFilter': _shopFilter,                 // NEU
           'lastUpdated': FieldValue.serverTimestamp(),
         });
       }
@@ -304,16 +313,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       final currentStock = (inventoryDoc.data()?['quantity'] as num?)?.toDouble() ?? 0.0;
       //print('Current stock: $currentStock'); // Debug
 
-      // Temporär gebuchte Menge abrufen
-      final tempBasketDoc = await FirebaseFirestore.instance
-          .collection('temporary_basket')
-          .where('product_id', isEqualTo: shortBarcode)
-          .get();
 
-      final cartQuantity = tempBasketDoc.docs.fold<double>(
-        0,
-            (sum, doc) => sum + ((doc.data()['quantity'] as num?)?.toDouble() ?? 0.0),
-      );
+      // Warenkorb-Menge ALLER User abrufen
+      final cartQuantity = await UserBasketService.getTotalCartQuantity(shortBarcode);
 
       // Reservierte Menge aus stock_movements abrufen
       final reservationsDoc = await FirebaseFirestore.instance
@@ -340,8 +342,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
 
   Future<bool> _isItemInCart(String barcode) async {
-    final querySnapshot = await FirebaseFirestore.instance
-        .collection('temporary_basket')
+    final querySnapshot =  await UserBasketService.temporaryBasket
         .where('online_shop_barcode', isEqualTo: barcode)
         .limit(1)
         .get();
@@ -353,8 +354,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     if (barcode == null || barcode.isEmpty) {
       return Stream.value(false);
     }
-    return FirebaseFirestore.instance
-        .collection('temporary_basket')
+    return UserBasketService.temporaryBasket
         .where('online_shop_barcode', isEqualTo: barcode)
         .snapshots()
         .map((snapshot) => snapshot.docs.isNotEmpty);
@@ -429,8 +429,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         ? '100%'
         : '-';
 
-    await FirebaseFirestore.instance
-        .collection('temporary_basket')
+    await UserBasketService.temporaryBasket
         .add(basketData);
 
     // Bei Online-Shop Items: Markiere als "im Warenkorb"
@@ -441,6 +440,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           .update({
         'in_cart': true,
         'cart_timestamp': FieldValue.serverTimestamp(),
+        'cart_user_id': UserBasketService.uid,
+        'cart_user_name': UserBasketService.displayName,
       });
     }
   }
@@ -1026,7 +1027,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                     iconName: 'add_shopping_cart',
                                     defaultIcon: Icons.add_shopping_cart,
                                   ),
-                                  label: const Text('In den Warenkorb'),
+                                  label: const Text('Warenkorb'),
                                 ),
                               ),
                             ),
@@ -1187,8 +1188,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   /// Prüft ob ein Online-Shop-Item bereits im Warenkorb oder in einem Angebot reserviert ist
   Future<Map<String, dynamic>> _checkOnlineShopItemAvailability(String onlineShopBarcode) async {
     // 1. Prüfe ob bereits im aktuellen Warenkorb
-    final cartCheck = await FirebaseFirestore.instance
-        .collection('temporary_basket')
+    final cartCheck = await UserBasketService.temporaryBasket
         .where('online_shop_barcode', isEqualTo: onlineShopBarcode)
         .limit(1)
         .get();
@@ -1252,8 +1252,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
     final inventoryData = inventoryDoc.data() ?? {};
 
-    await FirebaseFirestore.instance
-        .collection('temporary_basket')
+    await UserBasketService.temporaryBasket
         .add({
       'product_id': data['short_barcode'],
       'product_name': data['product_name'],
@@ -1286,6 +1285,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         .update({
       'in_cart': true,
       'cart_timestamp': FieldValue.serverTimestamp(),
+      'cart_user_id': UserBasketService.uid,
+      'cart_user_name': UserBasketService.displayName,
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1761,7 +1762,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                               iconName: 'shopping_cart',
                               defaultIcon: Icons.shopping_cart,
                             ),
-                            label: const Text('In den Warenkorb'),
+                            label: const Text('Warenkorb'),
                             onPressed: () async {
                               if (quantityController.text.isEmpty) return;
 
@@ -1886,27 +1887,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       //print('🛒 Online Shop Menge (quantity_online_shop): $onlineShopQty');
 
       // 2. Warenkorb-Menge
-      final cartSnapshot = await FirebaseFirestore.instance
-          .collection('temporary_basket')
-          .where('product_id', isEqualTo: shortBarcode)
-          .get();
 
-      //print('\n🛒 WARENKORB:');
-      //print('   Anzahl Einträge: ${cartSnapshot.docs.length}');
-
-      double cartQuantity = 0;
-      for (var doc in cartSnapshot.docs) {
-        final data = doc.data();
-        final qty = data['quantity'] ?? 0;
-        final qtyDouble = qty is int ? qty.toDouble() : (qty as double);
-        //print('   - Doc ID: ${doc.id}');
-        //print('     quantity: $qty (als double: $qtyDouble)');
-        //print('     product_name: ${data['product_name']}');
-        //print('     is_online_shop_item: ${data['is_online_shop_item']}');
-        //print('     online_shop_barcode: ${data['online_shop_barcode']}');
-        cartQuantity += qtyDouble;
-      }
-      //print('   SUMME Warenkorb: $cartQuantity');
+      // 2. Warenkorb-Menge ALLER User
+      final cartQuantity = await UserBasketService.getTotalCartQuantity(shortBarcode);
 
       // 3. Reservierungen
       final reservedSnapshot = await FirebaseFirestore.instance
@@ -2334,12 +2317,11 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
 // Aktualisieren Sie die _buildProductList() Methode:
   Widget _buildProductList() {
-    //print("test999");
     return StreamBuilder<QuerySnapshot>(
       stream: _productStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          //print(snapshot.error);
+          print(snapshot.error);
           return  Center(child: Text('Ein Fehler ist aufgetreten: ${snapshot.error}'));
         }
 
@@ -2395,7 +2377,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
         return Column(
           children: [
-            if (_isOnlineShopView)
+            // Shop-Filter NUR auf Mobile anzeigen
+            if (_isOnlineShopView && !_isDesktopLayout)
               Container(
                 padding: const EdgeInsets.all(8),
                 child: Wrap(
@@ -2410,6 +2393,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                           _shopFilter = null;
                           _updateProductStream();
                         });
+                        _saveFilters();
                       },
                     ),
                     FilterChip(
@@ -2420,6 +2404,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                           _shopFilter = selected ? 'available' : null;
                           _updateProductStream();
                         });
+                        _saveFilters();
                       },
                     ),
                     FilterChip(
@@ -2430,6 +2415,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                           _shopFilter = selected ? 'sold' : null;
                           _updateProductStream();
                         });
+                        _saveFilters();
                       },
                     ),
                     FilterChip(
@@ -2444,6 +2430,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                           _shopFilter = selected ? 'discounted' : null;
                           _updateProductStream();
                         });
+                        _saveFilters();
                       },
                     ),
                   ],
@@ -2484,8 +2471,6 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                     child: InkWell(
                       borderRadius: BorderRadius.circular(12),
                       onTap: () {
-                        //print("testXXX");
-                        //print("test:$_isOnlineShopView");
                         if (_isOnlineShopView) {
                           _showOnlineShopDetails(data);
                         } else {
@@ -2512,7 +2497,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                         ),
                                       ),
                                       const SizedBox(height: 4),
-                                      SingleChildScrollView( // 👈 NEU: Fängt den Overflow auf
+                                      SingleChildScrollView(
                                         scrollDirection: Axis.horizontal,
                                         child: Row(
                                           children: [
@@ -2583,14 +2568,40 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                             const SizedBox(width: 8),
 
                                             // 3. Barcode
-                                            Text(
-                                              _isOnlineShopView
-                                                  ? data['barcode']?.toString() ?? ''
-                                                  : data['short_barcode']?.toString() ?? '',
-                                              style: TextStyle(
-                                                color: Colors.grey[600],
-                                                fontSize: 12,
-                                              ),
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                SelectableText(
+                                                  _isOnlineShopView
+                                                      ? data['barcode']?.toString() ?? ''
+                                                      : data['short_barcode']?.toString() ?? '',
+                                                  style: TextStyle(
+                                                    color: Colors.grey[600],
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                GestureDetector(
+                                                  onTap: () {
+                                                    final text = _isOnlineShopView
+                                                        ? data['barcode']?.toString() ?? ''
+                                                        : data['short_barcode']?.toString() ?? '';
+                                                    Clipboard.setData(ClipboardData(text: text));
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      SnackBar(
+                                                        content: Text('$text kopiert'),
+                                                        duration: const Duration(seconds: 1),
+                                                        behavior: SnackBarBehavior.floating,
+                                                      ),
+                                                    );
+                                                  },
+                                                  child: Icon(
+                                                    Icons.copy,
+                                                    size: 14,
+                                                    color: Colors.grey[400],
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           ],
                                         ),
@@ -2604,7 +2615,13 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                 else
                                   _buildInventoryStatus(data),
                               ],
+
                             ),
+                            if (!_isOnlineShopView)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: _buildStatusIndicators(data),
+                              ),
                           ],
                         ),
                       ),
@@ -2618,13 +2635,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       },
     );
   }
-
   @override
   Widget build(BuildContext context) {
     SizeConfig().init(context);
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktopLayout = screenWidth > ResponsiveBreakpoints.tablet;
-
+    _isDesktopLayout = isDesktopLayout;  // NEU
     return StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, userSnapshot) {
@@ -2657,6 +2673,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                           onTap: () {
                             setState(() => _isOnlineShopView = false);
                             _updateProductStream(); // HIER hinzufügen
+                            _saveFilters();
                           },
                           child: Container(
                             alignment: Alignment.center,
@@ -2687,6 +2704,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                           onTap: () {
                             setState(() => _isOnlineShopView = true);
                             _updateProductStream(); // HIER hinzufügen
+                            _saveFilters();
                           },
                           child: Container(
                             alignment: Alignment.center,
@@ -3156,9 +3174,132 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
             const SizedBox(height: 16),
 
+            // Shop-Filter in der linken Spalte (nur wenn Shop-Ansicht aktiv)
+            if (_isOnlineShopView) ...[
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withValues(
+                        red: 0, green: 0, blue: 0, alpha: 0.1,
+                      ),
+                      spreadRadius: 1,
+                      blurRadius: 3,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: getAdaptiveIcon(
+                            iconName: 'storefront',
+                            defaultIcon: Icons.storefront,
+                            color: const Color(0xFF0F4A29),
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Shop-Status',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilterChip(
+                            label: const Center(child: Text('Alle')),
+                            selected: _shopFilter == null,
+                            onSelected: (selected) {
+                              setState(() {
+                                _shopFilter = null;
+                                _updateProductStream();
+                              });
+                              _saveFilters();
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilterChip(
+                            label: const Center(child: Text('Im Shop')),
+                            selected: _shopFilter == 'available',
+                            onSelected: (selected) {
+                              setState(() {
+                                _shopFilter = selected ? 'available' : null;
+                                _updateProductStream();
+                              });
+                              _saveFilters();
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilterChip(
+                            label: const Center(child: Text('Verkauft')),
+                            selected: _shopFilter == 'sold',
+                            onSelected: (selected) {
+                              setState(() {
+                                _shopFilter = selected ? 'sold' : null;
+                                _updateProductStream();
+                              });
+                              _saveFilters();
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilterChip(
+                            avatar: getAdaptiveIcon(
+                              iconName: 'discount',
+                              defaultIcon: Icons.discount,
+                              size: 18,
+                              color: _shopFilter == 'discounted' ? Colors.orange : null,
+                            ),
+                            label: const Center(child: Text('Rabattiert')),
+                            selected: _shopFilter == 'discounted',
+                            selectedColor: Colors.orange.withOpacity(0.2),
+                            onSelected: (selected) {
+                              setState(() {
+                                _shopFilter = selected ? 'discounted' : null;
+                                _updateProductStream();
+                              });
+                              _saveFilters();
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
             if (instruments != null) ...[
               _buildFilterCategory(
-                iconName: 'music_note', // Neuer Parameter für das PNG im Web
+                iconName: 'music_note',
                 icon: Icons.music_note,
                 title: 'Instrument',
                 child: _buildMultiSelectDropdown(
@@ -3168,8 +3309,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   onChanged: (newSelection) {
                     setState(() {
                       selectedInstrumentCodes = newSelection;
-                     _searchController.clear();
-                     _activeSearchText = '';
+                      _searchController.clear();
+                      _activeSearchText = '';
                       _hasUnsearchedChanges = false;
                     });
                     _saveFilters();
@@ -3192,8 +3333,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   onChanged: (newSelection) {
                     setState(() {
                       selectedPartCodes = newSelection;
-                     _searchController.clear();
-    _activeSearchText = '';
+                      _searchController.clear();
+                      _activeSearchText = '';
                       _hasUnsearchedChanges = false;
                     });
                     _saveFilters();
@@ -3216,8 +3357,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   onChanged: (newSelection) {
                     setState(() {
                       selectedWoodCodes = newSelection;
-                     _searchController.clear();
-    _activeSearchText = '';
+                      _searchController.clear();
+                      _activeSearchText = '';
                       _hasUnsearchedChanges = false;
                     });
                     _saveFilters();
@@ -3240,8 +3381,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   onChanged: (newSelection) {
                     setState(() {
                       selectedQualityCodes = newSelection;
-                     _searchController.clear();
-    _activeSearchText = '';
+                      _searchController.clear();
+                      _activeSearchText = '';
                       _hasUnsearchedChanges = false;
                     });
                     _saveFilters();
@@ -3291,7 +3432,6 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       ),
     );
   }
-
   Widget _buildFilterCategory({
     required dynamic icon,  // Kann IconData oder ein Widget von getAdaptiveIcon sein
     required String title,
@@ -3553,7 +3693,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Diese Werte können im Warenkorb individuell angepasst werden',
+                            'Werte können im Warenkorb indiv. angepasst werden',
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.blue[800],
@@ -3935,7 +4075,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     // Wenn verkauft - höchste Priorität
     if (isSold) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: EdgeInsets.symmetric(horizontal: isDesktopLayout ? 12 : 8, vertical: 6),
         decoration: BoxDecoration(
           color: Colors.red.withOpacity(0.1),
           borderRadius: BorderRadius.circular(20),
@@ -3953,15 +4093,17 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               color: Colors.red,
               size: 16,
             ),
-            const SizedBox(width: 6),
-            Text(
-              isDesktopLayout ? 'Verkauft' : 'Verk.',
-              style: const TextStyle(
-                color: Colors.red,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
+            if (isDesktopLayout) ...[
+              const SizedBox(width: 6),
+              const Text(
+                'Verkauft',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       );
@@ -3970,7 +4112,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     // Wenn im Warenkorb
     if (isInCart) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: EdgeInsets.symmetric(horizontal: isDesktopLayout ? 12 : 8, vertical: 6),
         decoration: BoxDecoration(
           color: Colors.blue.withOpacity(0.1),
           borderRadius: BorderRadius.circular(20),
@@ -3988,15 +4130,17 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               color: Colors.blue,
               size: 16,
             ),
-            const SizedBox(width: 6),
-            Text(
-              isDesktopLayout ? 'Im Warenkorb' : 'Warenk.',
-              style: const TextStyle(
-                color: Colors.blue,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
+            if (isDesktopLayout) ...[
+              const SizedBox(width: 6),
+              const Text(
+                'Im Warenkorb',
+                style: TextStyle(
+                  color: Colors.blue,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       );
@@ -4019,7 +4163,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           final quoteNumber = quoteId['quoteId'] ?? '';
 
           return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: EdgeInsets.symmetric(horizontal: isDesktopLayout ? 12 : 8, vertical: 6),
             decoration: BoxDecoration(
               color: Colors.orange.withOpacity(0.1),
               borderRadius: BorderRadius.circular(20),
@@ -4037,16 +4181,18 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   color: Colors.orange,
                   size: 16,
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  isDesktopLayout ? 'Reserviert ($quoteNumber)' : 'Reserv.',
-                  style: const TextStyle(
-                    color: Colors.orange,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
+                if (isDesktopLayout) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    'Reserviert ($quoteNumber)',
+                    style: const TextStyle(
+                      color: Colors.orange,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  overflow: TextOverflow.ellipsis,
-                ),
+                ],
               ],
             ),
           );
@@ -4054,7 +4200,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
         // Verfügbar (Standard)
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: EdgeInsets.symmetric(horizontal: isDesktopLayout ? 12 : 8, vertical: 6),
           decoration: BoxDecoration(
             color: Colors.green.withOpacity(0.1),
             borderRadius: BorderRadius.circular(20),
@@ -4072,15 +4218,17 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                 color: Colors.green,
                 size: 16,
               ),
-              const SizedBox(width: 6),
-              Text(
-                isDesktopLayout ? 'Verfügbar' : 'Verf.',
-                style: const TextStyle(
-                  color: Colors.green,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
+              if (isDesktopLayout) ...[
+                const SizedBox(width: 6),
+                const Text(
+                  'Verfügbar',
+                  style: TextStyle(
+                    color: Colors.green,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         );
@@ -4089,143 +4237,121 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
 // Neue Hilfsmethode für Lagerbestand Status
   Widget _buildInventoryStatus(Map<String, dynamic> data) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        // Hauptbestand mit verfügbarer Menge
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-
-
-
-
-
-            color: const Color(0xFF0F4A29).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: const Color(0xFF0F4A29).withOpacity(0.3),
-              width: 1,
-            ),
-          ),
-          child: StreamBuilder<double>(
-            stream: _getAvailableQuantityStream(data['short_barcode']),
-            builder: (context, availableSnapshot) {
-              final available = availableSnapshot.data ?? data['quantity'] ?? 0;
-              final total = data['quantity'] ?? 0;
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                  getAdaptiveIcon(
-                  iconName: 'inventory',
-                  defaultIcon:
-                        Icons.inventory,
-                        size: 14,
-                        color: const Color(0xFF0F4A29),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '$total',
-                        style: const TextStyle(
-                          color: Color(0xFF0F4A29),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (available != total) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      'verfügbar: ${available % 1 == 0 ? available.toInt().toString() : available.toStringAsFixed(3)}',
-                      style: TextStyle(
-                        color: const Color(0xFF0F4A29).withOpacity(0.8),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ],
-              );
-            },
-          ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F4A29).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFF0F4A29).withOpacity(0.3),
+          width: 1,
         ),
+      ),
+      child: StreamBuilder<double>(
+        stream: _getAvailableQuantityStream(data['short_barcode']),
+        builder: (context, availableSnapshot) {
+          final available = availableSnapshot.data ?? data['quantity'] ?? 0;
+          final total = data['quantity'] ?? 0;
 
-        // Status-Indikatoren in einer Zeile
-        Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Warenkorb Status
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('temporary_basket')
-                    .where('product_id', isEqualTo: data['short_barcode'])
-                    .snapshots(),
-                builder: (context, cartSnapshot) {
-                  double cartQuantity = 0;
-                  if (cartSnapshot.hasData) {
-                    cartQuantity = cartSnapshot.data!.docs.fold(0,
-                            (sum, doc) => sum + (doc.data() as Map<String, dynamic>)['quantity'] as double);
-                  }
-                  if (cartQuantity > 0) {
-                    return _buildStatusIndicator(
-                      icon: Icons.shopping_cart,
-                      iconName: 'shopping_cart',
-                      value: cartQuantity,
-                      color: Colors.orange,
-                      tooltip: 'Im Warenkorb',
-                    );
-                  }
-                  return const SizedBox.shrink();
-                },
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  getAdaptiveIcon(
+                    iconName: 'inventory',
+                    defaultIcon: Icons.inventory,
+                    size: 14,
+                    color: const Color(0xFF0F4A29),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$total',
+                    style: const TextStyle(
+                      color: Color(0xFF0F4A29),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ),
-
-              // Reservierungen Status
-              StreamBuilder<double>(
-                stream: _getReservedQuantityStream(data['short_barcode']),
-                builder: (context, reservedSnapshot) {
-                  final reservedQuantity = reservedSnapshot.data ?? 0;
-                  if (reservedQuantity > 0) {
-                    return Padding(
-                      padding: const EdgeInsets.only(left: 6),
-                      child: _buildStatusIndicator(
-                        icon: Icons.lock_clock,
-                        iconName: 'lock_clock',
-                        value: reservedQuantity,
-                        color: Colors.purple,
-                        tooltip: 'Reserviert',
-                      ),
-                    );
-                  }
-                  return const SizedBox.shrink();
-                },
-              ),
-
-              // Online Shop Status
-              if ((data['quantity_online_shop'] ?? 0) > 0)
-                Padding(
-                  padding: const EdgeInsets.only(left: 6),
-                  child: _buildStatusIndicator(
-                    icon: Icons.language,
-                    iconName: 'language',
-                    value: (data['quantity_online_shop'] ?? 0).toDouble(), // Konvertiere zu double
-                    color: Colors.blue,
-                    tooltip: 'Online Shop',
+              if (available != total) ...[
+                const SizedBox(height: 2),
+                Text(
+                  'verfügbar: ${available % 1 == 0 ? available.toInt().toString() : available.toStringAsFixed(3)}',
+                  style: TextStyle(
+                    color: const Color(0xFF0F4A29).withOpacity(0.8),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
+              ],
             ],
-          ),
-        ),
-      ],
+          );
+        },
+      ),
     );
   }
 
+  Widget _buildStatusIndicators(Map<String, dynamic> data) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Warenkorb Status (alle User)
+        StreamBuilder<double>(
+          stream: UserBasketService.totalCartQuantityStream(data['short_barcode']),
+          builder: (context, cartSnapshot) {
+            final cartQuantity = cartSnapshot.data ?? 0;
+            if (cartQuantity > 0) {
+              return Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: _buildStatusIndicator(
+                  icon: Icons.shopping_cart,
+                  iconName: 'shopping_cart',
+                  value: cartQuantity,
+                  color: Colors.orange,
+                  tooltip: 'Im Warenkorb',
+                ),
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        ),
+
+        // Reservierungen Status
+        StreamBuilder<double>(
+          stream: _getReservedQuantityStream(data['short_barcode']),
+          builder: (context, reservedSnapshot) {
+            final reservedQuantity = reservedSnapshot.data ?? 0;
+            if (reservedQuantity > 0) {
+              return Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: _buildStatusIndicator(
+                  icon: Icons.lock_clock,
+                  iconName: 'lock_clock',
+                  value: reservedQuantity,
+                  color: Colors.purple,
+                  tooltip: 'Reserviert',
+                ),
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        ),
+
+        // Online Shop Status
+        if ((data['quantity_online_shop'] ?? 0) > 0)
+          _buildStatusIndicator(
+            icon: Icons.language,
+            iconName: 'language',
+            value: (data['quantity_online_shop'] ?? 0).toDouble(),
+            color: Colors.blue,
+            tooltip: 'Online Shop',
+          ),
+      ],
+    );
+  }
 // Hilfsmethode für Status-Indikatoren
   Widget _buildStatusIndicator({
     required IconData icon,
@@ -4233,7 +4359,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     required double value,
     required Color color,
     required String tooltip,
-  }) {
+  })
+  {
     return Tooltip(
       message: tooltip,
       child: Container(

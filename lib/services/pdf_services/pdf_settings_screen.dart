@@ -2,9 +2,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../customers/customer.dart';
-import '../customers/customer_cache_service.dart';
-import '../services/icon_helper.dart';
+
+import '../../customers/customer.dart';
+import '../../customers/customer_cache_service.dart';
+import '../icon_helper.dart';
+
 
 /// Enum für die Adressanzeige-Optionen
 enum AddressDisplayMode {
@@ -390,7 +392,7 @@ class _PdfSettingsScreenState extends State<PdfSettingsScreen> with SingleTicker
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('PDF Einstellungen'),
+        title: const Text('Tabellen & Layout'),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),

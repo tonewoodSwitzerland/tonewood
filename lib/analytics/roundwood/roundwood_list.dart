@@ -305,6 +305,20 @@ Future<void> _loadNames() async {
                           ),
                         ],
                         const Spacer(),
+
+                        // ✅ NEU: Filter-Button
+                        Badge(
+                          isLabelVisible: widget.filter.toMap().isNotEmpty,
+                          label: Text(widget.filter.toMap().length.toString()),
+                          child: IconButton(
+                            tooltip: 'Filter',
+                            icon: getAdaptiveIcon(
+                              iconName: 'filter_list',
+                              defaultIcon: Icons.filter_list,
+                            ),
+                            onPressed: _showFilterDialog,
+                          ),
+                        ),
                         IconButton(
                           tooltip: _roundwoodSortAscending
                               ? 'Stammnummer aufsteigend'

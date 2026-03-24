@@ -3,8 +3,11 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../document_selection_manager.dart';
-import '../pdf_settings_screen.dart';
+import '../../quotes/quote_doc_selection_manager.dart';
+import '../pdf_services/pdf_settings_screen.dart';
+import '../pdf_services/pdf_header_footer_settings_screen.dart';
+import '../product_sorting_manager.dart';
+import '../user_basket_service.dart';
 import 'base_pdf_generator.dart';
 
 class PackingListGenerator extends BasePdfGenerator {
@@ -53,7 +56,7 @@ class PackingListGenerator extends BasePdfGenerator {
       });
     } catch (e) {
       print('Fehler beim Erstellen der Packliste-Nummer: $e');
-      return 'PL-${DateTime.now().year}-1000';
+      rethrow;
     }
   }
 
@@ -69,6 +72,7 @@ class PackingListGenerator extends BasePdfGenerator {
   }) async {
     final pdf = pw.Document();
     final logo = await BasePdfGenerator.loadLogo();
+    final hfSettings = await PdfHeaderFooterSettings.load();
 
     // Generiere Packliste-Nummer falls nicht übergeben
     final packingNum = packingListNumber ?? await getNextPackingListNumber();
@@ -135,8 +139,8 @@ class PackingListGenerator extends BasePdfGenerator {
         final productId = item['product_id'] as String? ?? '';
         if (productId.isNotEmpty && !measurementsCache.containsKey(productId)) {
           try {
-            final basketQuery = await FirebaseFirestore.instance
-                .collection('temporary_basket')
+            final basketQuery = await
+                UserBasketService.temporaryBasket
                 .where('product_id', isEqualTo: productId)
                 .limit(1)
                 .get();
@@ -236,6 +240,14 @@ class PackingListGenerator extends BasePdfGenerator {
       }
     }
 
+    // Items innerhalb jedes Pakets sortieren (gleiche Sortierung wie Handelsrechnung)
+    for (int i = 0; i < packages.length; i++) {
+      final packageItems = List<Map<String, dynamic>>.from(packages[i]['items'] ?? []);
+      if (packageItems.isNotEmpty) {
+        packages[i]['items'] = await ProductSortingManager.sortProducts(packageItems);
+      }
+    }
+
     // Übersetzungsfunktion
     String getTranslation(String key) {
       final translations = {
@@ -303,6 +315,7 @@ class PackingListGenerator extends BasePdfGenerator {
                   logo: logo,
                   costCenter: null,
                   language: language,
+                  hfSettings: hfSettings,
                 ),
                 pw.SizedBox(height: 20),
 
@@ -318,7 +331,7 @@ class PackingListGenerator extends BasePdfGenerator {
                 ),
 
                 // Footer
-                BasePdfGenerator.buildFooter(),
+                BasePdfGenerator.buildFooter(hfSettings: hfSettings),
               ],
             );
           },
@@ -343,6 +356,7 @@ class PackingListGenerator extends BasePdfGenerator {
                 pageNumber: context.pageNumber,
                 totalPages: context.pagesCount,
                 language: language,
+                hfSettings: hfSettings,
               ),
               pw.SizedBox(height: 10),
             ],
@@ -352,6 +366,7 @@ class PackingListGenerator extends BasePdfGenerator {
           pageNumber: context.pageNumber,
           totalPages: context.pagesCount,
           language: language,
+          hfSettings: hfSettings,
         ),
         build: (pw.Context context) { // Async entfernt
           final List<pw.Widget> content = [];
@@ -366,6 +381,7 @@ class PackingListGenerator extends BasePdfGenerator {
             language: language,
             additionalReference: invoiceNumber != null ? 'invoice_nr:$invoiceNumber' : null,
             secondaryReference: quoteNumber != null ? 'quote_nr:$quoteNumber' : null,
+            hfSettings: hfSettings,
           ));
           content.add(pw.SizedBox(height: 20));
 
@@ -445,6 +461,13 @@ class PackingListGenerator extends BasePdfGenerator {
             ],
           ),
           pw.SizedBox(height: 2),
+          pw.Text(
+            language == 'EN'
+                ? 'Stackable: ${package['stackable'] == true ? 'Yes' : 'No'}'
+                : 'Stapelbar: ${package['stackable'] == true ? 'Ja' : 'Nein'}',
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey600),
+          ),
+          pw.SizedBox(height: 2),
           pw.Row(
             children: [
               pw.Expanded(
@@ -454,7 +477,7 @@ class PackingListGenerator extends BasePdfGenerator {
                 ),
               ),
               pw.Text(
-                '${getTranslation('gross_volume')}: ${grossVolume.toStringAsFixed(4)} m³',
+                '${getTranslation('gross_volume')}: ${grossVolume.toStringAsFixed(5)} m³',
                 style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey600),
               ),
             ],
@@ -549,9 +572,12 @@ class PackingListGenerator extends BasePdfGenerator {
       final thickness = (measurements['custom_thickness'] as num).toDouble();
 
       // Holzart-Info für Dichte
+      // Holzart-Info für Dichte
       final woodCode = item['wood_code'] as String? ?? '';
       final woodInfo = woodTypeCache[woodCode] ?? {};
-      final density = (woodInfo['density'] as num?)?.toDouble() ?? 0.0;
+      final baseDensity = (woodInfo['density'] as num?)?.toDouble() ?? 0.0;
+      final customDensity = (item['custom_density'] as num?)?.toDouble() ?? 0.0;
+      final density = customDensity > 0 ? customDensity : baseDensity;
 
       // Volumen berechnen
       double volumePerPiece = 0.0;
@@ -635,7 +661,7 @@ class PackingListGenerator extends BasePdfGenerator {
       String weightPerPieceText = '';
       String volumePerPieceText = '';
 
-      if (unit == 'Stk') {
+      if (unit == 'Stk' || unit == 'pcs') {
         weightPerPieceText = '${weightPerPiece.toStringAsFixed(3)} kg';
         volumePerPieceText = '${volumePerPiece.toStringAsFixed(5)} m³';
       }
@@ -693,7 +719,7 @@ class PackingListGenerator extends BasePdfGenerator {
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                '${totalVolume.toStringAsFixed(4)} m³',
+                '${totalVolume.toStringAsFixed(5)} m³',
                 style: const pw.TextStyle(fontSize: 8),
                 textAlign: totalVolumeAlign,
               ),
@@ -723,7 +749,7 @@ class PackingListGenerator extends BasePdfGenerator {
                 textAlign: totalWeightAlign),
           ),
           BasePdfGenerator.buildContentCell(
-            pw.Text('${packageNetVolume.toStringAsFixed(4)} m³',
+            pw.Text('${packageNetVolume.toStringAsFixed(5)} m³',
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
                 textAlign: totalVolumeAlign),
           ),
@@ -750,7 +776,7 @@ class PackingListGenerator extends BasePdfGenerator {
                 textAlign: totalWeightAlign),
           ),
           BasePdfGenerator.buildContentCell(
-            pw.Text('${(packageNetVolume+grossVolume).toStringAsFixed(4)} m³',
+            pw.Text('${(packageNetVolume+grossVolume).toStringAsFixed(5)} m³',
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
                 textAlign: totalVolumeAlign),
           ),

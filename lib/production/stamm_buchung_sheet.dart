@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../constants.dart';
-import '../home/add_product_screen.dart';
+import 'add_product_screen.dart';
 import '../home/barcode_scanner.dart';
 import '../services/icon_helper.dart';
 

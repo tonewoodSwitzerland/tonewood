@@ -1,11 +1,37 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // NEU: Import für Auth
 import 'package:flutter/material.dart';
 import 'order_model.dart';
 import '../services/icon_helper.dart';
 
 class OrderFilterService {
-  static const String _filterDocId = 'order_filter_settings';
-  static const String _favoritesCollection = 'order_filter_favorites';
+
+  // ─── NEU: BENUTZERSPEZIFISCHE PFADE ────────────────────────────────────────
+
+  static String? get _userId => FirebaseAuth.instance.currentUser?.uid;
+
+  // Referenz für den aktuellen Filter des eingeloggten Users
+  static DocumentReference? get _userFilterDoc {
+    final uid = _userId;
+    if (uid == null) return null;
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('settings')
+        .doc('order_filters');
+  }
+
+  // Referenz für die Favoriten des eingeloggten Users
+  static CollectionReference? get _userFavoritesCollection {
+    final uid = _userId;
+    if (uid == null) return null;
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('order_filter_favorites');
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
 
   // Filter Model
   static Map<String, dynamic> createEmptyFilter() {
@@ -16,53 +42,53 @@ class OrderFilterService {
       'veranlagungStatus': null,
       'searchText': '',
       'quickStatus': null,
-      // NEU: Datumsfilter
       'dateFilterType': null,  // 'current_year', 'current_month', 'custom'
       'startDate': null,
       'endDate': null,
     };
   }
 
-  // Lade gespeicherte Filter
+  // Lade gespeicherte Filter (User-Spezifisch)
   static Stream<Map<String, dynamic>> loadSavedFilters() {
-    return FirebaseFirestore.instance
-        .collection('general_data')
-        .doc(_filterDocId)
-        .snapshots()
-        .map((snapshot) {
+    final docRef = _userFilterDoc;
+    if (docRef == null) {
+      // Fallback: Wenn kein User eingeloggt ist, gib leeren Filter zurück
+      return Stream.value(createEmptyFilter());
+    }
+
+    return docRef.snapshots().map((snapshot) {
       if (snapshot.exists && snapshot.data() != null) {
-        return snapshot.data()!;
+        return snapshot.data() as Map<String, dynamic>;
       }
       return createEmptyFilter();
     });
   }
 
-  // Speichere Filter
+  // Speichere Filter (User-Spezifisch)
   static Future<void> saveFilters(Map<String, dynamic> filters) async {
-    await FirebaseFirestore.instance
-        .collection('general_data')
-        .doc(_filterDocId)
-        .set({
+    final docRef = _userFilterDoc;
+    if (docRef == null) return;
+
+    await docRef.set({
       ...filters,
       'lastUpdated': FieldValue.serverTimestamp(),
     });
   }
 
-  // Reset Filter
+  // Reset Filter (User-Spezifisch)
   static Future<void> resetFilters() async {
-    await FirebaseFirestore.instance
-        .collection('general_data')
-        .doc(_filterDocId)
-        .delete();
+    final docRef = _userFilterDoc;
+    if (docRef == null) return;
+
+    await docRef.delete();
   }
 
-  // Favoriten Management
+  // Favoriten Management (User-Spezifisch)
   static Future<void> saveFavorite(String name, Map<String, dynamic> filters) async {
-    await FirebaseFirestore.instance
-        .collection('general_data')
-        .doc(_filterDocId)
-        .collection(_favoritesCollection)
-        .add({
+    final colRef = _userFavoritesCollection;
+    if (colRef == null) throw Exception('Benutzer nicht angemeldet');
+
+    await colRef.add({
       'name': name,
       'filters': filters,
       'createdAt': FieldValue.serverTimestamp(),
@@ -70,23 +96,20 @@ class OrderFilterService {
   }
 
   static Stream<QuerySnapshot> getFavorites() {
-    return FirebaseFirestore.instance
-        .collection('general_data')
-        .doc(_filterDocId)
-        .collection(_favoritesCollection)
-        .orderBy('createdAt', descending: true)
-        .snapshots();
+    final colRef = _userFavoritesCollection;
+    if (colRef == null) {
+      return const Stream.empty(); // Leerer Stream, falls nicht eingeloggt
+    }
+
+    return colRef.orderBy('createdAt', descending: true).snapshots();
   }
 
   static Future<void> deleteFavorite(String favoriteId) async {
-    await FirebaseFirestore.instance
-        .collection('general_data')
-        .doc(_filterDocId)
-        .collection(_favoritesCollection)
-        .doc(favoriteId)
-        .delete();
-  }
+    final colRef = _userFavoritesCollection;
+    if (colRef == null) return;
 
+    await colRef.doc(favoriteId).delete();
+  }
   // Query Builder
   static Query<Map<String, dynamic>> buildFilteredQuery(Map<String, dynamic> filters) {
     Query<Map<String, dynamic>> query = FirebaseFirestore.instance.collection('orders');

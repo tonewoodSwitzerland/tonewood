@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -18,8 +20,8 @@ import 'order_filter_favorites_sheet.dart';
 import 'order_filter_service.dart';
 import 'order_model.dart';
 import '../services/icon_helper.dart';
-import '../services/orders_document_manager.dart';
-import '../services/order_document_preview_manager.dart';
+import 'orders_document_manager.dart';
+import '../analytics/sales/services/customer_stats_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io' show File; // Nur für Mobile
 // Zentrale Farbdefinitionen
@@ -71,20 +73,30 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
           children: [
             const Text('Aufträge', style: TextStyle(fontWeight: FontWeight.w600)),
             if (OrderFilterService.hasActiveFilters(_activeFilters))
-              Container(
-                margin: const EdgeInsets.only(left: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '${_getFilteredOrdersCount()} gefiltert',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
+              StreamBuilder<QuerySnapshot>(
+                stream: _buildOrdersQuery(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) return const SizedBox.shrink();
+                  final count = OrderFilterService.applyClientSideFilters(
+                    snapshot.data!.docs.map((doc) => OrderX.fromFirestore(doc)).toList(),
+                    _activeFilters,
+                  ).length;
+                  return Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '$count gefiltert',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  );
+                },
               ),
           ],
         ),
@@ -94,7 +106,6 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
             onPressed: () => InfoHelpSheet.showForOrders(context),
             tooltip: 'Hilfe & Info',
           ),
-          // Filter-Button
           IconButton(
             icon: Badge(
               isLabelVisible: OrderFilterService.hasActiveFilters(_activeFilters),
@@ -106,7 +117,6 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
             ),
             onPressed: _showFilterDialog,
           ),
-          // Favoriten
           IconButton(
             icon: getAdaptiveIcon(
               iconName: 'star',
@@ -359,11 +369,6 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
     );
   }
 
-// Helper Methode für gefilterte Anzahl:
-  int _getFilteredOrdersCount() {
-    // Diese Zahl wird später durch einen StreamBuilder aktualisiert
-    return 0;
-  }
 
 
   Widget _buildCompactStatistics() {
@@ -372,18 +377,19 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const SizedBox(height: 60);
 
-        // Alle Orders laden
         final allOrders = snapshot.data!.docs
             .map((doc) => OrderX.fromFirestore(doc))
             .toList();
 
-        // Filter anwenden (wichtig für Datumsfilter!)
+        // Filter OHNE quickStatus anwenden → Zahlen bleiben immer sichtbar
+        final filtersWithoutQuick = Map<String, dynamic>.from(_activeFilters);
+        filtersWithoutQuick.remove('quickStatus');
+
         final filteredOrders = OrderFilterService.applyClientSideFilters(
-            allOrders,
-            _activeFilters
+          allOrders,
+          filtersWithoutQuick,
         );
 
-        // Statistiken basierend auf gefilterten Orders
         final processingOrders = filteredOrders.where((o) => o.status == OrderStatus.processing).length;
         final shippedOrders = filteredOrders.where((o) => o.status == OrderStatus.shipped).length;
 
@@ -614,6 +620,19 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                               ),
                             ),
+                            // Versanddatum anzeigen wenn vorhanden
+                            if (order.status == OrderStatus.shipped && order.shippedAt != null) ...[
+                              Text(
+                                ' • ',
+                                style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4)),
+                              ),
+                              Icon(Icons.local_shipping, size: 11, color: const Color(0xFF7C4DFF).withOpacity(0.8)),
+                              const SizedBox(width: 2),
+                              Text(
+                                DateFormat('dd.MM.yy').format(order.shippedAt!),
+                                style: TextStyle(fontSize: 11, color: const Color(0xFF7C4DFF).withOpacity(0.9)),
+                              ),
+                            ],
                             // Zeige Angebotsnummer wenn vorhanden
                             if (order.quoteNumber != null && order.quoteNumber!.isNotEmpty) ...[
                               Text(
@@ -788,12 +807,15 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                   ),
                   const SizedBox(width: 4),
                   // Teilen
-                  _buildCompactActionButton(
-                    icon: Icons.share,
-                    iconName:'share',
-                    onPressed: () => _shareOrder(order),
-                    tooltip: 'Teilen',
-                  ),
+                  if (!kIsWeb) ...[
+                    const SizedBox(width: 4),
+                    _buildCompactActionButton(
+                      icon: Icons.share,
+                      iconName: 'share',
+                      onPressed: () => _shareOrder(order),
+                      tooltip: 'Teilen',
+                    ),
+                  ],
                   if ( order.status == OrderStatus.processing) ...[
                     const SizedBox(width: 4),
                     _buildCompactActionButton(
@@ -948,6 +970,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
         EditItemMeasurementsDialog.show(context, order, item, index);
       },
       onVeranlagung: _showVeranlagungsverfuegungDialog,
+      onEditShippedAt: (order) => _editShippedAt(context, order),
     );
   }
 
@@ -1242,6 +1265,13 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
 
   Future<void> _updateOrderStatusValue(OrderX order, OrderStatus status) async {
     try {
+      // Wenn Status auf 'shipped' wechselt → Versanddatum-Dialog zeigen
+      DateTime? shippedAt;
+      if (status == OrderStatus.shipped && order.status != OrderStatus.shipped) {
+        shippedAt = await _showShippedDateDialog(context, DateTime.now());
+        if (shippedAt == null) return; // User hat abgebrochen
+      }
+
       final user = FirebaseAuth.instance.currentUser;
       final batch = FirebaseFirestore.instance.batch();
 
@@ -1250,10 +1280,14 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
           .collection('orders')
           .doc(order.id);
 
-      batch.update(orderRef, {
+      final updateData = <String, dynamic>{
         'status': status.name,
         'status_updated_at': FieldValue.serverTimestamp(),
-      });
+      };
+      if (shippedAt != null) {
+        updateData['shippedAt'] = Timestamp.fromDate(shippedAt);
+      }
+      batch.update(orderRef, updateData);
 
       // Create History Entry
       final historyRef = FirebaseFirestore.instance
@@ -1274,10 +1308,34 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
           'new_value': status.name,
           'old_display': order.status.displayName,
           'new_display': status.displayName,
+          if (shippedAt != null) 'shipped_at': shippedAt.toIso8601String(),
         },
       });
 
       await batch.commit();
+
+      // =====================================================
+      // NEU: Customer Stats aktualisieren
+      // =====================================================
+
+      // Wenn Status auf 'shipped' wechselt → Stats addieren
+      if (status == OrderStatus.shipped && order.status != OrderStatus.shipped) {
+        CustomerStatsService.handleOrderShipped(order.id).catchError((e) {
+          print('⚠️ Fehler beim Update der Kunden-Stats (shipped): $e');
+        });
+      }
+
+      // Wenn von 'shipped' weg gewechselt wird → Stats abziehen
+      // (z.B. shipped → processing, falls Status zurückgesetzt wird)
+      if (order.status == OrderStatus.shipped && status != OrderStatus.shipped) {
+        CustomerStatsService.handleOrderCancelled(order.id).catchError((e) {
+          print('⚠️ Fehler beim Update der Kunden-Stats (un-shipped): $e');
+        });
+      }
+
+      // =====================================================
+      // ENDE NEU
+      // =====================================================
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1299,6 +1357,159 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(8),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    }
+  }
+
+
+  // ─── Versanddatum-Dialog (beim Status-Wechsel auf "Versendet") ───────────────
+
+  Future<DateTime?> _showShippedDateDialog(BuildContext context, DateTime initialDate) async {
+    DateTime selectedDate = initialDate;
+
+    return showDialog<DateTime>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.local_shipping, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 10),
+              const Text('Versanddatum'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Wann wurde der Auftrag versendet?\nDieses Datum wird für die Umsatzauswertung verwendet.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
+              ),
+              const SizedBox(height: 20),
+              InkWell(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now().add(const Duration(days: 1)),
+                    locale: const Locale('de', 'CH'),
+                  );
+                  if (picked != null) {
+                    setDialogState(() => selectedDate = picked);
+                  }
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Theme.of(context).colorScheme.primary),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        DateFormat('dd. MMMM yyyy', 'de').format(selectedDate),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      Icon(Icons.calendar_today, color: Theme.of(context).colorScheme.primary, size: 18),
+                    ],
+                  ),
+                ),
+              ),
+              if (selectedDate.day == DateTime.now().day &&
+                  selectedDate.month == DateTime.now().month &&
+                  selectedDate.year == DateTime.now().year)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Heute (vorgeschlagen)',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(context, selectedDate),
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('Bestätigen'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── Versanddatum manuell bearbeiten ────────────────────────────────────────
+
+  Future<void> _editShippedAt(BuildContext context, OrderX order) async {
+    final initialDate = order.shippedAt ?? order.orderDate;
+    final picked = await _showShippedDateDialog(context, initialDate);
+    if (picked == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(order.id)
+          .update({'shippedAt': Timestamp.fromDate(picked)});
+
+      // History-Eintrag
+      final user = FirebaseAuth.instance.currentUser;
+      await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(order.id)
+          .collection('history')
+          .add({
+        'timestamp': FieldValue.serverTimestamp(),
+        'user_id': user?.uid ?? 'unknown',
+        'user_email': user?.email ?? 'Unknown',
+        'user_name': user?.email ?? 'Unknown',
+        'action': 'shipped_at_changed',
+        'changes': {
+          'field': 'shippedAt',
+          'old_value': order.shippedAt?.toIso8601String() ?? 'nicht gesetzt',
+          'new_value': picked.toIso8601String(),
+        },
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Versanddatum auf ${DateFormat('dd.MM.yyyy').format(picked)} geändert'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Speichern: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(8),
           ),
         );
       }
@@ -2137,7 +2348,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
       final baseType = shipmentMatch.group(1)!;
       final number = shipmentMatch.group(2)!;
       final baseName = baseType == 'commercial_invoice_pdf' ? 'Handelsrechnung' : 'Lieferschein';
-      return '$baseName (Sendung $number)';
+      return '$baseName\n(Sendung $number)';
     }
 
     switch (docType) {
@@ -2282,17 +2493,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
             .doc(order.id)
             .snapshots(),
         builder: (context, snapshot) {
-          print('=== _viewOrderDocuments StreamBuilder ===');
-          print('snapshot.hasData: ${snapshot.hasData}');
-          print('snapshot.data?.exists: ${snapshot.data?.exists}');
-
           final currentOrder = snapshot.hasData && snapshot.data!.exists
               ? OrderX.fromFirestore(snapshot.data!)
               : order;
-
-          print('Using order from: ${snapshot.hasData ? "fromFirestore" : "parameter"}');
-          print('currentOrder.costCenter: ${currentOrder.costCenter}');
-          print('=========================================');
 
           return Container(
             height: MediaQuery.of(context).size.height * 0.7,
@@ -2339,7 +2542,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
 
                 const Divider(),
 
-                // Content
+                // Content - Gruppierte Dokumentenliste
                 Expanded(
                   child: currentOrder.documents.isEmpty
                       ? Center(
@@ -2348,8 +2551,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       children: [
                         getAdaptiveIcon(
                           iconName: 'description',
-                          defaultIcon:
-                          Icons.description,
+                          defaultIcon: Icons.description,
                           size: 40,
                           color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
                         ),
@@ -2364,65 +2566,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       ],
                     ),
                   )
-                      : ListView.builder(
-                    padding: const EdgeInsets.all(8),
-                    itemCount: currentOrder.documents.length,
-                    itemBuilder: (context, index) {
-                      final entry = currentOrder.documents.entries.elementAt(index);
-                      final docType = entry.key;
-                      final docUrl = entry.value;
-
-                      // Prüfe ob das Dokument löschbar ist
-                      // Prüfe ob das Dokument löschbar ist
-                      final isDeletable = docType == 'invoice_pdf' ||
-                          docType.startsWith('delivery_note_pdf') ||
-                          docType.startsWith('commercial_invoice_pdf') ||
-                          docType.startsWith('packing_list_pdf') ||
-                          docType == 'delivery-note_pdf' ||
-                          docType == 'commercial-invoice_pdf' ||
-                          docType == 'packing-list_pdf';
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: _getDocumentTypeColor(docType).withOpacity(0.1),
-                            child: _buildAdaptiveDocumentIcon(docType),
-                          ),
-                          title: Text(_getDocumentTypeName(docType),style: TextStyle(fontSize:12),),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon:   getAdaptiveIcon(
-                                    iconName: 'visibility',
-                                    defaultIcon:Icons.visibility, size: 20),
-                                onPressed: () => _openDocument(docUrl),
-                                tooltip: 'Öffnen',
-                              ),
-                              IconButton(
-                                icon:   getAdaptiveIcon(
-                                    iconName: 'share',
-                                    defaultIcon:Icons.share, size: 20),
-                                onPressed: () => _shareDocument(docUrl, docType, currentOrder.orderNumber),
-                                tooltip: 'Weiterleiten',
-                              ),
-                              if (isDeletable)
-                                IconButton(
-                                  icon:  getAdaptiveIcon(
-                                      iconName: 'delete',
-                                      defaultIcon:Icons.delete, size: 20, color: Colors.red),
-                                  onPressed: () => _deleteDocument(currentOrder, docType),
-                                  tooltip: 'Löschen',
-                                ),
-                              if (!isDeletable)
-                                SizedBox(width: 20,)
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                      : _buildGroupedDocumentsList(currentOrder),
                 ),
 
                 // Button zum Erstellen weiterer Dokumente
@@ -2434,12 +2578,9 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                     padding: const EdgeInsets.all(20),
                     child: ElevatedButton.icon(
                       onPressed: () async {
-                        // Navigator.pop(context); // Schließe zuerst das aktuelle Modal
                         await OrderDocumentManager.showCreateDocumentsDialog(context, currentOrder);
                       },
-                      icon:   getAdaptiveIcon(
-                          iconName: 'add',
-                          defaultIcon:Icons.add),
+                      icon: getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add),
                       label: const Text('Dokumente erstellen'),
                       style: ElevatedButton.styleFrom(
                         minimumSize: const Size(double.infinity, 48),
@@ -2451,6 +2592,147 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
           );
         },
       ),
+    );
+  }
+
+  // Hilfsmethode für das Sortieren und Gruppieren der Dokumente
+  Widget _buildGroupedDocumentsList(OrderX currentOrder) {
+    final angeboteRechnungen = <MapEntry<String, String>>[];
+    final lieferscheine = <MapEntry<String, String>>[];
+    final handelsrechnungen = <MapEntry<String, String>>[];
+    final packlisten = <MapEntry<String, String>>[];
+    final sonstige = <MapEntry<String, String>>[];
+
+    // Sortiere die Dokumente in die entsprechenden Gruppen
+    for (final entry in currentOrder.documents.entries) {
+      final key = entry.key;
+      if (key == 'quote_pdf' || key == 'invoice_pdf') {
+        angeboteRechnungen.add(entry);
+      } else if (key.startsWith('delivery_note_pdf') || key == 'delivery-note_pdf') {
+        lieferscheine.add(entry);
+      } else if (key.startsWith('commercial_invoice_pdf') || key == 'commercial-invoice_pdf') {
+        handelsrechnungen.add(entry);
+      } else if (key.startsWith('packing_list_pdf') || key == 'packing-list_pdf') {
+        packlisten.add(entry);
+      } else {
+        sonstige.add(entry);
+      }
+    }
+
+    // Hilfsfunktion: Extrahiert die Sendungsnummer (z.B. bei 'delivery_note_pdf_2' -> 2)
+    int extractShipmentNumber(String key) {
+      final match = RegExp(r'_(\d+)$').firstMatch(key);
+      if (match != null) {
+        return int.parse(match.group(1)!);
+      }
+      return 0; // Standard-Dokument (Gesamtversand) hat die Prio 0
+    }
+
+    // Sortiere die Listen innerhalb der Gruppen (damit Sendung 1 vor Sendung 2 kommt)
+    lieferscheine.sort((a, b) => extractShipmentNumber(a.key).compareTo(extractShipmentNumber(b.key)));
+    handelsrechnungen.sort((a, b) => extractShipmentNumber(a.key).compareTo(extractShipmentNumber(b.key)));
+    // Angebot vor Rechnung sortieren
+    angeboteRechnungen.sort((a, b) => b.key.compareTo(a.key));
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      children: [
+        if (angeboteRechnungen.isNotEmpty)
+          _buildDocumentGroupSection('Angebot & Rechnung', angeboteRechnungen, currentOrder),
+        if (lieferscheine.isNotEmpty)
+          _buildDocumentGroupSection('Lieferscheine', lieferscheine, currentOrder),
+        if (handelsrechnungen.isNotEmpty)
+          _buildDocumentGroupSection('Handelsrechnungen', handelsrechnungen, currentOrder),
+        if (packlisten.isNotEmpty)
+          _buildDocumentGroupSection('Packliste', packlisten, currentOrder),
+        if (sonstige.isNotEmpty)
+          _buildDocumentGroupSection('Weitere Dokumente', sonstige, currentOrder),
+      ],
+    );
+  }
+
+  // Baut eine einzelne Gruppensektion auf (Überschrift + Karten)
+  Widget _buildDocumentGroupSection(String title, List<MapEntry<String, String>> docs, OrderX currentOrder) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8, top: 12),
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ),
+        ...docs.map((entry) {
+          final docType = entry.key;
+          final docUrl = entry.value;
+
+          final isDeletable = docType == 'invoice_pdf' ||
+              docType.startsWith('delivery_note_pdf') ||
+              docType.startsWith('commercial_invoice_pdf') ||
+              docType.startsWith('packing_list_pdf') ||
+              docType == 'delivery-note_pdf' ||
+              docType == 'commercial-invoice_pdf' ||
+              docType == 'packing-list_pdf';
+
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: _getDocumentTypeColor(docType).withOpacity(0.1),
+                child: _buildAdaptiveDocumentIcon(docType),
+              ),
+              title: Text(_getDocumentTypeName(docType), style: const TextStyle(fontSize: 12)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (currentOrder.metadata['document_languages'] != null &&
+                      (currentOrder.metadata['document_languages'] as Map)[docType] != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      margin: const EdgeInsets.only(right: 4),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        (currentOrder.metadata['document_languages'] as Map)[docType] ?? '',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  IconButton(
+                    icon: getAdaptiveIcon(iconName: 'visibility', defaultIcon: Icons.visibility, size: 20),
+                    onPressed: () => _openDocument(docUrl),
+                    tooltip: 'Öffnen',
+                  ),
+                  if (!kIsWeb)
+                    IconButton(
+                      icon: getAdaptiveIcon(iconName: 'share', defaultIcon: Icons.share, size: 20),
+                      onPressed: () => _shareDocument(docUrl, docType, currentOrder.orderNumber),
+                      tooltip: 'Weiterleiten',
+                    ),
+                  if (isDeletable)
+                    IconButton(
+                      icon: getAdaptiveIcon(iconName: 'delete', defaultIcon: Icons.delete, size: 20, color: Colors.red),
+                      onPressed: () => _deleteDocument(currentOrder, docType),
+                      tooltip: 'Löschen',
+                    ),
+                  if (!isDeletable)
+                    const SizedBox(width: 40),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ],
     );
   }
 
@@ -2715,28 +2997,53 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
       }
     }
   }
-
   Future<void> _shareDocument(String url, String docType, String orderNumber) async {
     try {
-      final documentName = '${_getDocumentTypeName(docType)} - Auftrag $orderNumber';
+      final documentName = _getDocumentTypeName(docType).replaceAll('\n', ' ');
+      final fileName = '${documentName}_Auftrag_$orderNumber.pdf';
 
-      await Share.share(
-        url,
-        subject: documentName,
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      final ref = FirebaseStorage.instance.refFromURL(url);
+      final data = await ref.getData(10 * 1024 * 1024);
+
+      if (data == null) throw Exception('PDF konnte nicht geladen werden');
+
+      if (mounted) Navigator.pop(context);
+
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/$fileName');
+      await tempFile.writeAsBytes(data);
+
+      await Share.shareXFiles(
+        [XFile(tempFile.path, mimeType: 'application/pdf')],
+        subject: '$documentName - Auftrag $orderNumber',
       );
     } catch (e) {
+      print('❌ _shareDocument FEHLER: $e');
+
       if (mounted) {
-        await Clipboard.setData(ClipboardData(text: url));
+        try {
+          Navigator.of(context, rootNavigator: true).pop();
+        } catch (_) {}
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Link kopiert: $e'),
-            backgroundColor: Colors.orange,
+            content: Text('Fehler beim Teilen: ${e.toString().substring(0, (e.toString().length).clamp(0, 80))}'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            duration: const Duration(seconds: 5),
           ),
         );
       }
     }
   }
-
   Future<void> _shareOrder(OrderX order) async {
     final String orderInfo = '''
 Auftrag ${order.orderNumber}
@@ -2752,6 +3059,8 @@ Status: ${order.status.displayName}
 
 
   Future<void> _releaseOrder(OrderX order) async {
+    final bool hasQuote = order.quoteId != null && order.quoteId!.isNotEmpty;
+
     final action = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -2826,8 +3135,45 @@ Status: ${order.status.displayName}
                 ],
               ),
             ),
+            // NEU: Korrigieren-Info (nur wenn ein Angebot vorhanden ist)
+            if (hasQuote) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        getAdaptiveIcon(
+                            iconName: 'edit_note',
+                            defaultIcon: Icons.edit_note, color: Colors.green, size: 20),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Korrigieren:',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Der Auftrag wird gelöscht und das Angebot wieder als Entwurf geöffnet. '
+                          'Die Produkte bleiben reserviert und können im Angebot korrigiert werden.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
+        actionsAlignment: MainAxisAlignment.end,
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, null),
@@ -2849,9 +3195,26 @@ Status: ${order.status.displayName}
             ),
             child: const Text('Stornieren & Löschen'),
           ),
+          // NEU: Korrigieren-Button (nur wenn Angebot vorhanden)
+          if (hasQuote)
+            ElevatedButton.icon(
+              onPressed: () => Navigator.pop(context, 'cancel_and_revise'),
+              icon: const Icon(Icons.edit_note, size: 18),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              label: const Text('Stornieren & Korrigieren'),
+            ),
         ],
       ),
     );
+
+    // ─── NEU: Stornieren & Korrigieren ─────────────────────────────────────────
+    if (action == 'cancel_and_revise') {
+      await _cancelAndReviseOrder(order);
+      return;
+    }
 
     if (action != null && (action == 'cancel' || action == 'cancel_and_delete')) {
       final bool shouldDelete = action == 'cancel_and_delete';
@@ -3044,7 +3407,6 @@ Status: ${order.status.displayName}
         });
 
         // 5. Lösche den Auftrag komplett, falls gewünscht
-        // 5. Lösche den Auftrag komplett, falls gewünscht
         if (shouldDelete) {
           // Lösche zuerst die History Collection (falls vorhanden)
           try {
@@ -3099,6 +3461,12 @@ Status: ${order.status.displayName}
 
         await batch.commit();
 
+// NEU: Falls der Auftrag vorher 'shipped' war, Stats abziehen
+        if (order.status == OrderStatus.shipped) {
+          CustomerStatsService.handleOrderCancelled(order.id).catchError((e) {
+            print('⚠️ Fehler beim Update der Kunden-Stats (cancel): $e');
+          });
+        }
         if (mounted) {
           Navigator.pop(context);
 
@@ -3140,6 +3508,297 @@ Status: ${order.status.displayName}
             ),
           );
         }
+      }
+    }
+  }
+
+  // ─── NEU: Stornieren & Korrigieren ─────────────────────────────────────────
+  // Löscht den Auftrag, setzt das Angebot zurück auf Draft mit aktiven
+  // Reservierungen, sodass es korrigiert und erneut beauftragt werden kann.
+  Future<void> _cancelAndReviseOrder(OrderX order) async {
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      final batch = FirebaseFirestore.instance.batch();
+      final user = FirebaseAuth.instance.currentUser;
+
+      // 1. Stock Movements: confirmed → reserved zurücksetzen
+      //    Damit bleiben die Produkte für das Angebot reserviert.
+      final stockMovements = await FirebaseFirestore.instance
+          .collection('stock_movements')
+          .where('orderId', isEqualTo: order.id)
+          .where('status', isEqualTo: 'confirmed')
+          .get();
+
+      print('🔄 Gefundene Stock Movements zum Zurücksetzen: ${stockMovements.docs.length}');
+
+      for (final doc in stockMovements.docs) {
+        final movementData = doc.data();
+        final productId = movementData['productId'] as String?;
+        final quantity = movementData['quantity'];
+
+        // Movement zurück auf "reserved" / "reservation" setzen
+        batch.update(doc.reference, {
+          'status': 'reserved',
+          'type': 'reservation',
+          'orderId': FieldValue.delete(),
+          'orderNumber': FieldValue.delete(),
+          'confirmedAt': FieldValue.delete(),
+        });
+
+        // Lagerbestand zurückbuchen (war bei Auftragserteilung reduziert worden)
+        if (productId != null && quantity != null) {
+          final qtyDouble = (quantity is int) ? quantity.toDouble() : (quantity as double);
+
+          final inventoryRef = FirebaseFirestore.instance
+              .collection('inventory')
+              .doc(productId);
+
+          batch.update(inventoryRef, {
+            'quantity': FieldValue.increment(qtyDouble.abs()),
+            'last_modified': FieldValue.serverTimestamp(),
+          });
+
+          print('📦 Lagerbestand zurückgebucht (reserviert): $productId um ${qtyDouble.abs()}');
+        }
+
+        // Online-Shop Items: sold rückgängig machen, aber Reservierung bleibt
+        final onlineShopBarcode = movementData['onlineShopBarcode'] as String?;
+        if (onlineShopBarcode != null && onlineShopBarcode.isNotEmpty) {
+          final onlineShopRef = FirebaseFirestore.instance
+              .collection('onlineshop')
+              .doc(onlineShopBarcode);
+
+          batch.update(onlineShopRef, {
+            'sold': false,
+            'sold_at': FieldValue.delete(),
+            'order_id': FieldValue.delete(),
+            'order_number': FieldValue.delete(),
+            // KEIN 'in_cart: false' — Reservierung bleibt erhalten
+          });
+
+          // Online-Shop Menge im Inventory wieder erhöhen
+          if (productId != null) {
+            final inventoryRef = FirebaseFirestore.instance
+                .collection('inventory')
+                .doc(productId);
+
+            batch.update(inventoryRef, {
+              'quantity_online_shop': FieldValue.increment(1),
+            });
+          }
+
+          print('🛒 Online-Shop Item zurück auf reserviert: $onlineShopBarcode');
+        }
+      }
+
+      // 2. Fallback für ältere Aufträge ohne Stock Movements:
+      //    Neue Reservierungen anlegen
+      if (stockMovements.docs.isEmpty) {
+        print('⚠️ Keine Stock Movements gefunden — erstelle neue Reservierungen');
+
+        for (final item in order.items) {
+          if (item['is_manual_product'] == true || item['is_service'] == true) continue;
+
+          final productId = item['product_id'];
+          if (productId == null || productId.toString().isEmpty) continue;
+
+          final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+
+          final inventoryRef = FirebaseFirestore.instance
+              .collection('inventory')
+              .doc(productId);
+
+          // Lagerbestand zurückbuchen
+          batch.update(inventoryRef, {
+            'quantity': FieldValue.increment(quantity),
+            'last_modified': FieldValue.serverTimestamp(),
+          });
+
+          // Neue Reservierung erstellen
+          final movementRef = FirebaseFirestore.instance
+              .collection('stock_movements')
+              .doc();
+
+          final movementData = <String, dynamic>{
+            'productId': productId,
+            'quoteId': order.quoteId,
+            'quantity': -quantity,
+            'type': 'reservation',
+            'status': 'reserved',
+            'timestamp': FieldValue.serverTimestamp(),
+          };
+
+          // Online-Shop Barcode mitspeichern
+          if (item['is_online_shop_item'] == true && item['online_shop_barcode'] != null) {
+            final onlineShopBarcode = item['online_shop_barcode'] as String;
+            movementData['onlineShopBarcode'] = onlineShopBarcode;
+
+            final onlineShopRef = FirebaseFirestore.instance
+                .collection('onlineshop')
+                .doc(onlineShopBarcode);
+
+            batch.update(onlineShopRef, {
+              'sold': false,
+              'sold_at': FieldValue.delete(),
+              'order_id': FieldValue.delete(),
+              'order_number': FieldValue.delete(),
+            });
+
+            batch.update(inventoryRef, {
+              'quantity_online_shop': FieldValue.increment(1),
+            });
+          }
+
+          batch.set(movementRef, movementData);
+          print('📦 Neue Reservierung erstellt (Fallback): $productId um $quantity');
+        }
+      }
+
+      // 3. Angebot zurück auf Draft setzen
+      if (order.quoteId != null && order.quoteId!.isNotEmpty) {
+        final quoteRef = FirebaseFirestore.instance
+            .collection('quotes')
+            .doc(order.quoteId);
+
+        final quoteDoc = await quoteRef.get();
+
+        if (quoteDoc.exists) {
+          batch.update(quoteRef, {
+            'status': 'draft',
+            'orderId': FieldValue.delete(),
+            'acceptedAt': FieldValue.delete(),
+            'isOrderCancelled': false,
+            'orderCancelledAt': FieldValue.delete(),
+            // Gültigkeit neu setzen (14 Tage ab jetzt)
+            'validUntil': Timestamp.fromDate(
+              DateTime.now().add(const Duration(days: 14)),
+            ),
+          });
+
+          // History-Eintrag im Angebot
+          final quoteHistoryRef = FirebaseFirestore.instance
+              .collection('quotes')
+              .doc(order.quoteId)
+              .collection('history')
+              .doc();
+
+          batch.set(quoteHistoryRef, {
+            'timestamp': FieldValue.serverTimestamp(),
+            'user_id': user?.uid ?? 'unknown',
+            'user_email': user?.email ?? 'Unknown User',
+            'user_name': user?.email ?? 'Unknown',
+            'action': 'order_revise',
+            'order_number': order.orderNumber,
+            'reason': 'Auftrag storniert zur Korrektur — Angebot wieder als Entwurf geöffnet',
+          });
+
+          print('✅ Angebot ${order.quoteId} zurück auf Draft gesetzt');
+        }
+      }
+
+      // 4. Auftrag komplett löschen
+      // Lösche History Collection
+      try {
+        final historySnapshot = await FirebaseFirestore.instance
+            .collection('orders')
+            .doc(order.id)
+            .collection('history')
+            .get();
+
+        for (final doc in historySnapshot.docs) {
+          batch.delete(doc.reference);
+        }
+        print('✅ Order History gelöscht: ${historySnapshot.docs.length} Einträge');
+      } catch (e) {
+        print('⚠️ Fehler beim Löschen der Order History (wird ignoriert): $e');
+      }
+
+      // Lösche Storage-Dateien
+      try {
+        final storageRef = FirebaseStorage.instance
+            .ref()
+            .child('orders')
+            .child(order.id);
+
+        final listResult = await storageRef.listAll();
+        for (final item in listResult.items) {
+          await item.delete();
+        }
+        print('✅ Storage-Dateien gelöscht: ${listResult.items.length} Dateien');
+      } catch (e) {
+        print('⚠️ Fehler beim Löschen der Storage-Dateien (wird ignoriert): $e');
+      }
+
+      // Lösche den Auftrag selbst
+      batch.delete(
+        FirebaseFirestore.instance.collection('orders').doc(order.id),
+      );
+
+      // 5. Batch committen
+      await batch.commit();
+
+      // Falls der Auftrag vorher 'shipped' war, Stats abziehen
+      if (order.status == OrderStatus.shipped) {
+        CustomerStatsService.handleOrderCancelled(order.id).catchError((e) {
+          print('⚠️ Fehler beim Update der Kunden-Stats (revise): $e');
+        });
+      }
+
+      if (mounted) {
+        Navigator.pop(context); // Loading-Dialog schließen
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.edit_note, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Auftrag ${order.orderNumber} storniert — Angebot kann jetzt korrigiert werden',
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Loading-Dialog schließen
+
+        String errorMessage = 'Fehler beim Korrigieren des Auftrags: $e';
+
+        if (e.toString().contains('NOT_FOUND') || e.toString().contains('not found')) {
+          errorMessage = 'Auftrag oder Angebot konnte nicht gefunden werden.';
+        } else if (e.toString().contains('PERMISSION_DENIED')) {
+          errorMessage = 'Keine Berechtigung für diese Aktion.';
+        } else if (e.toString().contains('UNAVAILABLE')) {
+          errorMessage = 'Keine Verbindung zur Datenbank. Bitte Internetverbindung prüfen.';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            duration: const Duration(seconds: 5),
+          ),
+        );
       }
     }
   }

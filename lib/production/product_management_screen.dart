@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:tonewood/home/production_screen.dart';
+import 'package:tonewood/production/production_screen.dart';
 import 'package:tonewood/analytics/roundwood/roundwood_entry_screen.dart';
 import 'package:tonewood/warehouse/warehouse_screen.dart';
 import 'package:tonewood/production/roundwood_selection_dialog.dart';
@@ -14,7 +14,7 @@ import '../analytics/roundwood/roundwood_list.dart';
 import '../analytics/roundwood/services/roundwood_service.dart';
 import '../constants.dart';
 import '../services/icon_helper.dart';
-import '../home/add_product_screen.dart';
+import 'add_product_screen.dart';
 import 'package:intl/intl.dart';
 
 import '../home/barcode_scanner.dart';
@@ -352,6 +352,7 @@ print("sB:$searchBarcode");
       int quantity, {
         String? roundwoodId,
         Map<String, dynamic>? roundwoodData,
+        DateTime? stockEntryDate,  // NEU
       }) async {
     try {
       final firestore = FirebaseFirestore.instance;
@@ -395,7 +396,7 @@ print("sB:$searchBarcode");
       final batchData = {
         'batch_number': nextBatchNumber,
         'quantity': quantity,
-        'stock_entry_date': DateTime.now(),
+        'stock_entry_date': Timestamp.fromDate(stockEntryDate ?? DateTime.now()),
         // NEU: Stamm-Referenz
         'roundwood_id': roundwoodId,
         'roundwood_internal_number': roundwoodData?['internal_number'],
@@ -487,13 +488,14 @@ print("sB:$searchBarcode");
       context: context,
       productId: productId,
       productData: productData,
-      onConfirm: (quantity, roundwoodId, roundwoodData) {
+      onConfirm: (quantity, roundwoodId, roundwoodData, stockEntryDate) {
         _saveStockEntry(
           productId,
           productData,
           quantity,
           roundwoodId: roundwoodId,
           roundwoodData: roundwoodData,
+          stockEntryDate: stockEntryDate,
         );
       },
     );
@@ -1374,7 +1376,16 @@ print("sB:$searchBarcode");
                     child: _buildOptionButton(
                       icon: getAdaptiveIcon(iconName: 'edit', defaultIcon: Icons.edit, color: Colors.white),
                       label: 'Bearbeiten',
-                      onPressed: () => setState(() => selectedAction = 'bearbeiten'),
+                      onPressed: () {
+                        if (barcodeController.text.isNotEmpty) {
+                          final parts = barcodeController.text.split('.');
+                          if (parts.length >= 2) {
+                            partOneController.text = parts[0];
+                            partTwoController.text = parts[1];
+                          }
+                        }
+                        setState(() => selectedAction = 'bearbeiten');
+                      },
                       isWideScreen: isWide,
                       color: const Color(0xFF0F4A29),
                     ),
@@ -1688,8 +1699,9 @@ print("sB:$searchBarcode");
           ],
         ));
     }
-
   void _showRoundwoodListDialog() {
+    RoundwoodFilter _dialogFilter = RoundwoodFilter(); // ← außerhalb des builders!
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1755,16 +1767,22 @@ print("sB:$searchBarcode");
                   ],
                 ),
               ),
-              // RoundwoodList
+              // ✅ RoundwoodList mit StatefulBuilder damit Filter-State erhalten bleibt
               Expanded(
-                child: RoundwoodList(
-                  showHeaderActions: true,
-                  filter: RoundwoodFilter(),
-                  onFilterChanged: (filter) {
-                    // Handle filter changes if needed
+                child: StatefulBuilder(
+                  builder: (context, setModalState) {
+                    return RoundwoodList(
+                      showHeaderActions: true,
+                      filter: _dialogFilter,
+                      onFilterChanged: (filter) {
+                        setModalState(() {
+                          _dialogFilter = filter;
+                        });
+                      },
+                      service: RoundwoodService(),
+                      isDesktopLayout: false,
+                    );
                   },
-                  service: RoundwoodService(),
-                  isDesktopLayout: false,
                 ),
               ),
             ],
@@ -1773,7 +1791,6 @@ print("sB:$searchBarcode");
       },
     );
   }
-
 // Verbesserte Methode für die Option-Buttons
   Widget _buildOptionButton({
     required Widget icon,
@@ -1824,14 +1841,6 @@ print("sB:$searchBarcode");
     // Controller für die zwei Teile der Artikelnummer
 
 
-    // Wenn ein bestehender Barcode vorhanden ist, aufteilen
-    if (barcodeController.text.isNotEmpty) {
-      final parts = barcodeController.text.split('.');
-      if (parts.length >= 2) {
-        partOneController.text = parts[0];
-        partTwoController.text = parts[1];
-      }
-    }
 
     // Funktion zum Kombinieren der beiden Teile und Suchen
     void combineAndSearch() {

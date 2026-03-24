@@ -1,5 +1,7 @@
 // File: services/pdf_generators/base_pdf_generator.dart
 
+import 'dart:io';
+
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter/services.dart';
@@ -7,7 +9,9 @@ import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../countries.dart';
-import '../pdf_settings_screen.dart'; // NEU: Für PdfSettingsHelper
+import '../pdf_services/pdf_settings_screen.dart';
+
+import '../pdf_services/pdf_header_footer_settings_screen.dart'; // NEU: Für Kopf-/Fußzeilen-Settings
 
 abstract class BasePdfGenerator {
   static String formatCurrency(dynamic amount, String currency, Map<String, double> exchangeRates) {
@@ -131,8 +135,10 @@ abstract class BasePdfGenerator {
     String language = 'DE',
     String? additionalReference,
     String? secondaryReference,
+    PdfHeaderFooterSettings? hfSettings,
   })
   {
+    final s = hfSettings ?? const PdfHeaderFooterSettings();
     // Übersetzungsfunktion für Header
     String getHeaderTranslation(String key, String lang) {
       final translations = {
@@ -140,6 +146,9 @@ abstract class BasePdfGenerator {
           'QUOTE': 'OFFERTE',
           'LIEFERSCHEIN': 'LIEFERSCHEIN',
           'INVOICE': 'RECHNUNG',
+          'COMMERCIAL_INVOICE': 'HANDELSRECHNUNG',
+          'HANDELSRECHNUNG': 'HANDELSRECHNUNG',
+          'PACKING_LIST': 'PACKLISTE',
           'ORDER': 'BESTELLUNG',
           'nr': 'Nr.:',
           'date': 'Datum:',
@@ -153,6 +162,9 @@ abstract class BasePdfGenerator {
           'QUOTE': 'OFFER',
           'LIEFERSCHEIN': 'DELIVERY NOTE',
           'INVOICE': 'INVOICE',
+          'COMMERCIAL_INVOICE': 'COMMERCIAL INVOICE',
+          'HANDELSRECHNUNG': 'COMMERCIAL INVOICE',
+          'PACKING_LIST': 'PACKING LIST',
           'ORDER': 'ORDER',
           'nr': 'No.:',
           'date': 'Date:',
@@ -176,7 +188,7 @@ abstract class BasePdfGenerator {
             pw.Text(
               getHeaderTranslation(documentTitle.toUpperCase().replaceAll(' ', '_'), language),
               style: pw.TextStyle(
-                fontSize: 28,
+                fontSize: s.titleFontSize,
                 fontWeight: pw.FontWeight.bold,
                 color: PdfColors.blueGrey800,
               ),
@@ -190,16 +202,16 @@ abstract class BasePdfGenerator {
                   width: 90,
                   child: pw.Text(
                     getHeaderTranslation('nr', language),
-                    style: const pw.TextStyle(
-                      fontSize: 10,
+                    style: pw.TextStyle(
+                      fontSize: s.headerLinesFontSize,
                       color: PdfColors.blueGrey600,
                     ),
                   ),
                 ),
                 pw.Text(
                   documentNumber,
-                  style: const pw.TextStyle(
-                    fontSize: 10,
+                  style: pw.TextStyle(
+                    fontSize: s.headerLinesFontSize,
                     color: PdfColors.blueGrey600,
                   ),
                 ),
@@ -217,16 +229,16 @@ abstract class BasePdfGenerator {
                       width: 90,
                       child: pw.Text(
                         ref['label']!,
-                        style: const pw.TextStyle(
-                          fontSize: 10,
+                        style: pw.TextStyle(
+                          fontSize: s.headerLinesFontSize,
                           color: PdfColors.blueGrey600,
                         ),
                       ),
                     ),
                     pw.Text(
                       ref['value']!,
-                      style: const pw.TextStyle(
-                        fontSize: 10,
+                      style: pw.TextStyle(
+                        fontSize: s.headerLinesFontSize,
                         color: PdfColors.blueGrey600,
                       ),
                     ),
@@ -244,16 +256,16 @@ abstract class BasePdfGenerator {
                       width: 90,
                       child: pw.Text(
                         ref['label']!,
-                        style: const pw.TextStyle(
-                          fontSize: 10,
+                        style: pw.TextStyle(
+                          fontSize: s.headerLinesFontSize,
                           color: PdfColors.blueGrey600,
                         ),
                       ),
                     ),
                     pw.Text(
                       ref['value']!,
-                      style: const pw.TextStyle(
-                        fontSize: 10,
+                      style: pw.TextStyle(
+                        fontSize: s.headerLinesFontSize,
                         color: PdfColors.blueGrey600,
                       ),
                     ),
@@ -270,16 +282,16 @@ abstract class BasePdfGenerator {
                   width: 90,
                   child: pw.Text(
                     getHeaderTranslation('date', language),
-                    style: const pw.TextStyle(
-                      fontSize: 10,
+                    style: pw.TextStyle(
+                      fontSize: s.headerLinesFontSize,
                       color: PdfColors.blueGrey600,
                     ),
                   ),
                 ),
                 pw.Text(
                   DateFormat('dd.MM.yyyy').format(date),
-                  style: const pw.TextStyle(
-                    fontSize: 10,
+                  style: pw.TextStyle(
+                    fontSize: s.headerLinesFontSize,
                     color: PdfColors.blueGrey600,
                   ),
                 ),
@@ -295,16 +307,16 @@ abstract class BasePdfGenerator {
                     width: 90,
                     child: pw.Text(
                       getHeaderTranslation('cost_center', language),
-                      style: const pw.TextStyle(
-                        fontSize: 8,
+                      style: pw.TextStyle(
+                        fontSize: s.costCenterFontSize,
                         color: PdfColors.blueGrey600,
                       ),
                     ),
                   ),
                   pw.Text(
                     costCenter,
-                    style: const pw.TextStyle(
-                      fontSize: 8,
+                    style: pw.TextStyle(
+                      fontSize: s.costCenterFontSize,
                       color: PdfColors.blueGrey600,
                     ),
                   ),
@@ -313,7 +325,7 @@ abstract class BasePdfGenerator {
             ],
           ],
         ),
-        pw.Image(logo, width: 180),
+        pw.Image(logo, width: s.logoWidth),
       ],
     );
   }
@@ -325,7 +337,9 @@ abstract class BasePdfGenerator {
     required int pageNumber,
     required int totalPages,
     String language = 'DE',
+    PdfHeaderFooterSettings? hfSettings,
   }) {
+    final s = hfSettings ?? const PdfHeaderFooterSettings();
     final pageLabel = language == 'EN'
         ? 'Page $pageNumber / $totalPages'
         : 'Seite $pageNumber / $totalPages';
@@ -368,7 +382,7 @@ abstract class BasePdfGenerator {
               // ),
             ],
           ),
-          pw.Image(logo, width: 100),
+          pw.Image(logo, width: s.compactLogoWidth),
         ],
       ),
     );
@@ -666,9 +680,8 @@ abstract class BasePdfGenerator {
             ],
           ),
 
-          // NUR bei NICHT-Lieferscheinen/Packlisten EORI und MwSt
-          if (!isDeliveryOrPacking) ...[
-            // EORI - wenn vorhanden UND Checkbox aktiviert
+          // EORI und MwSt (nicht auf Lieferscheinen)
+          if (docTitle != 'delivery_note') ...[ // EORI - wenn vorhanden UND Checkbox aktiviert
             if (customerData['showEoriOnDocuments'] == true &&
                 customerData['eoriNumber']?.toString().trim().isNotEmpty == true) ...[
               pw.SizedBox(height: 4),
@@ -1020,7 +1033,8 @@ abstract class BasePdfGenerator {
   }
 
   // Gemeinsamer Footer
-  static pw.Widget buildFooter({int? pageNumber, int? totalPages, String language = 'DE'}) {
+  static pw.Widget buildFooter({int? pageNumber, int? totalPages, String language = 'DE', PdfHeaderFooterSettings? hfSettings}) {
+    final s = hfSettings ?? const PdfHeaderFooterSettings();
     return pw.Container(
       padding: const pw.EdgeInsets.only(top: 8),
       decoration: const pw.BoxDecoration(
@@ -1034,16 +1048,16 @@ abstract class BasePdfGenerator {
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text('Florinett AG',
-                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey800, fontSize: 8)),
-              pw.Text('Tonewood Switzerland',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
-              pw.Text('Veja Zinols 6',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
-              pw.Text('7482 Bergün',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
-              pw.Text('Switzerland',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
+              pw.Text(s.footerCompanyName,
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey800, fontSize: s.footerFontSize)),
+              pw.Text(s.footerCompanySubtitle,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
+              pw.Text(s.footerStreet,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
+              pw.Text(s.footerZipCity,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
+              pw.Text(s.footerCountry,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
             ],
           ),
           if (pageNumber != null && totalPages != null)
@@ -1051,22 +1065,22 @@ abstract class BasePdfGenerator {
               language == 'EN'
                   ? 'Page $pageNumber / $totalPages'
                   : 'Seite $pageNumber / $totalPages',
-              style: const pw.TextStyle(
-                fontSize: 8,
+              style: pw.TextStyle(
+                fontSize: s.footerPageNumberFontSize,
                 color: PdfColors.blueGrey400,
               ),
             ),
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
-              pw.Text('phone: +41 81 407 21 34',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
-              pw.Text('e-mail: info@tonewood.ch',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
-              pw.Text('website: www.tonewood.ch',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
-              pw.Text('VAT: CHE-102.853.600 MWST',
-                  style: const pw.TextStyle(color: PdfColors.blueGrey600, fontSize: 8)),
+              pw.Text(s.footerPhone,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
+              pw.Text(s.footerEmail,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
+              pw.Text(s.footerWebsite,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
+              pw.Text(s.footerVat,
+                  style: pw.TextStyle(color: PdfColors.blueGrey600, fontSize: s.footerFontSize)),
             ],
           ),
         ],
@@ -1154,10 +1168,44 @@ abstract class BasePdfGenerator {
     return null;
   }
 
-  // Lade Logo
-  static Future<pw.MemoryImage> loadLogo() async {
+  // Lade Logo (berücksichtigt Custom-Logo aus Einstellungen)
+  static Future<pw.MemoryImage> loadLogo({PdfHeaderFooterSettings? hfSettings}) async {
+    final s = hfSettings ?? const PdfHeaderFooterSettings();
+
+    if (s.useCustomLogo) {
+      try {
+        final response = await _loadFromUrl(s.customLogoUrl!);
+        if (response != null) {
+          return pw.MemoryImage(response);
+        }
+      } catch (e) {
+        print('Custom-Logo konnte nicht geladen werden, Fallback auf Standard: $e');
+      }
+    }
+
+    // Standard-Logo aus Assets
     final logoImage = await rootBundle.load('images/logo.png');
     return pw.MemoryImage(logoImage.buffer.asUint8List());
+  }
+
+  /// Hilfsfunktion: Bytes von URL laden
+  static Future<Uint8List?> _loadFromUrl(String url) async {
+    try {
+      // Firebase Storage URLs: Verwende http
+      final uri = Uri.parse(url);
+      final request = await HttpClient().getUrl(uri);
+      final response = await request.close();
+      if (response.statusCode == 200) {
+        final bytes = <int>[];
+        await for (final chunk in response) {
+          bytes.addAll(chunk);
+        }
+        return Uint8List.fromList(bytes);
+      }
+    } catch (e) {
+      print('Fehler beim Laden von URL: $e');
+    }
+    return null;
   }
   /// Erstellt eine Tabelle, die über Seitenumbrüche hinweg umbrechen kann.
   /// Jede Row wird als eigene Mini-Tabelle gerendert, damit MultiPage

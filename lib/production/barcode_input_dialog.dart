@@ -4,6 +4,7 @@
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../services/icon_helper.dart';
 
 /// Barcode-Typ für unterschiedliche Formate
@@ -75,6 +76,7 @@ class _BarcodeInputContentState extends State<_BarcodeInputContent> {
   late List<_BarcodeSegment> segments;
   late List<String> segmentValues;
   int currentSegmentIndex = 0;
+  final FocusNode _focusNode = FocusNode();
 
   static const Color primaryColor = Color(0xFF0F4A29);
   static const Color errorColor = Color(0xFFD32F2F);
@@ -85,6 +87,12 @@ class _BarcodeInputContentState extends State<_BarcodeInputContent> {
     super.initState();
     _initializeSegments();
     _parseInitialValue();
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
   }
 
   void _initializeSegments() {
@@ -234,22 +242,76 @@ class _BarcodeInputContentState extends State<_BarcodeInputContent> {
   }
 
   Widget _buildDesktopLayout() {
-    return Container(
-      width: 450,
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildHeader(),
-          const SizedBox(height: 20),
-          _buildBarcodeDisplayDesktop(),
-          const SizedBox(height: 12),
-          _buildProgressIndicator(),
-          const SizedBox(height: 24),
-          _buildNumpadDesktop(),
-          const SizedBox(height: 20),
-          _buildActionButtons(),
-        ],
+    return Focus(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+        final key = event.logicalKey;
+
+        // Ziffern 0-9 (Haupttastatur + Numpad)
+        if (key == LogicalKeyboardKey.digit0 || key == LogicalKeyboardKey.numpad0) {
+          _handleDigit('0'); return KeyEventResult.handled;
+        } else if (key == LogicalKeyboardKey.digit1 || key == LogicalKeyboardKey.numpad1) {
+          _handleDigit('1'); return KeyEventResult.handled;
+        } else if (key == LogicalKeyboardKey.digit2 || key == LogicalKeyboardKey.numpad2) {
+          _handleDigit('2'); return KeyEventResult.handled;
+        } else if (key == LogicalKeyboardKey.digit3 || key == LogicalKeyboardKey.numpad3) {
+          _handleDigit('3'); return KeyEventResult.handled;
+        } else if (key == LogicalKeyboardKey.digit4 || key == LogicalKeyboardKey.numpad4) {
+          _handleDigit('4'); return KeyEventResult.handled;
+        } else if (key == LogicalKeyboardKey.digit5 || key == LogicalKeyboardKey.numpad5) {
+          _handleDigit('5'); return KeyEventResult.handled;
+        } else if (key == LogicalKeyboardKey.digit6 || key == LogicalKeyboardKey.numpad6) {
+          _handleDigit('6'); return KeyEventResult.handled;
+        } else if (key == LogicalKeyboardKey.digit7 || key == LogicalKeyboardKey.numpad7) {
+          _handleDigit('7'); return KeyEventResult.handled;
+        } else if (key == LogicalKeyboardKey.digit8 || key == LogicalKeyboardKey.numpad8) {
+          _handleDigit('8'); return KeyEventResult.handled;
+        } else if (key == LogicalKeyboardKey.digit9 || key == LogicalKeyboardKey.numpad9) {
+          _handleDigit('9'); return KeyEventResult.handled;
+        }
+
+        // Backspace
+        if (key == LogicalKeyboardKey.backspace) {
+          _handleBackspace(); return KeyEventResult.handled;
+        }
+
+        // Delete → Clear
+        if (key == LogicalKeyboardKey.delete) {
+          _handleClear(); return KeyEventResult.handled;
+        }
+
+        // Enter / Numpad Enter → Bestätigen
+        if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
+          _handleConfirm(); return KeyEventResult.handled;
+        }
+
+        // Escape → Abbrechen
+        if (key == LogicalKeyboardKey.escape) {
+          Navigator.pop(context); return KeyEventResult.handled;
+        }
+
+        return KeyEventResult.ignored;
+      },
+      child: Container(
+        width: 580,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildHeader(),
+            const SizedBox(height: 20),
+            _buildBarcodeDisplayDesktop(),
+            const SizedBox(height: 12),
+            _buildProgressIndicator(),
+            const SizedBox(height: 24),
+            _buildNumpadDesktop(),
+            const SizedBox(height: 20),
+            _buildActionButtons(),
+          ],
+        ),
       ),
     );
   }
@@ -434,24 +496,27 @@ class _BarcodeInputContentState extends State<_BarcodeInputContent> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey[200]!),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: List.generate(segments.length * 2 - 1, (index) {
-          if (index.isOdd) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Text(
-                '.',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: primaryColor,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(segments.length * 2 - 1, (index) {
+            if (index.isOdd) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Text(
+                  '.',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: primaryColor,
+                  ),
                 ),
-              ),
-            );
-          }
-          return _buildSegmentBoxDesktop(index ~/ 2);
-        }),
+              );
+            }
+            return _buildSegmentBoxDesktop(index ~/ 2);
+          }),
+        ),
       ),
     );
   }
@@ -543,16 +608,19 @@ class _BarcodeInputContentState extends State<_BarcodeInputContent> {
     const double buttonSize = 72;
     const double fontSize = 28;
 
-    return Column(
-      children: [
-        _buildNumpadRow(['1', '2', '3'], buttonSize, fontSize),
-        const SizedBox(height: 10),
-        _buildNumpadRow(['4', '5', '6'], buttonSize, fontSize),
-        const SizedBox(height: 10),
-        _buildNumpadRow(['7', '8', '9'], buttonSize, fontSize),
-        const SizedBox(height: 10),
-        _buildNumpadRow(['C', '0', '⌫'], buttonSize, fontSize),
-      ],
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 400),
+      child: Column(
+        children: [
+          _buildNumpadRow(['1', '2', '3'], buttonSize, fontSize),
+          const SizedBox(height: 10),
+          _buildNumpadRow(['4', '5', '6'], buttonSize, fontSize),
+          const SizedBox(height: 10),
+          _buildNumpadRow(['7', '8', '9'], buttonSize, fontSize),
+          const SizedBox(height: 10),
+          _buildNumpadRow(['C', '0', '⌫'], buttonSize, fontSize),
+        ],
+      ),
     );
   }
 

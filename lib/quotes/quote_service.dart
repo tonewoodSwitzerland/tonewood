@@ -6,6 +6,18 @@ import '../services/pdf_generators/quote_generator.dart';
 
 import 'dart:typed_data';
 
+import '../services/user_basket_service.dart';
+
+class AvailabilityResult {
+  final Map<String, double> quantities;
+  final Map<String, String> cartUserNames; // onlineShopBarcode -> userName
+
+  AvailabilityResult({
+    required this.quantities,
+    required this.cartUserNames,
+  });
+}
+
 class QuoteService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static final FirebaseStorage _storage = FirebaseStorage.instance;
@@ -134,7 +146,11 @@ class QuoteService {
         items: items,
         calculations: finalCalculations,
         createdAt: originalCreatedAt,  // Behalte das Original-Erstellungsdatum
-        validUntil: DateTime.now().add(const Duration(days: 14)),  // Erneuere Gültigkeit
+        validUntil: metadata['quoteSettings']?['validity_date'] != null
+            ? (metadata['quoteSettings']['validity_date'] is Timestamp
+            ? (metadata['quoteSettings']['validity_date'] as Timestamp).toDate()
+            : metadata['quoteSettings']['validity_date'] as DateTime)
+            : DateTime.now().add(const Duration(days: 14)),
         documents: existingDocuments, // Behalte bestehende Dokumente
         metadata: metadata,
       );
@@ -252,7 +268,11 @@ class QuoteService {
         items: items,
         calculations: finalCalculations,  // Verwende die aktualisierten Berechnungen
         createdAt: DateTime.now(),
-        validUntil: DateTime.now().add(const Duration(days: 14)),
+        validUntil: metadata['quoteSettings']?['validity_date'] != null
+            ? (metadata['quoteSettings']['validity_date'] is Timestamp
+            ? (metadata['quoteSettings']['validity_date'] as Timestamp).toDate()
+            : metadata['quoteSettings']['validity_date'] as DateTime)
+            : DateTime.now().add(const Duration(days: 14)),
         documents: {},
         metadata: metadata,
       );
@@ -384,6 +404,7 @@ class QuoteService {
         calculations: quote.calculations,
         taxOption: quote.metadata['taxOption'] ?? 0,
         vatRate: (quote.metadata['vatRate'] ?? 8.1).toDouble(),
+        validityDate: quote.validUntil,
       );
 
       // Speichere PDF in Storage - Neue Struktur: documents/quotes/[quote-nummer].pdf
@@ -448,7 +469,7 @@ class QuoteService {
 
 // Prüfe Verfügbarkeit (unter Berücksichtigung von Reservierungen)
   // Prüfe Verfügbarkeit (unter Berücksichtigung von Reservierungen)
-  static Future<Map<String, double>> checkAvailability(
+  static Future<AvailabilityResult> checkAvailability(
       List<Map<String, dynamic>> items,
       {String? excludeQuoteId}
       ) async {
@@ -457,7 +478,7 @@ class QuoteService {
     print('Exclude Quote ID: $excludeQuoteId');
 
     final availability = <String, double>{};
-
+    final cartUserNames = <String, String>{};
     for (final item in items) {
       // Überspringe manuelle Produkte und Dienstleistungen
       if (item['is_manual_product'] == true || item['is_service'] == true) {
@@ -491,10 +512,18 @@ class QuoteService {
         }
 
         // 2. Prüfe ob im Warenkorb
+        // 2. Prüfe ob im Warenkorb eines ANDEREN Users
         if (shopDoc.data()?['in_cart'] == true) {
-          print('-> Produkt ist im Warenkorb');
-          availability[onlineShopBarcode] = 0;
-          continue;
+          final cartUserId = shopDoc.data()?['cart_user_id'] as String?;
+          final currentUserId = UserBasketService.uid;
+          if (cartUserId != null && cartUserId != currentUserId) {
+            final cartUserName = shopDoc.data()?['cart_user_name'] as String? ?? 'Unbekannt';
+            print('-> Produkt ist im Warenkorb von $cartUserName ($cartUserId)');
+            availability[onlineShopBarcode] = 0;
+            cartUserNames[onlineShopBarcode] = cartUserName;
+            continue;
+          }
+          print('-> Produkt ist im eigenen Warenkorb - OK');
         }
 
         // 3. Prüfe ob bereits in einem anderen Angebot reserviert
@@ -583,6 +612,9 @@ class QuoteService {
     }
 
     print('=== END checkAvailability ===');
-    return availability;
+    return AvailabilityResult(
+      quantities: availability,
+      cartUserNames: cartUserNames,
+    );
   }
 }
