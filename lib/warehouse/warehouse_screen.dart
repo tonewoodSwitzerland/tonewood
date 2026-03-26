@@ -702,12 +702,13 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                               icon: Icons.savings,
                               content: StatefulBuilder(
                                 builder: (context, setInnerState) {
-                                  final currentPrice = (data['price_CHF'] as num?)?.toInt() ?? 0;
-                                  final originalPrice = (data['original_price_CHF'] as num?)?.toInt();
+                                  final currentPrice = (data['price_CHF'] as num?)?.toDouble() ?? 0.0;
+                                  final originalPrice = (data['original_price_CHF'] as num?)?.toDouble();
                                   final isDiscounted = data['discounted'] == true;
                                   final TextEditingController priceController = TextEditingController(
-                                    text: currentPrice.toString(),
-                                  );
+                                    text: currentPrice % 1 == 0
+                                        ? currentPrice.toInt().toString()
+                                        : currentPrice.toStringAsFixed(2));
 
                                   return Column(
                                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -774,7 +775,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                               ),
                                             ),
                                             Text(
-                                              'CHF $currentPrice',
+                                              'CHF ${currentPrice % 1 == 0 ? currentPrice.toInt() : currentPrice.toStringAsFixed(2)}',
                                               style: const TextStyle(
                                                 fontSize: 18,
                                                 fontWeight: FontWeight.bold,
@@ -794,7 +795,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                           labelText: 'Neuer Preis',
                                           suffixText: 'CHF',
                                           border: const OutlineInputBorder(),
-                                          helperText: 'Nur ganze CHF-Beträge',
+                                         // helperText: 'Nur ganze CHF-Beträge',
                                           filled: true,
                                           fillColor: isInCart ? Colors.grey[100] : Colors.white,
                                         ),
@@ -820,10 +821,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                         width: double.infinity,
                                         child: FilledButton.icon(
                                           onPressed: isInCart ? null : () async {
-                                            final newPrice = int.tryParse(priceController.text);
+                                            final cleanedText = priceController.text.replaceAll(',', '.');
+                                            final newPrice = double.tryParse(cleanedText);
                                             if (newPrice != null && newPrice > 0 && newPrice != currentPrice) {
+                                              final roundedPrice = (newPrice * 100).round() / 100;
                                               final updates = <String, dynamic>{
-                                                'price_CHF': newPrice,
+                                                'price_CHF': roundedPrice,
                                                 'price_changed_at': FieldValue.serverTimestamp(),
                                               };
 
@@ -834,7 +837,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
                                               // Setze discounted Flag basierend auf Original- oder aktuellem Preis
                                               final comparePrice = originalPrice ?? currentPrice;
-                                              updates['discounted'] = newPrice < comparePrice;
+                                              updates['discounted'] = roundedPrice < comparePrice;
 
                                               try {
                                                 await FirebaseFirestore.instance
@@ -844,16 +847,16 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
                                                 // Aktualisiere lokale Daten
                                                 setInnerState(() {
-                                                  data['price_CHF'] = newPrice;
+                                                  data['price_CHF'] = roundedPrice;
                                                   if (!isDiscounted) {
                                                     data['original_price_CHF'] = currentPrice;
                                                   }
-                                                  data['discounted'] = newPrice < comparePrice;
+                                                  data['discounted'] = roundedPrice < comparePrice;
                                                 });
 
                                                 ScaffoldMessenger.of(context).showSnackBar(
                                                   SnackBar(
-                                                    content: Text('Preis erfolgreich auf CHF $newPrice geändert'),
+                                                    content: Text('Preis erfolgreich auf CHF ${roundedPrice.toStringAsFixed(2)} geändert'),
                                                     backgroundColor: Colors.green,
                                                   ),
                                                 );

@@ -38,8 +38,33 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
     super.initState();
     _loadDocumentSelection();
     _loadCustomerLanguage();
+    _preselectDistributionChannelIfFair();
   }
-// Neue Methode hinzufügen:
+  Future<void> _preselectDistributionChannelIfFair() async {
+    try {
+      final fairSnapshot = await UserBasketService.temporaryFair.limit(1).get();
+      if (fairSnapshot.docs.isEmpty) return;
+
+      // Messe ist gesetzt → suche den "Messe"-Kanal in distribution_channel
+      final channelsSnapshot = await FirebaseFirestore.instance
+          .collection('distribution_channel')
+          .get();
+
+      for (final doc in channelsSnapshot.docs) {
+        final data = doc.data();
+        final name = (data['name'] ?? '').toString().toLowerCase();
+        if (name.contains('messe') || name.contains('fair')) {
+          setState(() {
+            _selectedDistributionChannelId = doc.id;
+            _selectedDistributionChannel = data;
+          });
+          break;
+        }
+      }
+    } catch (e) {
+      print('Fehler beim Vorselektieren der Messe-Bestellart: $e');
+    }
+  }
   Future<void> _loadCustomerLanguage() async {
     try {
       final customerSnapshot = await
@@ -1062,11 +1087,12 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
       batch.delete(doc.reference);
     }
 
-    final fairDocs = await
-    UserBasketService.temporaryFair
-        .get();
-    for (final doc in fairDocs.docs) {
-      batch.delete(doc.reference);
+    final pinnedFairSnapshot = await UserBasketService.pinnedFair.limit(1).get();
+    if (pinnedFairSnapshot.docs.isEmpty) {
+      final fairDocs = await UserBasketService.temporaryFair.get();
+      for (final doc in fairDocs.docs) {
+        batch.delete(doc.reference);
+      }
     }
 
     final taxDocs = await

@@ -132,6 +132,7 @@ abstract class BasePdfGenerator {
     required DateTime date,
     required pw.MemoryImage logo,
     String? costCenter,
+    String? fairName,
     String language = 'DE',
     String? additionalReference,
     String? secondaryReference,
@@ -315,6 +316,31 @@ abstract class BasePdfGenerator {
                   ),
                   pw.Text(
                     costCenter,
+                    style: pw.TextStyle(
+                      fontSize: s.costCenterFontSize,
+                      color: PdfColors.blueGrey600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            // Messe
+            if (fairName != null && fairName.isNotEmpty) ...[
+              pw.SizedBox(height: 2),
+              pw.Row(
+                children: [
+                  pw.SizedBox(
+                    width: 90,
+                    child: pw.Text(
+                      language == 'EN' ? 'Fair:' : 'Messe:',
+                      style: pw.TextStyle(
+                        fontSize: s.costCenterFontSize,
+                        color: PdfColors.blueGrey600,
+                      ),
+                    ),
+                  ),
+                  pw.Text(
+                    fairName,
                     style: pw.TextStyle(
                       fontSize: s.costCenterFontSize,
                       color: PdfColors.blueGrey600,

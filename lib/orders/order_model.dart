@@ -32,6 +32,7 @@ class OrderX {
   final Map<String, String> documents;
   final Map<String, dynamic> metadata;
   final Map<String, dynamic>? costCenter;
+  final Map<String, dynamic>? fair;
   final DateTime? shippedAt; // Versanddatum für Auswertungen
 
   OrderX({
@@ -48,6 +49,7 @@ class OrderX {
     required this.documents,
     required this.metadata,
     this.costCenter,
+    this.fair,
     this.shippedAt,
   });
 
@@ -115,6 +117,9 @@ class OrderX {
       costCenter: data['costCenter'] != null
           ? Map<String, dynamic>.from(data['costCenter'])
           : null,
+      fair: data['fair'] != null                    // ← NEU
+          ? Map<String, dynamic>.from(data['fair']) // ← NEU
+          : null,                                   // ← NEU
       shippedAt: data['shippedAt'] != null
           ? (data['shippedAt'] as Timestamp).toDate()
           : null,
@@ -135,7 +140,9 @@ class OrderX {
       'documents': documents,
       'metadata': metadata,
       if (costCenter != null) 'costCenter': costCenter,
+      if (fair != null) 'fair': fair,
       if (shippedAt != null) 'shippedAt': Timestamp.fromDate(shippedAt!),
+
     };
   }
 
@@ -153,6 +160,7 @@ class OrderX {
     Map<String, String>? documents,
     Map<String, dynamic>? metadata,
     Map<String, dynamic>? costCenter,
+    Map<String, dynamic>? fair,
     DateTime? shippedAt,
   }) {
     return OrderX(
@@ -169,6 +177,7 @@ class OrderX {
       documents: documents ?? this.documents,
       metadata: metadata ?? this.metadata,
       costCenter: costCenter ?? this.costCenter,
+      fair: fair ?? this.fair,
       shippedAt: shippedAt ?? this.shippedAt,
     );
   }

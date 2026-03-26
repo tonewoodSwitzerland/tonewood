@@ -232,7 +232,153 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
       },
     );
   }
+  void _showFairEditDialog(BuildContext context, OrderX currentOrder) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 500,
+            maxHeight: MediaQuery.of(dialogContext).size.height * 0.6,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+                child: Row(
+                  children: [
+                    getAdaptiveIcon(
+                      iconName: 'event',
+                      defaultIcon: Icons.event,
+                      color: Theme.of(dialogContext).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Messe zuweisen',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                      onPressed: () => Navigator.pop(dialogContext),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
 
+              // "Keine Messe" Option
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(dialogContext).colorScheme.surfaceContainerHighest,
+                  child: getAdaptiveIcon(
+                    iconName: 'block',
+                    defaultIcon: Icons.block,
+                    size: 20,
+                    color: Theme.of(dialogContext).colorScheme.outline,
+                  ),
+                ),
+                title: const Text('Keine Messe'),
+                selected: currentOrder.fair == null,
+                onTap: () async {
+                  await FirebaseFirestore.instance
+                      .collection('orders')
+                      .doc(currentOrder.id)
+                      .update({'fair': FieldValue.delete()});
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                },
+              ),
+              const Divider(height: 1),
+
+              // Messen-Liste
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('fairs')
+                      .orderBy('startDate', descending: true)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final fairs = snapshot.data!.docs;
+                    if (fairs.isEmpty) {
+                      return Center(
+                        child: Text(
+                          'Keine Messen vorhanden',
+                          style: TextStyle(color: Theme.of(dialogContext).colorScheme.outline),
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      itemCount: fairs.length,
+                      itemBuilder: (context, index) {
+                        final fairData = fairs[index].data() as Map<String, dynamic>;
+                        final fairId = fairs[index].id;
+                        final isSelected = currentOrder.fair?['id'] == fairId;
+
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: isSelected
+                                ? Theme.of(dialogContext).colorScheme.primary.withOpacity(0.15)
+                                : Theme.of(dialogContext).colorScheme.surfaceContainerHighest,
+                            child: getAdaptiveIcon(
+                              iconName: 'event',
+                              defaultIcon: Icons.event,
+                              size: 20,
+                              color: isSelected
+                                  ? Theme.of(dialogContext).colorScheme.primary
+                                  : Theme.of(dialogContext).colorScheme.outline,
+                            ),
+                          ),
+                          title: Text(
+                            fairData['name'] ?? '',
+                            style: TextStyle(
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '${fairData['city'] ?? ''}, ${fairData['country'] ?? ''}',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          selected: isSelected,
+                          trailing: isSelected
+                              ? getAdaptiveIcon(
+                            iconName: 'check_circle',
+                            defaultIcon: Icons.check_circle,
+                            color: Theme.of(dialogContext).colorScheme.primary,
+                            size: 20,
+                          )
+                              : null,
+                          onTap: () async {
+                            await FirebaseFirestore.instance
+                                .collection('orders')
+                                .doc(currentOrder.id)
+                                .update({
+                              'fair': {
+                                ...fairData,
+                                'id': fairId,
+                              },
+                            });
+                            if (dialogContext.mounted) Navigator.pop(dialogContext);
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
   Widget _buildHeader(BuildContext context, OrderX currentOrder) {
     return Container(
       padding: EdgeInsets.fromLTRB(isDesktop ? 24 : 16, isDesktop ? 16 : 12, isDesktop ? 24 : 16, 12),
@@ -264,6 +410,53 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
                           style: TextStyle(
                             fontSize: isDesktop ? 22 : 18,
                             fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: () => _showFairEditDialog(context, currentOrder),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: currentOrder.fair != null
+                                  ? Theme.of(context).colorScheme.tertiaryContainer.withOpacity(0.5)
+                                  : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                getAdaptiveIcon(
+                                  iconName: 'event',
+                                  defaultIcon: Icons.event,
+                                  size: 12,
+                                  color: currentOrder.fair != null
+                                      ? Theme.of(context).colorScheme.onTertiaryContainer
+                                      : Theme.of(context).colorScheme.outline,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  currentOrder.fair?['name'] ?? 'Keine Messe',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: currentOrder.fair != null
+                                        ? Theme.of(context).colorScheme.onTertiaryContainer
+                                        : Theme.of(context).colorScheme.outline,
+                                  ),
+                                ),
+                                const SizedBox(width: 3),
+                                getAdaptiveIcon(
+                                  iconName: 'edit',
+                                  defaultIcon: Icons.edit,
+                                  size: 10,
+                                  color: currentOrder.fair != null
+                                      ? Theme.of(context).colorScheme.onTertiaryContainer.withOpacity(0.6)
+                                      : Theme.of(context).colorScheme.outline.withOpacity(0.6),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],

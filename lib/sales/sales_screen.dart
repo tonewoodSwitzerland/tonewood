@@ -33,6 +33,7 @@ import '../quotes/currency_converter_sheet.dart';
 import '../customers/customer_selection.dart';
 import '../quotes/shipping_costs_manager.dart';
 import '../services/user_basket_service.dart';
+import 'fair_selection_dialog.dart';
 import 'item_discount_dialog.dart';
 
 enum TaxOption {
@@ -108,7 +109,7 @@ class SalesScreenState extends State<SalesScreen> {
     _loadTemporaryDiscounts();
     _loadTemporaryTax();
     _loadDocumentLanguage();
-
+    _loadPinnedFair(); // NEU
     CustomerCacheService.addOnCustomerUpdatedListener(_onCustomerUpdated);
     CustomerCacheService.addOnCustomerDeletedListener(_onCustomerDeleted);
 
@@ -226,41 +227,58 @@ class SalesScreenState extends State<SalesScreen> {
             ),
             const SizedBox(width: 6),
 
-            // Messe - bleibt unverändert
+            // Messe mit Pin-Indikator
             StreamBuilder<Fair?>(
               stream: _temporaryFairStream,
               builder: (context, snapshot) {
                 final fair = snapshot.data;
                 if (fair == null) return const SizedBox.shrink();
 
-                return GestureDetector(
-                  onTap: _showFairSelection,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.tertiaryContainer,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        getAdaptiveIcon(iconName: 'event', defaultIcon: Icons.event,),
+                return StreamBuilder<QuerySnapshot>(
+                  stream: UserBasketService.pinnedFair.limit(1).snapshots(),
+                  builder: (context, pinnedSnapshot) {
+                    final isPinned = pinnedSnapshot.hasData &&
+                        pinnedSnapshot.data!.docs.isNotEmpty &&
+                        pinnedSnapshot.data!.docs.first.id == fair.id;
 
-                        const SizedBox(width: 4),
-                        Tooltip(
-                          message: fair.name,
-                          child: Text(
-                            fair.name.substring(0, min(2, fair.name.length)).toUpperCase(),
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.onTertiaryContainer,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
+                    return GestureDetector(
+                      onTap: _showFairSelection,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.tertiaryContainer,
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                      ],
-                    ),
-                  ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            getAdaptiveIcon(iconName: 'event', defaultIcon: Icons.event),
+                            const SizedBox(width: 4),
+                            Tooltip(
+                              message: fair.name,
+                              child: Text(
+                                fair.name.substring(0, min(2, fair.name.length)).toUpperCase(),
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onTertiaryContainer,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            if (isPinned) ...[
+                              const SizedBox(width: 3),
+                              getAdaptiveIcon(
+                                iconName: 'push_pin',
+                                defaultIcon: Icons.push_pin,
+                                size: 12,
+                                color: Theme.of(context).colorScheme.onTertiaryContainer,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 );
               },
             ),
@@ -361,12 +379,15 @@ class SalesScreenState extends State<SalesScreen> {
       }
 
       // 4. Messe löschen
-      final fairDocs = await
-      UserBasketService.temporaryFair
-          .get();
-      for (var doc in fairDocs.docs) {
-        batch.delete(doc.reference);
+      // 4. Messe löschen (nur wenn NICHT angepinnt)
+      final pinnedFairSnapshot = await UserBasketService.pinnedFair.limit(1).get();
+      if (pinnedFairSnapshot.docs.isEmpty) {
+        final fairDocs = await UserBasketService.temporaryFair.get();
+        for (var doc in fairDocs.docs) {
+          batch.delete(doc.reference);
+        }
       }
+// Wenn gepinnt: temporaryFair bleibt bestehen
 
       // 5. Rabatte löschen
       final discountDoc = await
@@ -436,7 +457,24 @@ class SalesScreenState extends State<SalesScreen> {
         final costCenter = CostCenter.fromMap(costCenterData, costCenterId);
         await _saveTemporaryCostCenter(costCenter);
       }
-
+// 2b. Messe laden - DEBUG
+      print('🔧 FAIR-DEBUG: quoteData keys: ${quoteData.keys.toList()}');
+      print('🔧 FAIR-DEBUG: quoteData["fair"] = ${quoteData['fair']}');
+      print('🔧 FAIR-DEBUG: quoteData["fair"] type = ${quoteData['fair']?.runtimeType}');
+      if (quoteData['fair'] != null) {
+        final fairData = Map<String, dynamic>.from(quoteData['fair']);
+        print('🔧 FAIR-DEBUG: fairData = $fairData');
+        final fairId = fairData['id'] ??
+            FirebaseFirestore.instance.collection('fairs').doc().id;
+        print('🔧 FAIR-DEBUG: fairId = $fairId');
+        final fair = Fair.fromMap(fairData, fairId);
+        print('🔧 FAIR-DEBUG: fair.name = ${fair.name}');
+        await _saveTemporaryFair(fair);
+        setState(() => selectedFair = fair);
+        print('🔧 FAIR-DEBUG: Messe gespeichert ✅');
+      } else {
+        print('🔧 FAIR-DEBUG: Keine Messe in quoteData ❌');
+      }
       // 3. Währung und Steuereinstellungen
       _currencyNotifier.value = quoteData['currency'] ?? 'CHF';
       _exchangeRatesNotifier.value = Map<String, double>.from(quoteData['exchangeRates'] ?? {
@@ -548,7 +586,15 @@ class SalesScreenState extends State<SalesScreen> {
         final costCenter = CostCenter.fromMap(costCenterData, costCenterId);
         await _saveTemporaryCostCenter(costCenter);
       }
-
+// 2b. Messe laden
+      if (quoteData['fair'] != null) {
+        final fairData = Map<String, dynamic>.from(quoteData['fair']);
+        final fairId = fairData['id'] ??
+            FirebaseFirestore.instance.collection('fairs').doc().id;
+        final fair = Fair.fromMap(fairData, fairId);
+        await _saveTemporaryFair(fair);
+        setState(() => selectedFair = fair);
+      }
       // 3. Währung und Steuereinstellungen
       _currencyNotifier.value = quoteData['currency'] ?? 'CHF';
       _exchangeRatesNotifier.value = Map<String, double>.from(quoteData['exchangeRates'] ?? {
@@ -899,7 +945,24 @@ class SalesScreenState extends State<SalesScreen> {
       print('Fehler beim Speichern der Dokumentensprache: $e');
     }
   }
+  /// Wenn eine Messe angepinnt ist und noch keine temporaryFair gesetzt,
+  /// wird sie automatisch übernommen.
+  Future<void> _loadPinnedFair() async {
+    try {
+      final tempFairSnapshot = await UserBasketService.temporaryFair.limit(1).get();
+      if (tempFairSnapshot.docs.isNotEmpty) return; // bereits eine Messe gesetzt
 
+      final pinnedSnapshot = await UserBasketService.pinnedFair.limit(1).get();
+      if (pinnedSnapshot.docs.isEmpty) return;
+
+      final pinnedData = pinnedSnapshot.docs.first.data();
+      final fair = Fair.fromMap(pinnedData, pinnedSnapshot.docs.first.id);
+
+      await _saveTemporaryFair(fair);
+    } catch (e) {
+      print('Fehler beim Laden der gepinnten Messe: $e');
+    }
+  }
   Future<void> _loadDocumentLanguage() async {
     try {
       final doc = await
@@ -1181,11 +1244,12 @@ class SalesScreenState extends State<SalesScreen> {
       }
 
       // 4. Messe löschen
-      final fairDocs = await
-      UserBasketService.temporaryFair
-          .get();
-      for (var doc in fairDocs.docs) {
-        batch.delete(doc.reference);
+      final pinnedFairSnapshot = await UserBasketService.pinnedFair.limit(1).get();
+      if (pinnedFairSnapshot.docs.isEmpty) {
+        final fairDocs = await UserBasketService.temporaryFair.get();
+        for (var doc in fairDocs.docs) {
+          batch.delete(doc.reference);
+        }
       }
 
       // 5. Rabatte löschen
@@ -1687,240 +1751,47 @@ class SalesScreenState extends State<SalesScreen> {
       print('Fehler beim Löschen der temporären Messe: $e');
     }
   }
-  void _showFairSelection() {
-    final searchController = TextEditingController();
-
-    showDialog(
+  void _showFairSelection() async {
+    final result = await showFairSelectionDialog(
       context: context,
-      builder: (dialogContext) => Dialog(  // Verwende dialogContext
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 600,
-            maxHeight: MediaQuery.of(dialogContext).size.height * 0.7,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            // ENTFERNE Scaffold - verwende direkt Column
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'Messe',
-                      style: Theme.of(dialogContext).textTheme.headlineSmall,
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      icon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: searchController,
-                  decoration: InputDecoration(
-                    labelText: 'Suchen',
-                    prefixIcon: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
-                    ),
-                    border: const OutlineInputBorder(),
-                    filled: true,
-                    fillColor: Theme.of(dialogContext).colorScheme.surface,
-                  ),
-                  onChanged: (value) {
-                    // StatefulBuilder verwenden wenn nötig
-                  },
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('fairs')
-                        .where('endDate', isGreaterThanOrEqualTo: DateTime.now().toIso8601String())
-                        .orderBy('endDate')
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.hasError) {
-                        return Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              getAdaptiveIcon(iconName: 'error', defaultIcon: Icons.error, size: 48),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Fehler beim Laden der Messen',
-                                style: TextStyle(
-                                  color: Theme.of(dialogContext).colorScheme.error,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-
-                      final fairs = snapshot.data?.docs
-                          .map((doc) => Fair.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-                          .toList() ?? [];
-
-                      final searchTerm = searchController.text.toLowerCase();
-                      final filteredFairs = fairs.where((fair) =>
-                      fair.name.toLowerCase().contains(searchTerm) ||
-                          fair.city.toLowerCase().contains(searchTerm) ||
-                          fair.country.toLowerCase().contains(searchTerm)
-                      ).toList();
-
-                      if (filteredFairs.isEmpty) {
-                        return Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              getAdaptiveIcon(iconName: 'event_busy', defaultIcon: Icons.event_busy, size: 48),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Keine aktiven Messen gefunden',
-                                style: TextStyle(
-                                  color: Theme.of(dialogContext).colorScheme.outline,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                      return StreamBuilder<Fair?>(
-                        stream: _temporaryFairStream,
-                        builder: (context, selectedSnapshot) {
-                          return ListView.builder(
-                            itemCount: filteredFairs.length,
-                            itemBuilder: (context, index) {
-                              final fair = filteredFairs[index];
-                              final isSelected = selectedSnapshot.data?.id == fair.id;
-
-                              return Card(
-                                elevation: isSelected ? 2 : 0,
-                                color: isSelected
-                                    ? Theme.of(dialogContext).colorScheme.primaryContainer
-                                    : null,
-                                margin: const EdgeInsets.only(bottom: 8),
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: isSelected
-                                        ? Theme.of(dialogContext).colorScheme.primary
-                                        : Theme.of(dialogContext).colorScheme.surfaceContainerHighest,
-                                    child: getAdaptiveIcon(iconName: 'event', defaultIcon: Icons.event, size: 24),
-                                  ),
-                                  title: Text(
-                                    fair.name,
-                                    style: TextStyle(
-                                      fontWeight: isSelected ? FontWeight.bold : null,
-                                    ),
-                                  ),
-                                  subtitle: Text(
-                                    '${fair.city}, ${fair.country}\n'
-                                        '${DateFormat('dd.MM.yyyy').format(fair.startDate)} - '
-                                        '${DateFormat('dd.MM.yyyy').format(fair.endDate)}',
-                                  ),
-                                  isThreeLine: true,
-                                  onTap: () async {
-                                    try {
-                                      setState(() => selectedFair = fair);
-                                      await _saveTemporaryFair(fair);
-                                      if (mounted) {
-                                        Navigator.pop(dialogContext);
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Messe ausgewählt'),
-                                            backgroundColor: Colors.green,
-                                          ),
-                                        );
-                                      }
-                                    } catch (e) {
-                                      print('Fehler beim Speichern der Messe: $e');
-                                      if (mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text('Fehler: $e'),
-                                            backgroundColor: Colors.red,
-                                          ),
-                                        );
-                                      }
-                                    }
-                                  },
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Column(
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(dialogContext);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const FairManagementScreen(),
-                          ),
-                        );
-                      },
-                      icon: getAdaptiveIcon(iconName: 'settings', defaultIcon: Icons.settings),
-                      label: const Text('Messen verwalten'),
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        TextButton(
-                          onPressed: () async {
-                            try {
-                              setState(() => selectedFair = null);
-                              await _clearTemporaryFair();
-                              if (mounted) {
-                                Navigator.pop(dialogContext);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Messe-Auswahl zurückgesetzt'),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              print('Fehler beim Zurücksetzen der Messe: $e');
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Fehler: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                          child: const Text('Keine Messe (Standard)'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      currentFairStream: _temporaryFairStream,
     );
+
+    if (result == null) return; // Dialog abgebrochen
+
+    if (result.cleared) {
+      // "Keine Messe" gewählt → Fair + Pin löschen
+      setState(() => selectedFair = null);
+      await _clearTemporaryFair();
+      final pinnedDocs = await UserBasketService.pinnedFair.get();
+      final batch = FirebaseFirestore.instance.batch();
+      for (var doc in pinnedDocs.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Messe-Auswahl zurückgesetzt'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } else if (result.fair != null) {
+      // Messe ausgewählt
+      setState(() => selectedFair = result.fair);
+      await _saveTemporaryFair(result.fair!);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Messe ausgewählt'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    }
   }
+
   Stream<CostCenter?> get _temporaryCostCenterStream =>
       UserBasketService.temporaryCostCenter
           .limit(1)
@@ -4570,7 +4441,7 @@ class SalesScreenState extends State<SalesScreen> {
             builder: (context, setDialogState) {
 
 
-              if (_cachedAvailableQuantity == null && itemData['is_manual_product'] != true && itemData['is_service'] != true) {
+              if (_cachedAvailableQuantity == null && itemData['is_manual_product'] != true && itemData['is_service'] != true && itemData['is_online_shop_item'] != true) {
                 _getAvailableQuantity(itemData['product_id'] ?? '').then((available) {
                   final currentQty = (itemData['quantity'] as num?)?.toDouble() ?? 1.0;
                   setDialogState(() {
@@ -4735,9 +4606,9 @@ class SalesScreenState extends State<SalesScreen> {
                               ),
                             ],
                             const SizedBox(height: 24),
+
                             // Menge anpassen - für reguläre Artikel (nicht manuell, nicht Service)
-                            // Menge anpassen - für reguläre Artikel (nicht manuell, nicht Service)
-                            if (itemData['is_manual_product'] != true && !isService) ...[
+                            if (itemData['is_manual_product'] != true && !isService && itemData['is_online_shop_item'] != true) ...[
                               const SizedBox(height: 24),
 
                               Text(
@@ -5812,7 +5683,7 @@ class SalesScreenState extends State<SalesScreen> {
                                       }
                                     }
 // Menge für reguläre Artikel speichern (mit Verfügbarkeitsprüfung)
-                                    if (itemData['is_manual_product'] != true && !isService && quantityController.text.isNotEmpty) {
+                                    if (itemData['is_manual_product'] != true && !isService && itemData['is_online_shop_item'] != true && quantityController.text.isNotEmpty) {
                                       final newQuantity = itemData['unit'] == 'Stück'
                                           ? int.tryParse(quantityController.text)?.toDouble()
                                           : double.tryParse(quantityController.text.replaceAll(',', '.'));

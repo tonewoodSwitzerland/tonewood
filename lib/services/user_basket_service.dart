@@ -92,6 +92,10 @@ class UserBasketService {
   static CollectionReference<Map<String, dynamic>> get temporaryDiscounts =>
       _userDoc.collection('temporary_discounts');
 
+  /// Angepinnte Messe (überlebt Warenkorb-Leeren)
+  static CollectionReference<Map<String, dynamic>> get pinnedFair =>
+      _userDoc.collection('pinned_fair');
+
   /// Steuer-Einstellungen (MwSt etc.)
   /// Ersetzt: FirebaseFirestore.instance.collection('temporary_tax')
   static CollectionReference<Map<String, dynamic>> get temporaryTax =>

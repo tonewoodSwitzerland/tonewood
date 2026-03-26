@@ -221,6 +221,7 @@ class InvoiceGenerator extends BasePdfGenerator {
               date: invoiceDate,
               logo: logo,
               costCenter: costCenterCode,
+              fairName: fairData?['name'],
               language: language,
               hfSettings: hfSettings,
             ),

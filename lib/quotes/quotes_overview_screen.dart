@@ -711,12 +711,46 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Angebot ${quote.quoteNumber}',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        Row(
+                          children: [
+                            Text(
+                              'Angebot ${quote.quoteNumber}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (quote.fair != null && (quote.fair!['name'] ?? '').toString().isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.tertiaryContainer.withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    getAdaptiveIcon(
+                                      iconName: 'event',
+                                      defaultIcon: Icons.event,
+                                      size: 11,
+                                      color: Theme.of(context).colorScheme.onTertiaryContainer,
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      quote.fair!['name'],
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w500,
+                                        color: Theme.of(context).colorScheme.onTertiaryContainer,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -1946,6 +1980,7 @@ Status: ${_getViewStatus(quote).displayName}
       final quoteData = {
         'customer': quote.customer,
         'costCenter': quote.costCenter,
+        'fair': quote.fair,
         'items': availableItems, // NEU: Nur verfügbare Items
         'currency': quote.metadata['currency'] ?? 'CHF',
         'exchangeRates': quote.metadata['exchangeRates'] ?? {
@@ -2105,6 +2140,7 @@ Status: ${_getViewStatus(quote).displayName}
         'quoteNumber': quote.quoteNumber,  // NEU: Quote Nummer beibehalten
         'customer': quote.customer,
         'costCenter': quote.costCenter,
+        'fair': quote.fair,
         'items': quote.items,
         'currency': quote.metadata['currency'] ?? 'CHF',
         'exchangeRates': quote.metadata['exchangeRates'] ?? {

@@ -216,6 +216,7 @@ class QuoteGenerator extends BasePdfGenerator {
               date: DateTime.now(),
               logo: logo,
               costCenter: costCenterCode,
+              fairName: fairData?['name'],
               language: language,
               hfSettings: hfSettings,
             ),
