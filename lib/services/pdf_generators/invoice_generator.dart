@@ -87,7 +87,6 @@ class InvoiceGenerator extends BasePdfGenerator {
     print("paymentTermDayas:$paymentTermDays");
     // Generiere Rechnungs-Nummer falls nicht übergeben
     final invoiceNum = invoiceNumber ?? await getNextInvoiceNumber();
-    final paymentDue = DateTime.now().add(Duration(days: paymentTermDays));
 
     final invoiceSettings = downPaymentSettings ?? await DocumentSelectionManager.loadInvoiceSettings();
     // Lade Adress-Anzeigemodus
@@ -96,7 +95,6 @@ class InvoiceGenerator extends BasePdfGenerator {
     // NEU: Lade Spaltenausrichtungen
     final columnAlignments = await PdfSettingsHelper.getColumnAlignments('invoice');
 
-    DateTime invoiceDate = invoiceSettings['invoice_date'] ?? DateTime.now();
 
     final showDimensions = invoiceSettings['show_dimensions'] ?? false;
 
@@ -120,9 +118,19 @@ class InvoiceGenerator extends BasePdfGenerator {
     final paymentMethod = invoiceSettings['payment_method'] ?? 'BAR';
     final customPaymentMethod = invoiceSettings['custom_payment_method'] ?? '';
 
+
+
+    // NACH dem Laden der invoiceSettings:
     if (invoiceSettings['payment_term_days'] != null) {
       paymentTermDays = invoiceSettings['payment_term_days'];
     }
+
+    DateTime invoiceDate = invoiceSettings['invoice_date'] ?? DateTime.now();
+
+// paymentDue auf Basis von invoiceDate + korrektem paymentTermDays
+    final paymentDue = invoiceDate.add(Duration(days: paymentTermDays));
+
+
 
     // Gruppiere Items nach Holzart
     final productItems = items.where((item) => item['is_service'] != true).toList();

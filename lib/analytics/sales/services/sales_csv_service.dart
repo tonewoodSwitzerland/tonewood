@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/sales_analytics_models.dart';
 import '../models/sales_filter.dart';
+import '../helpers/tax_helper.dart';
 
 class SalesCsvService {
 
@@ -42,6 +43,7 @@ class SalesCsvService {
         'Land',
         'Bestellart',
         'Kostenstelle',
+        'Steuerart',
         'Artikel',
         'Holzart',
         'Qualität',
@@ -94,6 +96,9 @@ class SalesCsvService {
           : '';
       final distChannelStr = distChannel?['name'] ?? '';
 
+      // NEU: Steuerart aus Metadaten
+      final taxOptionCode = TaxHelper.getTaxOptionCode(TaxHelper.getTaxOption(sale));
+
       for (final item in items) {
         if (sale['status'] == 'cancelled') continue;
 
@@ -104,10 +109,17 @@ class SalesCsvService {
         final discount = item['discount'] as Map<String, dynamic>?;
         final discountPct = (discount?['percentage'] as num?)?.toDouble() ?? 0;
         final discountAbs = (discount?['absolute'] as num?)?.toDouble() ?? 0;
-        final itemTotal = isGratis
+        // Vor der Item-Loop (nach Zeile ~99):
+        final taxOption = TaxHelper.getTaxOption(sale);
+        final vatRate = TaxHelper.getVatRate(sale);
+
+// In der Item-Loop:
+        double itemTotal = isGratis
             ? 0.0
             : quantity * pricePerUnit - (quantity * pricePerUnit * discountPct / 100) - discountAbs;
-
+        if (taxOption == 2 && !isGratis) {
+          itemTotal = TaxHelper.netFromGross(itemTotal, vatRate);
+        }
         final row = [
           dateStr,
           orderNumber,
@@ -115,6 +127,7 @@ class SalesCsvService {
           countryCode,
           _escapeCsv(distChannelStr),
           _escapeCsv(costCenterStr),
+          taxOptionCode,
           _escapeCsv(item['product_name'] ?? ''),
           _escapeCsv(item['wood_name'] ?? ''),
           _escapeCsv(item['quality_name'] ?? ''),

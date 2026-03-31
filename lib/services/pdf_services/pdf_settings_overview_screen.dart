@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:tonewood/services/pdf_services/pdf_header_footer_settings_screen.dart';
 import 'package:tonewood/services/pdf_services/pdf_settings_screen.dart';
+import 'package:tonewood/services/product_sorting_manager.dart';
 import '../icon_helper.dart';
 
 
@@ -92,6 +93,20 @@ class PdfSettingsOverviewScreen extends StatelessWidget {
                 builder: (_) => const PdfSettingsScreen(),
               ),
             ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Sortierreihenfolge
+          _buildSettingsCard(
+            context,
+            icon: Icons.sort,
+            iconName: 'sort',
+            title: 'Sortierreihenfolge',
+            subtitle:
+            'Produkte nach Instrument, Holzart, Qualität etc. sortieren. Gilt für alle Angebote, Aufträge und Dokumente.',
+            color: Colors.deepOrange,
+            onTap: () => ProductSortingManager.showSortingDialog(context),
           ),
         ],
       ),

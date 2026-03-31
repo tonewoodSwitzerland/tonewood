@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/sales_filter.dart';
 import '../models/sales_analytics_models.dart';
 import '../../../services/countries.dart';
+import '../helpers/tax_helper.dart';
 
 class SalesPdfService {
 
@@ -183,11 +184,11 @@ class SalesPdfService {
 
           // Tabelle — FIX: MwSt/Total raus, Land nach Kunde eingefügt
           pw.Table.fromTextArray(
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 7),
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 6),
             cellStyle: const pw.TextStyle(fontSize: 6.5),
             headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
             headers: [
-              'Versand', 'Nr.', 'Kunde', 'Land', 'Bestellart', 'Artikel',
+              'Versand', 'Nr.', 'Kunde', 'Land', 'Bestellart', 'Steuer', 'Artikel',
               'Warenwert', 'Rechn. netto', 'Rechn. brutto',
             ],
             data: filteredSales.where((s) => s['status'] != 'cancelled').map((sale) {
@@ -196,6 +197,9 @@ class SalesPdfService {
               final metadata     = sale['metadata'] as Map<String, dynamic>? ?? {};
               final customer     = sale['customer'] as Map<String, dynamic>? ?? {};
               final distChannel  = metadata['distributionChannel'] as Map<String, dynamic>?;
+
+              // NEU: TaxOption lesen
+              final taxOption = TaxHelper.getTaxOption(sale);
 
               DateTime? ts;
               final shippedAt = sale['shippedAt'];
@@ -209,6 +213,7 @@ class SalesPdfService {
               // Warenwert: item-by-item ohne Service + ohne Gratisartikel
               final orderTotalDisc = (calculations['total_discount_amount'] as num?)?.toDouble() ?? 0;
               double warenwert = 0;
+              final vatRate = TaxHelper.getVatRate(sale);
               for (final it in items) {
                 if (it['is_service'] == true || it['is_gratisartikel'] == true) continue;
                 final qty   = (it['quantity']              as num?)?.toDouble() ?? 0;
@@ -217,9 +222,15 @@ class SalesPdfService {
                 final disc    = it['discount'] as Map<String, dynamic>?;
                 final discPct = (disc?['percentage']       as num?)?.toDouble() ?? 0;
                 final discAbs = (disc?['absolute']         as num?)?.toDouble() ?? 0;
-                warenwert += qty * price - (qty * price * discPct / 100) - discAbs;
+                double lineVal = qty * price - (qty * price * discPct / 100) - discAbs;
+                if (taxOption == 2) {
+                  lineVal = TaxHelper.netFromGross(lineVal, vatRate);
+                }
+                warenwert += lineVal;
               }
-              warenwert -= orderTotalDisc;
+              warenwert -= (taxOption == 2)
+                  ? TaxHelper.netFromGross(orderTotalDisc, vatRate)
+                  : orderTotalDisc;
 
               final netAmount  = (calculations['net_amount'] as num?)?.toDouble() ?? 0;
               final totalGross = (calculations['total']      as num?)?.toDouble() ?? 0;
@@ -234,6 +245,7 @@ class SalesPdfService {
                 _getCustomerDisplayName(customer),
                 country.name.isNotEmpty ? country.name : countryCode,
                 distChannel?['name'] ?? '-',
+                TaxHelper.getTaxOptionCode(taxOption),
                 '${items.length} Pos.',
                 _formatCurrency(warenwert),
                 _formatCurrency(netAmount),
@@ -246,21 +258,23 @@ class SalesPdfService {
               2: pw.Alignment.centerLeft,
               3: pw.Alignment.centerLeft,
               4: pw.Alignment.centerLeft,
-              5: pw.Alignment.centerLeft,
-              6: pw.Alignment.centerRight,
+              5: pw.Alignment.center,
+              6: pw.Alignment.centerLeft,
               7: pw.Alignment.centerRight,
               8: pw.Alignment.centerRight,
+              9: pw.Alignment.centerRight,
             },
             columnWidths: {
               0: const pw.FlexColumnWidth(1.0),
               1: const pw.FlexColumnWidth(1.2),
-              2: const pw.FlexColumnWidth(2.8),
-              3: const pw.FlexColumnWidth(1.3),
-              4: const pw.FlexColumnWidth(1.5),
-              5: const pw.FlexColumnWidth(1.0),
-              6: const pw.FlexColumnWidth(1.6),
-              7: const pw.FlexColumnWidth(1.6),
-              8: const pw.FlexColumnWidth(1.6),
+              2: const pw.FlexColumnWidth(2.2),
+              3: const pw.FlexColumnWidth(1.4),
+              4: const pw.FlexColumnWidth(1.2),
+              5: const pw.FlexColumnWidth(1),
+              6: const pw.FlexColumnWidth(1),
+              7: const pw.FlexColumnWidth(1.5),
+              8: const pw.FlexColumnWidth(1.5),
+              9: const pw.FlexColumnWidth(1.5),
             },
           ),
         ],
@@ -792,7 +806,7 @@ class SalesPdfService {
     double totalSurcharges = 0;
     double totalDiscount = 0;
     double totalVat = 0;
-    double totalGratisValue = 0;  // NEU
+    double totalGratisValue = 0;
     int count = 0;
 
     for (var sale in sales) {
@@ -805,9 +819,17 @@ class SalesPdfService {
       final orderDeductions    = (calculations['total_deductions']      as num?)?.toDouble() ?? 0;
       final orderSurcharges    = (calculations['total_surcharges']      as num?)?.toDouble() ?? 0;
       final orderTotalDiscount = (calculations['total_discount_amount'] as num?)?.toDouble() ?? 0;
-      final orderVat           = (calculations['vat_amount']            as num?)?.toDouble() ?? 0;
+      final orderTotal         = (calculations['total']                 as num?)?.toDouble() ?? 0;
 
-      totalRevenue   += (calculations['total']      as num?)?.toDouble() ?? 0;
+      // TaxOption-bewusste MwSt-Berechnung
+      final taxOption = TaxHelper.getTaxOption(sale);
+      final vatRate = TaxHelper.getVatRate(sale);
+      final orderVat = TaxHelper.getEffectiveVat(
+        data: sale,
+        orderTotal: orderTotal,
+      );
+
+      totalRevenue   += orderTotal;
       totalNetAmount += (calculations['net_amount'] as num?)?.toDouble() ?? 0;
       totalFreight    += orderFreight;
       totalPhyto      += orderPhyto;
@@ -827,18 +849,28 @@ class SalesPdfService {
         final discPct  = (disc?['percentage']         as num?)?.toDouble() ?? 0;
         final discAbs  = (disc?['absolute']           as num?)?.toDouble() ?? 0;
         final lineDiscount = qty * price * discPct / 100 + discAbs;
-        final lineTotal = qty * price - lineDiscount;
+        double lineTotal = qty * price - lineDiscount;
+
+        // taxOption 2: Item-Preise sind brutto → netto rückrechnen
+        if (taxOption == 2) {
+          lineTotal = TaxHelper.netFromGross(lineTotal, vatRate);
+        }
 
         if (it['is_service'] == true) {
           orderServiceRev += lineTotal;
         } else if (it['is_gratisartikel'] == true) {
-          totalGratisValue += lineTotal;  // NEU: Gratisartikel-Wert merken
+          totalGratisValue += lineTotal;
         } else {
           orderSubtotal += lineTotal;
         }
       }
 
-      orderSubtotal -= orderTotalDiscount;
+      // Order-Level Rabatt abziehen (auch netto bei taxOption 2)
+      final effectiveDiscount = (taxOption == 2)
+          ? TaxHelper.netFromGross(orderTotalDiscount, vatRate)
+          : orderTotalDiscount;
+      orderSubtotal -= effectiveDiscount;
+
       totalSubtotal       += orderSubtotal;
       totalServiceRevenue += orderServiceRev;
       count++;
@@ -856,11 +888,10 @@ class SalesPdfService {
       'totalSurcharges':     totalSurcharges,
       'totalDiscount':       totalDiscount,
       'totalVat':            totalVat,
-      'totalGratisValue':    totalGratisValue,  // NEU
+      'totalGratisValue':    totalGratisValue,
       'averageOrderValue':   count == 0 ? 0.0 : totalSubtotal / count,
     };
   }
-
   static String _getFilterTimeRange(SalesFilter filter) {
     if (filter.timeRange != null) {
       switch (filter.timeRange) {

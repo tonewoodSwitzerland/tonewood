@@ -142,21 +142,27 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                   decoration: InputDecoration(
                     hintText: 'Suche nach Kunde, Auftragsnummer...',
                     hintStyle: const TextStyle(fontSize: 14),
-                    prefixIcon: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: getAdaptiveIcon(iconName: 'search', defaultIcon: Icons.search),
+                    ),
                     suffixIcon: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (_searchController.text.isNotEmpty)
-                          IconButton(
-                            icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear, size: 20),
-                            onPressed: () {
-                              _searchController.clear();
-                              setSearchState(() {});
-                              setState(() {
-                                _activeFilters['searchText'] = '';
-                              });
-                              OrderFilterService.saveFilters(_activeFilters);
-                            },
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: IconButton(
+                              icon: getAdaptiveIcon(iconName: 'clear', defaultIcon: Icons.clear, size: 20),
+                              onPressed: () {
+                                _searchController.clear();
+                                setSearchState(() {});
+                                setState(() {
+                                  _activeFilters['searchText'] = '';
+                                });
+                                OrderFilterService.saveFilters(_activeFilters);
+                              },
+                            ),
                           ),
                         IconButton(
                           icon: getAdaptiveIcon(

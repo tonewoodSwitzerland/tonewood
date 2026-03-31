@@ -423,8 +423,12 @@ class OrderSummary {
   final double vat;
   final double deductions;
   final double surcharges;
-// Nach surcharges:
   final double netAmount;  // = net_amount direkt aus Firestore
+
+  // NEU: Steuer-Metadaten
+  final int taxOption;     // 0=standard, 1=noTax, 2=totalOnly
+  final double vatRate;    // z.B. 8.1
+
   OrderSummary({
     required this.orderId,
     required this.orderNumber,
@@ -443,5 +447,7 @@ class OrderSummary {
     this.deductions = 0,
     this.surcharges = 0,
     this.netAmount = 0,
+    this.taxOption = 0,
+    this.vatRate = 8.1,
   });
 }

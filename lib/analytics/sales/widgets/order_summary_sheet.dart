@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../services/icon_helper.dart';
 import '../models/sales_analytics_models.dart';
+import '../helpers/tax_helper.dart';
 
 class OrderSummarySheet {
   static void show(BuildContext context, OrderSummary order) {
@@ -117,6 +118,16 @@ class _OrderSummarySheetContent extends StatelessWidget {
                     label: 'Positionen',
                     value: '${order.itemCount} Artikel',
                   ),
+                  const SizedBox(height: 12),
+
+                  // Steuerart
+                  _buildRow(
+                    context,
+                    icon: Icons.receipt,
+                    iconName: 'receipt',
+                    label: 'Steuerart',
+                    value: _getTaxDisplayText(),
+                  ),
                   const SizedBox(height: 20),
 
                   // Betragsblock
@@ -138,13 +149,35 @@ class _OrderSummarySheetContent extends StatelessWidget {
                             valueColor: Colors.orange.shade700,
                           ),
                         ],
+
+                        // MwSt-Zeile abhängig von TaxOption
+                        if (order.taxOption == 0 && order.vat > 0) ...[
+                          const SizedBox(height: 8),
+                          _buildAmountRow(
+                            context,
+                            'MwSt ${order.vatRate}%',
+                            '+ ${fmt.format(order.vat)}',
+                          ),
+                        ],
+                        if (order.taxOption == 2 && order.vat > 0) ...[
+                          const SizedBox(height: 8),
+                          _buildAmountRow(
+                            context,
+                            'MwSt ${order.vatRate}% (inkl.)',
+                            fmt.format(order.vat),
+                            valueColor: theme.colorScheme.onSurface.withOpacity(0.5),
+                          ),
+                        ],
+
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 10),
                           child: Divider(height: 1),
                         ),
+
+                        // Gesamtbetrag mit passender Bezeichnung
                         _buildAmountRow(
                           context,
-                          'Gesamtbetrag (brutto)',
+                          _getGrossLabel(),
                           fmt.format(order.total),
                           isMain: true,
                           valueColor: theme.colorScheme.primary,
@@ -161,13 +194,34 @@ class _OrderSummarySheetContent extends StatelessWidget {
     );
   }
 
+  /// Anzeige-Text für die Steuerart
+  String _getTaxDisplayText() {
+    final label = TaxHelper.getTaxOptionLabel(order.taxOption);
+    if (order.taxOption == 0 || order.taxOption == 2) {
+      return '$label (${order.vatRate}%)';
+    }
+    return label;
+  }
+
+  /// Label für den Gesamtbetrag je nach TaxOption
+  String _getGrossLabel() {
+    switch (order.taxOption) {
+      case 1:
+        return 'Gesamtbetrag (netto)';
+      case 2:
+        return 'Gesamtbetrag (inkl. MwSt)';
+      default:
+        return 'Gesamtbetrag (brutto)';
+    }
+  }
+
   Widget _buildRow(
-    BuildContext context, {
-    required IconData icon,
-    required String iconName,
-    required String label,
-    required String value,
-  }) {
+      BuildContext context, {
+        required IconData icon,
+        required String iconName,
+        required String label,
+        required String value,
+      }) {
     final theme = Theme.of(context);
     return Row(
       children: [
@@ -192,12 +246,12 @@ class _OrderSummarySheetContent extends StatelessWidget {
   }
 
   Widget _buildAmountRow(
-    BuildContext context,
-    String label,
-    String value, {
-    bool isMain = false,
-    Color? valueColor,
-  }) {
+      BuildContext context,
+      String label,
+      String value, {
+        bool isMain = false,
+        Color? valueColor,
+      }) {
     final theme = Theme.of(context);
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,

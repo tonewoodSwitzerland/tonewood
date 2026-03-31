@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../services/countries.dart';
 import '../models/sales_filter.dart';
 import '../models/sales_analytics_models.dart';
+import '../helpers/tax_helper.dart';
 
 class SalesAnalyticsService {
   final _db = FirebaseFirestore.instance;
@@ -267,10 +268,20 @@ class SalesAnalyticsService {
         final orderTotal = (calculations['total'] as num?)?.toDouble() ?? 0;
         final orderFreight = (calculations['freight'] as num?)?.toDouble() ?? 0;
         final orderPhytosanitary = (calculations['phytosanitary'] as num?)?.toDouble() ?? 0;
-        final orderVat = (calculations['vat_amount'] as num?)?.toDouble() ?? 0;
         final orderDeductions = (calculations['total_deductions'] as num?)?.toDouble() ?? 0;
         final orderSurcharges = (calculations['total_surcharges'] as num?)?.toDouble() ?? 0;
         final orderTotalDiscountAmount = (calculations['total_discount_amount'] as num?)?.toDouble() ?? 0;
+
+        // ============================================================
+        // NEU: TaxOption-bewusste MwSt-Berechnung
+        // ============================================================
+        final taxOption = TaxHelper.getTaxOption(data);
+        final vatRate = TaxHelper.getVatRate(data);
+        final orderVat = TaxHelper.getEffectiveVat(
+          data: data,
+          orderTotal: orderTotal,
+        );
+
         double orderSubtotal = 0;
         double orderItemDiscount = 0;
         double orderServiceRev = 0;
@@ -284,26 +295,36 @@ class SalesAnalyticsService {
           final discPct  = (disc?['percentage']         as num?)?.toDouble() ?? 0;
           final discAbs  = (disc?['absolute']           as num?)?.toDouble() ?? 0;
           final lineDiscount = qty * price * discPct / 100 + discAbs;
+          double lineTotal = qty * price - lineDiscount;
+
+          // taxOption 2: Item-Preise sind brutto → netto rückrechnen
+          if (taxOption == 2) {
+            lineTotal = TaxHelper.netFromGross(lineTotal, vatRate);
+          }
 
           if (it['is_service'] == true) {
-            orderServiceRev += qty * price - lineDiscount;
+            orderServiceRev += lineTotal;
           } else if (it['is_gratisartikel'] == true) {
-            // Gratisartikel: nicht in Warenwert
-            final gratisLineTotal = qty * price - lineDiscount;
-            orderGratisValue += gratisLineTotal;
+            orderGratisValue += lineTotal;
           } else {
-            orderSubtotal     += qty * price - lineDiscount;
-            orderItemDiscount += lineDiscount;
+            orderSubtotal     += lineTotal;
+            orderItemDiscount += (taxOption == 2)
+                ? TaxHelper.netFromGross(lineDiscount, vatRate)
+                : lineDiscount;
           }
         }
-// Order-Level Rabatt abziehen
-        final orderDiscount = orderItemDiscount + orderTotalDiscountAmount;
-        orderSubtotal -= orderTotalDiscountAmount;
+// Order-Level Rabatt abziehen (auch netto bei taxOption 2)
+        final effectiveOrderDiscount = (taxOption == 2)
+            ? TaxHelper.netFromGross(orderTotalDiscountAmount, vatRate)
+            : orderTotalDiscountAmount;
+        final orderDiscount = orderItemDiscount + effectiveOrderDiscount;
+        orderSubtotal -= effectiveOrderDiscount;
         totalGratisValue += orderGratisValue;
 
+        // Order-Level Rabatt abziehen
 
-
-
+        orderSubtotal -= orderTotalDiscountAmount;
+        totalGratisValue += orderGratisValue;
 
         bool hasMatchingItems = false;
         int orderItemCount = 0;
@@ -322,11 +343,16 @@ class SalesAnalyticsService {
           final itemDiscPct = (itemDisc?['percentage'] as num?)?.toDouble() ?? 0;
           final itemDiscAbs = (itemDisc?['absolute'] as num?)?.toDouble() ?? 0;
           // Umsatz für Stats: Gratisartikel mit 0 CHF
-          final itemRevenue = (itemData['is_gratisartikel'] == true)
+          double itemRevenue = (itemData['is_gratisartikel'] == true)
               ? 0.0
               : quantity * pricePerUnit
               - (quantity * pricePerUnit * itemDiscPct / 100)
               - itemDiscAbs;
+// taxOption 2: brutto → netto
+          if (taxOption == 2 && itemRevenue > 0) {
+            itemRevenue = TaxHelper.netFromGross(itemRevenue, vatRate);
+          }
+
           final volumePerUnit = (itemData['volume_per_unit'] as num?)?.toDouble() ?? 0;
           final itemVolume = quantity * volumePerUnit; // m³ pro Item
 
@@ -422,7 +448,7 @@ class SalesAnalyticsService {
         totalDiscount += orderDiscount;
         totalFreight += orderFreight;
         totalPhytosanitary += orderPhytosanitary;
-        totalVat += orderVat;
+        totalVat += orderVat; // NEU: verwendet TaxHelper
         totalDeductions += orderDeductions;
         totalSurcharges += orderSurcharges;
         totalServiceRevenue += orderServiceRev;
@@ -447,10 +473,12 @@ class SalesAnalyticsService {
           freight: orderFreight,
           phytosanitary: orderPhytosanitary,
           serviceRevenue: orderServiceRev,
-          vat: orderVat,
+          vat: orderVat, // NEU: effektive MwSt (auch für taxOption 2)
           deductions: orderDeductions,
           surcharges: orderSurcharges,
           netAmount: (calculations['net_amount'] as num?)?.toDouble() ?? 0,
+          taxOption: taxOption, // NEU
+          vatRate: vatRate,     // NEU
         ));
 
         // Zeitraum-Umsätze + Order-Counts
@@ -460,7 +488,7 @@ class SalesAnalyticsService {
           yearDiscount += orderDiscount;
           yearFreight += orderFreight;
           yearPhytosanitary += orderPhytosanitary;
-          yearVat += orderVat;
+          yearVat += orderVat; // NEU
           yearDeductions += orderDeductions;
           yearSurcharges += orderSurcharges;
           yearServiceRevenue += orderServiceRev;
@@ -473,7 +501,7 @@ class SalesAnalyticsService {
           monthDiscount += orderDiscount;
           monthFreight += orderFreight;
           monthPhytosanitary += orderPhytosanitary;
-          monthVat += orderVat;
+          monthVat += orderVat; // NEU
           monthDeductions += orderDeductions;
           monthSurcharges += orderSurcharges;
           monthServiceRevenue += orderServiceRev;

@@ -265,7 +265,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           print("settings:$settings");
         } else {
           final tempSettingsDoc = await
-              UserBasketService.temporaryDocumentSettings
+          UserBasketService.temporaryDocumentSettings
               .doc('tara_settings')
               .get();
 
@@ -277,7 +277,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
         }
       } else {
         final tempSettingsDoc = await
-            UserBasketService.temporaryDocumentSettings
+        UserBasketService.temporaryDocumentSettings
             .doc('tara_settings')
             .get();
 
@@ -607,6 +607,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
     final Map<String, List<Map<String, dynamic>>> grouped = {};
     final Map<String, Map<String, dynamic>> woodTypeCache = {};
+    final Map<String, String> groupKeyToWoodCode = {}; // Für Holzart-basierte Sortierung
 
     for (final item in sortedItems) {
       String tariffNumber = '';
@@ -755,6 +756,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
       if (!grouped.containsKey(groupKey)) {
         grouped[groupKey] = [];
+        groupKeyToWoodCode[groupKey] = woodCode;
       }
 
       // Füge zusätzliche Infos zum Item hinzu
@@ -769,13 +771,65 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       grouped[groupKey]!.add(enhancedItem);
     }
 
-    // Sortiere die Gruppen nach Zolltarifnummer
+    // Sortiere Gruppen: Primär nach Holzart (gemäß globaler Sortier-Einstellung),
+    // sekundär nach Zolltarifnummer innerhalb derselben Holzart.
+    // So bleiben z.B. zwei Fichte-Gruppen mit unterschiedlichen Tarifen zusammen.
+    final detailSettings = await ProductSortingManager.loadAllDetailSortSettings();
+    final woodDetailSetting = detailSettings[ProductSortCriteria.wood];
+
+    final sortedEntries = grouped.entries.toList();
+
+    sortedEntries.sort((a, b) {
+      final woodCodeA = groupKeyToWoodCode[a.key] ?? '';
+      final woodCodeB = groupKeyToWoodCode[b.key] ?? '';
+
+      // Primär: Nach Holzart sortieren (gleiche Logik wie groupAndSortProducts)
+      int woodComparison;
+
+      if (woodDetailSetting != null &&
+          woodDetailSetting.mode == DetailSortMode.custom &&
+          woodDetailSetting.customOrder != null &&
+          woodDetailSetting.customOrder!.isNotEmpty) {
+        // Custom Order
+        final indexA = woodDetailSetting.customOrder!.indexOf(woodCodeA);
+        final indexB = woodDetailSetting.customOrder!.indexOf(woodCodeB);
+        final effectiveA = indexA == -1 ? 999999 : indexA;
+        final effectiveB = indexB == -1 ? 999999 : indexB;
+        woodComparison = effectiveA.compareTo(effectiveB);
+      } else if (woodDetailSetting != null &&
+          woodDetailSetting.mode == DetailSortMode.byNameAsc) {
+        final nameA = a.key.split(' - ').length > 1 ? a.key.split(' - ')[1] : '';
+        final nameB = b.key.split(' - ').length > 1 ? b.key.split(' - ')[1] : '';
+        woodComparison = nameA.toLowerCase().compareTo(nameB.toLowerCase());
+      } else if (woodDetailSetting != null &&
+          woodDetailSetting.mode == DetailSortMode.byNameDesc) {
+        final nameA = a.key.split(' - ').length > 1 ? a.key.split(' - ')[1] : '';
+        final nameB = b.key.split(' - ').length > 1 ? b.key.split(' - ')[1] : '';
+        woodComparison = nameB.toLowerCase().compareTo(nameA.toLowerCase());
+      } else {
+        // Standard: Nach Code
+        final numA = int.tryParse(woodCodeA);
+        final numB = int.tryParse(woodCodeB);
+        if (numA != null && numB != null) {
+          woodComparison = numA.compareTo(numB);
+        } else {
+          woodComparison = woodCodeA.compareTo(woodCodeB);
+        }
+        if (woodDetailSetting != null && !woodDetailSetting.ascending) {
+          woodComparison = -woodComparison;
+        }
+      }
+
+      // Sekundär: Bei gleicher Holzart nach Zolltarifnummer sortieren
+      if (woodComparison != 0) return woodComparison;
+
+      final tariffA = a.key.split(' - ')[0];
+      final tariffB = b.key.split(' - ')[0];
+      return tariffA.compareTo(tariffB);
+    });
+
     final sortedGrouped = Map<String, List<Map<String, dynamic>>>.fromEntries(
-        grouped.entries.toList()..sort((a, b) {
-          final tariffA = a.key.split(' - ')[0];
-          final tariffB = b.key.split(' - ')[0];
-          return tariffA.compareTo(tariffB);
-        })
+      sortedEntries,
     );
 
     return sortedGrouped;
