@@ -13,6 +13,7 @@ import '../../services/icon_helper.dart';
 import '../../services/swiss_rounding.dart'; // NEU
 import '../../constants.dart';
 import '../services/price_formatter.dart';
+import 'extend_quote_dialog.dart';
 
 // Farben und Status aus der Hauptdatei importieren oder hier definieren
 class QuoteColors {
@@ -347,36 +348,64 @@ class _QuoteDetailsSheetState extends State<QuoteDetailsSheet> {
   // ===== PRIMARY ACTIONS (Beauftragen / Ablehnen) =====
   Widget _buildPrimaryActions(BuildContext context) {
     if (!isOpen) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: viewStatus.color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: viewStatus.color.withOpacity(0.3)),
-        ),
-        child: Row(
-          children: [
-            getAdaptiveIcon(
-              iconName: viewStatus == QuoteViewStatus.accepted ? 'check_circle' : 'info',
-              defaultIcon: viewStatus == QuoteViewStatus.accepted ? Icons.check_circle : Icons.info,
-              color: viewStatus.color,
+      return Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: viewStatus.color.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: viewStatus.color.withOpacity(0.3)),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                viewStatus == QuoteViewStatus.accepted
-                    ? 'Dieses Angebot wurde angenommen'
-                    : viewStatus == QuoteViewStatus.rejected
-                    ? 'Dieses Angebot wurde abgelehnt'
-                    : 'Dieses Angebot ist abgelaufen',
-                style: TextStyle(color: viewStatus.color, fontWeight: FontWeight.w500),
+            child: Row(
+              children: [
+                getAdaptiveIcon(
+                  iconName: viewStatus == QuoteViewStatus.accepted ? 'check_circle' : 'info',
+                  defaultIcon: viewStatus == QuoteViewStatus.accepted ? Icons.check_circle : Icons.info,
+                  color: viewStatus.color,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    viewStatus == QuoteViewStatus.accepted
+                        ? 'Dieses Angebot wurde angenommen'
+                        : viewStatus == QuoteViewStatus.rejected
+                        ? 'Dieses Angebot wurde abgelehnt'
+                        : 'Dieses Angebot ist abgelaufen',
+                    style: TextStyle(color: viewStatus.color, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // NEU: Verlängern-Button nur bei abgelaufenen Angeboten
+          if (viewStatus == QuoteViewStatus.expired) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  final result = await ExtendQuoteDialog.show(
+                    context,
+                    quoteId: quote.id,
+                    currentValidUntil: quote.validUntil,
+                  );
+                  if (result == true && mounted) {
+                    Navigator.of(context).pop(); // Sheet schließen
+                  }
+                },
+                icon: const Icon(Icons.update),
+                label: const Text('Angebot verlängern'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
               ),
             ),
           ],
-        ),
+        ],
       );
     }
-
     return Column(
       children: [
         SizedBox(

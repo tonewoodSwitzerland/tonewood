@@ -313,7 +313,7 @@ class AddProductScreenState extends State<AddProductScreen> {
         selectedUnit = widget.productData!['unit'];
 
         // Menge und Preis laden
-        quantityController.text = widget.productData!['quantity']?.toString() ?? '0';
+        quantityController.text = ((widget.productData!['quantity'] as num?)?.toString() ?? '0').replaceAll('.', ',');
         priceController.text = widget.productData!['price_CHF']?.toString() ?? '0.0';
 
         // Short Barcode generieren oder laden
@@ -1057,7 +1057,14 @@ class AddProductScreenState extends State<AddProductScreen> {
       return '';
     }
   }
-
+  num _parseQuantity(String text) {
+    final normalized = text.replaceAll(',', '.').trim();
+    if (selectedUnit == 'Stück') {
+      return double.parse(normalized).round();
+    } else {
+      return double.parse(normalized);
+    }
+  }
   Future<void> _saveProduct() async {
     print("testxxx");
     if (!_formKey.currentState!.validate()) return;
@@ -1165,7 +1172,7 @@ class AddProductScreenState extends State<AddProductScreen> {
         // Bearbeitungsmodus - WICHTIG: Quantity hinzufügen!
         final updateData = {
           ...baseData,
-          'quantity': int.parse(quantityController.text), // <-- Das fehlte!
+          'quantity': _parseQuantity(quantityController.text), // <-- Das fehlte!
         };
 
         await FirebaseFirestore.instance
@@ -1192,7 +1199,7 @@ class AddProductScreenState extends State<AddProductScreen> {
 
           final batchData = {
             'batch_number': 1,
-            'quantity': int.parse(quantityController.text),
+            'quantity': _parseQuantity(quantityController.text),
             'stock_entry_date': FieldValue.serverTimestamp(),
           };
 
@@ -1216,11 +1223,11 @@ class AddProductScreenState extends State<AddProductScreen> {
         // Hole aktuellen Inventory-Stand
         final inventoryDoc = await inventoryRef.get();
         final currentQuantity = inventoryDoc.exists
-            ? (inventoryDoc.data()?['quantity'] as num?)?.toInt() ?? 0
+            ? (inventoryDoc.data()?['quantity'] as num?) ?? 0
             : 0;
 
         // Addiere neue Quantity
-        final newQuantity = currentQuantity + int.parse(quantityController.text);
+        final newQuantity = currentQuantity + _parseQuantity(quantityController.text);
 
         // Inventory Update mit Quantity-Aggregation
         if (inventoryDoc.exists) {
@@ -1233,7 +1240,7 @@ class AddProductScreenState extends State<AddProductScreen> {
           // Wenn es ein neues Produkt ist, alle Daten setzen
           batch.set(inventoryRef, {
             ...baseData,
-            'quantity': int.parse(quantityController.text),
+            'quantity': _parseQuantity(quantityController.text),
             'created_at': FieldValue.serverTimestamp(),
           });
         }

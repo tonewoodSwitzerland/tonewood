@@ -258,7 +258,7 @@ class SalesKpiView extends StatelessWidget {
           cards.add(_KpiCardData(
             title: _isFilteredByDate
                 ? 'Dienstleistungen'
-                : 'Dienstleistungen ${DateTime.now().year}',
+                : 'Dienstleist. ${DateTime.now().year}',
             value: format.format(
                 _isFilteredByDate ? rev.totalServiceRevenue : rev.yearServiceRevenue),
             icon: Icons.build,
@@ -779,7 +779,7 @@ class SalesKpiView extends StatelessWidget {
                 Expanded(
                   child: Text(
                     data.title,
-                    style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
+                    style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                   ),
                 ),
                 if (data.onTap != null)

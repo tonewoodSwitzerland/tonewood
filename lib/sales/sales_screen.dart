@@ -638,7 +638,7 @@ class SalesScreenState extends State<SalesScreen> {
                   ...item,
                   'timestamp': FieldValue.serverTimestamp(),
                   // Aktualisiere Preis falls nötig
-                  'price_per_unit': serviceDoc.data()!['price'] ?? item['price_per_unit'],
+                  'price_per_unit': ((serviceDoc.data()!['price'] ?? item['price_per_unit']) as num).toDouble(),
                 });
                 successfulItems++;
               } else {
@@ -3232,7 +3232,7 @@ class SalesScreenState extends State<SalesScreen> {
                                                     ),
                                                   ),
                                                   Text(
-                                                    'Pro-forma: ${_formatPrice(item['proforma_value'])}',
+                                                    'Pro-forma: ${_formatPrice((item['proforma_value'] as num).toDouble())}',
                                                     style: TextStyle(
                                                       fontSize: 9,
                                                       color: Colors.grey[600],

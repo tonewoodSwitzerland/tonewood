@@ -2425,7 +2425,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                       avatar:
                       getAdaptiveIcon(iconName: 'discount',defaultIcon:Icons.discount, size: 18, color:  _shopFilter == 'discounted' ? Colors.orange : null,),
 
-                      label: const Text('Rabattiert'),
+                      label: const Text('Rabatt'),
                       selected: _shopFilter == 'discounted',
                       selectedColor: Colors.orange.withOpacity(0.2),
                       onSelected: (selected) {
