@@ -5,7 +5,7 @@ import 'package:tonewood/services/pdf_services/pdf_header_footer_settings_screen
 import 'package:tonewood/services/pdf_services/pdf_settings_screen.dart';
 import 'package:tonewood/services/product_sorting_manager.dart';
 import '../icon_helper.dart';
-
+import 'package:tonewood/services/pdf_services/pdf_unit_decimals_settings_screen.dart';
 
 /// Übersichtsseite für alle PDF-Einstellungen
 /// Navigiert zu den einzelnen Unterseiten
@@ -96,6 +96,25 @@ class PdfSettingsOverviewScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 12),
+// Nachkommastellen
+          _buildSettingsCard(
+            context,
+            icon: Icons.pin,
+            iconName: 'pin',
+            title: 'Nachkommastellen',
+            subtitle:
+            'Festlegen wie viele Nachkommastellen pro Einheit (Stk, m², m³, kg) in allen PDFs angezeigt werden.',
+            color: Colors.blueGrey,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const PdfUnitDecimalsSettingsScreen(),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
 
           // Sortierreihenfolge
           _buildSettingsCard(
@@ -108,6 +127,8 @@ class PdfSettingsOverviewScreen extends StatelessWidget {
             color: Colors.deepOrange,
             onTap: () => ProductSortingManager.showSortingDialog(context),
           ),
+
+
         ],
       ),
     );

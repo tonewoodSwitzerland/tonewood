@@ -1527,7 +1527,7 @@ class _DocumentCreationDialogState extends State<_DocumentCreationDialog> {
           }
           // Bereite Tara-Einstellungen vor
           final taraSettings = {
-            'number_of_packages': settings['number_of_packages'],
+            'number_of_packages': numberOfPackages,
             'packaging_weight': packagingWeight,
             'packaging_volume': packagingVolume,
             'commercial_invoice_date': settings['commercial_invoice_date'],

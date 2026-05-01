@@ -10,8 +10,16 @@ import '../models/sales_filter.dart';
 import '../models/sales_analytics_models.dart';
 import '../../../services/countries.dart';
 import '../helpers/tax_helper.dart';
-
+import 'package:flutter/foundation.dart';
 class SalesPdfService {
+
+  static String _findMissingFields(Map<String, dynamic> calc) {
+    final expected = ['subtotal', 'net_amount', 'total', 'vat_amount',
+      'freight', 'phytosanitary', 'total_deductions',
+      'total_surcharges', 'total_discount_amount'];
+    final missing = expected.where((k) => !calc.containsKey(k) || calc[k] == null).toList();
+    return missing.isEmpty ? '(keine)' : missing.join(', ');
+  }
 
   static String _formatCurrency(double value) {
     final isNegative = value < 0;
@@ -26,6 +34,24 @@ class SalesPdfService {
 
   static final _dateFormat = DateFormat('dd.MM.yyyy');
   static final _dateTimeFormat = DateFormat('dd.MM.yyyy HH:mm');
+
+  // ============================================================
+  // DEBUG-HELPER
+  // Schalter für gezieltes Logging — alle Aufrufe nur im Debug-Build aktiv.
+  // Im Release-Build wird der Code vom Compiler komplett entfernt.
+  // ============================================================
+  static const bool _debugStats     = true;  // _calculateSalesStats Verkaufsübersicht
+  static const bool _debugAnalytics = true;  // _buildRevenueRows Verkaufsanalyse
+  static const bool _debugRows      = true;  // Einzelzeilen-Debug (taxOption / DB-Konsistenz)
+
+  static void _dbg(bool enabled, String msg) {
+    if (kDebugMode && enabled) {
+      // ignore: avoid_print
+      print(msg);
+    }
+  }
+
+
 
   // ============================================================
   // 1) DETAIL-LISTE: Einzelne Aufträge (Buchhaltung)
@@ -232,8 +258,64 @@ class SalesPdfService {
                   ? TaxHelper.netFromGross(orderTotalDisc, vatRate)
                   : orderTotalDisc;
 
-              final netAmount  = (calculations['net_amount'] as num?)?.toDouble() ?? 0;
-              final totalGross = (calculations['total']      as num?)?.toDouble() ?? 0;
+              final totalGross    = (calculations['total']      as num?)?.toDouble() ?? 0;
+              final netAmountRaw  = (calculations['net_amount'] as num?)?.toDouble() ?? 0;
+              // FIX: Bei taxOption 2 ist net_amount in der DB oft fehlerhaft (= total).
+              // Wir rechnen netto defensiv aus total + vatRate zurück.
+              final netAmount = (taxOption == 2)
+                  ? TaxHelper.netFromGross(totalGross, vatRate)
+                  : netAmountRaw;
+
+
+
+              // ===== DEBUG ROW (taxOption / DB-Konsistenz) =====
+              final _orderNo = sale['orderNumber'] ?? sale['receipt_number'] ?? '?';
+              final _rawTaxOpt = metadata['taxOption'];
+              final _calcVat = (calculations['vat_amount'] as num?)?.toDouble()
+                  ?? (calculations['tax_amount'] as num?)?.toDouble()
+                  ?? (calculations['tax']        as num?)?.toDouble();
+              final _calcSubtotal = (calculations['subtotal'] as num?)?.toDouble();
+              final _expectedVatAt81 = TaxHelper.netFromGross(totalGross, 8.1);
+              final _netEqualsGross = (netAmount - totalGross).abs() < 0.01;
+              final _suspicious = _netEqualsGross && totalGross > 0;
+
+             _dbg(_debugRows, '[DEBUG ROW] -----------------------------------------------');
+             _dbg(_debugRows, '[DEBUG ROW] $_orderNo  taxOpt=$taxOption (raw=${_rawTaxOpt ?? "NULL"})  vatRate=${vatRate.toStringAsFixed(2)}%${_suspicious ? "  ⚠️  net==brutto!" : ""}');
+             _dbg(_debugRows, '[DEBUG ROW]   ROH aus calculations:');
+             _dbg(_debugRows, '[DEBUG ROW]     subtotal:        ${_calcSubtotal ?? "NULL"}');
+             _dbg(_debugRows, '[DEBUG ROW]     net_amount:      $netAmount');
+             _dbg(_debugRows, '[DEBUG ROW]     total:           $totalGross');
+             _dbg(_debugRows, '[DEBUG ROW]     vat/tax_amount:  ${_calcVat ?? "NULL"}');
+             _dbg(_debugRows, '[DEBUG ROW]     freight:         ${calculations['freight']}');
+             _dbg(_debugRows, '[DEBUG ROW]     phytosanitary:   ${calculations['phytosanitary']}');
+             _dbg(_debugRows, '[DEBUG ROW]     total_deductions: ${calculations['total_deductions']}');
+             _dbg(_debugRows, '[DEBUG ROW]     total_surcharges: ${calculations['total_surcharges']}');
+             _dbg(_debugRows, '[DEBUG ROW]     total_discount_amount: $orderTotalDisc');
+             _dbg(_debugRows, '[DEBUG ROW]   PDF-Spalten:');
+             _dbg(_debugRows, '[DEBUG ROW]     Warenwert (lokal berechnet): ${warenwert.toStringAsFixed(4)}');
+             _dbg(_debugRows, '[DEBUG ROW]     Rechn. netto (aus DB):       ${netAmount.toStringAsFixed(4)}');
+             _dbg(_debugRows, '[DEBUG ROW]     Rechn. brutto (aus DB):      ${totalGross.toStringAsFixed(4)}');
+              if (_suspicious) {
+               _dbg(_debugRows, '[DEBUG ROW]   ⚠️  ANALYSE der Anomalie:');
+               _dbg(_debugRows, '[DEBUG ROW]     - net_amount == total → DB-Eintrag deutet auf alte Speicherlogik hin');
+               _dbg(_debugRows, '[DEBUG ROW]     - Falls taxOpt sollte = 2 sein:');
+               _dbg(_debugRows, '[DEBUG ROW]         erwarteter net_amount @ 8.1% = ${_expectedVatAt81.toStringAsFixed(4)}');
+               _dbg(_debugRows, '[DEBUG ROW]         erwartete VAT             = ${(totalGross - _expectedVatAt81).toStringAsFixed(4)}');
+               _dbg(_debugRows, '[DEBUG ROW]     - Felder die in calc fehlen könnten: ${_findMissingFields(calculations)}');
+               _dbg(_debugRows, '[DEBUG ROW]   metadata komplett: $metadata');
+               _dbg(_debugRows, '[DEBUG ROW]   calculations komplett: $calculations');
+              }
+              // ===== DEBUG ROW END =====
+
+
+
+
+
+
+
+
+
+
 
               final countryCode = customer['countryCode']?.toString() ??
                   customer['country']?.toString() ?? '';
@@ -796,6 +878,14 @@ class SalesPdfService {
   // HILFSFUNKTIONEN
   // ============================================================
   static Map<String, dynamic> _calculateSalesStats(List<Map<String, dynamic>> sales) {
+    // ===== DEBUG START =====
+    print('');
+    print('═══════════════════════════════════════════════════════════════');
+   _dbg(_debugStats, '[DEBUG STATS] _calculateSalesStats — Quelle: Verkaufsübersicht-PDF');
+   _dbg(_debugStats, '[DEBUG STATS] Eingangs-Aufträge (vor cancelled-Filter): ${sales.length}');
+    print('═══════════════════════════════════════════════════════════════');
+    // ===== DEBUG END =====
+
     double totalRevenue = 0;
     double totalNetAmount = 0;
     double totalSubtotal = 0;
@@ -808,9 +898,18 @@ class SalesPdfService {
     double totalVat = 0;
     double totalGratisValue = 0;
     int count = 0;
+    int skippedCancelled = 0;
 
     for (var sale in sales) {
-      if (sale['status'] == 'cancelled') continue;
+      final orderNumber = sale['orderNumber'] ?? sale['receipt_number'] ?? '?';
+      final status = sale['status'] ?? '?';
+
+      if (sale['status'] == 'cancelled') {
+        skippedCancelled++;
+       _dbg(_debugStats, '[DEBUG STATS] ÜBERSPRUNGEN (cancelled): $orderNumber');
+        continue;
+      }
+
       final calculations = sale['calculations'] as Map<String, dynamic>? ?? {};
       final items = (sale['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
@@ -821,7 +920,6 @@ class SalesPdfService {
       final orderTotalDiscount = (calculations['total_discount_amount'] as num?)?.toDouble() ?? 0;
       final orderTotal         = (calculations['total']                 as num?)?.toDouble() ?? 0;
 
-      // TaxOption-bewusste MwSt-Berechnung
       final taxOption = TaxHelper.getTaxOption(sale);
       final vatRate = TaxHelper.getVatRate(sale);
       final orderVat = TaxHelper.getEffectiveVat(
@@ -830,16 +928,27 @@ class SalesPdfService {
       );
 
       totalRevenue   += orderTotal;
-      totalNetAmount += (calculations['net_amount'] as num?)?.toDouble() ?? 0;
+      // FIX: Bei taxOption 2 net_amount defensiv aus total rückrechnen
+      final netAmountRaw = (calculations['net_amount'] as num?)?.toDouble() ?? 0;
+      totalNetAmount += (taxOption == 2)
+          ? TaxHelper.netFromGross(orderTotal, vatRate)
+          : netAmountRaw;
+
       totalFreight    += orderFreight;
       totalPhyto      += orderPhyto;
       totalDeductions += orderDeductions;
       totalSurcharges += orderSurcharges;
-      totalDiscount   += orderTotalDiscount;
+
       totalVat        += orderVat;
 
       double orderSubtotal = 0;
       double orderServiceRev = 0;
+      double orderGratisValue = 0;
+      int normalItemCount = 0;
+      int serviceItemCount = 0;
+      int gratisItemCount = 0;
+
+      double orderItemDiscount = 0;  // NEU: Item-Level-Rabatte aufsummieren
 
       for (final it in items) {
         final qty      = (it['quantity']              as num?)?.toDouble() ?? 0;
@@ -850,31 +959,73 @@ class SalesPdfService {
         final discAbs  = (disc?['absolute']           as num?)?.toDouble() ?? 0;
         final lineDiscount = qty * price * discPct / 100 + discAbs;
         double lineTotal = qty * price - lineDiscount;
+        final lineTotalRaw = lineTotal;
 
-        // taxOption 2: Item-Preise sind brutto → netto rückrechnen
         if (taxOption == 2) {
           lineTotal = TaxHelper.netFromGross(lineTotal, vatRate);
         }
 
         if (it['is_service'] == true) {
           orderServiceRev += lineTotal;
+          serviceItemCount++;
         } else if (it['is_gratisartikel'] == true) {
           totalGratisValue += lineTotal;
+          orderGratisValue += lineTotal;
+          gratisItemCount++;
         } else {
           orderSubtotal += lineTotal;
+          normalItemCount++;
+          // NEU: Item-Rabatt mitzählen (taxOption-bewusst, gleich wie Analytics-Service)
+          orderItemDiscount += (taxOption == 2)
+              ? TaxHelper.netFromGross(lineDiscount, vatRate)
+              : lineDiscount;
         }
       }
 
-      // Order-Level Rabatt abziehen (auch netto bei taxOption 2)
       final effectiveDiscount = (taxOption == 2)
           ? TaxHelper.netFromGross(orderTotalDiscount, vatRate)
           : orderTotalDiscount;
+      final orderSubtotalBeforeDiscount = orderSubtotal;
       orderSubtotal -= effectiveDiscount;
 
       totalSubtotal       += orderSubtotal;
       totalServiceRevenue += orderServiceRev;
+      // NEU: totalDiscount = Item-Rabatte + Order-Rabatt (konsistent zur Verkaufsanalyse)
+      totalDiscount       += orderItemDiscount + effectiveDiscount;
       count++;
+
+      // ===== DEBUG PER-ORDER =====
+     _dbg(_debugStats, '[DEBUG STATS] -----------------------------------------------');
+     _dbg(_debugStats, '[DEBUG STATS] #$count Auftrag: $orderNumber  status=$status  taxOpt=$taxOption  vat=${vatRate.toStringAsFixed(2)}%');
+     _dbg(_debugStats, '[DEBUG STATS]   Items: ${items.length} (normal=$normalItemCount, service=$serviceItemCount, gratis=$gratisItemCount)');
+     _dbg(_debugStats, '[DEBUG STATS]   orderSubtotal vor Auftrags-Rabatt:  ${orderSubtotalBeforeDiscount.toStringAsFixed(4)}');
+     _dbg(_debugStats, '[DEBUG STATS]   orderTotalDiscount (raw):           ${orderTotalDiscount.toStringAsFixed(4)}  → effektiv: ${effectiveDiscount.toStringAsFixed(4)}');
+     _dbg(_debugStats, '[DEBUG STATS]   orderSubtotal NACH Rabatt (Beitrag zu totalSubtotal): ${orderSubtotal.toStringAsFixed(4)}');
+     _dbg(_debugStats, '[DEBUG STATS]   orderServiceRev:    ${orderServiceRev.toStringAsFixed(4)}');
+     _dbg(_debugStats, '[DEBUG STATS]   orderGratisValue:   ${orderGratisValue.toStringAsFixed(4)}');
+     _dbg(_debugStats, '[DEBUG STATS]   running totalSubtotal: ${totalSubtotal.toStringAsFixed(4)}');
     }
+
+    // ===== DEBUG SUMMARY =====
+    print('');
+    print('═══════════════════════════════════════════════════════════════');
+   _dbg(_debugStats, '[DEBUG STATS] ENDERGEBNIS Verkaufsübersicht');
+    print('═══════════════════════════════════════════════════════════════');
+   _dbg(_debugStats, '[DEBUG STATS]   Aufträge gezählt:                  $count');
+   _dbg(_debugStats, '[DEBUG STATS]   Aufträge übersprungen (cancelled): $skippedCancelled');
+   _dbg(_debugStats, '[DEBUG STATS]   ▶ totalSubtotal (Warenwert netto Ware): ${totalSubtotal.toStringAsFixed(4)}');
+   _dbg(_debugStats, '[DEBUG STATS]   totalServiceRevenue: ${totalServiceRevenue.toStringAsFixed(4)}');
+   _dbg(_debugStats, '[DEBUG STATS]   totalFreight:        ${totalFreight.toStringAsFixed(4)}');
+   _dbg(_debugStats, '[DEBUG STATS]   totalPhyto:          ${totalPhyto.toStringAsFixed(4)}');
+   _dbg(_debugStats, '[DEBUG STATS]   totalDeductions:     ${totalDeductions.toStringAsFixed(4)}');
+   _dbg(_debugStats, '[DEBUG STATS]   totalSurcharges:     ${totalSurcharges.toStringAsFixed(4)}');
+   _dbg(_debugStats, '[DEBUG STATS]   totalDiscount:       ${totalDiscount.toStringAsFixed(4)}');
+   _dbg(_debugStats, '[DEBUG STATS]   totalGratisValue:    ${totalGratisValue.toStringAsFixed(4)}');
+   _dbg(_debugStats, '[DEBUG STATS]   totalVat:            ${totalVat.toStringAsFixed(4)}');
+   _dbg(_debugStats, '[DEBUG STATS]   totalNetAmount:      ${totalNetAmount.toStringAsFixed(4)}');
+   _dbg(_debugStats, '[DEBUG STATS]   totalRevenue:        ${totalRevenue.toStringAsFixed(4)}');
+    print('═══════════════════════════════════════════════════════════════');
+    print('');
 
     return {
       'salesCount':          count,
@@ -1096,6 +1247,30 @@ class SalesPdfService {
     final now = DateTime.now();
     final rev = analytics.revenue;
 
+    // ===== DEBUG START =====
+    print('');
+    print('═══════════════════════════════════════════════════════════════');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS] _buildRevenueRows — Quelle: Verkaufsanalyse-PDF');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS] Filter aktiv: ${_hasDateFilter(filter)}  Periode: ${_filterPeriodLabel(filter)}');
+    print('═══════════════════════════════════════════════════════════════');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   analytics.orderCount:           ${analytics.orderCount}');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   ▶ rev.totalRevenue (Warenwert auf PDF-Zeile): ${rev.totalRevenue.toStringAsFixed(4)}');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalServiceRevenue:        ${rev.totalServiceRevenue.toStringAsFixed(4)}');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalFreight:               ${rev.totalFreight.toStringAsFixed(4)}');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalPhytosanitary:         ${rev.totalPhytosanitary.toStringAsFixed(4)}');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalDeductions:            ${rev.totalDeductions.toStringAsFixed(4)}');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalSurcharges:            ${rev.totalSurcharges.toStringAsFixed(4)}');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalDiscount:              ${rev.totalDiscount.toStringAsFixed(4)}');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalGratisValue:           ${rev.totalGratisValue.toStringAsFixed(4)}');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalRevenueGross:          ${rev.totalRevenueGross.toStringAsFixed(4)}');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   analytics.averageOrderValue:    ${analytics.averageOrderValue.toStringAsFixed(4)}');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS] >>> VERGLEICH: rev.totalRevenue ↔ totalSubtotal aus [DEBUG STATS]');
+   _dbg(_debugAnalytics, '[DEBUG ANALYTICS] >>> Falls Differenz: Bug liegt im Analytics-Service (nicht in dieser Datei)');
+    print('═══════════════════════════════════════════════════════════════');
+    print('');
+    // ===== DEBUG END =====
+
     if (_hasDateFilter(filter)) {
       return [
         ['Warenwert ${_filterPeriodLabel(filter)}',  _formatCurrency(rev.totalRevenue), ''],
@@ -1111,7 +1286,6 @@ class SalesPdfService {
           ['+ Zuschläge',                            _formatCurrency(rev.totalSurcharges),      ''],
         ['Anzahl Aufträge',                          analytics.orderCount.toString(),           ''],
         ['Ø Warenwert / Auftrag',                    _formatCurrency(analytics.averageOrderValue), ''],
-
       ];
     }
 
@@ -1132,7 +1306,6 @@ class SalesPdfService {
         ['+ Zuschläge ${now.year}',                  _formatCurrency(rev.yearSurcharges),      ''],
       ['Anzahl Aufträge',                            analytics.orderCount.toString(),           ''],
       ['Ø Warenwert / Auftrag',                      _formatCurrency(analytics.averageOrderValue), ''],
-
     ];
   }
   /// KPI-Zeilen Gesamtbetrag — filterbewusst

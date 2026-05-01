@@ -82,7 +82,7 @@ class PackingListGenerator extends BasePdfGenerator {
 
     // NEU: Lade Spaltenausrichtungen
     final columnAlignments = await PdfSettingsHelper.getColumnAlignments('packing_list');
-
+    final unitDecimals = await PdfSettingsHelper.getUnitDecimals();
     // Lade Packliste-Einstellungen
     Map<String, dynamic> packingSettings;
 
@@ -271,6 +271,12 @@ class PackingListGenerator extends BasePdfGenerator {
           'total_volume': 'Gesamt Volumen',
           'package_total_net': 'Paket Gewicht (Netto)',
           'package_total_gross': 'Paket Gewicht (Brutto)',
+          'summary_title': 'Gesamtübersicht',
+          'summary_net_weight': 'Nettogewicht total',
+          'summary_gross_weight': 'Bruttogewicht total',
+          'summary_net_volume': 'Nettovolumen total',
+          'summary_gross_volume': 'Bruttovolumen total',
+          'summary_packages': 'Anzahl Pakete',
         },
         'EN': {
           'packing_list': 'PACKING LIST',
@@ -292,6 +298,12 @@ class PackingListGenerator extends BasePdfGenerator {
           'total_volume': 'Total Volume',
           'package_total_net': 'Package weight (Net)',
           'package_total_gross': 'Package weight (Gross)',
+          'summary_title': 'Total Summary',
+          'summary_net_weight': 'Total net weight',
+          'summary_gross_weight': 'Total gross weight',
+          'summary_net_volume': 'Total net volume',
+          'summary_gross_volume': 'Total gross volume',
+          'summary_packages': 'Number of packages',
         }
       };
       return translations[language]?[key] ?? translations['DE']?[key] ?? '';
@@ -390,19 +402,42 @@ class PackingListGenerator extends BasePdfGenerator {
           content.add(pw.SizedBox(height: 20));
 
           // Für jedes Paket eine Tabelle
+          // NEU: Totals über alle Pakete
+          final totals = <String, double>{
+            'net_weight': 0.0,
+            'net_volume': 0.0,
+            'tare_weight': 0.0,
+            'gross_volume': 0.0,
+          };
+          int packageCount = 0;
+
+// Für jedes Paket eine Tabelle
           for (int i = 0; i < packages.length; i++) {
             final package = packages[i];
             final packageItems = List<Map<String, dynamic>>.from(package['items'] ?? []);
 
             if (packageItems.isEmpty) continue;
+            packageCount++;
 
             // Paket-Header
-            content.add(_buildPackageHeader(package, language, i + 1, getTranslation));
+            content.add(_buildPackageHeader(package, language, i + 1, getTranslation,unitDecimals));
             content.add(pw.SizedBox(height: 10));
 
-            // Paket-Tabelle - NEU: columnAlignments hinzugefügt
-            content.add(_buildPackageTable(package, packageItems, language, getTranslation, woodTypeCache, measurementsCache, standardVolumeCache, columnAlignments));
+            // Paket-Tabelle – totals wird mutiert
+            content.add(_buildPackageTable(
+              package, packageItems, language, getTranslation,
+              woodTypeCache, measurementsCache, standardVolumeCache,
+              columnAlignments,
+              totals,
+              unitDecimals,
+            ));
             content.add(pw.SizedBox(height: 20));
+          }
+
+// NEU: Gesamtübersicht am Ende
+          if (packageCount > 0) {
+            content.add(pw.SizedBox(height: 10));
+            content.add(_buildTotalSummary(totals, packageCount, language, getTranslation,unitDecimals));
           }
 
           return content;
@@ -418,6 +453,7 @@ class PackingListGenerator extends BasePdfGenerator {
       String language,
       int packageNumber,
       String Function(String) getTranslation,
+      Map<String, int> unitDecimals,
 
       ) {
     final length = (package['length'] as num?)?.toDouble() ?? 0.0;
@@ -472,12 +508,12 @@ class PackingListGenerator extends BasePdfGenerator {
             children: [
               pw.Expanded(
                 child: pw.Text(
-                  '${getTranslation('tare_weight')}: ${tareWeight.toStringAsFixed(2)} kg',
+                  '${getTranslation('tare_weight')}: ${PdfSettingsHelper.formatQuantity(tareWeight, 'kg', unitDecimals)} kg',
                   style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey600),
                 ),
               ),
               pw.Text(
-                '${getTranslation('gross_volume')}: ${grossVolume.toStringAsFixed(5)} m³',
+                '${getTranslation('gross_volume')}: ${PdfSettingsHelper.formatQuantity(grossVolume, 'm³', unitDecimals)} m³',
                 style: const pw.TextStyle(fontSize: 9, color: PdfColors.blueGrey600),
               ),
             ],
@@ -489,9 +525,6 @@ class PackingListGenerator extends BasePdfGenerator {
 
 
 
-  // Ersetze die _buildPackageTable Methode in packing_list_generator.dart
-
-  // Ersetze die _buildPackageTable Methode in packing_list_generator.dart
 
   static pw.Widget _buildPackageTable(
       Map<String, dynamic> package,
@@ -501,7 +534,9 @@ class PackingListGenerator extends BasePdfGenerator {
       Map<String, Map<String, dynamic>> woodTypeCache,
       Map<String, Map<String, dynamic>> measurementsCache,
       Map<String, Map<String, dynamic>> standardVolumeCache,
-      Map<String, String> columnAlignments, // NEU: columnAlignments Parameter
+      Map<String, String> columnAlignments,
+      Map<String, double> totals,
+      Map<String, int> unitDecimals,
       ) {
     double packageNetWeight = 0.0;
     double packageNetVolume = 0.0;
@@ -657,13 +692,12 @@ class PackingListGenerator extends BasePdfGenerator {
         dimensionsText = '${itemLength.toStringAsFixed(0)}×${itemWidth.toStringAsFixed(0)}×${thickness.toStringAsFixed(1)}';
       }
 
-      // NEU: Gewicht/Stk und Volumen/Stk nur anzeigen wenn Einheit Stk ist
-      String weightPerPieceText = '';
+     String weightPerPieceText = '';
       String volumePerPieceText = '';
 
       if (unit == 'Stk' || unit == 'pcs') {
-        weightPerPieceText = '${weightPerPiece.toStringAsFixed(3)} kg';
-        volumePerPieceText = '${volumePerPiece.toStringAsFixed(5)} m³';
+        weightPerPieceText = '${PdfSettingsHelper.formatQuantity(weightPerPiece, 'kg', unitDecimals)} kg';
+        volumePerPieceText = '${PdfSettingsHelper.formatQuantity(volumePerPiece, 'm³', unitDecimals)} m³';
       }
 
       print("item:$item");
@@ -674,9 +708,7 @@ class PackingListGenerator extends BasePdfGenerator {
           children: [
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                (language == 'EN' ? item['product_name_en'] : item['product_name']) ??
-                    (language == 'EN' ? item['part_name_en'] : item['part_name']) ??
-                    '',
+                PdfSettingsHelper.resolvePdfProductName(item, language, useProductNameFallback: true),
                 style: const pw.TextStyle(fontSize: 8),
                 textAlign: productAlign,
               ),
@@ -686,9 +718,7 @@ class PackingListGenerator extends BasePdfGenerator {
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                unit != "Stk"
-                    ? quantity.toStringAsFixed(3)
-                    : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
+                PdfSettingsHelper.formatQuantity(quantity, unit, unitDecimals),
                 style: const pw.TextStyle(fontSize: 8),
                 textAlign: qtyAlign,
               ),
@@ -712,14 +742,14 @@ class PackingListGenerator extends BasePdfGenerator {
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                '${totalWeight.toStringAsFixed(2)} kg',
+                '${PdfSettingsHelper.formatQuantity(totalWeight, 'kg', unitDecimals)} kg',
                 style: const pw.TextStyle(fontSize: 8),
                 textAlign: totalWeightAlign,
               ),
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                '${totalVolume.toStringAsFixed(5)} m³',
+                '${PdfSettingsHelper.formatQuantity(totalVolume, 'm³', unitDecimals)} m³',
                 style: const pw.TextStyle(fontSize: 8),
                 textAlign: totalVolumeAlign,
               ),
@@ -744,12 +774,12 @@ class PackingListGenerator extends BasePdfGenerator {
           BasePdfGenerator.buildContentCell(pw.Text('', style: const pw.TextStyle(fontSize: 8))),
           BasePdfGenerator.buildContentCell(pw.Text('', style: const pw.TextStyle(fontSize: 8))),
           BasePdfGenerator.buildContentCell(
-            pw.Text('${packageNetWeight.toStringAsFixed(2)} kg',
+            pw.Text('${PdfSettingsHelper.formatQuantity(packageNetWeight, 'kg', unitDecimals)} kg',
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
                 textAlign: totalWeightAlign),
           ),
           BasePdfGenerator.buildContentCell(
-            pw.Text('${packageNetVolume.toStringAsFixed(5)} m³',
+            pw.Text('${PdfSettingsHelper.formatQuantity(packageNetVolume, 'm³', unitDecimals)} m³',
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
                 textAlign: totalVolumeAlign),
           ),
@@ -771,19 +801,22 @@ class PackingListGenerator extends BasePdfGenerator {
           BasePdfGenerator.buildContentCell(pw.Text('', style: const pw.TextStyle(fontSize: 8))),
           BasePdfGenerator.buildContentCell(pw.Text('', style: const pw.TextStyle(fontSize: 8))),
           BasePdfGenerator.buildContentCell(
-            pw.Text('${(packageNetWeight + tareWeight).toStringAsFixed(2)} kg',
+            pw.Text('${PdfSettingsHelper.formatQuantity(packageNetWeight + tareWeight, 'kg', unitDecimals)} kg',
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
                 textAlign: totalWeightAlign),
           ),
           BasePdfGenerator.buildContentCell(
-            pw.Text('${(packageNetVolume+grossVolume).toStringAsFixed(5)} m³',
+            pw.Text('${PdfSettingsHelper.formatQuantity(grossVolume, 'm³', unitDecimals)} m³',
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
                 textAlign: totalVolumeAlign),
           ),
         ],
       ),
     );
-
+    totals['net_weight'] = (totals['net_weight'] ?? 0) + packageNetWeight;
+    totals['net_volume'] = (totals['net_volume'] ?? 0) + packageNetVolume;
+    totals['tare_weight'] = (totals['tare_weight'] ?? 0) + tareWeight;
+    totals['gross_volume'] = (totals['gross_volume'] ?? 0) + grossVolume;
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
       columnWidths: {
@@ -797,6 +830,79 @@ class PackingListGenerator extends BasePdfGenerator {
         7: const pw.FlexColumnWidth(1.8),    // Gesamt Volumen
       },
       children: rows,
+    );
+  }
+  static pw.Widget _buildTotalSummary(
+      Map<String, double> totals,
+      int packageCount,
+      String language,
+      String Function(String) getTranslation,
+      Map<String, int> unitDecimals,
+      ) {
+    final netWeight = totals['net_weight'] ?? 0.0;
+    final netVolume = totals['net_volume'] ?? 0.0;
+    final tareWeight = totals['tare_weight'] ?? 0.0;
+    final grossVolume = totals['gross_volume'] ?? 0.0;
+    final grossWeight = netWeight + tareWeight;
+
+    pw.Widget row(String label, String value, {bool bold = false}) {
+      return pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 2),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              label,
+              style: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+                color: PdfColors.blueGrey800,
+              ),
+            ),
+            pw.Text(
+              value,
+              style: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+                color: PdfColors.blueGrey800,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.blueGrey50,
+        borderRadius: pw.BorderRadius.circular(4),
+        border: pw.Border.all(color: PdfColors.blueGrey300, width: 0.5),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Text(
+            getTranslation('summary_title'),
+            style: pw.TextStyle(
+              fontSize: 11,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.blueGrey900,
+            ),
+          ),
+          pw.SizedBox(height: 6),
+          pw.Divider(color: PdfColors.blueGrey300, height: 1),
+          pw.SizedBox(height: 4),
+          row(getTranslation('summary_packages'), '$packageCount'),
+          row(getTranslation('summary_net_weight'), '${PdfSettingsHelper.formatQuantity(netWeight, 'kg', unitDecimals)} kg'),
+          row(getTranslation('summary_net_volume'), '${PdfSettingsHelper.formatQuantity(netVolume, 'm³', unitDecimals)} m³'),
+          pw.SizedBox(height: 2),
+          pw.Divider(color: PdfColors.blueGrey200, height: 1),
+          pw.SizedBox(height: 2),
+          row(getTranslation('summary_gross_weight'), '${PdfSettingsHelper.formatQuantity(grossWeight, 'kg', unitDecimals)} kg', bold: true),
+          row(getTranslation('summary_gross_volume'), '${PdfSettingsHelper.formatQuantity(grossVolume, 'm³', unitDecimals)} m³', bold: true),
+        ],
+      ),
     );
   }
 }

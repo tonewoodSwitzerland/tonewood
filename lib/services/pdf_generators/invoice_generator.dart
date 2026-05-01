@@ -94,7 +94,7 @@ class InvoiceGenerator extends BasePdfGenerator {
 
     // NEU: Lade Spaltenausrichtungen
     final columnAlignments = await PdfSettingsHelper.getColumnAlignments('invoice');
-
+    final unitDecimals = await PdfSettingsHelper.getUnitDecimals();
 
     final showDimensions = invoiceSettings['show_dimensions'] ?? false;
 
@@ -260,13 +260,12 @@ class InvoiceGenerator extends BasePdfGenerator {
 
             // Produkttabelle nur wenn Produkte vorhanden
             if (productItems.isNotEmpty)
-              _buildProductTable(groupedProductItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths, columnAlignments),
+              _buildProductTable(groupedProductItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths, columnAlignments, unitDecimals),
 
             // Dienstleistungstabelle nur wenn Dienstleistungen vorhanden
             if (serviceItems.isNotEmpty)
               pw.SizedBox(height: 10),
-            _buildServiceTable(serviceItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths, columnAlignments),
-
+            _buildServiceTable(serviceItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths, columnAlignments, unitDecimals),
             pw.SizedBox(height: 10),
 
             // Summen-Bereich
@@ -342,7 +341,8 @@ class InvoiceGenerator extends BasePdfGenerator {
       bool showDiscountColumn,
       bool showPartsColumn,
       Map<int, pw.FlexColumnWidth> columnWidths,
-      Map<String, String> columnAlignments, // NEU
+      Map<String, String> columnAlignments,
+      Map<String, int> unitDecimals,
       ) {
     if (serviceItems.isEmpty) return pw.SizedBox.shrink();
 
@@ -465,7 +465,11 @@ class InvoiceGenerator extends BasePdfGenerator {
           ),
         ),
         BasePdfGenerator.buildContentCell(
-          pw.Text(quantity.toStringAsFixed(0), style: const pw.TextStyle(fontSize: 8), textAlign: qtyAlign),
+          pw.Text(
+            PdfSettingsHelper.formatQuantity(quantity, 'Stk', unitDecimals),
+            style: const pw.TextStyle(fontSize: 8),
+            textAlign: qtyAlign,
+          ),
         ),
         BasePdfGenerator.buildContentCell(
           pw.Text(language == 'EN' ? 'pcs' : 'Stk', style: const pw.TextStyle(fontSize: 8), textAlign: unitAlign),
@@ -522,10 +526,8 @@ class InvoiceGenerator extends BasePdfGenerator {
 
     groupedItems.forEach((woodGroup, items) {
       for (final item in items) {
-        String productText = language == 'EN'
-            ? (item['part_name_en'] ?? item['part_name'] ?? '')
-            : (item['part_name'] ?? '');
-        if (item['notes'] != null && item['notes'].toString().isNotEmpty) {
+        String productText = PdfSettingsHelper.resolvePdfProductName(item, language);
+        if (PdfSettingsHelper.shouldAppendPdfNotes(item)) {
           productText += ' (${item['notes']})';
         }
         if (item['is_gratisartikel'] == true) productText += '  GRATIS';
@@ -604,7 +606,8 @@ class InvoiceGenerator extends BasePdfGenerator {
       bool showDiscountColumn,
       bool showPartsColumn,
       Map<int, pw.FlexColumnWidth> columnWidths,
-      Map<String, String> columnAlignments, // NEU
+      Map<String, String> columnAlignments,
+      Map<String, int> unitDecimals,
       ) {
     final List<pw.TableRow> rows = [];
 
@@ -768,14 +771,15 @@ class InvoiceGenerator extends BasePdfGenerator {
                   child: pw.Row(
                     children: [
                       pw.Text(
-                          language == 'EN' ? item['part_name_en'] : item['part_name'] ?? '',
-                          style: const pw.TextStyle(fontSize: 8),
-                          textAlign: productAlign),
-                      if (item['notes'] != null && item['notes'].toString().isNotEmpty)
+                          PdfSettingsHelper.resolvePdfProductName(item, language),
+                          style: const pw.TextStyle(fontSize: 8)
+                      ),
+                      // NEU: Hinweise in Klammern hinzufügen (nur wenn nicht Spezial)
+                      if (PdfSettingsHelper.shouldAppendPdfNotes(item))
                         pw.Text(
                           ' (${item['notes']})',
                           style: pw.TextStyle(
-                            fontSize: 6,
+                            fontSize: 8,
                             fontStyle: pw.FontStyle.italic,
                             color: PdfColors.grey700,
                           ),
@@ -874,9 +878,7 @@ class InvoiceGenerator extends BasePdfGenerator {
         rowCells.addAll([
           BasePdfGenerator.buildContentCell(
             pw.Text(
-              unit != "Stk"
-                  ? quantity.toStringAsFixed(3)
-                  : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
+              PdfSettingsHelper.formatQuantity(quantity, unit, unitDecimals),
               style: const pw.TextStyle(fontSize: 8),
               textAlign: qtyAlign,
             ),

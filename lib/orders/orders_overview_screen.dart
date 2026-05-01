@@ -2778,66 +2778,118 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
 
 // Neue Methode zum Löschen von Dokumenten
   // Neue Methode zum Löschen von Dokumenten
+// Neue Methode zum Löschen von Dokumenten
   Future<void> _deleteDocument(OrderX order, String docType) async {
-    // Bestätigungsdialog
+    // State für die optionale "Einstellungen auch löschen"-Checkbox (nur Packliste)
+    bool deleteSettings = false;
+    final isPackingList = docType == 'packing_list_pdf';
+
+    // Bestätigungsdialog (StatefulBuilder wegen Checkbox-State)
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Dokument löschen'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Möchtest du "${_getDocumentTypeName(docType)}" wirklich löschen?'),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Dokument löschen'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Möchtest du "${_getDocumentTypeName(docType)}" wirklich löschen?'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        getAdaptiveIcon(
+                            iconName: 'warning',
+                            defaultIcon: Icons.warning,
+                            color: Colors.orange,
+                            size: 20),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Hinweis:',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      isPackingList
+                          ? '• Das PDF-Dokument wird gelöscht\n'
+                          '• Die Packeinstellungen bleiben standardmäßig erhalten\n'
+                          '• Sie können das Dokument jederzeit neu erstellen'
+                          : '• Das PDF-Dokument wird gelöscht\n'
+                          '• Die Einstellungen werden zurückgesetzt\n'
+                          '• Sie können das Dokument jederzeit neu erstellen',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      getAdaptiveIcon(
-                          iconName: 'warning',
-                          defaultIcon: Icons.warning, color: Colors.orange, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        'Hinweis:',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ],
+              // Zusätzliche Option NUR bei Packliste
+              if (isPackingList) ...[
+                const SizedBox(height: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceVariant
+                        .withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outline
+                          .withOpacity(0.2),
+                    ),
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    '• Das PDF-Dokument wird gelöscht\n'
-                        '• Die Einstellungen werden zurückgesetzt\n'
-                        '• Sie können das Dokument jederzeit neu erstellen',
-                    style: TextStyle(fontSize: 12),
+                  child: CheckboxListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    value: deleteSettings,
+                    onChanged: (value) {
+                      setDialogState(() {
+                        deleteSettings = value ?? false;
+                      });
+                    },
+                    title: const Text(
+                      'Auch Packeinstellungen löschen',
+                      style: TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                    subtitle: const Text(
+                      'Pakete, Maße und Produkt-Zuordnungen werden entfernt',
+                      style: TextStyle(fontSize: 11),
+                    ),
                   ),
-                ],
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Abbrechen'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
               ),
+              child: const Text('Löschen'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Abbrechen'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Löschen'),
-          ),
-        ],
       ),
     );
 
@@ -2886,13 +2938,15 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
         } else {
           switch (docType) {
             case 'packing_list_pdf':
-            // Lösche Packlisten-Einstellungen
-              final packingListRef = FirebaseFirestore.instance
-                  .collection('orders')
-                  .doc(order.id)
-                  .collection('packing_list')
-                  .doc('settings');
-              batch.delete(packingListRef);
+            // Packlisten-Einstellungen NUR löschen wenn User explizit gewählt hat
+              if (deleteSettings) {
+                final packingListRef = FirebaseFirestore.instance
+                    .collection('orders')
+                    .doc(order.id)
+                    .collection('packing_list')
+                    .doc('settings');
+                batch.delete(packingListRef);
+              }
               break;
 
             case 'delivery_note_pdf':
@@ -2933,6 +2987,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
           'action': 'document_deleted',
           'document_type': _getDocumentTypeName(docType),
           'document_key': docType,
+          if (isPackingList) 'settings_also_deleted': deleteSettings,
         });
 
         // Commit aller Änderungen
@@ -2943,11 +2998,16 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('${_getDocumentTypeName(docType)} wurde gelöscht'),
+              content: Text(
+                isPackingList && !deleteSettings
+                    ? '${_getDocumentTypeName(docType)} gelöscht – Einstellungen bleiben erhalten'
+                    : '${_getDocumentTypeName(docType)} wurde gelöscht',
+              ),
               backgroundColor: Colors.green,
               behavior: SnackBarBehavior.floating,
               margin: const EdgeInsets.all(8),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
           );
         }
@@ -2961,13 +3021,15 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
               backgroundColor: Colors.red,
               behavior: SnackBarBehavior.floating,
               margin: const EdgeInsets.all(8),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
           );
         }
       }
     }
   }
+
   Color _getDocumentTypeColor(String docType) {
     if (docType.contains('quote')) return Colors.blue;
     if (docType.contains('invoice')) return Colors.green;

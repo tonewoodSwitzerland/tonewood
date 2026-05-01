@@ -1818,4 +1818,119 @@ class PdfSettingsHelper {
     // Rest linksbündig
     return 'left';
   }
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEU: Nachkommastellen-Helper (global für alle PDFs)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Lädt die Nachkommastellen-Einstellungen pro Einheiten-Kategorie.
+  /// Standardwerte: Stk=0, m²=2, m³=3, kg=3
+  static Future<Map<String, int>> getUnitDecimals() async {
+    final settings = await loadPdfSettings();
+    final raw = settings['unit_decimals'] as Map<String, dynamic>?;
+    return {
+      'pieces': (raw?['pieces'] as num?)?.toInt() ?? 0,
+      'area':   (raw?['area']   as num?)?.toInt() ?? 2,
+      'volume': (raw?['volume'] as num?)?.toInt() ?? 3,
+      'weight': (raw?['weight'] as num?)?.toInt() ?? 3,
+    };
+  }
+
+  /// Mappt eine Einheit (z.B. "Stk", "m²", "kg") auf die richtige
+  /// Anzahl Nachkommastellen.
+  static int getDecimalsForUnit(
+      String unit, Map<String, int> unitDecimals) {
+    final u = unit.toLowerCase().trim();
+
+    // Stück
+    if (u == 'stück' || u == 'stk' || u == 'stk.' ||
+        u == 'pcs' || u == 'pc' || u == 'piece' || u == 'pieces') {
+      return unitDecimals['pieces'] ?? 0;
+    }
+    // Fläche
+    if (u == 'm²' || u == 'm2' || u == 'qm') {
+      return unitDecimals['area'] ?? 2;
+    }
+    // Volumen
+    if (u == 'm³' || u == 'm3' || u == 'cbm') {
+      return unitDecimals['volume'] ?? 3;
+    }
+    // Gewicht
+    if (u == 'kg' || u == 'kilogramm' || u == 'kilogram') {
+      return unitDecimals['weight'] ?? 3;
+    }
+    // Fallback: 2 Nachkommastellen
+    return 2;
+  }
+
+  /// Formatiert eine Menge mit den passenden Nachkommastellen für die
+  /// gegebene Einheit. `unitDecimals` einmal oben im Generator mit
+  /// `getUnitDecimals()` laden und durchreichen.
+  static String formatQuantity(
+      double quantity, String unit, Map<String, int> unitDecimals) {
+    final decimals = getDecimalsForUnit(unit, unitDecimals);
+    return quantity.toStringAsFixed(decimals);
+  }
+
+
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEU: Spezial-Produkte: Bei erfasstem Zusatztext (notes) ersetzt dieser
+  //      das Wort "Spezial" in der Produkt-Spalte.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /// Liefert den anzuzeigenden Produkt-/Part-Namen für PDFs.
+  /// Bei "Spezial"-Produkten mit erfasstem Zusatztext (notes) wird der
+  /// Zusatztext zurückgegeben statt "Spezial".
+  ///
+  /// [useProductNameFallback]: Wenn true (für Packliste), wird zuerst
+  /// product_name verwendet, sonst direkt part_name.
+  static String resolvePdfProductName(
+      Map<String, dynamic> item,
+      String language, {
+        bool useProductNameFallback = false,
+      }) {
+    String name = '';
+    if (useProductNameFallback) {
+      name = (language == 'EN'
+          ? (item['product_name_en']?.toString().trim().isNotEmpty == true
+          ? item['product_name_en']
+          : item['product_name'])
+          : item['product_name'])?.toString() ?? '';
+    }
+    if (name.trim().isEmpty) {
+      name = (language == 'EN'
+          ? (item['part_name_en']?.toString().trim().isNotEmpty == true
+          ? item['part_name_en']
+          : item['part_name'])
+          : item['part_name'])?.toString() ?? '';
+    }
+
+    final notes = item['notes']?.toString().trim() ?? '';
+    final isSpezial = name.trim().toLowerCase() == 'spezial' ||
+        name.trim().toLowerCase() == 'special';
+    if (isSpezial && notes.isNotEmpty) {
+      return notes;
+    }
+    return name;
+  }
+
+  /// Prüft, ob die notes als zusätzliches "(notes)"-Suffix angezeigt
+  /// werden sollen. Bei Spezial-Produkten sind die notes bereits der
+  /// Hauptname, daher kein zusätzliches Suffix nötig.
+  /// Prüft beide Sprachfelder (DE: "Spezial" / EN: "Special").
+  static bool shouldAppendPdfNotes(Map<String, dynamic> item) {
+    final partNameDe =
+    (item['part_name']?.toString() ?? '').trim().toLowerCase();
+    final partNameEn =
+    (item['part_name_en']?.toString() ?? '').trim().toLowerCase();
+    final notes = item['notes']?.toString().trim() ?? '';
+    final isSpezial = partNameDe == 'spezial' ||
+        partNameDe == 'special' ||
+        partNameEn == 'spezial' ||
+        partNameEn == 'special';
+    return notes.isNotEmpty && !isSpezial;
+  }
+
+
+
 }

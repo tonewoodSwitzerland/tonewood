@@ -6378,8 +6378,9 @@ class SalesScreenState extends State<SalesScreen> {
       TextEditingController lengthController,
       TextEditingController widthController,
       TextEditingController thicknessController,
-      TextEditingController volumeController,
-      ) {
+      TextEditingController volumeController, {
+        int parts = 1,
+      }) {
     // Parse Werte (mm)
     final lengthText = lengthController.text.replaceAll(',', '.');
     final widthText = widthController.text.replaceAll(',', '.');
@@ -6391,8 +6392,10 @@ class SalesScreenState extends State<SalesScreen> {
 
     // Berechne Volumen nur wenn alle Werte > 0
     if (length > 0 && width > 0 && thickness > 0) {
-      // mm³ zu m³: (mm/1000)³ = mm³ / 1.000.000.000
-      final volumeM3 = (length / 1000) * (width / 1000) * (thickness / 1000);
+      // Volumen pro Bauteil in m³
+      final volumePerPart = (length / 1000) * (width / 1000) * (thickness / 1000);
+      // Gesamtvolumen = Volumen pro Bauteil × Anzahl Bauteile
+      final volumeM3 = volumePerPart * parts;
       volumeController.text = volumeM3.toStringAsFixed(7);
     }
   }
@@ -7019,6 +7022,7 @@ class SalesScreenState extends State<SalesScreen> {
                                                       widthController,
                                                       thicknessController,
                                                       volumeController,
+                                                      parts: loadedParts ?? 1,
                                                     );
                                                   });
                                                 },
@@ -7049,6 +7053,7 @@ class SalesScreenState extends State<SalesScreen> {
                                                       widthController,
                                                       thicknessController,
                                                       volumeController,
+                                                      parts: loadedParts ?? 1,
                                                     );
                                                   });
                                                 },
@@ -7080,6 +7085,7 @@ class SalesScreenState extends State<SalesScreen> {
                                                 widthController,
                                                 thicknessController,
                                                 volumeController,
+                                                parts: loadedParts ?? 1,
                                               );
                                             });
                                           },

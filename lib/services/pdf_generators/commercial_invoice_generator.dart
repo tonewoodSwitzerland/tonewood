@@ -97,7 +97,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
     // NEU: Lade Spaltenausrichtungen
     final columnAlignments = await PdfSettingsHelper.getColumnAlignments('commercial_invoice');
-
+    final unitDecimals = await PdfSettingsHelper.getUnitDecimals();
     // Gruppiere Items nach Zolltarifnummer
     // Ersetzen durch:
 // Items nach Typ trennen
@@ -215,12 +215,10 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
             // Produkttabelle nur wenn Produkte vorhanden
             if (productItems.isNotEmpty)
-              _buildProductTable(groupedProductItems, currency, exchangeRates, language, taraSettings, columnAlignments),
-
+              _buildProductTable(groupedProductItems, currency, exchangeRates, language, taraSettings, columnAlignments, unitDecimals),
             // Dienstleistungstabelle nur wenn Dienstleistungen vorhanden
             if (serviceItems.isNotEmpty)
-              _buildServiceTable(serviceItems, currency, exchangeRates, language, columnAlignments),
-
+              _buildServiceTable(serviceItems, currency, exchangeRates, language, columnAlignments, unitDecimals),
             // Totals Section
             _buildTotalsSection(items, currency, exchangeRates, language, calculations),
 
@@ -835,8 +833,53 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     return sortedGrouped;
   }
 
-  /// Fasst Items mit gleicher product_id zusammen (addiert Mengen)
+
+  /// Berechnet den effektiven Stückpreis (nach Rabatt) für ein Item.
+  /// Wird als Konsolidierungs-Schlüssel verwendet, damit Items mit gleicher
+  /// product_id aber abweichendem Preis NICHT zusammengefasst werden.
+  static double _getEffectivePricePerUnit(Map<String, dynamic> item) {
+    final isGratisartikel = item['is_gratisartikel'] == true;
+    final proformaValue = item['proforma_value'] as num?;
+    final quantity = (item['quantity'] as num? ?? 0).toDouble();
+
+    // Stückpreis bestimmen (gleiche Logik wie beim Rendering)
+    final pricePerUnit = isGratisartikel && proformaValue != null
+        ? proformaValue.toDouble()
+        : (item['custom_price_per_unit'] as num?) != null
+        ? (item['custom_price_per_unit'] as num).toDouble()
+        : (item['price_per_unit'] as num? ?? 0).toDouble();
+
+    // Bei Gratisartikeln: kein Rabatt anwenden, Pro-forma-Wert zählt direkt
+    if (isGratisartikel) return pricePerUnit;
+
+    // Rabatt-Betrag bestimmen (identische Priorisierung wie im PDF-Rendering)
+    double discountAmount = 0.0;
+    if (item['discount_amount'] != null && (item['discount_amount'] as num) > 0) {
+      discountAmount = (item['discount_amount'] as num).toDouble();
+    } else {
+      final discount = item['discount'] as Map<String, dynamic>?;
+      if (discount != null) {
+        final percentage = (discount['percentage'] as num? ?? 0).toDouble();
+        final absolute = (discount['absolute'] as num? ?? 0).toDouble();
+        final totalBeforeDiscount = quantity * pricePerUnit;
+
+        if (percentage > 0) {
+          discountAmount = totalBeforeDiscount * (percentage / 100);
+        } else if (absolute > 0) {
+          discountAmount = absolute * quantity;
+        }
+      }
+    }
+
+    final discountPerUnit = quantity > 0 ? discountAmount / quantity : 0.0;
+    return pricePerUnit - discountPerUnit;
+  }
+
+
   /// Fasst Items mit gleicher product_id zusammen (addiert Mengen UND Rabatte)
+  /// Fasst Items mit gleicher product_id UND gleichem effektivem Stückpreis zusammen.
+  /// Weichen Stückpreis oder Rabatt ab, bleibt das Item als eigene Position erhalten,
+  /// damit die Gesamtsumme der Handelsrechnung nicht verfälscht wird.
   static List<Map<String, dynamic>> _consolidateItems(List<Map<String, dynamic>> items) {
     final Map<String, Map<String, dynamic>> consolidated = {};
 
@@ -845,30 +888,41 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
 
       if (productId.isEmpty) {
         // Ohne product_id: als einzelnes Item behalten
-        consolidated[DateTime.now().microsecondsSinceEpoch.toString()] = Map<String, dynamic>.from(item);
+        consolidated[DateTime.now().microsecondsSinceEpoch.toString()] =
+        Map<String, dynamic>.from(item);
         continue;
       }
 
-      if (consolidated.containsKey(productId)) {
-        // Existiert bereits: Menge UND Rabatt addieren
-        final existing = consolidated[productId]!;
+      // NEU: Effektiver Stückpreis (inkl. Rabatt) ist Teil des Schlüssels.
+      // 4 Nachkommastellen → robust gegen Float-Rundungsfehler, aber strikt genug
+      // um echte Preisabweichungen zu erkennen.
+      final effectivePrice = _getEffectivePricePerUnit(item);
+      final priceKey = effectivePrice.toStringAsFixed(4);
+
+      // NEU: Gratisartikel zusätzlich separieren (Pro-forma-Wert kann variieren
+      // und sollte nicht mit normalen Positionen vermischt werden)
+      final isGratis = item['is_gratisartikel'] == true ? '1' : '0';
+
+      final consolidationKey = '$productId|$priceKey|$isGratis';
+
+      if (consolidated.containsKey(consolidationKey)) {
+        // Gleicher Produkt + gleicher effektiver Preis: Menge UND Rabatt addieren
+        final existing = consolidated[consolidationKey]!;
         final existingQty = (existing['quantity'] as num? ?? 0).toDouble();
         final newQty = (item['quantity'] as num? ?? 0).toDouble();
         existing['quantity'] = existingQty + newQty;
 
-        // Auch discount_amount addieren
         final existingDiscount = (existing['discount_amount'] as num? ?? 0).toDouble();
         final newDiscount = (item['discount_amount'] as num? ?? 0).toDouble();
         existing['discount_amount'] = existingDiscount + newDiscount;
       } else {
-        // Neues Item
-        consolidated[productId] = Map<String, dynamic>.from(item);
+        // Neues Item ODER gleiche product_id mit abweichendem Preis → eigene Position
+        consolidated[consolidationKey] = Map<String, dynamic>.from(item);
       }
     }
 
     return consolidated.values.toList();
   }
-
 
   /// Berechnet optimale Spaltenbreiten basierend auf Inhalt
   static Map<int, pw.FlexColumnWidth> _calculateOptimalColumnWidths(
@@ -890,9 +944,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       if (tariffNumber.length > maxTariffLen) maxTariffLen = tariffNumber.length;
 
       for (final item in items) {
-        String productText = language == 'EN'
-            ? (item['part_name_en'] ?? item['part_name'] ?? '')
-            : (item['part_name'] ?? '');
+        String productText = PdfSettingsHelper.resolvePdfProductName(item, language);
         if (item['is_gratisartikel'] == true) productText += '  GRATIS';
         if (item['is_online_shop_item'] == true) productText += '  #0000';
         if (productText.length > maxProductLen) maxProductLen = productText.length;
@@ -939,7 +991,8 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       String currency,
       Map<String, double> exchangeRates,
       String language,
-      Map<String, String> columnAlignments) {
+      Map<String, String> columnAlignments,
+      Map<String, int> unitDecimals) {
 
     if (serviceItems.isEmpty) return pw.SizedBox.shrink();
 
@@ -1045,7 +1098,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
             ),
             BasePdfGenerator.buildContentCell(
               pw.Text(
-                quantity.toStringAsFixed(0),
+                PdfSettingsHelper.formatQuantity(quantity, 'Stk', unitDecimals),
                 style: const pw.TextStyle(fontSize: 8),
                 textAlign: qtyAlign,
               ),
@@ -1143,7 +1196,8 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       Map<String, double> exchangeRates,
       String language,
       Map<String, dynamic>? taraSettings,
-      Map<String, String> columnAlignments) {
+      Map<String, String> columnAlignments,
+      Map<String, int> unitDecimals) {
 
     final List<pw.TableRow> rows = [];
     double totalVolume = 0.0;
@@ -1247,10 +1301,8 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               child: pw.Text(
                 groupVolume > 0
-                    ? (language == 'EN'
-                    ? '${groupVolume.toStringAsFixed(5)}'
-                    : '${groupVolume.toStringAsFixed(5)}')
-                    : '', // Leer wenn 0
+                    ? PdfSettingsHelper.formatQuantity(groupVolume, 'm³', unitDecimals)
+                    : '', // Leer wenn 0/ Leer wenn 0
                 style: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold,
                   fontSize: 8,
@@ -1322,7 +1374,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
-                  language == 'EN' ? item['part_name_en'] : item['part_name'] ?? '',
+                  PdfSettingsHelper.resolvePdfProductName(item, language),
                   style: const pw.TextStyle(fontSize: 8),
                   textAlign: productAlign,
                 ),
@@ -1357,14 +1409,14 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
-                  volumeM3 > 0 ? volumeM3.toStringAsFixed(5) : '', // Leer wenn 0
+                  volumeM3 > 0 ? PdfSettingsHelper.formatQuantity(volumeM3, 'm³', unitDecimals) : '', // Leer wenn 0
                   style: const pw.TextStyle(fontSize: 8),
                   textAlign: volumeAlign,
                 ),
               ),
               BasePdfGenerator.buildContentCell(
                 pw.Text(
-                  quantity.toStringAsFixed(3),
+                  PdfSettingsHelper.formatQuantity(quantity, unit, unitDecimals),
                   style: const pw.TextStyle(fontSize: 8),
                   textAlign: qtyAlign,
                 ),
@@ -1406,10 +1458,18 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
     // Gesamtsummen-Zeile
     final numberOfPackages = taraSettings?['number_of_packages'] ?? 1;
     final packagingWeight = (taraSettings?['packaging_weight'] ?? 0.0) as double;
-    final packagingVolume= (taraSettings?['packaging_volume'] ?? 0.0) as double;
-    final totalGrossWeight = totalWeight + packagingWeight;
-    final totalGrossVolume = totalVolume + packagingVolume;
 
+// packaging_volume aus der Packliste = Außenmaße der Kisten = GROSS-Volumen
+// Tara-Volumen ist die Differenz zwischen Gross und Netto (Verpackung + Luft)
+    final packingListGrossVolume = (taraSettings?['packaging_volume'] ?? 0.0) as double;
+    final packagingVolume = packingListGrossVolume > 0
+        ? (packingListGrossVolume - totalVolume).clamp(0.0, double.infinity)
+        : 0.0;
+
+    final totalGrossWeight = totalWeight + packagingWeight;
+    final totalGrossVolume = packingListGrossVolume > 0
+        ? packingListGrossVolume
+        : totalVolume;
     // Berechne Gesamtbetrag
     double totalAmount = 0.0;
     groupedItems.forEach((key, items) {
@@ -1471,10 +1531,11 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           ),
           ...List.generate(5, (index) => pw.SizedBox()),
           // Total m³
+          // Total m³
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
-              totalVolume.toStringAsFixed(5),
+              PdfSettingsHelper.formatQuantity(totalVolume, 'm³', unitDecimals),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
               textAlign: volumeAlign,
             ),
@@ -1484,7 +1545,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
-              '${totalWeight.toStringAsFixed(2)} kg',
+              '${PdfSettingsHelper.formatQuantity(totalWeight, 'kg', unitDecimals)} kg',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
               textAlign: unitAlign,
             ),
@@ -1530,7 +1591,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
-              '${packagingVolume.toStringAsFixed(5)}',
+              PdfSettingsHelper.formatQuantity(packagingVolume, 'm³', unitDecimals),
               style: const pw.TextStyle(fontSize: 8),
               textAlign: volumeAlign,
             ),
@@ -1540,7 +1601,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
-              '${packagingWeight.toStringAsFixed(2)} kg',
+              '${PdfSettingsHelper.formatQuantity(packagingWeight, 'kg', unitDecimals)} kg',
               style: const pw.TextStyle(fontSize: 8),
               textAlign: unitAlign,
             ),
@@ -1571,7 +1632,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
-              totalGrossVolume.toStringAsFixed(5),
+              PdfSettingsHelper.formatQuantity(totalGrossVolume, 'm³', unitDecimals),
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
               textAlign: volumeAlign,
             ),
@@ -1580,7 +1641,7 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
           pw.Padding(
             padding: const pw.EdgeInsets.all(4),
             child: pw.Text(
-              '${totalGrossWeight.toStringAsFixed(2)} kg',
+              '${PdfSettingsHelper.formatQuantity(totalGrossWeight, 'kg', unitDecimals)} kg',
               style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
               textAlign: unitAlign,
             ),

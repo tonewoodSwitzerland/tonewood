@@ -321,11 +321,6 @@ class SalesAnalyticsService {
         orderSubtotal -= effectiveOrderDiscount;
         totalGratisValue += orderGratisValue;
 
-        // Order-Level Rabatt abziehen
-
-        orderSubtotal -= orderTotalDiscountAmount;
-        totalGratisValue += orderGratisValue;
-
         bool hasMatchingItems = false;
         int orderItemCount = 0;
 

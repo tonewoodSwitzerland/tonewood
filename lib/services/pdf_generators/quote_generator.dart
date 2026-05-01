@@ -88,9 +88,11 @@ class QuoteGenerator extends BasePdfGenerator {
     // NEU: Lade Adress-Anzeigemodus
     final addressMode = await PdfSettingsHelper.getAddressDisplayMode('quote');
     // NEU: Lade Spaltenausrichtungen
+    // NEU: Lade Spaltenausrichtungen
     final columnAlignments = await PdfSettingsHelper.getColumnAlignments('quote');
+    // NEU: Nachkommastellen pro Einheit laden (global)
+    final unitDecimals = await PdfSettingsHelper.getUnitDecimals();
     final validUntil = validityDate ?? DateTime.now().add(Duration(days: 14));
-
     final quoteSettings = await DocumentSelectionManager.loadQuoteSettings();
     final showDimensions = quoteSettings['show_dimensions'] ?? false;
     final showValidityAddition = quoteSettings['show_validity_addition'] ?? true; // NEU
@@ -245,9 +247,8 @@ class QuoteGenerator extends BasePdfGenerator {
 
             BasePdfGenerator.buildCurrencyHint(currency, language),
 
-            // Produkttabelle nur wenn Produkte vorhanden
             if (productItems.isNotEmpty)
-              _buildProductTable(groupedProductItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths, columnAlignments),
+              _buildProductTable(groupedProductItems, currency, exchangeRates, language, showDimensions, showThermalColumn, showDiscountColumn, showPartsColumn, columnWidths, columnAlignments, unitDecimals),
 
             // Dienstleistungstabelle nur wenn Dienstleistungen vorhanden
             if (serviceItems.isNotEmpty)
@@ -263,6 +264,7 @@ class QuoteGenerator extends BasePdfGenerator {
               showPartsColumn,
               columnWidths,
               columnAlignments,
+              unitDecimals,
             ),
 
             pw.SizedBox(height: 10),
@@ -339,6 +341,7 @@ class QuoteGenerator extends BasePdfGenerator {
       bool showPartsColumn,
       Map<int, pw.FlexColumnWidth> columnWidths,
       Map<String, String> columnAlignments,
+      Map<String, int> unitDecimals,
       ) {
     if (serviceItems.isEmpty) return pw.SizedBox.shrink();
 
@@ -455,7 +458,11 @@ class QuoteGenerator extends BasePdfGenerator {
           ),
         ),
         BasePdfGenerator.buildContentCell(
-          pw.Text(quantity.toStringAsFixed(0), style: const pw.TextStyle(fontSize: 8), textAlign: qtyAlign),
+          pw.Text(
+            PdfSettingsHelper.formatQuantity(quantity, 'Stk', unitDecimals),
+            style: const pw.TextStyle(fontSize: 8),
+            textAlign: qtyAlign,
+          ),
         ),
         BasePdfGenerator.buildContentCell(
           pw.Text(language == 'EN' ? 'pcs' : 'Stk', style: const pw.TextStyle(fontSize: 8), textAlign: unitAlign),
@@ -557,10 +564,9 @@ class QuoteGenerator extends BasePdfGenerator {
     groupedItems.forEach((woodGroup, items) {
       for (final item in items) {
         // Produkt (inkl. Notes + Badges)
-        String productText = language == 'EN'
-            ? (item['part_name_en'] ?? item['part_name'] ?? '')
-            : (item['part_name'] ?? '');
-        if (item['notes'] != null && item['notes'].toString().isNotEmpty) {
+        // Produkt (inkl. Notes + Badges)
+        String productText = PdfSettingsHelper.resolvePdfProductName(item, language);
+        if (PdfSettingsHelper.shouldAppendPdfNotes(item)) {
           productText += ' (${item['notes']})';
         }
         // Badge-Platz einrechnen
@@ -645,6 +651,7 @@ class QuoteGenerator extends BasePdfGenerator {
       bool showPartsColumn,
       Map<int, pw.FlexColumnWidth> columnWidths,
       Map<String, String> columnAlignments,
+      Map<String, int> unitDecimals,
       ) { // NEU: showDimensions Parameter
 
     final List<pw.TableRow> rows = [];
@@ -806,11 +813,11 @@ class QuoteGenerator extends BasePdfGenerator {
                   child: pw.Row(
                     children: [
                       pw.Text(
-                          language == 'EN' ? item['part_name_en'] : item['part_name'] ?? '',
+                          PdfSettingsHelper.resolvePdfProductName(item, language),
                           style: const pw.TextStyle(fontSize: 8)
                       ),
-                      // NEU: Hinweise in Klammern hinzufügen
-                      if (item['notes'] != null && item['notes'].toString().isNotEmpty)
+                      // NEU: Hinweise in Klammern hinzufügen (nur wenn nicht Spezial)
+                      if (PdfSettingsHelper.shouldAppendPdfNotes(item))
                         pw.Text(
                           ' (${item['notes']})',
                           style: pw.TextStyle(
@@ -922,9 +929,7 @@ class QuoteGenerator extends BasePdfGenerator {
         rowCells.addAll([
           BasePdfGenerator.buildContentCell(
             pw.Text(
-              unit != "Stk"
-                  ? quantity.toStringAsFixed(3)
-                  : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
+              PdfSettingsHelper.formatQuantity(quantity, unit, unitDecimals),
               style: const pw.TextStyle(fontSize: 8),
               textAlign: qtyAlign,
             ),

@@ -134,9 +134,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
 
     groupedItems.forEach((woodGroup, items) {
       for (final item in items) {
-        String productText = language == 'EN'
-            ? (item['part_name_en'] ?? item['part_name'] ?? '')
-            : (item['part_name'] ?? '');
+        String productText = PdfSettingsHelper.resolvePdfProductName(item, language);
         if (productText.length > maxProductLen) maxProductLen = productText.length;
 
         String instrText = language == 'EN'
@@ -188,6 +186,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
       bool showThermalColumn,
       Map<int, pw.FlexColumnWidth> columnWidths,
       Map<String, String> columnAlignments,
+      Map<String, int> unitDecimals,
       ) {
     final List<pw.TableRow> rows = [];
 
@@ -262,9 +261,10 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
 
         final contentCells = <pw.Widget>[
           // Produkt - NEU: mit textAlign
+          // Produkt - NEU: mit textAlign
           BaseDeliveryNotePdfGenerator.buildContentCell(
             pw.Text(
-              language == 'EN' ? item['part_name_en'] ?? item['part_name'] ?? '' : item['part_name'] ?? '',
+              PdfSettingsHelper.resolvePdfProductName(item, language),
               style: const pw.TextStyle(fontSize: 8),
               textAlign: productAlign,
             ),
@@ -310,9 +310,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
         contentCells.addAll([
           BaseDeliveryNotePdfGenerator.buildContentCell(
             pw.Text(
-              unit != "Stk"
-                  ? quantity.toStringAsFixed(3)
-                  : quantity.toStringAsFixed(quantity == quantity.round() ? 0 : 3),
+              PdfSettingsHelper.formatQuantity(quantity, unit, unitDecimals),
               style: const pw.TextStyle(fontSize: 8),
               textAlign: qtyAlign,
             ),
@@ -481,9 +479,9 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
   }) async {
     final addressEmailSpacing = await PdfSettingsHelper.getDeliveryNoteAddressEmailSpacing();
 
-    // NEU: Lade Spaltenausrichtungen
-    final columnAlignments = await PdfSettingsHelper.getColumnAlignments('delivery_note');
 
+    final columnAlignments = await PdfSettingsHelper.getColumnAlignments('delivery_note');
+    final unitDecimals = await PdfSettingsHelper.getUnitDecimals();
     final pdf = pw.Document();
     final logo = await BaseDeliveryNotePdfGenerator.loadLogo();
     final hfSettings = await PdfHeaderFooterSettings.load();
@@ -561,7 +559,7 @@ class DeliveryNoteGenerator extends BaseDeliveryNotePdfGenerator {
             pw.SizedBox(height: 15),
 
             // Produkttabelle mit dynamischer °C-Spalte und Spaltenausrichtungen
-            _buildProductTable(groupedItems, language, showThermalColumn, columnWidths, columnAlignments),
+            _buildProductTable(groupedItems, language, showThermalColumn, columnWidths, columnAlignments, unitDecimals),
 
             pw.SizedBox(height: 10),
             additionalTextsWidget,
