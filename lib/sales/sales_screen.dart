@@ -409,8 +409,8 @@ class SalesScreenState extends State<SalesScreen> {
       // Lokale States zurücksetzen (ohne setState)
       selectedProduct = null;
       _totalDiscount = const Discount();
-      _itemDiscounts = {};
-      _documentSelectionCompleteNotifier.value = false;
+      _showDiscountPercentageOnInvoice = false; // NEU
+      _itemDiscounts = {};  _documentSelectionCompleteNotifier.value = false;
       _additionalTextsSelectedNotifier.value = false;
       _shippingCostsConfiguredNotifier.value = false;
       _documentLanguageNotifier.value = 'DE';
@@ -1280,8 +1280,8 @@ class SalesScreenState extends State<SalesScreen> {
       setState(() {
         selectedProduct = null;
         _totalDiscount = const Discount();
-        _itemDiscounts = {};
-        _documentSelectionCompleteNotifier.value = false;
+        _showDiscountPercentageOnInvoice = false; // NEU
+        _itemDiscounts = {};  _documentSelectionCompleteNotifier.value = false;
         _additionalTextsSelectedNotifier.value = false;
         _shippingCostsConfiguredNotifier.value = false;
         _documentLanguageNotifier.value = 'DE';
@@ -7881,6 +7881,7 @@ class SalesScreenState extends State<SalesScreen> {
           .set({
         'percentage': _totalDiscount.percentage,
         'absolute': _totalDiscount.absolute,
+        'show_discount_percentage_on_invoice': _showDiscountPercentageOnInvoice, // NEU
         'timestamp': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -7911,6 +7912,9 @@ class SalesScreenState extends State<SalesScreen> {
                   : data['absolute'] as double)
                   : 0.0,
             );
+            // NEU: Flag laden (Default false für Abwärtskompatibilität)
+            _showDiscountPercentageOnInvoice =
+                data['show_discount_percentage_on_invoice'] as bool? ?? false;
           });
         }
       }
@@ -7918,9 +7922,10 @@ class SalesScreenState extends State<SalesScreen> {
       print('Fehler beim Laden des Gesamtrabatts: $e');
     }
   }
-
   double get _vatRate => _vatRateNotifier.value;
   Discount _totalDiscount = const Discount();
+  bool _showDiscountPercentageOnInvoice = false; // NEU: Flag ob Rabatt-% auf Rechnung ausgewiesen werden soll
+
   Map<String, Discount> _itemDiscounts = {};
   void _showItemDiscountDialog(String itemId, double originalAmount) async {
     final result = await showDialog<Discount>(
@@ -7959,9 +7964,10 @@ class SalesScreenState extends State<SalesScreen> {
     final targetTotalController = TextEditingController(); // Neu: Controller für Zielbetrag
 
     // Temporäre Variablen für den aktuellen Status
+    // Temporäre Variablen für den aktuellen Status
     double tempPercentage = _totalDiscount.percentage;
     double tempAbsolute = _totalDiscount.absolute;
-
+    bool tempShowDiscountPercentageOnInvoice = _showDiscountPercentageOnInvoice; // NEU
     showModalBottomSheet(
       context: context,
       isScrollControlled: true, // Wichtig für anpassbare Höhe
@@ -8217,8 +8223,24 @@ class SalesScreenState extends State<SalesScreen> {
                                     });
                                   },
                                 ),
+                                // NEU: Checkbox - Rabatt in % auf Rechnung ausweisen
+                                CheckboxListTile(
+                                  title: const Text('Rabatt in % auf Angebot / Rechnung ausweisen'),
+                                  subtitle: const Text(
+                                    'Wenn aktiviert, wird der prozentuale Rabatt explizit auf der Rechnung ausgewiesen',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                  value: tempShowDiscountPercentageOnInvoice,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      tempShowDiscountPercentageOnInvoice = value ?? false;
+                                    });
+                                  },
+                                  controlAffinity: ListTileControlAffinity.leading,
+                                  contentPadding: EdgeInsets.zero,
+                                  dense: true,
+                                ),
                                 const SizedBox(height: 16),
-
                                 // Rabatt Absolut
                                 TextFormField(
                                   controller: absoluteController,
@@ -8549,11 +8571,13 @@ class SalesScreenState extends State<SalesScreen> {
                                   await batch.commit();
 
                                   // Setze Gesamtrabatt auf 0
+                                  // Setze Gesamtrabatt auf 0
                                   this.setState(() {
                                     _totalDiscount = const Discount();
+                                    // NEU: Flag zurücksetzen, da kein Gesamtrabatt mehr existiert
+                                    _showDiscountPercentageOnInvoice = false;
                                   });
                                   await _saveTemporaryTotalDiscount();
-
                                   Navigator.pop(context);
 
                                   // Zeige Bestätigung
@@ -8576,10 +8600,11 @@ class SalesScreenState extends State<SalesScreen> {
                                       percentage: percentageValue,
                                       absolute: absoluteValue,
                                     );
+                                    // NEU: Flag übernehmen
+                                    _showDiscountPercentageOnInvoice = tempShowDiscountPercentageOnInvoice;
                                   });
                                   await _saveTemporaryTotalDiscount();
                                   Navigator.pop(context);
-
                                   // Zeige Bestätigung
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(

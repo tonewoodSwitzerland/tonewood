@@ -10,6 +10,16 @@ import 'document_settings_provider.dart';
 /// Wird sowohl im Auftrags- als auch im Angebotsbereich verwendet.
 /// Der [DocumentSettingsProvider] bestimmt, wohin die Daten gespeichert werden.
 class AdditionalTextsSettingsDialog {
+  /// Extra-Optionen für Texttypen mit mehreren Standard-Varianten.
+  /// Aktuell nur Bankverbindung (CHF/EUR/USD), kann bei Bedarf erweitert werden.
+  static const Map<String, List<Map<String, String>>> _extraOptions = {
+    'bank_info': [
+      {'value': 'standard', 'label': 'CHF (Standard)'},
+      {'value': 'eur', 'label': 'EUR'},
+      {'value': 'usd', 'label': 'USD'},
+    ],
+  };
+
   /// Zeigt den Zusatztexte-Dialog.
   ///
   /// [config] ist die aktuelle Zusatztexte-Konfiguration (wird in-place modifiziert).
@@ -21,120 +31,197 @@ class AdditionalTextsSettingsDialog {
         required Map<String, dynamic> config,
         VoidCallback? onSaved,
       }) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.85,
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: Column(
-              children: [
-                // Drag Handle
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .outline
-                        .withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+    // Persistente Controller, einmal pro Texttyp.
+    // Werden lazy via putIfAbsent in _buildTiles gefüllt und am Ende disposed.
+    final controllers = <String, TextEditingController>{};
 
-                // Header
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Row(
-                    children: [
-                      getAdaptiveIcon(
-                        iconName: 'text_fields',
-                        defaultIcon: Icons.text_fields,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'Zusatztexte',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: getAdaptiveIcon(
-                            iconName: 'close', defaultIcon: Icons.close),
-                      ),
-                    ],
-                  ),
-                ),
+    // Loading-State für Speichern-Button (gegen Doppelklick)
+    final isSavingNotifier = ValueNotifier<bool>(false);
 
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    'Diese Einstellungen gelten für alle Dokumente.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(0.6),
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              // Schiebt den Sheet bei eingeblendeter Tastatur hoch,
+              // damit das Eigener-Text-Feld nicht verdeckt wird.
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.85,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Column(
+                  children: [
+                    // Drag Handle
+                    Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .outline
+                            .withOpacity(0.4),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
-                  ),
-                ),
 
-                const Divider(),
-
-                // Content
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.all(24),
-                    children: _buildTiles(context, config, setModalState),
-                  ),
-                ),
-
-                // Footer
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Row(
+                        children: [
+                          getAdaptiveIcon(
+                            iconName: 'text_fields',
+                            defaultIcon: Icons.text_fields,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Zusatztexte',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          const Spacer(),
+                          IconButton(
                             onPressed: () => Navigator.pop(context),
-                            child: const Text('Abbrechen'),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () async {
-                              await provider.saveAdditionalTexts(config);
-                              onSaved?.call();
-                              if (context.mounted) Navigator.pop(context);
-                            },
                             icon: getAdaptiveIcon(
-                                iconName: 'save', defaultIcon: Icons.save),
-                            label: const Text('Speichern'),
+                                iconName: 'close', defaultIcon: Icons.close),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
+
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Text(
+                        'Diese Einstellungen gelten für alle Dokumente.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(0.6),
+                        ),
+                      ),
+                    ),
+
+                    const Divider(),
+
+                    // Content
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.all(24),
+                        children: _buildTiles(
+                          context,
+                          config,
+                          setModalState,
+                          controllers,
+                        ),
+                      ),
+                    ),
+
+                    // Footer
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: ValueListenableBuilder<bool>(
+                                valueListenable: isSavingNotifier,
+                                builder: (context, isSaving, _) {
+                                  return OutlinedButton(
+                                    onPressed: isSaving
+                                        ? null
+                                        : () => Navigator.pop(context),
+                                    child: const Text('Abbrechen'),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: ValueListenableBuilder<bool>(
+                                valueListenable: isSavingNotifier,
+                                builder: (context, isSaving, _) {
+                                  return ElevatedButton.icon(
+                                    onPressed: isSaving
+                                        ? null
+                                        : () async {
+                                      isSavingNotifier.value = true;
+                                      try {
+                                        await provider
+                                            .saveAdditionalTexts(config);
+                                        onSaved?.call();
+                                        if (context.mounted) {
+                                          Navigator.pop(context);
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                  'Zusatztexte gespeichert'),
+                                              backgroundColor: Colors.green,
+                                            ),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        isSavingNotifier.value = false;
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                  'Fehler beim Speichern: $e'),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                                    icon: isSaving
+                                        ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    )
+                                        : getAdaptiveIcon(
+                                        iconName: 'save',
+                                        defaultIcon: Icons.save),
+                                    label: Text(isSaving
+                                        ? 'Speichern...'
+                                        : 'Speichern'),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
+              ),
+            );
+          },
+        ),
+      );
+    } finally {
+      // Controller aufräumen
+      for (final c in controllers.values) {
+        c.dispose();
+      }
+      isSavingNotifier.dispose();
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -145,6 +232,7 @@ class AdditionalTextsSettingsDialog {
       BuildContext context,
       Map<String, dynamic> config,
       StateSetter setModalState,
+      Map<String, TextEditingController> controllers,
       ) {
     final textTypes = [
       {'key': 'legend_origin', 'title': 'Ursprung (Legende)', 'defaultTextKey': 'legend_origin'},
@@ -164,14 +252,31 @@ class AdditionalTextsSettingsDialog {
       final isSelected = config[key]?['selected'] == true;
       final currentType = config[key]?['type'] ?? 'standard';
       final customText = config[key]?['custom_text'] ?? '';
-      final standardText =
-          AdditionalTextsManager.getDefaultText(defaultTextKey)['DE']
-          ?['standard'] ??
-              '';
-      final displayText =
-      (currentType == 'custom' && customText.isNotEmpty)
-          ? customText
-          : standardText;
+
+      // Hat dieser Texttyp Extra-Optionen (z.B. Bankverbindung)?
+      final extraOptions = _extraOptions[key];
+      final hasExtraOptions = extraOptions != null && extraOptions.isNotEmpty;
+
+      // Persistenter Controller (nur einmal initialisiert)
+      final controller = controllers.putIfAbsent(
+        key,
+            () => TextEditingController(text: customText),
+      );
+
+      // Vorschautext bestimmen
+      final defaultTextMap =
+          AdditionalTextsManager.getDefaultText(defaultTextKey)['DE'] ?? {};
+      final standardText = defaultTextMap['standard'] ?? '';
+
+      String displayText;
+      if (currentType == 'custom' && customText.isNotEmpty) {
+        displayText = customText;
+      } else if (hasExtraOptions && currentType != 'custom') {
+        // Bei Bankverbindung: passende Variante (standard/eur/usd) anzeigen
+        displayText = defaultTextMap[currentType] ?? standardText;
+      } else {
+        displayText = standardText;
+      }
 
       tiles.add(
         Container(
@@ -208,18 +313,58 @@ class AdditionalTextsSettingsDialog {
                     config[key] ??= {
                       'type': key == 'free_text' ? 'custom' : 'standard',
                       'custom_text': '',
-                      'selected': false
+                      'selected': value,
                     };
                     config[key]['selected'] = value;
                   });
                 },
               ),
               if (isSelected) ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: Row(
-                    children: [
-                      if (key != 'free_text') ...[
+                // Auswahl der Variante
+                if (hasExtraOptions) ...[
+                  // Dropdown (z.B. für Bankverbindung mit CHF/EUR/USD/Eigener Text)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: DropdownButtonFormField<String>(
+                      value: _resolveDropdownValue(currentType, extraOptions),
+                      isDense: true,
+                      decoration: InputDecoration(
+                        labelText: 'Variante',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                      ),
+                      items: [
+                        ...extraOptions.map(
+                              (option) => DropdownMenuItem<String>(
+                            value: option['value'],
+                            child: Text(
+                              option['label'] ?? option['value'] ?? '',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                        ),
+                        const DropdownMenuItem<String>(
+                          value: 'custom',
+                          child: Text('Eigener Text',
+                              style: TextStyle(fontSize: 13)),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setModalState(() => config[key]['type'] = value);
+                        }
+                      },
+                    ),
+                  ),
+                ] else if (key != 'free_text') ...[
+                  // ChoiceChips für Standard/Eigener Text (bisheriges Verhalten)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Row(
+                      children: [
                         ChoiceChip(
                           label: const Text('Standard',
                               style: TextStyle(fontSize: 12)),
@@ -246,14 +391,16 @@ class AdditionalTextsSettingsDialog {
                           visualDensity: VisualDensity.compact,
                         ),
                       ],
-                    ],
+                    ),
                   ),
-                ),
+                ],
+
+                // Eigener Text - Eingabefeld
                 if (currentType == 'custom')
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                     child: TextField(
-                      controller: TextEditingController(text: customText),
+                      controller: controller,
                       decoration: InputDecoration(
                         labelText: 'Eigener Text',
                         border: OutlineInputBorder(
@@ -363,5 +510,16 @@ class AdditionalTextsSettingsDialog {
     }
 
     return tiles;
+  }
+
+  /// Stellt sicher, dass der Dropdown-Wert in den verfügbaren Optionen vorhanden ist.
+  /// Fällt auf 'standard' zurück, falls ein unbekannter Wert in der Config steht.
+  static String _resolveDropdownValue(
+      String currentType, List<Map<String, String>> extraOptions) {
+    final allowed = <String>{
+      ...extraOptions.map((o) => o['value'] ?? ''),
+      'custom',
+    };
+    return allowed.contains(currentType) ? currentType : 'standard';
   }
 }

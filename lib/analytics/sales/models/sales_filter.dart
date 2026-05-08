@@ -6,6 +6,7 @@ class SalesFilter {
   final double? maxAmount;
   final List<String>? selectedFairs;
   final List<String>? selectedProducts;
+  final List<String>? selectedServices; // NEU
   final List<String>? woodTypes;
   final List<String>? parts;
   final List<String>? qualities;
@@ -23,6 +24,7 @@ class SalesFilter {
     this.maxAmount,
     this.selectedFairs,
     this.selectedProducts,
+    this.selectedServices, // NEU
     this.woodTypes,
     this.parts,
     this.qualities,
@@ -42,6 +44,7 @@ class SalesFilter {
     if (maxAmount != null) map['maxAmount'] = maxAmount;
     if (selectedFairs != null) map['selectedFair'] = selectedFairs;
     if (selectedProducts != null) map['selectedProduct'] = selectedProducts;
+    if (selectedServices?.isNotEmpty ?? false) map['selectedServices'] = selectedServices; // NEU
     if (woodTypes?.isNotEmpty ?? false) map['woodTypes'] = woodTypes;
     if (parts?.isNotEmpty ?? false) map['parts'] = parts;
     if (qualities?.isNotEmpty ?? false) map['qualities'] = qualities;
@@ -64,6 +67,7 @@ class SalesFilter {
     Object? maxAmount = _unset,
     Object? selectedFairs = _unset,
     Object? selectedProducts = _unset,
+    Object? selectedServices = _unset, // NEU
     Object? woodTypes = _unset,
     Object? parts = _unset,
     Object? qualities = _unset,
@@ -81,8 +85,8 @@ class SalesFilter {
       maxAmount:            identical(maxAmount, _unset)            ? this.maxAmount            : maxAmount as double?,
       selectedFairs:        identical(selectedFairs, _unset)        ? this.selectedFairs        : selectedFairs as List<String>?,
       selectedProducts:     identical(selectedProducts, _unset)     ? this.selectedProducts     : selectedProducts as List<String>?,
-      woodTypes:            identical(woodTypes, _unset)            ? this.woodTypes            : woodTypes as List<String>?,
-      parts:                identical(parts, _unset)                ? this.parts                : parts as List<String>?,
+      selectedServices:     identical(selectedServices, _unset)     ? this.selectedServices     : selectedServices as List<String>?, // NEU
+      woodTypes:            identical(woodTypes, _unset)            ? this.woodTypes            : woodTypes as List<String>?, parts:                identical(parts, _unset)                ? this.parts                : parts as List<String>?,
       qualities:            identical(qualities, _unset)            ? this.qualities            : qualities as List<String>?,
       selectedCustomers:    identical(selectedCustomers, _unset)    ? this.selectedCustomers    : selectedCustomers as List<String>?,
       instruments:          identical(instruments, _unset)          ? this.instruments          : instruments as List<String>?,

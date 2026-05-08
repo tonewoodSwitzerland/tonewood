@@ -50,6 +50,7 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
           (_currentFilter.maxAmount != null) ||
           (_currentFilter.selectedFairs?.isNotEmpty ?? false) ||
           (_currentFilter.selectedProducts?.isNotEmpty ?? false) ||
+          (_currentFilter.selectedServices?.isNotEmpty ?? false) || // NEU
           (_currentFilter.woodTypes?.isNotEmpty ?? false) ||
           (_currentFilter.parts?.isNotEmpty ?? false) ||
           (_currentFilter.instruments?.isNotEmpty ?? false) ||
@@ -65,8 +66,8 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
     if (_currentFilter.minAmount != null || _currentFilter.maxAmount != null) count++;
     if (_currentFilter.selectedFairs?.isNotEmpty ?? false) count++;
     if (_currentFilter.selectedProducts?.isNotEmpty ?? false) count++;
-    if (_currentFilter.woodTypes?.isNotEmpty ?? false) count++;
-    if (_currentFilter.parts?.isNotEmpty ?? false) count++;
+    if (_currentFilter.selectedServices?.isNotEmpty ?? false) count++; // NEU
+    if (_currentFilter.woodTypes?.isNotEmpty ?? false) count++; if (_currentFilter.parts?.isNotEmpty ?? false) count++;
     if (_currentFilter.instruments?.isNotEmpty ?? false) count++;
     if (_currentFilter.qualities?.isNotEmpty ?? false) count++;
     if (_currentFilter.selectedCustomers?.isNotEmpty ?? false) count++;
@@ -446,6 +447,19 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
         final subtotal = (calculations['subtotal'] as num?)?.toDouble() ?? 0;
         if (_currentFilter.minAmount != null && subtotal < _currentFilter.minAmount!) continue;
         if (_currentFilter.maxAmount != null && subtotal > _currentFilter.maxAmount!) continue;
+      }
+
+      // NEU: Dienstleistungs-Filter (Items-Array prüfen)
+      if (_currentFilter.selectedServices?.isNotEmpty ?? false) {
+        final items = (data['items'] as List?) ?? const [];
+        final hasMatchingService = items.any((it) {
+          if (it is! Map) return false;
+          final m = Map<String, dynamic>.from(it as Map);
+          if (m['is_service'] != true) return false;
+          final sid = m['service_id'] as String?;
+          return sid != null && _currentFilter.selectedServices!.contains(sid);
+        });
+        if (!hasMatchingService) continue;
       }
 
       result.add(data);

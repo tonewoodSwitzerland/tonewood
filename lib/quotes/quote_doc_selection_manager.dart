@@ -303,6 +303,7 @@ class DocumentSelectionManager {
     try {
       double itemDiscounts = 0.0;
       double totalDiscountAmount = 0.0;
+      bool showDiscountPercentageOnInvoice = false; // NEU
 
       // Berechne Item-Rabatte direkt aus den basketItems
       for (final item in basketItems) {
@@ -339,6 +340,9 @@ class DocumentSelectionManager {
         final totalDiscountData = totalDiscountDoc.data()!;
         final totalPercentage = (totalDiscountData['percentage'] as num? ?? 0).toDouble();
         final totalAbsolute = (totalDiscountData['absolute'] as num? ?? 0).toDouble();
+        // NEU: Flag aus Firestore lesen
+        showDiscountPercentageOnInvoice =
+            totalDiscountData['show_discount_percentage_on_invoice'] as bool? ?? false;
 
         // Berechne Subtotal nach Item-Rabatten (ohne Gratisartikel)
         final subtotal = basketItems.fold<double>(0.0, (sum, item) {
@@ -361,16 +365,17 @@ class DocumentSelectionManager {
       return {
         'item_discounts': itemDiscounts,
         'total_discount_amount': totalDiscountAmount,
+        'show_discount_percentage_on_invoice': showDiscountPercentageOnInvoice, // NEU
       };
     } catch (e) {
       print('Fehler beim Berechnen der Rabatte: $e');
       return {
         'item_discounts': 0.0,
         'total_discount_amount': 0.0,
+        'show_discount_percentage_on_invoice': false, // NEU
       };
     }
   }
-
   // ===== DOCUMENT_SELECTION_MANAGER ANPASSUNGEN =====
 
 // Erweitere die saveDeliveryNoteSettings Methode:
@@ -1472,70 +1477,75 @@ class DocumentSelectionManager {
 }
 
 Future<Map<String, dynamic>> _calculateDiscountsForPreview(List<Map<String, dynamic>> basketItems) async {
-try {
-double itemDiscounts = 0.0;
-double totalDiscountAmount = 0.0;
+  try {
+    double itemDiscounts = 0.0;
+    double totalDiscountAmount = 0.0;
+    bool showDiscountPercentageOnInvoice = false; // NEU
 
 // Berechne Item-Rabatte direkt aus den basketItems
-for (final item in basketItems) {
-final customPriceValue = item['custom_price_per_unit'];
-final pricePerUnit = customPriceValue != null
-? (customPriceValue as num).toDouble()
-    : (item['price_per_unit'] as num).toDouble();
+    for (final item in basketItems) {
+      final customPriceValue = item['custom_price_per_unit'];
+      final pricePerUnit = customPriceValue != null
+          ? (customPriceValue as num).toDouble()
+          : (item['price_per_unit'] as num).toDouble();
 
-final quantity = item['quantity'];
-final quantityDouble = quantity is int ? quantity.toDouble() : quantity as double;
-final itemSubtotal = quantityDouble * pricePerUnit;
+      final quantity = item['quantity'];
+      final quantityDouble = quantity is int ? quantity.toDouble() : quantity as double;
+      final itemSubtotal = quantityDouble * pricePerUnit;
 
 // Rabatt ist direkt im Item gespeichert
-final discount = item['discount'] as Map<String, dynamic>?;
-if (discount != null) {
-final percentage = (discount['percentage'] as num? ?? 0).toDouble();
-final absolute = (discount['absolute'] as num? ?? 0).toDouble();
-final discountAmount = (itemSubtotal * (percentage / 100)) + absolute;
-itemDiscounts += discountAmount;
-}
-}
+      final discount = item['discount'] as Map<String, dynamic>?;
+      if (discount != null) {
+        final percentage = (discount['percentage'] as num? ?? 0).toDouble();
+        final absolute = (discount['absolute'] as num? ?? 0).toDouble();
+        final discountAmount = (itemSubtotal * (percentage / 100)) + absolute;
+        itemDiscounts += discountAmount;
+      }
+    }
 
 // Lade Gesamtrabatt aus temporary_discounts/total_discount
-final totalDiscountDoc = await
+    final totalDiscountDoc = await
     UserBasketService.temporaryDiscounts
-    .doc('total_discount')
-    .get();
+        .doc('total_discount')
+        .get();
 
-if (totalDiscountDoc.exists) {
-final totalDiscountData = totalDiscountDoc.data()!;
-final totalPercentage = (totalDiscountData['percentage'] as num? ?? 0).toDouble();
-final totalAbsolute = (totalDiscountData['absolute'] as num? ?? 0).toDouble();
+    if (totalDiscountDoc.exists) {
+      final totalDiscountData = totalDiscountDoc.data()!;
+      final totalPercentage = (totalDiscountData['percentage'] as num? ?? 0).toDouble();
+      final totalAbsolute = (totalDiscountData['absolute'] as num? ?? 0).toDouble();
+// NEU: Flag aus Firestore lesen
+      showDiscountPercentageOnInvoice =
+          totalDiscountData['show_discount_percentage_on_invoice'] as bool? ?? false;
 
 // Berechne Subtotal nach Item-Rabatten
-final subtotal = basketItems.fold<double>(0.0, (sum, item) {
-final customPriceValue = item['custom_price_per_unit'];
-final pricePerUnit = customPriceValue != null
-? (customPriceValue as num).toDouble()
-    : (item['price_per_unit'] as num).toDouble();
-final qty = item['quantity'];
-final qtyDouble = qty is int ? qty.toDouble() : qty as double;
-return sum + (qtyDouble * pricePerUnit);
-});
+      final subtotal = basketItems.fold<double>(0.0, (sum, item) {
+        final customPriceValue = item['custom_price_per_unit'];
+        final pricePerUnit = customPriceValue != null
+            ? (customPriceValue as num).toDouble()
+            : (item['price_per_unit'] as num).toDouble();
+        final qty = item['quantity'];
+        final qtyDouble = qty is int ? qty.toDouble() : qty as double;
+        return sum + (qtyDouble * pricePerUnit);
+      });
 
-final subtotalAfterItemDiscounts = subtotal - itemDiscounts;
-totalDiscountAmount = (subtotalAfterItemDiscounts * (totalPercentage / 100)) + totalAbsolute;
-}
+      final subtotalAfterItemDiscounts = subtotal - itemDiscounts;
+      totalDiscountAmount = (subtotalAfterItemDiscounts * (totalPercentage / 100)) + totalAbsolute;
+    }
 
-return {
-'item_discounts': itemDiscounts,
-'total_discount_amount': totalDiscountAmount,
-};
-} catch (e) {
-print('Fehler beim Berechnen der Rabatte: $e');
-return {
-'item_discounts': 0.0,
-'total_discount_amount': 0.0,
-};
+    return {
+      'item_discounts': itemDiscounts,
+      'total_discount_amount': totalDiscountAmount,
+      'show_discount_percentage_on_invoice': showDiscountPercentageOnInvoice, // NEU
+    };
+  } catch (e) {
+    print('Fehler beim Berechnen der Rabatte: $e');
+    return {
+      'item_discounts': 0.0,
+      'total_discount_amount': 0.0,
+      'show_discount_percentage_on_invoice': false, // NEU
+    };
+  }
 }
-}
-
 // Neue Methode zum Laden der aktuellen Währungseinstellungen
  Future<Map<String, dynamic>> loadCurrencySettings() async {
 try {

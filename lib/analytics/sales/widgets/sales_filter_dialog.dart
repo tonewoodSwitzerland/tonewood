@@ -109,6 +109,14 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
                               child:    _buildProductFilter(),
                               hasActiveFilters:    tempFilter.selectedProducts != null,
                             ),
+                            // NEU: Dienstleistungen
+                            buildFilterCategory(
+                              icon: Icons.handyman,
+                              iconName: 'handyman',
+                              title: 'Dienstleistung',
+                              child: _buildServiceFilter(),
+                              hasActiveFilters: tempFilter.selectedServices?.isNotEmpty ?? false,
+                            ),
                             buildFilterCategory(
                               icon:   Icons.forest,
                               iconName: 'forest',
@@ -269,6 +277,9 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
             _buildFairChips(),
           if (tempFilter.selectedProducts?.isNotEmpty ?? false)
             _buildProductChips(),
+          if (tempFilter.selectedServices?.isNotEmpty ?? false) // NEU
+            ...tempFilter.selectedServices!.map(_buildServiceChip),
+
           if (tempFilter.instruments?.isNotEmpty ?? false)
             ...tempFilter.instruments!.map(_buildInstrumentChip),
           if (tempFilter.selectedCustomers != null)
@@ -823,6 +834,7 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
         tempFilter.selectedFairs != null ||
         tempFilter.selectedCustomers != null ||
         (tempFilter.selectedProducts?.isNotEmpty ?? false) ||
+        (tempFilter.selectedServices?.isNotEmpty ?? false) || // NEU
         (tempFilter.woodTypes?.isNotEmpty ?? false) ||
         (tempFilter.qualities?.isNotEmpty ?? false) ||
         (tempFilter.parts?.isNotEmpty ?? false) ||
@@ -1236,7 +1248,65 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
 
     );
   }
+// NEU: Service-Filter (analog zu _buildFairFilter / _buildProductFilter)
+  Widget _buildServiceFilter() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('services')
+          .orderBy('name')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const CircularProgressIndicator();
 
+        return _buildMultiSelectDropdown(
+          label: 'Dienstleistung auswählen',
+          options: snapshot.data!.docs,
+          selectedValues: tempFilter.selectedServices ?? [],
+          onChanged: (newSelection) {
+            setState(() {
+              tempFilter = tempFilter.copyWith(
+                selectedServices: newSelection,
+              );
+            });
+          },
+        );
+      },
+    );
+  }
+
+  // NEU: Chip für aktive Service-Filter (analog zu _buildPartChip / _buildInstrumentChip)
+  Widget _buildServiceChip(String serviceId) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('services')
+          .doc(serviceId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final name = snapshot.hasData && snapshot.data!.data() != null
+            ? (snapshot.data!.data() as Map<String, dynamic>)['name'] ?? serviceId
+            : serviceId;
+        return Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: InputChip(
+            backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
+            label: Text(name),
+            deleteIcon: getAdaptiveIcon(
+                iconName: 'close', defaultIcon: Icons.close, size: 18),
+            onPressed: () {},
+            onDeleted: () {
+              setState(() {
+                tempFilter = tempFilter.copyWith(
+                  selectedServices: tempFilter.selectedServices
+                      ?.where((id) => id != serviceId)
+                      .toList(),
+                );
+              });
+            },
+          ),
+        );
+      },
+    );
+  }
   String _getSelectedItemsLabel(List<DocumentSnapshot> options, List<String> selectedValues) {
     if (selectedValues.isEmpty) return '';
 

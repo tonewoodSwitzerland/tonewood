@@ -1041,9 +1041,11 @@ class QuoteGenerator extends BasePdfGenerator {
         actualItemDiscounts += itemDiscountAmount;
       }
     }
-
     final itemDiscounts = actualItemDiscounts > 0 ? actualItemDiscounts : (calculations?['item_discounts'] ?? 0.0);
     final totalDiscountAmount = calculations?['total_discount_amount'] ?? 0.0;
+    // NEU: Flag, ob Rabatt in % ausgewiesen werden soll
+    final showDiscountPercentageOnInvoice =
+        calculations?['show_discount_percentage_on_invoice'] as bool? ?? false;
     final afterDiscounts = (subtotal - itemDiscounts) - totalDiscountAmount;
 
     // Versandkosten
@@ -1159,6 +1161,7 @@ class QuoteGenerator extends BasePdfGenerator {
             ),
 
             // Gesamtrabatt
+            // Gesamtrabatt
             if (totalDiscountAmount > 0) ...[
               pw.SizedBox(height: 4),
               pw.Row(
@@ -1169,7 +1172,9 @@ class QuoteGenerator extends BasePdfGenerator {
                     children: [
 
                       pw.Text(language == 'EN' ? 'Total discount' : 'Gesamtrabatt', style: const pw.TextStyle(fontSize: 9)),
-                      pw.Text(' (${(totalDiscountAmount/subtotal*100).toStringAsFixed(2)}%)', style: const pw.TextStyle(fontSize: 9)),
+                      // NEU: Prozent nur anzeigen wenn Flag gesetzt ist
+                      if (showDiscountPercentageOnInvoice)
+                        pw.Text(' (${(totalDiscountAmount/subtotal*100).toStringAsFixed(2)}%)', style: const pw.TextStyle(fontSize: 9)),
                     ],
                   ),
                   pw.Text('- ${BasePdfGenerator.formatCurrency(totalDiscountAmount, currency, exchangeRates)}', style: const pw.TextStyle(fontSize: 9)),

@@ -613,6 +613,31 @@ class SalesAnalyticsService {
   }
 
   bool _itemMatchesFilter(Map<String, dynamic> item, SalesFilter filter) {
+    final isService = item['is_service'] == true;
+
+    // Welche Filter-Gruppen sind aktiv?
+    final hasProductFilter =
+        (filter.woodTypes?.isNotEmpty ?? false) ||
+            (filter.qualities?.isNotEmpty ?? false) ||
+            (filter.parts?.isNotEmpty ?? false) ||
+            (filter.instruments?.isNotEmpty ?? false) ||
+            (filter.selectedProducts?.isNotEmpty ?? false);
+    final hasServiceFilter = filter.selectedServices?.isNotEmpty ?? false;
+
+    if (isService) {
+      // Service-Item: Wenn nur Produkt-Filter aktiv → Service rausfiltern
+      if (hasProductFilter && !hasServiceFilter) return false;
+      // Wenn Service-Filter aktiv → service_id muss matchen
+      if (hasServiceFilter) {
+        final sid = item['service_id']?.toString();
+        if (sid == null || !filter.selectedServices!.contains(sid)) return false;
+      }
+      return true;
+    }
+
+    // Produkt-Item: Wenn nur Service-Filter aktiv → Produkt rausfiltern
+    if (hasServiceFilter && !hasProductFilter) return false;
+
     final woodCode = item['wood_code']?.toString();
     final qualityCode = item['quality_code']?.toString();
     final partCode = item['part_code']?.toString();

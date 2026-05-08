@@ -7,6 +7,15 @@ import '../services/pdf_generators/quote_generator.dart';
 import 'dart:typed_data';
 
 import '../services/user_basket_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:tonewood/quotes/quote_model.dart';
+import '../components/movement_model.dart';
+import '../services/pdf_generators/quote_generator.dart';
+
+import 'dart:typed_data';
+
+import '../services/user_basket_service.dart';
 
 class AvailabilityResult {
   final Map<String, double> quantities;
