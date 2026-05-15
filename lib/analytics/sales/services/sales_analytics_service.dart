@@ -30,6 +30,25 @@ class SalesAnalyticsService {
     }
   }
 
+  /// NEU: Löst den relevanten Country-Code für die Auswertung auf.
+  ///
+  /// - Wenn [useShipping] true ist UND `hasDifferentShippingAddress == true`
+  ///   UND `shippingCountryCode` einen Wert hat → Lieferadresse.
+  /// - Sonst Fallback auf `countryCode` der Rechnungsadresse
+  ///   (auch wenn `hasDifferentShippingAddress == false`, denn dann ist
+  ///   die Lieferadresse identisch mit der Rechnungsadresse).
+  String _resolveCountryCode(Map<String, dynamic> customer, bool useShipping) {
+    if (useShipping && customer['hasDifferentShippingAddress'] == true) {
+      final shippingCode = customer['shippingCountryCode']?.toString();
+      if (shippingCode != null && shippingCode.isNotEmpty) {
+        return shippingCode;
+      }
+    }
+    return customer['countryCode']?.toString() ??
+        customer['country']?.toString() ??
+        '';
+  }
+
   /// Haupt-Stream für alle Analytics-Daten
   Stream<SalesAnalytics> getAnalyticsStream(SalesFilter filter) {
     Query query = _db.collection('orders');
@@ -243,12 +262,11 @@ class SalesAnalyticsService {
           if (!matched) continue;
         }
 
-        // Länder-Filter
+        // Länder-Filter — NEU: respektiert useShippingAddress
         if (filter.countries != null && filter.countries!.isNotEmpty) {
-          final customer = data['customer'] as Map<String, dynamic>? ?? {};
-          final countryCode = customer['countryCode']?.toString() ??
-              customer['country']?.toString() ?? '';
-          if (!filter.countries!.contains(countryCode)) continue;
+          final customerForFilter = data['customer'] as Map<String, dynamic>? ?? {};
+          final filterCountryCode = _resolveCountryCode(customerForFilter, filter.useShippingAddress);
+          if (!filter.countries!.contains(filterCountryCode)) continue;
         }
 
         // ============================================================
@@ -256,8 +274,10 @@ class SalesAnalyticsService {
         // ============================================================
 
         final customer = data['customer'] as Map<String, dynamic>? ?? {};
-        final countryCode = customer['countryCode']?.toString() ??
-            customer['country']?.toString() ?? 'XX';
+        // NEU: Country-Code respektiert useShippingAddress-Toggle.
+        // Fallback 'XX' wenn nichts auflösbar.
+        String countryCode = _resolveCountryCode(customer, filter.useShippingAddress);
+        if (countryCode.isEmpty) countryCode = 'XX';
         final country = Countries.getCountryByCode(countryCode);
 
         final items = data['items'] as List<dynamic>? ?? [];

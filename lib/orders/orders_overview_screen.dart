@@ -10,7 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-
+import 'veranlagungen_sheet.dart';
 import '../quotes/info_help_sheet.dart';
 import '../services/price_formatter.dart';
 import '../services/swiss_rounding.dart';
@@ -786,9 +786,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
 
-                  // NEU: Veranlagungsverfügung Icon (als erstes in der Reihe)
                   if (_needsVeranlagungsverfuegung(order)) ...[
-
                     _buildCompactActionButton(
                       icon: _hasVeranlagungsnummer(order)
                           ? Icons.assignment_turned_in
@@ -801,6 +799,7 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
                       color: _hasVeranlagungsnummer(order)
                           ? Colors.green
                           : Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                      badgeCount: VeranlagungenSheet.count(order), // NEU
                     ),
                     const SizedBox(width: 4),
                   ],
@@ -925,7 +924,15 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
     required VoidCallback onPressed,
     required String tooltip,
     Color? color,
+    int? badgeCount, // NEU
   }) {
+    final iconWidget = getAdaptiveIcon(
+      iconName: iconName,
+      defaultIcon: icon,
+      size: 18,
+      color: color ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+    );
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -935,13 +942,39 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
           message: tooltip,
           child: Container(
             padding: const EdgeInsets.all(8),
-            child:
-            getAdaptiveIcon(
-              iconName: iconName,
-              defaultIcon:icon,
-              size: 18,
-              color: color ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-            ),
+            child: (badgeCount != null && badgeCount > 1)
+                ? Stack(
+              clipBehavior: Clip.none,
+              children: [
+                iconWidget,
+                Positioned(
+                  right: -6,
+                  top: -4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Text(
+                      '$badgeCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        height: 1.0,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+                : iconWidget,
           ),
         ),
       ),
@@ -1737,649 +1770,18 @@ class _OrdersOverviewScreenState extends State<OrdersOverviewScreen> {
     return total > 1000.0;
   }
 
-// Prüfe ob Veranlagungsnummer bereits vorhanden ist
   bool _hasVeranlagungsnummer(OrderX order) {
-    return order.metadata?['veranlagungsnummer'] != null &&
-        order.metadata!['veranlagungsnummer'].toString().isNotEmpty;
+    return VeranlagungenSheet.hasAny(order);
   }
-
 
   void _showVeranlagungsverfuegungDialog(OrderX order) {
-    final veranlagungsnummerController = TextEditingController(
-      text: order.metadata?['veranlagungsnummer']?.toString() ?? '',
-    );
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Drag Handle
-                Container(
-                  margin: const EdgeInsets.only(top: 12, bottom: 8),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-
-                // Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  child: Row(
-                    children: [
-                      getAdaptiveIcon(iconName: 'assignment', defaultIcon:
-                      Icons.assignment,
-                        color: _hasVeranlagungsnummer(order)
-                            ? Colors.green
-                            : Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Veranlagungsverfügung Ausfuhr',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'Auftrag ${order.orderNumber}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon:  getAdaptiveIcon(iconName: 'close', defaultIcon:Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const Divider(),
-
-                // Content
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Info Box
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                getAdaptiveIcon(iconName: 'info', defaultIcon:Icons.info, color: Colors.blue[700], size: 20),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  'Information',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Warenwert: ${PriceFormatter.fromOrder(
-                                price: (order.calculations['total'] as num? ?? 0).toDouble(),
-                                metadata: order.metadata,
-                                roundingSettings: _roundingSettings,
-                              )}',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'Bei Lieferungen mit einem Warenwert über CHF 1\'000.00 muss die Veranlagungsverfügung Ausfuhr gespeichert werden.',
-                              style: TextStyle(fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // Status
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _hasVeranlagungsnummer(order)
-                              ? Colors.green.withOpacity(0.1)
-                              : Colors.orange.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: _hasVeranlagungsnummer(order)
-                                ? Colors.green.withOpacity(0.3)
-                                : Colors.orange.withOpacity(0.3),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            getAdaptiveIcon(iconName: _hasVeranlagungsnummer(order)?'check_circle':'warning', defaultIcon: _hasVeranlagungsnummer(order)
-                                ? Icons.check_circle
-                                : Icons.warning,
-
-                              color: _hasVeranlagungsnummer(order)
-                                  ? Colors.green[700]
-                                  : Colors.orange[700],
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _hasVeranlagungsnummer(order)
-                                    ? 'Veranlagungsnummer erfasst'
-                                    : 'Veranlagungsnummer fehlt',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: _hasVeranlagungsnummer(order)
-                                      ? Colors.green[700]
-                                      : Colors.orange[700],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Eingabefeld für Veranlagungsnummer
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Veranlagungsnummer',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: veranlagungsnummerController,
-                            decoration: InputDecoration(
-                              hintText: 'z.B. 25CH04EXA83JFTR0N8',
-                              hintStyle: TextStyle(fontSize: 14),
-                              prefixIcon:  getAdaptiveIcon(iconName: 'pin',defaultIcon:Icons.pin),
-                              suffixIcon: _hasVeranlagungsnummer(order)
-                                  ?  getAdaptiveIcon(iconName: 'check',defaultIcon:Icons.check, color: Colors.green)
-                                  : null,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              filled: true,
-                              fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                            ),
-                            textCapitalization: TextCapitalization.characters,
-                          ),
-                        ],
-                      ),
-
-                      if (_hasVeranlagungsnummer(order)) ...[
-                        const SizedBox(height: 16),
-                        // Dokument-Upload Status
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              getAdaptiveIcon(iconName: 'picture_as_pdf', defaultIcon:
-                              Icons.picture_as_pdf,
-                                size: 20,
-                                color: order.documents.containsKey('veranlagungsverfuegung_pdf')
-                                    ? Colors.green
-                                    : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'PDF-Dokument',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    Text(
-                                      order.documents.containsKey('veranlagungsverfuegung_pdf')
-                                          ? 'Dokument hochgeladen'
-                                          : 'Noch kein Dokument hochgeladen',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              // Im _showVeranlagungsverfuegungDialog, ersetze die PDF-Status Row mit:
-
-                              if (order.documents.containsKey('veranlagungsverfuegung_pdf'))
-                                Row(
-                                  children: [
-                                    IconButton(
-                                      icon:  getAdaptiveIcon(iconName: 'delete',defaultIcon:Icons.delete, size: 20, color: Colors.red),
-                                      onPressed: () async {
-                                        final confirmed = await showDialog<bool>(
-                                          context: context,
-                                          builder: (context) => AlertDialog(
-                                            title: Text('PDF löschen'),
-                                            content: Text('Möchtest du die Veranlagungsverfügung wirklich löschen?'),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () => Navigator.pop(context, false),
-                                                child: Text('Abbrechen'),
-                                              ),
-                                              ElevatedButton(
-                                                onPressed: () => Navigator.pop(context, true),
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: Colors.red,
-                                                ),
-                                                child: Text('Löschen'),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-
-                                        if (confirmed == true) {
-                                          await _deleteDocument(order, 'veranlagungsverfuegung_pdf');
-                                          Navigator.pop(context);
-                                        }
-                                      },
-                                      tooltip: 'PDF löschen',
-                                    ),
-                                    IconButton(
-                                      icon:  getAdaptiveIcon(iconName: 'visibility',defaultIcon:Icons.visibility, size: 20),
-                                      onPressed: () => _openDocument(order.documents['veranlagungsverfuegung_pdf']!),
-                                      tooltip: 'Dokument anzeigen',
-                                    ),
-                                  ],
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
-
-                      const SizedBox(height: 32),
-
-                      // Action Buttons
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => Navigator.pop(context),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              child: const Text('Schließen'),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () async {
-                                final nummer = veranlagungsnummerController.text.trim();
-
-                                if (nummer.isEmpty && !_hasVeranlagungsnummer(order)) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Bitte Veranlagungsnummer eingeben'),
-                                      backgroundColor: Colors.orange,
-                                    ),
-                                  );
-                                  return;
-                                }
-
-                                try {
-                                  // Update Firestore
-                                  await FirebaseFirestore.instance
-                                      .collection('orders')
-                                      .doc(order.id)
-                                      .update({
-                                    'metadata.veranlagungsnummer': nummer.isNotEmpty ? nummer : FieldValue.delete(),
-                                    'metadata.veranlagungsnummer_updated_at': FieldValue.serverTimestamp(),
-                                    'updated_at': FieldValue.serverTimestamp(),
-                                  });
-
-                                  // History Entry
-                                  final user = FirebaseAuth.instance.currentUser;
-                                  await FirebaseFirestore.instance
-                                      .collection('orders')
-                                      .doc(order.id)
-                                      .collection('history')
-                                      .add({
-                                    'timestamp': FieldValue.serverTimestamp(),
-                                    'user_id': user?.uid ?? 'unknown',
-                                    'user_email': user?.email ?? 'Unknown User',
-                                    'user_name': user?.email ?? 'Unknown',
-                                    'action': 'veranlagungsnummer_updated',
-                                    'veranlagungsnummer': nummer,
-                                    'old_value': order.metadata?['veranlagungsnummer'],
-                                    'new_value': nummer.isNotEmpty ? nummer : null,
-                                  });
-
-                                  if (mounted) {
-                                    Navigator.pop(context);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(nummer.isNotEmpty
-                                            ? 'Veranlagungsnummer gespeichert'
-                                            : 'Veranlagungsnummer entfernt'),
-                                        backgroundColor: Colors.green,
-                                      ),
-                                    );
-                                  }
-                                } catch (e) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Fehler: $e'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
-                              icon:  getAdaptiveIcon(iconName: 'save',defaultIcon:Icons.save),
-                              label: const Text('Speichern'),
-                              style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      // Upload Button für PDF
-                      if (_hasVeranlagungsnummer(order) && !order.documents.containsKey('veranlagungsverfuegung_pdf')) ...[
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () => _uploadVeranlagungsPDF(order),
-                            icon:  getAdaptiveIcon(iconName: 'upload_file',defaultIcon:Icons.upload_file),
-                            label: const Text('PDF hochladen'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Theme.of(context).colorScheme.secondary,
-                              foregroundColor: Theme.of(context).colorScheme.onSecondary,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-
-                      const SizedBox(height: 20),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    VeranlagungenSheet.show(
+      context,
+      order: order,
+      roundingSettings: _roundingSettings,
     );
   }
-// 4. Füge diese neue Methode für den PDF-Upload hinzu:
 
-  Future<void> _uploadVeranlagungsPDF(OrderX order) async {
-    try {
-      // Importiere diese am Anfang der Datei:
-      // import 'package:file_picker/file_picker.dart';
-
-      // Wähle PDF-Datei
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf'],
-      );
-
-      if (result != null) {
-        // Zeige Ladeindikator
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => Dialog(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 320),
-              decoration: BoxDecoration(
-                color: Theme.of(context).dialogBackgroundColor,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Animiertes Upload Icon
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child:  getAdaptiveIcon(iconName: 'cloud_upload', defaultIcon:
-                          Icons.cloud_upload,
-                            size: 32,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                        SizedBox(
-                          width: 80,
-                          height: 80,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Theme.of(context).colorScheme.primary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Veranlagungsverfügung',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Dokument wird hochgeladen...',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                    // Subtiler Progress Indicator
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        minHeight: 4,
-                        backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-
-        // Hole Datei-Bytes
-        Uint8List? fileBytes = result.files.first.bytes;
-        String fileName = result.files.first.name;
-
-        // Falls Web, verwende bytes, sonst path
-        if (fileBytes == null) {
-          final path = result.files.first.path;
-          if (path != null) {
-            final file = await File(path).readAsBytes();
-            fileBytes = file;
-          }
-        }
-
-        if (fileBytes != null) {
-          // Erstelle Storage-Referenz
-          final storageRef = FirebaseStorage.instance
-              .ref()
-              .child('orders')
-              .child(order.id)
-              .child('veranlagungsverfuegung')
-              .child('veranlagungsverfuegung_${DateTime.now().millisecondsSinceEpoch}.pdf');
-
-          // Lade Datei hoch
-          final uploadTask = await storageRef.putData(
-            fileBytes,
-            SettableMetadata(
-              contentType: 'application/pdf',
-              customMetadata: {
-                'orderNumber': order.orderNumber,
-                'documentType': 'Veranlagungsverfügung',
-                'veranlagungsnummer': order.metadata?['veranlagungsnummer'] ?? '',
-                'uploadedAt': DateTime.now().toIso8601String(),
-                'originalFileName': fileName,
-              },
-            ),
-          );
-
-          // Hole Download-URL
-          final downloadUrl = await uploadTask.ref.getDownloadURL();
-
-          // Update Firestore
-          await FirebaseFirestore.instance
-              .collection('orders')
-              .doc(order.id)
-              .update({
-            'documents.veranlagungsverfuegung_pdf': downloadUrl,
-            'metadata.veranlagungsverfuegung_uploaded_at': FieldValue.serverTimestamp(),
-            'updated_at': FieldValue.serverTimestamp(),
-          });
-
-          // Erstelle History-Eintrag
-          final user = FirebaseAuth.instance.currentUser;
-          await FirebaseFirestore.instance
-              .collection('orders')
-              .doc(order.id)
-              .collection('history')
-              .add({
-            'timestamp': FieldValue.serverTimestamp(),
-            'user_id': user?.uid ?? 'unknown',
-            'user_email': user?.email ?? 'Unknown User',
-            'user_name': user?.email ?? 'Unknown',
-            'action': 'veranlagungsverfuegung_uploaded',
-            'document_type': 'Veranlagungsverfügung Ausfuhr',
-            'file_name': fileName,
-            'veranlagungsnummer': order.metadata?['veranlagungsnummer'] ?? '',
-          });
-
-          if (mounted) {
-            Navigator.pop(context); // Schließe Ladeindikator
-            Navigator.pop(context); // Schließe Modal
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Veranlagungsverfügung wurde erfolgreich hochgeladen'),
-                backgroundColor: Colors.green,
-                behavior: SnackBarBehavior.floating,
-                margin: const EdgeInsets.all(8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            );
-          }
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context); // Schließe Ladeindikator falls offen
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Fehler beim Upload: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(8),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-        );
-      }
-    }
-  }
-
-// 5. Erweitere _getDocumentTypeName um den neuen Dokumenttyp:
-// In der _getDocumentTypeName Methode, füge diesen Fall hinzu:
 
   String _getDocumentTypeName(String docType) {
     // Einzelversand-Dokumente: commercial_invoice_pdf_1, delivery_note_pdf_2 etc.

@@ -2559,26 +2559,72 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
   }
 
   Widget _buildVeranlagungCard(BuildContext context, OrderX currentOrder) {
-    final hasVeranlagung = currentOrder.metadata?['veranlagungsnummer'] != null &&
-        currentOrder.metadata!['veranlagungsnummer'].toString().isNotEmpty;
+    // Rückwärtskompatibel auslesen
+    List<Map<String, dynamic>> list;
+    final raw = currentOrder.metadata['veranlagungen'];
+    if (raw is List && raw.isNotEmpty) {
+      list = raw
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } else {
+      final legacyNummer =
+          currentOrder.metadata['veranlagungsnummer']?.toString() ?? '';
+      final legacyPdf = currentOrder.documents['veranlagungsverfuegung_pdf'];
+      if (legacyNummer.isNotEmpty ||
+          (legacyPdf != null && legacyPdf.isNotEmpty)) {
+        list = [
+          {'nummer': legacyNummer, 'pdfUrl': legacyPdf}
+        ];
+      } else {
+        list = [];
+      }
+    }
+
+    final withNumber = list
+        .where((v) => (v['nummer']?.toString() ?? '').trim().isNotEmpty)
+        .toList();
+    final withPdf = list
+        .where((v) => (v['pdfUrl']?.toString() ?? '').isNotEmpty)
+        .length;
+    final hasVeranlagung = withNumber.isNotEmpty;
+
+    String subtitle;
+    if (!hasVeranlagung) {
+      subtitle = 'Noch nicht erfasst';
+    } else if (withNumber.length == 1) {
+      subtitle = withNumber.first['nummer'].toString();
+    } else {
+      subtitle = '${withNumber.length} Veranlagungen · $withPdf mit PDF';
+    }
 
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: hasVeranlagung ? Colors.green.withOpacity(0.08) : Colors.orange.withOpacity(0.08),
+        color: hasVeranlagung
+            ? Colors.green.withOpacity(0.08)
+            : Colors.orange.withOpacity(0.08),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: hasVeranlagung ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3)),
+        border: Border.all(
+            color: hasVeranlagung
+                ? Colors.green.withOpacity(0.3)
+                : Colors.orange.withOpacity(0.3)),
       ),
       child: InkWell(
-        onTap: widget.onVeranlagung != null ? () {
+        onTap: widget.onVeranlagung != null
+            ? () {
           Navigator.pop(context);
           widget.onVeranlagung!(currentOrder);
-        } : null,
+        }
+            : null,
         child: Row(
           children: [
             getAdaptiveIcon(
-              iconName: hasVeranlagung ? 'assignment_turned_in' : 'assignment_late',
-              defaultIcon: hasVeranlagung ? Icons.assignment_turned_in : Icons.assignment_late,
+              iconName:
+              hasVeranlagung ? 'assignment_turned_in' : 'assignment_late',
+              defaultIcon: hasVeranlagung
+                  ? Icons.assignment_turned_in
+                  : Icons.assignment_late,
               color: hasVeranlagung ? Colors.green : Colors.orange,
               size: 22,
             ),
@@ -2589,24 +2635,30 @@ class _OrderDetailsContentState extends State<_OrderDetailsContent> {
                 children: [
                   Text(
                     'Veranlagungsverfügung',
-                    style: TextStyle(fontWeight: FontWeight.w600, color: hasVeranlagung ? Colors.green[700] : Colors.orange[700]),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: hasVeranlagung ? Colors.green[700] : Colors.orange[700],
+                    ),
                   ),
                   Text(
-                    hasVeranlagung
-                        ? currentOrder.metadata!['veranlagungsnummer'].toString()
-                        : 'Noch nicht erfasst',
-                    style: TextStyle(fontSize: 12, color: hasVeranlagung ? Colors.green[600] : Colors.orange[600]),
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: hasVeranlagung ? Colors.green[600] : Colors.orange[600],
+                    ),
                   ),
                 ],
               ),
             ),
-            getAdaptiveIcon(iconName: 'chevron_right', defaultIcon: Icons.chevron_right, color: hasVeranlagung ? Colors.green : Colors.orange),
+            getAdaptiveIcon(
+                iconName: 'chevron_right',
+                defaultIcon: Icons.chevron_right,
+                color: hasVeranlagung ? Colors.green : Colors.orange),
           ],
         ),
       ),
     );
   }
-
   Widget _buildItemsAccordion(BuildContext context, OrderX currentOrder) {
     return ExpansionTile(
       initiallyExpanded: false,

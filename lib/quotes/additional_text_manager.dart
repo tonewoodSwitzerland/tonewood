@@ -195,16 +195,20 @@ class AdditionalTextsManager {
     },
   };
 
+  /// Platzhalter — die echten Bankdaten kommen aus Firebase
+  /// (general_data/additional_texts.bank_info). Diese Map dient nur als
+  /// Notfall-Fallback, falls Firebase nicht erreichbar ist, und als
+  /// Strukturvorlage für _initializeDefaultTextsInFirebase().
   static const Map<String, Map<String, String>> FALLBACK_BANK_INFO_TEXT = {
     'DE': {
-      'standard': 'Kontoinhaber: Florinett AG, Tonewood Switzerland, Veja Zinols 6, CH - 7482 Berguen, IBAN: CH58 0077 4000 1195 5220 4 , Bank: Graubuendner Kantonalbank',
-      'eur': 'Kontoinhaber: Florinett AG, Tonewood Switzerland, Veja Zinols 6, CH - 7482 Berguen, IBAN: CH58 0077 4000 1195 5220 4, Bank: Graubuendner Kantonalbank',
-      'usd': 'Account holder: Florinett AG, Tonewood Switzerland, Veja Zinols 6, CH - 7482 Berguen, Beneficiary Bank: Graubuendner Kantonalbank, IBAN: CH58 0077 4000 1195 5220 4, CH - 7002 Chur, Swift: GRKBCH2270A',
+      'standard': '[Bankverbindung CHF – bitte in der Datenbank pflegen',
+      'eur': '[Bankverbindung EUR – bitte in der Datenbank pflegen',
+      'usd': '[Bankverbindung USD – bitte in der Datenbank pflegen',
     },
     'EN': {
-      'standard': 'Account holder: Florinett AG, Tonewood Switzerland, Veja Zinols 6, CH - 7482 Berguen, IBAN: CH58 0077 4000 1195 5220 4 , Bank: Graubunden Cantonal Bank',
-      'eur': 'Account holder: Florinett AG, Tonewood Switzerland, Veja Zinols 6, CH - 7482 Berguen, IBAN: CH58 0077 4000 1195 5220 4, Bank: Graubunden Cantonal Bank',
-      'usd': 'Account holder: Florinett AG, Tonewood Switzerland, Veja Zinols 6, CH - 7482 Berguen, Beneficiary Bank: Graubunden Cantonal Bank, IBAN: CH58 0077 4000 1195 5220 4, CH - 7002 Chur, Swift: GRKBCH2270A',
+      'standard': '[Bank details CHF – bitte in der Datenbank pflegen',
+      'eur': '[Bank details EUR – bitte in der Datenbank pflegen',
+      'usd': '[Bank details USD – bitte in der Datenbank pflegen',
     },
   };
 
@@ -823,7 +827,8 @@ class AdditionalTextsManager {
 // aber wir müssen sicherstellen, dass die Standardtexte geladen wurden
 void showAdditionalTextsBottomSheet(BuildContext context, {
   required ValueNotifier<bool> textsSelectedNotifier,
-}) async {
+}) async
+{
   // Lade die Standardtexte aus Firebase, bevor das Sheet angezeigt wird
   await AdditionalTextsManager.loadDefaultTextsFromFirebase();
   await AdditionalTextsManager.loadCustomTextBlocks();
@@ -1431,7 +1436,8 @@ Widget _buildTextSection(
       required Function(bool) onSelectionChanged,
       required Function(String) onTypeChanged,
       required Function(String) onCustomTextChanged,
-    }) {
+    })
+{
   return Container(
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(

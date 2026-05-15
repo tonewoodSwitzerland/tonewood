@@ -51,6 +51,25 @@ class SalesPdfService {
     }
   }
 
+  /// Löst den relevanten Country-Code für die Auswertung auf — analog zum
+  /// SalesAnalyticsService.
+  ///
+  /// - Wenn [useShipping] true ist UND `hasDifferentShippingAddress == true`
+  ///   UND `shippingCountryCode` einen Wert hat → Lieferadresse.
+  /// - Sonst Fallback auf `countryCode` der Rechnungsadresse
+  ///   (auch wenn `hasDifferentShippingAddress == false`, denn dann ist
+  ///   die Lieferadresse identisch mit der Rechnungsadresse).
+  static String _resolveCountryCode(Map<String, dynamic> customer, bool useShipping) {
+    if (useShipping && customer['hasDifferentShippingAddress'] == true) {
+      final shippingCode = customer['shippingCountryCode']?.toString();
+      if (shippingCode != null && shippingCode.isNotEmpty) {
+        return shippingCode;
+      }
+    }
+    return customer['countryCode']?.toString() ??
+        customer['country']?.toString() ??
+        '';
+  }
 
 
   // ============================================================
@@ -279,31 +298,31 @@ class SalesPdfService {
               final _netEqualsGross = (netAmount - totalGross).abs() < 0.01;
               final _suspicious = _netEqualsGross && totalGross > 0;
 
-             _dbg(_debugRows, '[DEBUG ROW] -----------------------------------------------');
-             _dbg(_debugRows, '[DEBUG ROW] $_orderNo  taxOpt=$taxOption (raw=${_rawTaxOpt ?? "NULL"})  vatRate=${vatRate.toStringAsFixed(2)}%${_suspicious ? "  ⚠️  net==brutto!" : ""}');
-             _dbg(_debugRows, '[DEBUG ROW]   ROH aus calculations:');
-             _dbg(_debugRows, '[DEBUG ROW]     subtotal:        ${_calcSubtotal ?? "NULL"}');
-             _dbg(_debugRows, '[DEBUG ROW]     net_amount:      $netAmount');
-             _dbg(_debugRows, '[DEBUG ROW]     total:           $totalGross');
-             _dbg(_debugRows, '[DEBUG ROW]     vat/tax_amount:  ${_calcVat ?? "NULL"}');
-             _dbg(_debugRows, '[DEBUG ROW]     freight:         ${calculations['freight']}');
-             _dbg(_debugRows, '[DEBUG ROW]     phytosanitary:   ${calculations['phytosanitary']}');
-             _dbg(_debugRows, '[DEBUG ROW]     total_deductions: ${calculations['total_deductions']}');
-             _dbg(_debugRows, '[DEBUG ROW]     total_surcharges: ${calculations['total_surcharges']}');
-             _dbg(_debugRows, '[DEBUG ROW]     total_discount_amount: $orderTotalDisc');
-             _dbg(_debugRows, '[DEBUG ROW]   PDF-Spalten:');
-             _dbg(_debugRows, '[DEBUG ROW]     Warenwert (lokal berechnet): ${warenwert.toStringAsFixed(4)}');
-             _dbg(_debugRows, '[DEBUG ROW]     Rechn. netto (aus DB):       ${netAmount.toStringAsFixed(4)}');
-             _dbg(_debugRows, '[DEBUG ROW]     Rechn. brutto (aus DB):      ${totalGross.toStringAsFixed(4)}');
+              _dbg(_debugRows, '[DEBUG ROW] -----------------------------------------------');
+              _dbg(_debugRows, '[DEBUG ROW] $_orderNo  taxOpt=$taxOption (raw=${_rawTaxOpt ?? "NULL"})  vatRate=${vatRate.toStringAsFixed(2)}%${_suspicious ? "  ⚠️  net==brutto!" : ""}');
+              _dbg(_debugRows, '[DEBUG ROW]   ROH aus calculations:');
+              _dbg(_debugRows, '[DEBUG ROW]     subtotal:        ${_calcSubtotal ?? "NULL"}');
+              _dbg(_debugRows, '[DEBUG ROW]     net_amount:      $netAmount');
+              _dbg(_debugRows, '[DEBUG ROW]     total:           $totalGross');
+              _dbg(_debugRows, '[DEBUG ROW]     vat/tax_amount:  ${_calcVat ?? "NULL"}');
+              _dbg(_debugRows, '[DEBUG ROW]     freight:         ${calculations['freight']}');
+              _dbg(_debugRows, '[DEBUG ROW]     phytosanitary:   ${calculations['phytosanitary']}');
+              _dbg(_debugRows, '[DEBUG ROW]     total_deductions: ${calculations['total_deductions']}');
+              _dbg(_debugRows, '[DEBUG ROW]     total_surcharges: ${calculations['total_surcharges']}');
+              _dbg(_debugRows, '[DEBUG ROW]     total_discount_amount: $orderTotalDisc');
+              _dbg(_debugRows, '[DEBUG ROW]   PDF-Spalten:');
+              _dbg(_debugRows, '[DEBUG ROW]     Warenwert (lokal berechnet): ${warenwert.toStringAsFixed(4)}');
+              _dbg(_debugRows, '[DEBUG ROW]     Rechn. netto (aus DB):       ${netAmount.toStringAsFixed(4)}');
+              _dbg(_debugRows, '[DEBUG ROW]     Rechn. brutto (aus DB):      ${totalGross.toStringAsFixed(4)}');
               if (_suspicious) {
-               _dbg(_debugRows, '[DEBUG ROW]   ⚠️  ANALYSE der Anomalie:');
-               _dbg(_debugRows, '[DEBUG ROW]     - net_amount == total → DB-Eintrag deutet auf alte Speicherlogik hin');
-               _dbg(_debugRows, '[DEBUG ROW]     - Falls taxOpt sollte = 2 sein:');
-               _dbg(_debugRows, '[DEBUG ROW]         erwarteter net_amount @ 8.1% = ${_expectedVatAt81.toStringAsFixed(4)}');
-               _dbg(_debugRows, '[DEBUG ROW]         erwartete VAT             = ${(totalGross - _expectedVatAt81).toStringAsFixed(4)}');
-               _dbg(_debugRows, '[DEBUG ROW]     - Felder die in calc fehlen könnten: ${_findMissingFields(calculations)}');
-               _dbg(_debugRows, '[DEBUG ROW]   metadata komplett: $metadata');
-               _dbg(_debugRows, '[DEBUG ROW]   calculations komplett: $calculations');
+                _dbg(_debugRows, '[DEBUG ROW]   ⚠️  ANALYSE der Anomalie:');
+                _dbg(_debugRows, '[DEBUG ROW]     - net_amount == total → DB-Eintrag deutet auf alte Speicherlogik hin');
+                _dbg(_debugRows, '[DEBUG ROW]     - Falls taxOpt sollte = 2 sein:');
+                _dbg(_debugRows, '[DEBUG ROW]         erwarteter net_amount @ 8.1% = ${_expectedVatAt81.toStringAsFixed(4)}');
+                _dbg(_debugRows, '[DEBUG ROW]         erwartete VAT             = ${(totalGross - _expectedVatAt81).toStringAsFixed(4)}');
+                _dbg(_debugRows, '[DEBUG ROW]     - Felder die in calc fehlen könnten: ${_findMissingFields(calculations)}');
+                _dbg(_debugRows, '[DEBUG ROW]   metadata komplett: $metadata');
+                _dbg(_debugRows, '[DEBUG ROW]   calculations komplett: $calculations');
               }
               // ===== DEBUG ROW END =====
 
@@ -317,8 +336,7 @@ class SalesPdfService {
 
 
 
-              final countryCode = customer['countryCode']?.toString() ??
-                  customer['country']?.toString() ?? '';
+              final countryCode = _resolveCountryCode(customer, filter.useShippingAddress);
               final country = Countries.getCountryByCode(countryCode);
 
               return [
@@ -419,7 +437,7 @@ class SalesPdfService {
     pdf.addPage(_buildKpiPage(analytics, logo, filter));
 
     // Seite 2: Länder
-    pdf.addPage(_buildCountryPage(analytics, logo));
+    pdf.addPage(_buildCountryPage(analytics, logo, filter));
 
     // Seite 3: Produkte
     pdf.addPage(_buildProductPage(analytics, logo));
@@ -506,12 +524,16 @@ class SalesPdfService {
   // SEITE 2: LÄNDER — zeigt jetzt Warenwert
   // ============================================================
 
-  static pw.Page _buildCountryPage(SalesAnalytics analytics, pw.MemoryImage? logo) {
+  static pw.Page _buildCountryPage(SalesAnalytics analytics, pw.MemoryImage? logo, SalesFilter? filter) {
     final countries = analytics.countryStats.values.toList()
       ..sort((a, b) => b.revenue.compareTo(a.revenue));
     final totalRevenue = countries.fold<double>(0, (sum, c) => sum + c.revenue);
     final totalOrders = countries.fold<int>(0, (sum, c) => sum + c.orderCount);
     final totalItems = countries.fold<int>(0, (sum, c) => sum + c.itemCount);
+
+    // Hinweis-Label: woraus wurden die Länder aggregiert?
+    final useShipping = filter?.useShippingAddress ?? false;
+    final addressLabel = useShipping ? 'Lieferadresse' : 'Rechnungsadresse';
 
     return pw.Page(
       pageFormat: PdfPageFormat.a4,
@@ -525,6 +547,26 @@ class SalesPdfService {
             pw.Text(
               '${countries.length} Länder | $totalOrders Lieferungen | Warenwert: ${_formatCurrency(totalRevenue)}',
               style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
+            ),
+            pw.SizedBox(height: 2),
+            pw.Container(
+              padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: pw.BoxDecoration(
+                color: useShipping ? PdfColors.blue50 : PdfColors.grey100,
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                border: pw.Border.all(
+                  color: useShipping ? PdfColors.blue200 : PdfColors.grey300,
+                  width: 0.5,
+                ),
+              ),
+              child: pw.Text(
+                'Aggregation nach: $addressLabel',
+                style: pw.TextStyle(
+                  fontSize: 8,
+                  fontWeight: pw.FontWeight.bold,
+                  color: useShipping ? PdfColors.blue900 : PdfColors.grey700,
+                ),
+              ),
             ),
             pw.SizedBox(height: 16),
 
@@ -683,7 +725,15 @@ class SalesPdfService {
       final names = filter.countries!
           .map((code) => Countries.getCountryByCode(code).name)
           .toList();
-      chips.add('Land: ${names.join(', ')}');
+      final addressType = filter.useShippingAddress ? 'Lieferadr.' : 'Rechnungsadr.';
+      chips.add('Land ($addressType): ${names.join(', ')}');
+    }
+
+    // Auswertungs-Modus separat anzeigen (auch ohne Länder-Filter wichtig,
+    // damit auf der Länder-Seite klar ist, ob nach Liefer- oder Rechnungs-
+    // adresse aggregiert wurde).
+    if (filter.useShippingAddress && (filter.countries?.isEmpty ?? true)) {
+      chips.add('Länder-Auswertung: Lieferadresse');
     }
 
     if (filter.woodTypes != null && filter.woodTypes!.isNotEmpty) {
@@ -881,8 +931,8 @@ class SalesPdfService {
     // ===== DEBUG START =====
     print('');
     print('═══════════════════════════════════════════════════════════════');
-   _dbg(_debugStats, '[DEBUG STATS] _calculateSalesStats — Quelle: Verkaufsübersicht-PDF');
-   _dbg(_debugStats, '[DEBUG STATS] Eingangs-Aufträge (vor cancelled-Filter): ${sales.length}');
+    _dbg(_debugStats, '[DEBUG STATS] _calculateSalesStats — Quelle: Verkaufsübersicht-PDF');
+    _dbg(_debugStats, '[DEBUG STATS] Eingangs-Aufträge (vor cancelled-Filter): ${sales.length}');
     print('═══════════════════════════════════════════════════════════════');
     // ===== DEBUG END =====
 
@@ -906,7 +956,7 @@ class SalesPdfService {
 
       if (sale['status'] == 'cancelled') {
         skippedCancelled++;
-       _dbg(_debugStats, '[DEBUG STATS] ÜBERSPRUNGEN (cancelled): $orderNumber');
+        _dbg(_debugStats, '[DEBUG STATS] ÜBERSPRUNGEN (cancelled): $orderNumber');
         continue;
       }
 
@@ -995,35 +1045,35 @@ class SalesPdfService {
       count++;
 
       // ===== DEBUG PER-ORDER =====
-     _dbg(_debugStats, '[DEBUG STATS] -----------------------------------------------');
-     _dbg(_debugStats, '[DEBUG STATS] #$count Auftrag: $orderNumber  status=$status  taxOpt=$taxOption  vat=${vatRate.toStringAsFixed(2)}%');
-     _dbg(_debugStats, '[DEBUG STATS]   Items: ${items.length} (normal=$normalItemCount, service=$serviceItemCount, gratis=$gratisItemCount)');
-     _dbg(_debugStats, '[DEBUG STATS]   orderSubtotal vor Auftrags-Rabatt:  ${orderSubtotalBeforeDiscount.toStringAsFixed(4)}');
-     _dbg(_debugStats, '[DEBUG STATS]   orderTotalDiscount (raw):           ${orderTotalDiscount.toStringAsFixed(4)}  → effektiv: ${effectiveDiscount.toStringAsFixed(4)}');
-     _dbg(_debugStats, '[DEBUG STATS]   orderSubtotal NACH Rabatt (Beitrag zu totalSubtotal): ${orderSubtotal.toStringAsFixed(4)}');
-     _dbg(_debugStats, '[DEBUG STATS]   orderServiceRev:    ${orderServiceRev.toStringAsFixed(4)}');
-     _dbg(_debugStats, '[DEBUG STATS]   orderGratisValue:   ${orderGratisValue.toStringAsFixed(4)}');
-     _dbg(_debugStats, '[DEBUG STATS]   running totalSubtotal: ${totalSubtotal.toStringAsFixed(4)}');
+      _dbg(_debugStats, '[DEBUG STATS] -----------------------------------------------');
+      _dbg(_debugStats, '[DEBUG STATS] #$count Auftrag: $orderNumber  status=$status  taxOpt=$taxOption  vat=${vatRate.toStringAsFixed(2)}%');
+      _dbg(_debugStats, '[DEBUG STATS]   Items: ${items.length} (normal=$normalItemCount, service=$serviceItemCount, gratis=$gratisItemCount)');
+      _dbg(_debugStats, '[DEBUG STATS]   orderSubtotal vor Auftrags-Rabatt:  ${orderSubtotalBeforeDiscount.toStringAsFixed(4)}');
+      _dbg(_debugStats, '[DEBUG STATS]   orderTotalDiscount (raw):           ${orderTotalDiscount.toStringAsFixed(4)}  → effektiv: ${effectiveDiscount.toStringAsFixed(4)}');
+      _dbg(_debugStats, '[DEBUG STATS]   orderSubtotal NACH Rabatt (Beitrag zu totalSubtotal): ${orderSubtotal.toStringAsFixed(4)}');
+      _dbg(_debugStats, '[DEBUG STATS]   orderServiceRev:    ${orderServiceRev.toStringAsFixed(4)}');
+      _dbg(_debugStats, '[DEBUG STATS]   orderGratisValue:   ${orderGratisValue.toStringAsFixed(4)}');
+      _dbg(_debugStats, '[DEBUG STATS]   running totalSubtotal: ${totalSubtotal.toStringAsFixed(4)}');
     }
 
     // ===== DEBUG SUMMARY =====
     print('');
     print('═══════════════════════════════════════════════════════════════');
-   _dbg(_debugStats, '[DEBUG STATS] ENDERGEBNIS Verkaufsübersicht');
+    _dbg(_debugStats, '[DEBUG STATS] ENDERGEBNIS Verkaufsübersicht');
     print('═══════════════════════════════════════════════════════════════');
-   _dbg(_debugStats, '[DEBUG STATS]   Aufträge gezählt:                  $count');
-   _dbg(_debugStats, '[DEBUG STATS]   Aufträge übersprungen (cancelled): $skippedCancelled');
-   _dbg(_debugStats, '[DEBUG STATS]   ▶ totalSubtotal (Warenwert netto Ware): ${totalSubtotal.toStringAsFixed(4)}');
-   _dbg(_debugStats, '[DEBUG STATS]   totalServiceRevenue: ${totalServiceRevenue.toStringAsFixed(4)}');
-   _dbg(_debugStats, '[DEBUG STATS]   totalFreight:        ${totalFreight.toStringAsFixed(4)}');
-   _dbg(_debugStats, '[DEBUG STATS]   totalPhyto:          ${totalPhyto.toStringAsFixed(4)}');
-   _dbg(_debugStats, '[DEBUG STATS]   totalDeductions:     ${totalDeductions.toStringAsFixed(4)}');
-   _dbg(_debugStats, '[DEBUG STATS]   totalSurcharges:     ${totalSurcharges.toStringAsFixed(4)}');
-   _dbg(_debugStats, '[DEBUG STATS]   totalDiscount:       ${totalDiscount.toStringAsFixed(4)}');
-   _dbg(_debugStats, '[DEBUG STATS]   totalGratisValue:    ${totalGratisValue.toStringAsFixed(4)}');
-   _dbg(_debugStats, '[DEBUG STATS]   totalVat:            ${totalVat.toStringAsFixed(4)}');
-   _dbg(_debugStats, '[DEBUG STATS]   totalNetAmount:      ${totalNetAmount.toStringAsFixed(4)}');
-   _dbg(_debugStats, '[DEBUG STATS]   totalRevenue:        ${totalRevenue.toStringAsFixed(4)}');
+    _dbg(_debugStats, '[DEBUG STATS]   Aufträge gezählt:                  $count');
+    _dbg(_debugStats, '[DEBUG STATS]   Aufträge übersprungen (cancelled): $skippedCancelled');
+    _dbg(_debugStats, '[DEBUG STATS]   ▶ totalSubtotal (Warenwert netto Ware): ${totalSubtotal.toStringAsFixed(4)}');
+    _dbg(_debugStats, '[DEBUG STATS]   totalServiceRevenue: ${totalServiceRevenue.toStringAsFixed(4)}');
+    _dbg(_debugStats, '[DEBUG STATS]   totalFreight:        ${totalFreight.toStringAsFixed(4)}');
+    _dbg(_debugStats, '[DEBUG STATS]   totalPhyto:          ${totalPhyto.toStringAsFixed(4)}');
+    _dbg(_debugStats, '[DEBUG STATS]   totalDeductions:     ${totalDeductions.toStringAsFixed(4)}');
+    _dbg(_debugStats, '[DEBUG STATS]   totalSurcharges:     ${totalSurcharges.toStringAsFixed(4)}');
+    _dbg(_debugStats, '[DEBUG STATS]   totalDiscount:       ${totalDiscount.toStringAsFixed(4)}');
+    _dbg(_debugStats, '[DEBUG STATS]   totalGratisValue:    ${totalGratisValue.toStringAsFixed(4)}');
+    _dbg(_debugStats, '[DEBUG STATS]   totalVat:            ${totalVat.toStringAsFixed(4)}');
+    _dbg(_debugStats, '[DEBUG STATS]   totalNetAmount:      ${totalNetAmount.toStringAsFixed(4)}');
+    _dbg(_debugStats, '[DEBUG STATS]   totalRevenue:        ${totalRevenue.toStringAsFixed(4)}');
     print('═══════════════════════════════════════════════════════════════');
     print('');
 
@@ -1064,7 +1114,7 @@ class SalesPdfService {
         (filter.woodTypes?.isNotEmpty ?? false) || (filter.qualities?.isNotEmpty ?? false) ||
         (filter.parts?.isNotEmpty ?? false) || (filter.instruments?.isNotEmpty ?? false) ||
         (filter.costCenters?.isNotEmpty ?? false) || (filter.distributionChannels?.isNotEmpty ?? false) ||
-        (filter.countries?.isNotEmpty ?? false);
+        (filter.countries?.isNotEmpty ?? false) || filter.useShippingAddress;
   }
 
   /// FIX: Filtert jetzt nur shipped Aufträge
@@ -1136,11 +1186,10 @@ class SalesPdfService {
         if (!filter.selectedFairs!.contains(fairId)) return false;
       }
 
-      // Länder-Filter
+      // Länder-Filter — respektiert useShippingAddress
       if (filter.countries != null && filter.countries!.isNotEmpty) {
         final customer = sale['customer'] as Map<String, dynamic>? ?? {};
-        final countryCode = customer['countryCode']?.toString() ??
-            customer['country']?.toString() ?? '';
+        final countryCode = _resolveCountryCode(customer, filter.useShippingAddress);
         if (!filter.countries!.contains(countryCode)) return false;
       }
 
@@ -1250,23 +1299,23 @@ class SalesPdfService {
     // ===== DEBUG START =====
     print('');
     print('═══════════════════════════════════════════════════════════════');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS] _buildRevenueRows — Quelle: Verkaufsanalyse-PDF');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS] Filter aktiv: ${_hasDateFilter(filter)}  Periode: ${_filterPeriodLabel(filter)}');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS] _buildRevenueRows — Quelle: Verkaufsanalyse-PDF');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS] Filter aktiv: ${_hasDateFilter(filter)}  Periode: ${_filterPeriodLabel(filter)}');
     print('═══════════════════════════════════════════════════════════════');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   analytics.orderCount:           ${analytics.orderCount}');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   ▶ rev.totalRevenue (Warenwert auf PDF-Zeile): ${rev.totalRevenue.toStringAsFixed(4)}');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalServiceRevenue:        ${rev.totalServiceRevenue.toStringAsFixed(4)}');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalFreight:               ${rev.totalFreight.toStringAsFixed(4)}');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalPhytosanitary:         ${rev.totalPhytosanitary.toStringAsFixed(4)}');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalDeductions:            ${rev.totalDeductions.toStringAsFixed(4)}');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalSurcharges:            ${rev.totalSurcharges.toStringAsFixed(4)}');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalDiscount:              ${rev.totalDiscount.toStringAsFixed(4)}');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalGratisValue:           ${rev.totalGratisValue.toStringAsFixed(4)}');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalRevenueGross:          ${rev.totalRevenueGross.toStringAsFixed(4)}');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   analytics.averageOrderValue:    ${analytics.averageOrderValue.toStringAsFixed(4)}');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS]');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS] >>> VERGLEICH: rev.totalRevenue ↔ totalSubtotal aus [DEBUG STATS]');
-   _dbg(_debugAnalytics, '[DEBUG ANALYTICS] >>> Falls Differenz: Bug liegt im Analytics-Service (nicht in dieser Datei)');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   analytics.orderCount:           ${analytics.orderCount}');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   ▶ rev.totalRevenue (Warenwert auf PDF-Zeile): ${rev.totalRevenue.toStringAsFixed(4)}');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalServiceRevenue:        ${rev.totalServiceRevenue.toStringAsFixed(4)}');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalFreight:               ${rev.totalFreight.toStringAsFixed(4)}');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalPhytosanitary:         ${rev.totalPhytosanitary.toStringAsFixed(4)}');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalDeductions:            ${rev.totalDeductions.toStringAsFixed(4)}');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalSurcharges:            ${rev.totalSurcharges.toStringAsFixed(4)}');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalDiscount:              ${rev.totalDiscount.toStringAsFixed(4)}');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalGratisValue:           ${rev.totalGratisValue.toStringAsFixed(4)}');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   rev.totalRevenueGross:          ${rev.totalRevenueGross.toStringAsFixed(4)}');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS]   analytics.averageOrderValue:    ${analytics.averageOrderValue.toStringAsFixed(4)}');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS]');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS] >>> VERGLEICH: rev.totalRevenue ↔ totalSubtotal aus [DEBUG STATS]');
+    _dbg(_debugAnalytics, '[DEBUG ANALYTICS] >>> Falls Differenz: Bug liegt im Analytics-Service (nicht in dieser Datei)');
     print('═══════════════════════════════════════════════════════════════');
     print('');
     // ===== DEBUG END =====

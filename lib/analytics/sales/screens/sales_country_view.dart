@@ -8,18 +8,33 @@ import '../../../services/icon_helper.dart';
 import '../models/sales_filter.dart';
 import '../models/sales_analytics_models.dart';
 import '../services/sales_analytics_service.dart';
+import '../widgets/sales_world_map.dart';
 
 class SalesCountryView extends StatefulWidget {
   final SalesFilter filter;
+  final ValueChanged<SalesFilter>? onFilterChanged;
 
-  const SalesCountryView({Key? key, required this.filter}) : super(key: key);
+  const SalesCountryView({
+    Key? key,
+    required this.filter,
+    this.onFilterChanged,
+  }) : super(key: key);
 
   @override
   State<SalesCountryView> createState() => _SalesCountryViewState();
 }
 
 class _SalesCountryViewState extends State<SalesCountryView> {
-  String _sortBy = 'revenue'; // 'revenue' oder 'orders'
+  String _sortBy = 'revenue';
+  bool _showMap = false; // Default: Liste (false)
+
+  bool get _useShippingAddress => widget.filter.useShippingAddress;
+
+  void _setUseShippingAddress(bool value) {
+    if (value == _useShippingAddress) return;
+    final newFilter = widget.filter.copyWith(useShippingAddress: value);
+    widget.onFilterChanged?.call(newFilter);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +54,6 @@ class _SalesCountryViewState extends State<SalesCountryView> {
         final analytics = snapshot.data ?? SalesAnalytics.empty();
         final countries = analytics.countryStats.values.toList();
 
-        // Sortieren
         if (_sortBy == 'revenue') {
           countries.sort((a, b) => b.revenue.compareTo(a.revenue));
         } else {
@@ -54,43 +68,20 @@ class _SalesCountryViewState extends State<SalesCountryView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header mit Gesamt-Stats
+              // Header mit den Stats - HIER sitzt jetzt der Toggle
               _buildHeaderStats(context, countries.length, totalRevenue, totalOrders),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
 
-              // Chart + Tabelle Layout
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth > 900;
+              _buildAddressToggle(context),
+              const SizedBox(height: 16),
 
-                  if (isWide) {
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Pie Chart
-                        Expanded(
-                          flex: 2,
-                          child: _buildPieChartCard(context, countries, totalRevenue),
-                        ),
-                        const SizedBox(width: 16),
-                        // Tabelle
-                        Expanded(
-                          flex: 3,
-                          child: _buildCountryTable(context, countries, totalRevenue, totalOrders),
-                        ),
-                      ],
-                    );
-                  } else {
-                    return Column(
-                      children: [
-                        _buildPieChartCard(context, countries, totalRevenue),
-                        const SizedBox(height: 16),
-                        _buildCountryTable(context, countries, totalRevenue, totalOrders),
-                      ],
-                    );
-                  }
-                },
-              ),
+              // Dynamisches Layout basierend auf _showMap
+              if (_showMap)
+              // RIESIGES MAP WIDGET
+                _buildFullscreenMap(countries, totalRevenue)
+              else
+              // STANDARD LISTE / CHART LAYOUT
+                _buildStandardLayout(countries, totalRevenue, totalOrders),
             ],
           ),
         );
@@ -98,9 +89,57 @@ class _SalesCountryViewState extends State<SalesCountryView> {
     );
   }
 
+  // Die große Kartenansicht
+  Widget _buildFullscreenMap(List<CountryStats> countries, double totalRevenue) {
+    return Column(
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(bottom: 12, left: 4),
+          child: Text(
+            'Globale Umsatzverteilung',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+        ),
+        // Wir nutzen hier eine größere feste Höhe oder einen LayoutBuilder
+        SalesWorldMap(
+          countries: countries,
+          totalRevenue: totalRevenue,
+          // Hinweis: Falls deine SalesWorldMap eine height intern berechnet,
+          // kannst du sie hier in einen Container mit z.B. height: 700 packen.
+        ),
+      ],
+    );
+  }
+
+  // Das klassische Layout (PieChart + Tabelle)
+  Widget _buildStandardLayout(List<CountryStats> countries, double totalRevenue, int totalOrders) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth > 900;
+        if (isWide) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: 2, child: _buildPieChartCard(context, countries, totalRevenue)),
+              const SizedBox(width: 16),
+              Expanded(flex: 3, child: _buildCountryTable(context, countries, totalRevenue, totalOrders)),
+            ],
+          );
+        } else {
+          return Column(
+            children: [
+              _buildPieChartCard(context, countries, totalRevenue),
+              const SizedBox(height: 16),
+              _buildCountryTable(context, countries, totalRevenue, totalOrders),
+            ],
+          );
+        }
+      },
+    );
+  }
+
   Widget _buildHeaderStats(BuildContext context, int countryCount, double totalRevenue, int totalOrders) {
     final theme = Theme.of(context);
-    final format = NumberFormat.currency(locale: 'de_CH', symbol: 'CHF');
 
     return Row(
       children: [
@@ -121,91 +160,82 @@ class _SalesCountryViewState extends State<SalesCountryView> {
                       color: Colors.teal.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: getAdaptiveIcon(
-                      iconName: 'public',
-                      defaultIcon: Icons.public,
-                      color: Colors.teal,
-                      size: 24,
-                    ),
+                    child: const Icon(Icons.public, color: Colors.teal, size: 24),
                   ),
                   const SizedBox(width: 16),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '$countryCount',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        'Länder',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
+                      Text('$countryCount', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      Text('Länder', style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant)),
                     ],
                   ),
+                  // const Spacer(),
+                  // // DER NEUE TOGGLE
+                  // SegmentedButton<bool>(
+                  //   segments: const [
+                  //     ButtonSegment(value: false, icon: Icon(Icons.list), tooltip: 'Listenansicht'),
+                  //     ButtonSegment(value: true, icon: Icon(Icons.map_outlined), tooltip: 'Kartenansicht'),
+                  //   ],
+                  //   selected: {_showMap},
+                  //   onSelectionChanged: (val) => setState(() => _showMap = val.first),
+                  //   showSelectedIcon: false,
+                  //   style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                  // ),
                 ],
               ),
             ),
           ),
         ),
         const SizedBox(width: 12),
+        // Die zweite Card (Lieferungen) bleibt wie sie ist
         Expanded(
-          child: Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: theme.colorScheme.outlineVariant),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: getAdaptiveIcon(
-                      iconName: 'local_shipping',
-                      defaultIcon: Icons.local_shipping,
-                      color: Colors.blue,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '$totalOrders',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        'Lieferungen',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+          child: _buildSimpleStatCard(
+              context,
+              '$totalOrders',
+              'Lieferungen',
+              Icons.local_shipping,
+              Colors.blue
           ),
         ),
       ],
     );
   }
+
+  // Hilfswidget für die Lieferungen-Card
+  Widget _buildSimpleStatCard(BuildContext context, String value, String label, IconData icon, Color color) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(label, style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ... (Die restlichen Methoden _buildAddressToggle, _buildPieChartCard, _buildCountryTable bleiben gleich,
+  // nur im _buildPieChartCard solltest du den alten Toggle jetzt entfernen)
 
   Widget _buildPieChartCard(BuildContext context, List<CountryStats> countries, double totalRevenue) {
     final theme = Theme.of(context);
@@ -222,9 +252,12 @@ class _SalesCountryViewState extends State<SalesCountryView> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            const Text(
-              'Umsatz nach Land (Warenwert)',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Umsatz nach Land (Warenwert)',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
             ),
             const SizedBox(height: 16),
             SizedBox(
@@ -233,54 +266,93 @@ class _SalesCountryViewState extends State<SalesCountryView> {
                 PieChartData(
                   sectionsSpace: 2,
                   centerSpaceRadius: 35,
-                  sections: [
-                    ...List.generate(topCountries.length, (index) {
-                      final country = topCountries[index];
-                      final percent = totalRevenue > 0 ? (country.revenue / totalRevenue * 100) : 0;
-                      return PieChartSectionData(
-                        value: country.revenue,
-                        title: percent > 5 ? '${percent.toStringAsFixed(0)}%' : '',
-                        color: _getCountryColor(index),
-                        radius: 80,
-                        titleStyle: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      );
-                    }),
-                    if (otherRevenue > 0)
-                      PieChartSectionData(
-                        value: otherRevenue,
-                        title: '',
-                        color: Colors.grey[400],
-                        radius: 80,
-                      ),
-                  ],
+                  sections: List.generate(topCountries.length, (index) {
+                    final country = topCountries[index];
+                    final percent = totalRevenue > 0 ? (country.revenue / totalRevenue * 100) : 0;
+                    return PieChartSectionData(
+                      value: country.revenue,
+                      title: percent > 5 ? '${percent.toStringAsFixed(0)}%' : '',
+                      color: _getCountryColor(index),
+                      radius: 80,
+                      titleStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+                    );
+                  }),
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-            // Legende
-            Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              children: [
-                ...List.generate(topCountries.length, (index) {
-                  return _buildLegendItem(
-                    topCountries[index].countryName,
-                    _getCountryColor(index),
-                  );
-                }),
-                if (otherRevenue > 0)
-                  _buildLegendItem('Andere', Colors.grey[400]!),
+            // ... (Legende etc.)
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Toggle-Leiste zwischen Header-Stats und Chart/Tabelle
+  Widget _buildAddressToggle(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            getAdaptiveIcon(
+              iconName: 'location_on',
+              defaultIcon: Icons.location_on_outlined,
+              color: theme.colorScheme.onSurfaceVariant,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Auswertung nach',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  Text(
+                    _useShippingAddress
+                        ? 'Lieferadresse — fällt auf Rechnungsadresse zurück, wenn keine abweichende Lieferadresse hinterlegt ist'
+                        : 'Rechnungsadresse des Kunden',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('Rechnungsadr.')),
+                ButtonSegment(value: true, label: Text('Lieferadr.')),
               ],
+              selected: {_useShippingAddress},
+              onSelectionChanged: (selection) {
+                _setUseShippingAddress(selection.first);
+              },
+              style: const ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
             ),
           ],
         ),
       ),
     );
   }
+
 
   Widget _buildLegendItem(String label, Color color) {
     return Row(
@@ -332,7 +404,7 @@ class _SalesCountryViewState extends State<SalesCountryView> {
                   onSelectionChanged: (selection) {
                     setState(() => _sortBy = selection.first);
                   },
-                  style: ButtonStyle(
+                  style: const ButtonStyle(
                     visualDensity: VisualDensity.compact,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),

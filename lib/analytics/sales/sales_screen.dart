@@ -959,7 +959,13 @@ class _SalesScreenAnalyticsState extends State<SalesScreenAnalytics> {
 
   Widget _buildSelectedView() {
     switch (_selectedView) {
-      case 'country': return SalesCountryView(filter: _currentFilter);
+      case 'country':
+        return SalesCountryView(
+          filter: _currentFilter,
+          onFilterChanged: (newFilter) {
+            setState(() => _currentFilter = newFilter);
+          },
+        );
       case 'product': return SalesProductView(filter: _currentFilter);
       case 'customer': return SalesCustomerView(filter: _currentFilter);
       case 'kpi':

@@ -27,6 +27,19 @@ class AvailabilityResult {
   });
 }
 
+
+class ReactivationResult {
+  final bool success;
+  final List<String> unavailableItems; // Anzeige-Texte für fehlende Produkte
+  final Quote? quote;
+
+  ReactivationResult({
+    required this.success,
+    this.unavailableItems = const [],
+    this.quote,
+  });
+}
+
 class QuoteService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static final FirebaseStorage _storage = FirebaseStorage.instance;
@@ -462,6 +475,179 @@ class QuoteService {
     }
 
     await batch.commit();
+  }
+
+
+  // Reaktiviere ein abgelehntes/abgelaufenes Angebot
+  static Future<ReactivationResult> reactivateQuote({
+    required Quote quote,
+    required DateTime newValidUntil,
+    required String userId,
+    required String userEmail,
+  }) async {
+    try {
+      // 1. Verfügbarkeit aller Items prüfen
+      //    excludeQuoteId, falls (sollte nicht) noch alte reserved-Einträge hängen
+      final availabilityResult = await checkAvailability(
+        quote.items,
+        excludeQuoteId: quote.id,
+      );
+      final availability = availabilityResult.quantities;
+      final cartUserNames = availabilityResult.cartUserNames;
+
+      // 2. Welche Items sind nicht (mehr) verfügbar?
+      final unavailable = <String>[];
+      for (final item in quote.items) {
+        // Manuelle Produkte/Dienstleistungen sind immer "verfügbar"
+        if (item['is_manual_product'] == true || item['is_service'] == true) {
+          continue;
+        }
+
+        final productName = item['product_name'] as String? ?? 'Unbekanntes Produkt';
+        final isOnlineShop = item['is_online_shop_item'] == true
+            && item['online_shop_barcode'] != null;
+
+        if (isOnlineShop) {
+          final barcode = item['online_shop_barcode'] as String;
+          final available = availability[barcode] ?? 0;
+          if (available < 1) {
+            final cartUser = cartUserNames[barcode];
+            if (cartUser != null) {
+              unavailable.add('$productName (im Warenkorb von $cartUser)');
+            } else {
+              unavailable.add('$productName (nicht mehr verfügbar)');
+            }
+          }
+        } else {
+          final productId = item['product_id'] as String;
+          final required = (item['quantity'] as num).toDouble();
+          final available = availability[productId] ?? 0;
+          if (available < required) {
+            unavailable.add(
+              '$productName (benötigt: ${required.toStringAsFixed(required.truncateToDouble() == required ? 0 : 2)}, '
+                  'verfügbar: ${available.toStringAsFixed(available.truncateToDouble() == available ? 0 : 2)})',
+            );
+          }
+        }
+      }
+
+      if (unavailable.isNotEmpty) {
+        return ReactivationResult(
+          success: false,
+          unavailableItems: unavailable,
+        );
+      }
+
+      // 3. Alles verfügbar → Reaktivieren in einer Batch
+      final batch = _firestore.batch();
+
+      // 3a. Defensiv: alte "reserved"-Einträge sicherheitshalber canceln
+      //     (sollte bei rejected/expired schon erledigt sein, aber wir wollen keine Duplikate)
+      final existingReservations = await _firestore
+          .collection('stock_movements')
+          .where('quoteId', isEqualTo: quote.id)
+          .where('status', isEqualTo: StockMovementStatus.reserved.name)
+          .get();
+
+      for (final doc in existingReservations.docs) {
+        batch.update(doc.reference, {
+          'status': StockMovementStatus.cancelled.name,
+          'cancelled_at': FieldValue.serverTimestamp(),
+          'cancellation_reason': 'Reaktivierung – alte Reservierung ersetzt',
+        });
+      }
+
+      // 3b. Neue Reservierungen anlegen (exakt gleiches Schema wie _createReservations)
+      for (final item in quote.items) {
+        if (item['is_manual_product'] == true || item['is_service'] == true) {
+          continue;
+        }
+
+        final productId = item['product_id'] as String;
+        final quantity = (item['quantity'] as num).toDouble();
+        final movementRef = _firestore.collection('stock_movements').doc();
+
+        final movementData = <String, dynamic>{
+          'productId': productId,
+          'quoteId': quote.id,
+          'quantity': -quantity,
+          'type': StockMovementType.reservation.name,
+          'status': StockMovementStatus.reserved.name,
+          'timestamp': FieldValue.serverTimestamp(),
+          if (item['is_online_shop_item'] == true && item['online_shop_barcode'] != null)
+            'onlineShopBarcode': item['online_shop_barcode'],
+        };
+
+        batch.set(movementRef, movementData);
+      }
+
+      // 3c. Quote-Dokument aktualisieren: zurück auf "sent", neues Datum, Rejection-Felder löschen
+      final quoteRef = _firestore.collection('quotes').doc(quote.id);
+      batch.update(quoteRef, {
+        'status': QuoteStatus.sent.name,
+        'validUntil': Timestamp.fromDate(newValidUntil),
+        'rejected_at': FieldValue.delete(),
+        'rejection_reason': FieldValue.delete(),
+        'rejected_from_expired': FieldValue.delete(),
+        'reactivated_at': FieldValue.serverTimestamp(),
+      });
+
+      // 3d. History-Eintrag
+      final historyRef = _firestore
+          .collection('quotes')
+          .doc(quote.id)
+          .collection('history')
+          .doc();
+
+      batch.set(historyRef, {
+        'timestamp': FieldValue.serverTimestamp(),
+        'user_id': userId,
+        'user_email': userEmail,
+        'user_name': userEmail,
+        'action': 'reactivated',
+        'changes': {
+          'field': 'status',
+          'old_value': quote.status.name,
+          'new_value': QuoteStatus.sent.name,
+          'old_display': quote.status == QuoteStatus.rejected
+              ? 'Abgelehnt'
+              : 'Abgelaufen',
+          'new_display': 'Offen',  // ← User-Sicht, nicht "Versendet"
+
+        },
+        'new_valid_until': Timestamp.fromDate(newValidUntil),
+      });
+
+      await batch.commit();
+
+      // 4. PDF mit neuem Gültigkeitsdatum neu generieren
+      final updatedQuote = Quote(
+        id: quote.id,
+        quoteNumber: quote.quoteNumber,
+        status: QuoteStatus.sent,
+        customer: quote.customer,
+        costCenter: quote.costCenter,
+        fair: quote.fair,
+        items: quote.items,
+        calculations: quote.calculations,
+        createdAt: quote.createdAt,
+        validUntil: newValidUntil,
+        sentAt: quote.sentAt,
+        orderId: quote.orderId,
+        documents: quote.documents,
+        metadata: quote.metadata,
+      );
+
+      await _generateQuotePdf(updatedQuote);
+
+      return ReactivationResult(
+        success: true,
+        quote: updatedQuote,
+      );
+    } catch (e) {
+      print('Fehler beim Reaktivieren des Angebots: $e');
+      rethrow;
+    }
   }
 
   // Lade Angebot

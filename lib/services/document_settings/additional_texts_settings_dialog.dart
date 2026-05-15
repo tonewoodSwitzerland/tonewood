@@ -31,6 +31,12 @@ class AdditionalTextsSettingsDialog {
         required Map<String, dynamic> config,
         VoidCallback? onSaved,
       }) async {
+    // Firebase-Caches sicherstellen, bevor das Sheet aufgeht.
+    // Ohne diesen Schritt liefert getDefaultText() den (leeren) Fallback,
+    // weil _cachedDefaultTexts noch null sein kann.
+    await AdditionalTextsManager.loadDefaultTextsFromFirebase();
+    await AdditionalTextsManager.loadCustomTextBlocks();
+
     // Persistente Controller, einmal pro Texttyp.
     // Werden lazy via putIfAbsent in _buildTiles gefüllt und am Ende disposed.
     final controllers = <String, TextEditingController>{};
@@ -262,7 +268,7 @@ class AdditionalTextsSettingsDialog {
         key,
             () => TextEditingController(text: customText),
       );
-
+      print('DEBUG bank_info: type=${config[key]?['type']}, full=${config[key]}');
       // Vorschautext bestimmen
       final defaultTextMap =
           AdditionalTextsManager.getDefaultText(defaultTextKey)['DE'] ?? {};
@@ -295,17 +301,7 @@ class AdditionalTextsSettingsDialog {
                 title: Text(title,
                     style: const TextStyle(
                         fontSize: 14, fontWeight: FontWeight.w500)),
-                subtitle: isSelected
-                    ? Text(displayText,
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withOpacity(0.6)),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis)
-                    : null,
+                // Subtitle entfernt — Vorschau lebt jetzt unten als eigener Container
                 value: isSelected,
                 dense: true,
                 onChanged: (value) {
@@ -395,7 +391,7 @@ class AdditionalTextsSettingsDialog {
                   ),
                 ],
 
-                // Eigener Text - Eingabefeld
+                // Eigener Text - Eingabefeld ODER Vorschau-Container
                 if (currentType == 'custom')
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -407,9 +403,42 @@ class AdditionalTextsSettingsDialog {
                             borderRadius: BorderRadius.circular(8)),
                         isDense: true,
                       ),
-                      maxLines: 2,
+                      maxLines: 4,
                       onChanged: (value) =>
                       config[key]['custom_text'] = value,
+                    ),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Vorschau:',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            displayText,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
               ],

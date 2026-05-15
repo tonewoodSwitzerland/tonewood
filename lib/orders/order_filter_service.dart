@@ -180,8 +180,22 @@ class OrderFilterService {
     if (veranlagungStatus != null) {
       filteredOrders = filteredOrders.where((order) {
         final total = (order.calculations['total'] as num?)?.toDouble() ?? 0.0;
-        final hasVeranlagungsnummer = order.metadata?['veranlagungsnummer'] != null &&
-            order.metadata!['veranlagungsnummer'].toString().isNotEmpty;
+
+        // Rückwärtskompatibel: neue Liste oder Legacy-Felder
+        final list = order.metadata['veranlagungen'];
+        bool hasVeranlagungsnummer;
+        if (list is List && list.isNotEmpty) {
+          hasVeranlagungsnummer = list.any((e) {
+            if (e is Map) {
+              final n = e['nummer']?.toString() ?? '';
+              return n.trim().isNotEmpty;
+            }
+            return false;
+          });
+        } else {
+          hasVeranlagungsnummer = order.metadata['veranlagungsnummer'] != null &&
+              order.metadata['veranlagungsnummer'].toString().isNotEmpty;
+        }
 
         switch (veranlagungStatus) {
           case 'required':

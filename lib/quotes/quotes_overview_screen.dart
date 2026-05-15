@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:tonewood/quotes/quote_filter_service.dart';
+import 'package:tonewood/quotes/quote_service.dart';
 import 'package:tonewood/sales/sales_screen.dart';
 import 'package:tonewood/quotes/quote_details_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -901,6 +902,18 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                     color: goldenColour,
                   ),
                   const SizedBox(width: 4),// Zeile 869-892: Diese 3 Blöcke mit Condition umschließen
+                  // NEU: Reaktivieren für abgelehnte UND abgelaufene Angebote
+                  if (viewStatus == QuoteViewStatus.rejected )...[
+                    const SizedBox(width: 4),
+                    _buildCompactActionButton(
+                      icon: Icons.refresh,
+                      iconName: 'refresh',
+                      onPressed: () => _reactivateQuote(quote),
+                      tooltip: 'Reaktivieren',
+                      color: QuoteColors.accepted,
+                    ),
+                  ],
+                  // Zeile 869-892: Diese 3 Blöcke mit Condition umschließen
                   if (viewStatus == QuoteViewStatus.open) ...[
                     const SizedBox(width: 4),
                     _buildCompactActionButton(
@@ -913,17 +926,22 @@ class _QuotesOverviewScreenState extends State<QuotesOverviewScreen> {
                     const SizedBox(width: 4),
                     _buildCompactActionButton(
                       icon: Icons.shopping_cart,
-                      iconName:'shopping_cart',
+                      iconName: 'shopping_cart',
                       onPressed: () => _convertToOrder(quote),
                       tooltip: 'Beauftragen',
                       color: QuoteColors.accepted,
                     ),
+                  ],
+// NEU: Ablehnen auch für abgelaufene Angebote, damit Reservierungen freigegeben werden können
+                  if (viewStatus == QuoteViewStatus.open || viewStatus == QuoteViewStatus.expired) ...[
                     const SizedBox(width: 4),
                     _buildCompactActionButton(
                       icon: Icons.cancel,
-                      iconName:'cancel',
+                      iconName: 'cancel',
                       onPressed: () => _rejectQuote(quote),
-                      tooltip: 'Ablehnen',
+                      tooltip: viewStatus == QuoteViewStatus.expired
+                          ? 'Ablehnen & Reservierungen freigeben'
+                          : 'Ablehnen',
                       color: QuoteColors.rejected,
                     ),
                   ],
@@ -1596,15 +1614,24 @@ Status: ${_getViewStatus(quote).displayName}
   }
 
   Future<void> _rejectQuote(Quote quote) async {
+    // Prüfe ob das Angebot abgelaufen ist (aber noch nicht angenommen/abgelehnt)
+    final isExpiredQuote = quote.validUntil.isBefore(DateTime.now())
+        && quote.status != QuoteStatus.accepted
+        && quote.status != QuoteStatus.rejected;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Angebot ablehnen'),
+        title: Text(isExpiredQuote
+            ? 'Abgelaufenes Angebot ablehnen'
+            : 'Angebot ablehnen'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Möchtest du das Angebot ${quote.quoteNumber} ablehnen?'),
+            Text(isExpiredQuote
+                ? 'Möchtest du das abgelaufene Angebot ${quote.quoteNumber} ablehnen und die Reservierungen freigeben?'
+                : 'Möchtest du das Angebot ${quote.quoteNumber} ablehnen?'),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
@@ -1620,7 +1647,9 @@ Status: ${_getViewStatus(quote).displayName}
                     children: [
                       getAdaptiveIcon(
                           iconName: 'warning',
-                          defaultIcon:Icons.warning, color: QuoteColors.rejected, size: 20),
+                          defaultIcon: Icons.warning,
+                          color: QuoteColors.rejected,
+                          size: 20),
                       const SizedBox(width: 8),
                       const Text(
                         'Was passiert:',
@@ -1629,11 +1658,15 @@ Status: ${_getViewStatus(quote).displayName}
                     ],
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    '• Das Angebot wird als "Abgelehnt" markiert\n'
+                  Text(
+                    isExpiredQuote
+                        ? '• Das Angebot wird als "Abgelehnt" markiert\n'
+                        '• Alle Reservierungen werden freigegeben\n'
+                        '• Die Ware steht wieder zum Verkauf zur Verfügung'
+                        : '• Das Angebot wird als "Abgelehnt" markiert\n'
                         '• Eventuelle Reservierungen werden freigegeben\n'
                         '• Das Angebot kann später nicht mehr beauftragt werden',
-                    style: TextStyle(fontSize: 12),
+                    style: const TextStyle(fontSize: 12),
                   ),
                 ],
               ),
@@ -1643,7 +1676,9 @@ Status: ${_getViewStatus(quote).displayName}
               maxLines: 3,
               decoration: InputDecoration(
                 labelText: 'Grund für Ablehnung (optional)',
-                hintText: 'z.B. Preis zu hoch, andere Lösung gefunden...',
+                hintText: isExpiredQuote
+                    ? 'z.B. Kunde hat sich nicht zurückgemeldet...'
+                    : 'z.B. Preis zu hoch, andere Lösung gefunden...',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -1694,6 +1729,7 @@ Status: ${_getViewStatus(quote).displayName}
           'status': QuoteStatus.rejected.name,
           'rejected_at': FieldValue.serverTimestamp(),
           'rejection_reason': _rejectionReason ?? '',
+          'rejected_from_expired': isExpiredQuote, // NEU: Markierung für Tracking
         });
 
         // Create History Entry
@@ -1708,12 +1744,12 @@ Status: ${_getViewStatus(quote).displayName}
           'user_id': user?.uid ?? 'unknown',
           'user_email': user?.email ?? 'Unknown User',
           'user_name': user?.email ?? 'Unknown',
-          'action': 'status_change',
+          'action': isExpiredQuote ? 'status_change_from_expired' : 'status_change',
           'changes': {
             'field': 'status',
             'old_value': quote.status.name,
             'new_value': QuoteStatus.rejected.name,
-            'old_display': quote.status.displayName,
+            'old_display': isExpiredQuote ? 'Abgelaufen' : quote.status.displayName,
             'new_display': QuoteStatus.rejected.displayName,
           },
           'rejection_reason': _rejectionReason ?? '',
@@ -1730,7 +1766,9 @@ Status: ${_getViewStatus(quote).displayName}
           batch.update(doc.reference, {
             'status': 'cancelled',
             'cancelled_at': FieldValue.serverTimestamp(),
-            'cancellation_reason': 'Angebot abgelehnt',
+            'cancellation_reason': isExpiredQuote
+                ? 'Abgelaufenes Angebot abgelehnt'
+                : 'Angebot abgelehnt',
           });
         }
 
@@ -1742,9 +1780,14 @@ Status: ${_getViewStatus(quote).displayName}
         if (mounted) {
           Navigator.pop(context); // Loading Dialog schließen
 
+          final releasedCount = reservations.docs.length;
+          final message = isExpiredQuote && releasedCount > 0
+              ? 'Angebot ${quote.quoteNumber} abgelehnt – $releasedCount Reservierung${releasedCount == 1 ? '' : 'en'} freigegeben'
+              : 'Angebot ${quote.quoteNumber} wurde abgelehnt';
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Angebot ${quote.quoteNumber} wurde abgelehnt'),
+              content: Text(message),
               backgroundColor: Colors.orange,
               behavior: SnackBarBehavior.floating,
               margin: const EdgeInsets.all(8),
@@ -1766,6 +1809,271 @@ Status: ${_getViewStatus(quote).displayName}
             ),
           );
         }
+      }
+    }
+  }
+
+  Future<void> _reactivateQuote(Quote quote) async {
+    // Default-Gültigkeit: heute + 14 Tage
+    DateTime selectedValidUntil = DateTime.now().add(const Duration(days: 14));
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Angebot reaktivieren'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Möchtest du das Angebot ${quote.quoteNumber} wieder aktivieren?'),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: QuoteColors.accepted.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: QuoteColors.accepted.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          getAdaptiveIcon(
+                            iconName: 'info',
+                            defaultIcon: Icons.info,
+                            color: QuoteColors.accepted,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Was passiert:',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '• Verfügbarkeit aller Produkte wird geprüft\n'
+                            '• Bei Erfolg: Status zurück auf "Offen", Reservierungen neu angelegt\n'
+                            '• PDF wird mit neuem Gültigkeitsdatum erstellt\n'
+                            '• Falls Produkte fehlen, erhältst du eine Übersicht',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Neues Gültigkeitsdatum:',
+                  style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedValidUntil,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (picked != null) {
+                      setDialogState(() {
+                        selectedValidUntil = picked;
+                      });
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Theme.of(context).colorScheme.outline),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        getAdaptiveIcon(
+                          iconName: 'calendar_today',
+                          defaultIcon: Icons.calendar_today,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          DateFormat('dd.MM.yyyy').format(selectedValidUntil),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const Spacer(),
+                        getAdaptiveIcon(
+                          iconName: 'edit',
+                          defaultIcon: Icons.edit,
+                          size: 16,
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Abbrechen'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.pop(context, true),
+              icon: getAdaptiveIcon(
+                iconName: 'refresh',
+                defaultIcon: Icons.refresh,
+              ),
+              label: const Text('Reaktivieren'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: QuoteColors.accepted,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    // Loading anzeigen
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      final result = await QuoteService.reactivateQuote(
+        quote: quote,
+        newValidUntil: selectedValidUntil,
+        userId: user?.uid ?? 'unknown',
+        userEmail: user?.email ?? 'Unknown User',
+      );
+
+      if (mounted) {
+        Navigator.pop(context); // Loading
+      }
+
+      if (result.success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Angebot ${quote.quoteNumber} reaktiviert – gültig bis ${DateFormat('dd.MM.yyyy').format(selectedValidUntil)}',
+              ),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          );
+        }
+      } else {
+        // Nicht verfügbare Produkte anzeigen
+        if (mounted) {
+          await showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Row(
+                children: [
+                  getAdaptiveIcon(
+                    iconName: 'warning',
+                    defaultIcon: Icons.warning,
+                    color: Colors.orange,
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(child: Text('Reaktivierung nicht möglich')),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Folgende Produkte sind nicht (ausreichend) verfügbar:'),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: result.unavailableItems
+                            .map((item) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('• '),
+                              Expanded(
+                                child: Text(
+                                  item,
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ))
+                            .toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Tipp: Nutze die "Kopieren"-Funktion, um ein neues Angebot mit den verfügbaren Produkten zu erstellen.',
+                      style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Schliessen'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _copyQuoteToNewQuote(quote);
+                  },
+                  icon: getAdaptiveIcon(
+                    iconName: 'content_copy',
+                    defaultIcon: Icons.content_copy,
+                  ),
+                  label: const Text('Neues Angebot erstellen'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: goldenColour,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Reaktivieren: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
   }
