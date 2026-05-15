@@ -1,7 +1,6 @@
 
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import '../components/circular_avatar_shadowed.dart';
+
 import '../constants.dart';
 
 import '../services/auto_size_text.dart';

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+
 import 'package:get/get_utils/src/extensions/internacionalization.dart';
 import 'dart:async';
 import '../home/start_screen.dart';
@@ -82,7 +82,7 @@ backgroundColor: Colors.white,
       showUnselectedLabels: false,
 
       items:
-      [BottomNavigationBarItem(icon: const FaIcon(FontAwesomeIcons.house), label: "dashboard".tr),
+      [BottomNavigationBarItem(icon:  getAdaptiveIcon(iconName: 'house',defaultIcon:Icons.house), label: "dashboard".tr),
         BottomNavigationBarItem(icon:  getAdaptiveIcon(iconName: 'document_scanner',defaultIcon:Icons.document_scanner), label: "scanner".tr),
       ],
       ),
