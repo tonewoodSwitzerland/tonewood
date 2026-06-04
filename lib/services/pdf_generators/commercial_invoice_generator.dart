@@ -627,9 +627,14 @@ class CommercialInvoiceGenerator extends BasePdfGenerator {
       }
 
       final woodInfo = woodTypeCache[woodCode]!;
+
       final baseDensity = (woodInfo['density'] as num?)?.toDouble() ?? 0;
       final customDensity = (item['custom_density'] as num?)?.toDouble() ?? 0;
-      final density = customDensity > 0 ? customDensity : baseDensity;
+      final itemDensity = (item['density'] as num?)?.toDouble() ?? 0;
+      final density = customDensity > 0
+          ? customDensity
+          : (itemDensity > 0 ? itemDensity : baseDensity);
+
       // PRIORITÄT 1: Individuelle Zolltarifnummer
       if (item['custom_tariff_number'] != null &&
           (item['custom_tariff_number'] as String).isNotEmpty) {

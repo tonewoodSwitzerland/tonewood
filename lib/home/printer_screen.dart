@@ -84,6 +84,8 @@ class PrinterScreenState extends State<PrinterScreen> {
       });
     });
   }
+  // 🎵 ACTS – separat, damit Barcode-Logik unberührt bleibt
+  bool _isActs = false;
   String? _selectedYear;
   double _onlineShopPrice = 0.0;
   TextEditingController _priceController = TextEditingController();
@@ -278,6 +280,7 @@ class PrinterScreenState extends State<PrinterScreen> {
         'barcode': fullBarcode,
         'shop_id': nextShopItem.toString().padLeft(4, '0'),
         'price_CHF': _onlineShopPrice,
+        'is_acts': _isActs,
       });
 
       // Counter auf den VERWENDETEN Wert setzen
@@ -1517,6 +1520,7 @@ class PrinterScreenState extends State<PrinterScreen> {
             'year': false,
           };
           _selectedYear = null;
+          _isActs = false;
         }
       });
 
@@ -1574,6 +1578,7 @@ class PrinterScreenState extends State<PrinterScreen> {
                     };
                   }
                 }
+                _isActs = false;
 
                 if (productData?['price_CHF'] != null) {
                   _onlineShopPrice = productData!['price_CHF'].toDouble();
@@ -1663,7 +1668,7 @@ class PrinterScreenState extends State<PrinterScreen> {
           }
           _isExistingOnlineShopItem = true;
           _onlineShopItem = true;
-
+          _isActs = productData?['is_acts'] ?? false;
           // Bei einem Shop-Item die Features extrahieren, wenn vorhanden
           if (productData?['features'] != null) {
             _productionFeatures = {
@@ -1716,6 +1721,7 @@ class PrinterScreenState extends State<PrinterScreen> {
 
               // Aktuelles Jahr als Standard setzen
               _selectedYear = DateTime.now().year.toString().substring(2);
+              _isActs = false;
             } else {
               // Bei normalen Verkaufsartikeln Features zurücksetzen
               _productionFeatures = {
@@ -1726,6 +1732,7 @@ class PrinterScreenState extends State<PrinterScreen> {
                 'year': false,
               };
               _selectedYear = null;
+              _isActs = false;
             }
           });
           await _saveCurrentSettings();
@@ -2004,6 +2011,7 @@ class PrinterScreenState extends State<PrinterScreen> {
               'year': parts.length >= 4,
             };
           }
+          _isActs = false;
           if (productData?['price_CHF'] != null) {
             _onlineShopPrice = productData!['price_CHF'].toDouble();
             _priceController.text = _onlineShopPrice.toString();
@@ -2223,8 +2231,10 @@ class PrinterScreenState extends State<PrinterScreen> {
               _buildFeatureToggle('Hasel', 'hasel'),
               _buildFeatureToggle('Mond', 'mondholz'),
               _buildFeatureToggle('FSC', 'fsc'),
+              _buildActsToggle(), // 🎵 NEU
             ],
           ),
+
           SizedBox(height: 16),
           Row(
             children: [
@@ -2359,6 +2369,62 @@ class PrinterScreenState extends State<PrinterScreen> {
 
               getAdaptiveIcon(iconName: 'check', defaultIcon:
                 Icons.check,
+                size: 16,
+                color: Colors.white,
+              )
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  // 🎵 ACTS-Toggle – identisch zu _buildFeatureToggle, nutzt aber _isActs (kein Barcode-Feature)
+  Widget _buildActsToggle() {
+    bool isActive = _isActs;
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _isActs = !isActive;
+        });
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? Colors.green.shade100 : Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isActive ? Colors.green : Colors.grey.shade300,
+            width: isActive ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Text(
+              'ACTS',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                color: isActive ? Colors.green.shade900 : Colors.grey.shade700,
+              ),
+            ),
+            SizedBox(height: 4),
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isActive ? Colors.green : Colors.transparent,
+                border: Border.all(
+                  color: isActive ? Colors.green : Colors.grey.shade400,
+                ),
+              ),
+              child: isActive
+                  ? getAdaptiveIcon(
+                iconName: 'check',
+                defaultIcon: Icons.check,
                 size: 16,
                 color: Colors.white,
               )
@@ -3157,6 +3223,7 @@ class PrinterScreenState extends State<PrinterScreen> {
                       };
 
                       _selectedYear = DateTime.now().year.toString().substring(2);
+                      _isActs = false;
                     });
 
                     if (barcodeData.isEmpty) {
@@ -3270,7 +3337,7 @@ class PrinterScreenState extends State<PrinterScreen> {
                                     };
                                   }
                                 }
-
+                                _isActs = false;
                                 if (productData?['price_CHF'] != null) {
                                   _onlineShopPrice = productData!['price_CHF'].toDouble();
                                   _priceController.text = _onlineShopPrice.toString();

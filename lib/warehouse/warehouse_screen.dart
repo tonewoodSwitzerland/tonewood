@@ -2468,6 +2468,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   return Card(
                     margin: const EdgeInsets.only(bottom: 12),
                     elevation: 2,
+                    clipBehavior: Clip.antiAlias,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -2480,153 +2481,194 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                           _showProductDetails(data);
                         }
                       },
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                      child: Stack(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        data['product_name']?.toString() ?? 'Unbenanntes Produkt',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      SingleChildScrollView(
-                                        scrollDirection: Axis.horizontal,
-                                        child: Row(
-                                          children: [
-                                            // 1. Qualität
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                              decoration: BoxDecoration(
-                                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                                borderRadius: BorderRadius.circular(6),
-                                              ),
-                                              child: Text(
-                                                data['quality_name']?.toString() ?? '-',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                                ),
-                                              ),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            data['product_name']?.toString() ?? 'Unbenanntes Produkt',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
                                             ),
-                                            const SizedBox(width: 8),
-
-                                            // 2. Preis
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                              decoration: BoxDecoration(
-                                                color: (data['discounted'] == true ? Colors.orange : Colors.green).shade50,
-                                                borderRadius: BorderRadius.circular(6),
-                                                border: Border.all(
-                                                  color: (data['discounted'] == true ? Colors.orange : Colors.green).shade200,
-                                                  width: 1,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            child: Row(
+                                              children: [
+                                                // 1. Qualität
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                  decoration: BoxDecoration(
+                                                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: Text(
+                                                    data['quality_name']?.toString() ?? '-',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                    ),
+                                                  ),
                                                 ),
-                                              ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  if (data['discounted'] == true) ...[
-                                                    Text(
-                                                      data['original_price_CHF']?.toString() ?? '',
+                                                const SizedBox(width: 8),
+
+                                                // 2. Preis
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                  decoration: BoxDecoration(
+                                                    color: (data['discounted'] == true ? Colors.orange : Colors.green).shade50,
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    border: Border.all(
+                                                      color: (data['discounted'] == true ? Colors.orange : Colors.green).shade200,
+                                                      width: 1,
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      if (data['discounted'] == true) ...[
+                                                        Text(
+                                                          data['original_price_CHF']?.toString() ?? '',
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            fontWeight: FontWeight.w500,
+                                                            color: Colors.grey.shade600,
+                                                            decoration: TextDecoration.lineThrough,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                      ],
+                                                      Text(
+                                                        data['price_CHF']?.toString() ?? '0.00',
+                                                        style: TextStyle(
+                                                          fontSize: 13,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: (data['discounted'] == true ? Colors.orange : Colors.green).shade800,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        'CHF',
+                                                        style: TextStyle(
+                                                          fontSize: 11,
+                                                          fontWeight: FontWeight.w600,
+                                                          color: (data['discounted'] == true ? Colors.orange : Colors.green).shade600,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+
+                                                // 3. Barcode
+                                                Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    SelectableText(
+                                                      _isOnlineShopView
+                                                          ? data['barcode']?.toString() ?? ''
+                                                          : data['short_barcode']?.toString() ?? '',
                                                       style: TextStyle(
-                                                        fontSize: 11,
-                                                        fontWeight: FontWeight.w500,
-                                                        color: Colors.grey.shade600,
-                                                        decoration: TextDecoration.lineThrough,
+                                                        color: Colors.grey[600],
+                                                        fontSize: 12,
                                                       ),
                                                     ),
                                                     const SizedBox(width: 4),
-                                                  ],
-                                                  Text(
-                                                    data['price_CHF']?.toString() ?? '0.00',
-                                                    style: TextStyle(
-                                                      fontSize: 13,
-                                                      fontWeight: FontWeight.bold,
-                                                      color: (data['discounted'] == true ? Colors.orange : Colors.green).shade800,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 4),
-                                                  Text(
-                                                    'CHF',
-                                                    style: TextStyle(
-                                                      fontSize: 11,
-                                                      fontWeight: FontWeight.w600,
-                                                      color: (data['discounted'] == true ? Colors.orange : Colors.green).shade600,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-
-                                            // 3. Barcode
-                                            Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                SelectableText(
-                                                  _isOnlineShopView
-                                                      ? data['barcode']?.toString() ?? ''
-                                                      : data['short_barcode']?.toString() ?? '',
-                                                  style: TextStyle(
-                                                    color: Colors.grey[600],
-                                                    fontSize: 12,
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 4),
-                                                GestureDetector(
-                                                  onTap: () {
-                                                    final text = _isOnlineShopView
-                                                        ? data['barcode']?.toString() ?? ''
-                                                        : data['short_barcode']?.toString() ?? '';
-                                                    Clipboard.setData(ClipboardData(text: text));
-                                                    ScaffoldMessenger.of(context).showSnackBar(
-                                                      SnackBar(
-                                                        content: Text('$text kopiert'),
-                                                        duration: const Duration(seconds: 1),
-                                                        behavior: SnackBarBehavior.floating,
+                                                    GestureDetector(
+                                                      onTap: () {
+                                                        final text = _isOnlineShopView
+                                                            ? data['barcode']?.toString() ?? ''
+                                                            : data['short_barcode']?.toString() ?? '';
+                                                        Clipboard.setData(ClipboardData(text: text));
+                                                        ScaffoldMessenger.of(context).showSnackBar(
+                                                          SnackBar(
+                                                            content: Text('$text kopiert'),
+                                                            duration: const Duration(seconds: 1),
+                                                            behavior: SnackBarBehavior.floating,
+                                                          ),
+                                                        );
+                                                      },
+                                                      child: Icon(
+                                                        Icons.copy,
+                                                        size: 14,
+                                                        color: Colors.grey[400],
                                                       ),
-                                                    );
-                                                  },
-                                                  child: Icon(
-                                                    Icons.copy,
-                                                    size: 14,
-                                                    color: Colors.grey[400],
-                                                  ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ],
                                             ),
-                                          ],
-                                        ),
-                                      )
-                                    ],
+                                          )
+                                        ],
+                                      ),
+                                    ),
+                                    // Bestand/Status Anzeige
+                                    if (_isOnlineShopView)
+                                      _buildOnlineShopStatus(data)
+                                    else
+                                      _buildInventoryStatus(data),
+                                  ],
+
+                                ),
+                                if (!_isOnlineShopView)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: _buildStatusIndicators(data),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          // 🎵 NEU: ACTS Badge (oben links, nur in der Shop-Ansicht)
+                          if (_isOnlineShopView && data['is_acts'] == true)
+                            Positioned(
+                              top: 0,
+                              left: 0,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade700,
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(12),
+                                    bottomRight: Radius.circular(8),
                                   ),
                                 ),
-                                // Bestand/Status Anzeige
-                                if (_isOnlineShopView)
-                                  _buildOnlineShopStatus(data)
-                                else
-                                  _buildInventoryStatus(data),
-                              ],
-
-                            ),
-                            if (!_isOnlineShopView)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: _buildStatusIndicators(data),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    getAdaptiveIcon(
+                                      iconName: 'graphic_eq',
+                                      defaultIcon: Icons.graphic_eq,
+                                      color: Colors.white,
+                                      size: 12,
+                                    ),
+                                    const SizedBox(width: 3),
+                                    const Text(
+                                      'ACTS',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                          ],
-                        ),
+                            ),
+
+                        ],
                       ),
                     ),
                   );

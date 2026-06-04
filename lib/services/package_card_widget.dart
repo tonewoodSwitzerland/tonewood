@@ -38,7 +38,6 @@ class PackageCardWidget extends StatelessWidget {
   // ═══════════════════════════════════════════════════════════════════════════
   // Gewichtsberechnungen
   // ═══════════════════════════════════════════════════════════════════════════
-
   double _calculateNetWeight() {
     double netWeight = 0.0;
     final packageItems = package['items'] as List<dynamic>? ?? [];
@@ -47,30 +46,58 @@ class PackageCardWidget extends StatelessWidget {
       final quantity = (item['quantity'] as num?)?.toDouble() ?? 0.0;
       final unit = item['unit'] ?? 'Stk';
 
+      // ---- DEBUG START ----
+      print('=== CARD _calculateNetWeight ===');
+      print('  product_name: ${item['product_name']}');
+      print('  product_id: ${item['product_id']}');
+      print('  wood_code: ${item['wood_code']}');
+      print('  unit: $unit');
+      print('  quantity: $quantity');
+      print('  item.volume_per_unit: ${item['volume_per_unit']}');
+      print('  item.custom_length: ${item['custom_length']}');
+      print('  item.custom_width: ${item['custom_width']}');
+      print('  item.custom_thickness: ${item['custom_thickness']}');
+      print('  item.custom_density: ${item['custom_density']}');
+      print('  item.density: ${item['density']}');
+      // ---- DEBUG END ----
+
       if (unit.toLowerCase() == 'kg') {
         netWeight += quantity;
-      } else {
-        double volumePerPiece = 0.0;
-        final volumeField = (item['volume_per_unit'] as num?)?.toDouble() ?? 0.0;
-
-        if (volumeField > 0) {
-          volumePerPiece = volumeField;
-        } else {
-          final length = (item['custom_length'] as num?)?.toDouble() ?? 0.0;
-          final width = (item['custom_width'] as num?)?.toDouble() ?? 0.0;
-          final thickness = (item['custom_thickness'] as num?)?.toDouble() ?? 0.0;
-          if (length > 0 && width > 0 && thickness > 0) {
-            volumePerPiece = (length / 1000) * (width / 1000) * (thickness / 1000);
-          }
-        }
-
-        final density = (item['custom_density'] as num?)?.toDouble()
-            ?? (item['density'] as num?)?.toDouble()
-            ?? 0.0;
-        final weightPerPiece = volumePerPiece * density;
-        netWeight += weightPerPiece * quantity;
+        print('  -> kg-Pfad, netWeight += $quantity');
+        continue;
       }
+
+      double volumePerPiece = 0.0;
+      final volumeField = (item['volume_per_unit'] as num?)?.toDouble() ?? 0.0;
+      String volumeSource = 'none';
+
+      if (volumeField > 0) {
+        volumePerPiece = volumeField;
+        volumeSource = 'item.volume_per_unit';
+      } else {
+        final length = (item['custom_length'] as num?)?.toDouble() ?? 0.0;
+        final width = (item['custom_width'] as num?)?.toDouble() ?? 0.0;
+        final thickness = (item['custom_thickness'] as num?)?.toDouble() ?? 0.0;
+        if (length > 0 && width > 0 && thickness > 0) {
+          volumePerPiece = (length / 1000) * (width / 1000) * (thickness / 1000);
+          volumeSource = 'item dimensions';
+        }
+      }
+
+      final density = (item['custom_density'] as num?)?.toDouble()
+          ?? (item['density'] as num?)?.toDouble()
+          ?? 0.0;
+      final weightPerPiece = volumePerPiece * density;
+      final lineTotal = weightPerPiece * quantity;
+      netWeight += lineTotal;
+
+      print('  -> volumeSource: $volumeSource');
+      print('  -> volumePerPiece: $volumePerPiece');
+      print('  -> density: $density');
+      print('  -> weightPerPiece: $weightPerPiece');
+      print('  -> lineTotal: $lineTotal');
     }
+    print('=== CARD totalNet: $netWeight ===');
     return netWeight;
   }
 

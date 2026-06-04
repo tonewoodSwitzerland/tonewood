@@ -602,18 +602,31 @@ class PackingListGenerator extends BasePdfGenerator {
         'custom_volume': 0.0
       };
 
-      final itemLength = (measurements['custom_length'] as num).toDouble();
-      final itemWidth = (measurements['custom_width'] as num).toDouble();
-      final thickness = (measurements['custom_thickness'] as num).toDouble();
+      // Maße: Snapshot vom Item bevorzugen (wie in der Card), Basket-Cache nur als Fallback
+      final itemLengthSnap = (item['custom_length'] as num?)?.toDouble() ?? 0.0;
+      final itemWidthSnap = (item['custom_width'] as num?)?.toDouble() ?? 0.0;
+      final itemThicknessSnap = (item['custom_thickness'] as num?)?.toDouble() ?? 0.0;
 
+      final itemLength = itemLengthSnap > 0
+          ? itemLengthSnap
+          : (measurements['custom_length'] as num).toDouble();
+      final itemWidth = itemWidthSnap > 0
+          ? itemWidthSnap
+          : (measurements['custom_width'] as num).toDouble();
+      final thickness = itemThicknessSnap > 0
+          ? itemThicknessSnap
+          : (measurements['custom_thickness'] as num).toDouble();
       // Holzart-Info für Dichte
       // Holzart-Info für Dichte
       final woodCode = item['wood_code'] as String? ?? '';
       final woodInfo = woodTypeCache[woodCode] ?? {};
+
       final baseDensity = (woodInfo['density'] as num?)?.toDouble() ?? 0.0;
       final customDensity = (item['custom_density'] as num?)?.toDouble() ?? 0.0;
-      final density = customDensity > 0 ? customDensity : baseDensity;
-
+      final itemDensity = (item['density'] as num?)?.toDouble() ?? 0.0;
+      final density = customDensity > 0
+          ? customDensity
+          : (itemDensity > 0 ? itemDensity : baseDensity);
       // Volumen berechnen
       double volumePerPiece = 0.0;
 
@@ -659,13 +672,23 @@ class PackingListGenerator extends BasePdfGenerator {
       double weightPerPiece = 0.0;
       double totalWeight = 0.0;
       double totalVolume = 0.0;
-      print("Item: ${item['product_name']}");
-      print("  Unit: $unit");
-      print("  Quantity: $quantity");
-      print("  Density: $density");
-      print("  Volume per piece: $volumePerPiece");
-      print("  Total weight: $totalWeight");
-      print("  Total volume: $totalVolume");
+
+      print("=== PDF item: ${item['product_name']} ===");
+      print("  product_id: ${item['product_id']}");
+      print("  wood_code: ${item['wood_code']}");
+      print("  unit: $unit");
+      print("  quantity: $quantity");
+      print("  item.volume_per_unit: ${item['volume_per_unit']}");
+      print("  item.custom_density: ${item['custom_density']}");
+      print("  woodInfo.density (cache): ${woodInfo['density']}");
+      print("  measurements (cache): $measurements");
+      print("  -> density used: $density");
+      print("  -> volumePerPiece used: $volumePerPiece");
+      print("  -> totalWeight: $totalWeight");
+
+
+
+
       if (unit.toLowerCase() == 'kg') {
         // Wenn Einheit kg ist, ist quantity bereits das Gesamtgewicht
         totalWeight = quantity;

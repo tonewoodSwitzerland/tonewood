@@ -54,7 +54,12 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
   // NEU: Gratisartikel-Variablen
   bool _isGratisartikel = false;
   final TextEditingController _proformaController = TextEditingController();
+// 🔥 NEU: Thermobehandlung (wie im "Produkt anpassen"-Dialog)
+  bool _hasThermalTreatment = false;
+  final TextEditingController _temperatureController = TextEditingController();
 
+  // 🎵 NEU: ACTS
+  bool _isActs = false;
 
   // Ausgewählte Werte
   Map<String, dynamic>? _selectedInstrument;
@@ -142,10 +147,17 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
         'quality_name': _selectedQuality!['name'],
         'quality_code': _selectedQuality!['code'],
         'fsc_status': _selectedFscStatus,
+        'has_thermal_treatment': _hasThermalTreatment, // 🔥 NEU
+        'is_acts': _isActs,                            // 🎵 NEU
         'is_manual_product': true,
         'timestamp': FieldValue.serverTimestamp(),
       };
 
+      // 🔥 NEU: Thermo-Temperatur (nur wenn behandelt)
+      if (_hasThermalTreatment && _temperatureController.text.isNotEmpty) {
+        manualProduct['thermal_treatment_temperature'] =
+            int.tryParse(_temperatureController.text);
+      }
       // Nach den anderen Feldern hinzufügen:
       if (_customTariffController.text.trim().isNotEmpty) {
         manualProduct['custom_tariff_number'] = _customTariffController.text.trim();
@@ -571,7 +583,111 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
                     ),
 
                     const SizedBox(height: 24),
+// 🔥 NEU: Thermobehandlung & 🎵 ACTS (wie im "Produkt anpassen"-Dialog)
+                    StatefulBuilder(
+                      builder: (context, setSheetState) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildSectionTitle('Thermobehandlung', Icons.whatshot),
+                            const SizedBox(height: 12),
+                            Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: CheckboxListTile(
+                                title: const Text('Thermobehandelt'),
+                                subtitle: const Text('Artikel wurde thermisch behandelt'),
+                                value: _hasThermalTreatment,
+                                onChanged: (value) {
+                                  setSheetState(() {
+                                    _hasThermalTreatment = value ?? false;
+                                    if (!_hasThermalTreatment) {
+                                      _temperatureController.clear();
+                                    }
+                                  });
+                                },
+                                secondary: getAdaptiveIcon(
+                                  iconName: 'whatshot',
+                                  defaultIcon: Icons.whatshot,
+                                  color: _hasThermalTreatment
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Colors.grey,
+                                ),
+                              ),
+                            ),
 
+                            if (_hasThermalTreatment) ...[
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _temperatureController,
+                                decoration: InputDecoration(
+                                  labelText: 'Temperatur (°C) *',
+                                  border: const OutlineInputBorder(),
+                                  filled: true,
+                                  fillColor: Theme.of(context).colorScheme.surface,
+                                  prefixIcon: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: getAdaptiveIcon(
+                                      iconName: 'thermostat',
+                                      defaultIcon: Icons.thermostat,
+                                    ),
+                                  ),
+                                  suffixText: '°C',
+                                  helperText: 'Pflichtfeld - Behandlungstemperatur (z.B. 180, 200, 212)',
+                                  errorText: _temperatureController.text.isEmpty
+                                      ? 'Temperatur erforderlich'
+                                      : null,
+                                ),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  LengthLimitingTextInputFormatter(3),
+                                ],
+                                onChanged: (value) {
+                                  setSheetState(() {});
+                                },
+                              ),
+                            ],
+
+                            const SizedBox(height: 24),
+
+                            _buildSectionTitle('ACTS', Icons.graphic_eq),
+                            const SizedBox(height: 12),
+                            Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: CheckboxListTile(
+                                title: const Text('ACTS'),
+                                subtitle: const Text('Acoustically characterized by Tonewood Switzerland'),
+                                value: _isActs,
+                                onChanged: (value) {
+                                  setSheetState(() {
+                                    _isActs = value ?? false;
+                                  });
+                                },
+                                secondary: getAdaptiveIcon(
+                                  iconName: 'graphic_eq',
+                                  defaultIcon: Icons.graphic_eq,
+                                  color: _isActs
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Colors.grey,
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 24),
+                          ],
+                        );
+                      },
+                    ),
 // Zolltarifnummer
                     _buildSectionTitle('Zolltarifnummer', Icons.local_shipping),
                     const SizedBox(height: 12),
@@ -1225,6 +1341,7 @@ class _ManualProductSheetContentState extends State<ManualProductSheetContent> {
     _proformaController.dispose();
     _customTariffController.dispose();
     _partsController.dispose();
+    _temperatureController.dispose();
     super.dispose();
   }
 }

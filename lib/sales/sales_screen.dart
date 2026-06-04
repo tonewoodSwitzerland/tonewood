@@ -15,7 +15,7 @@ import '../services/price_formatter.dart';
 import '../services/swiss_rounding.dart'; // Pfad anpassen je nach Projektstruktur
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../components/check_address.dart';
-import '../components/manual_product_dialog.dart';
+import 'manual_product_dialog.dart';
 import '../quotes/additional_text_manager.dart';
 import '../quotes/quote_doc_selection_manager.dart';
 import 'package:flutter/material.dart';
@@ -3430,6 +3430,46 @@ class SalesScreenState extends State<SalesScreen> {
                           ),
                         ),
                       ),
+                    // 🎵 ACTS Badge (oben links)
+                    if (item['is_acts'] == true)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 250),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade700,
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(4),
+                              bottomRight: Radius.circular(8),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              getAdaptiveIcon(iconName: 'graphic_eq', defaultIcon:
+                              Icons.graphic_eq,
+                                color: Colors.white,
+                                size: 12,
+                              ),
+                              const SizedBox(width: 3),
+                              const Flexible(
+                                child: Text(
+                                  'ACTS',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -4402,6 +4442,9 @@ class SalesScreenState extends State<SalesScreen> {
 
     // NEU: Variable für Thermobehandlung-Status
     bool hasThermalTreatment = itemData['has_thermal_treatment'] ?? false;
+    // 🎵 ACTS-Status
+    bool isActs = itemData['is_acts'] ?? false;
+
     // NEU: Controller für Volumen - mit Standard-Volumen initialisieren falls leer
     final volumeController = TextEditingController();
     final densityController = TextEditingController(
@@ -5047,7 +5090,43 @@ class SalesScreenState extends State<SalesScreen> {
                                 ),
                               ],
 
+                              const SizedBox(height: 24),
 
+                              // 🎵 ACTS
+                              Text(
+                                'ACTS',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: CheckboxListTile(
+                                  title: const Text('ACTS'),
+                                  subtitle: const Text('Acoustically characterized by Tonewood Switzerland'),
+                                  value: isActs,
+                                  onChanged: (value) {
+                                    setDialogState(() {
+                                      isActs = value ?? false;
+                                    });
+                                  },
+                                  secondary: getAdaptiveIcon(
+                                    iconName: 'graphic_eq',
+                                    defaultIcon: Icons.graphic_eq,
+                                    color: isActs
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Colors.grey,
+                                  ),
+                                ),
+                              ),
                               const SizedBox(height: 24),
 
 
@@ -5579,7 +5658,7 @@ class SalesScreenState extends State<SalesScreen> {
                                         updateData['has_thermal_treatment'] = false;
                                         updateData['thermal_treatment_temperature'] = FieldValue.delete();
                                         updateData['custom_tariff_number'] = FieldValue.delete();
-
+                                        updateData['is_acts'] = false; // 🎵 NEU
 
 
 
@@ -5787,6 +5866,8 @@ class SalesScreenState extends State<SalesScreen> {
                                     if (!isService) {
                                       updateData['fsc_status'] = selectedFscStatus;
                                       updateData['notes'] =notesController.text.trim();
+                                      updateData['is_acts'] = isActs; // 🎵 NEU
+
                                     }
 
 
@@ -6091,6 +6172,10 @@ class SalesScreenState extends State<SalesScreen> {
       // 🟢 NEU: Zolltarifnummer hinzufügen
       if (productData.containsKey('custom_tariff_number') && productData['custom_tariff_number'] != null)
         'custom_tariff_number': productData['custom_tariff_number'],
+
+      // 🎵 ACTS-Status (nur Online-Shop-Stücke tragen das Flag, wird sonst nicht gesetzt)
+      if (productData.containsKey('is_acts'))
+        'is_acts': productData['is_acts'],
     });
   }
 
@@ -7670,7 +7755,8 @@ class SalesScreenState extends State<SalesScreen> {
           productData['is_online_shop_item'] = true;
           productData['online_shop_barcode'] = onlineShopBarcode;
           productData['online_shop_price'] = onlineShopData['price_CHF'];
-
+// 🎵 ACTS-Flag vom Online-Shop-Stück erben
+          productData['is_acts'] = onlineShopData['is_acts'] ?? false;
           // Zeige den normalen Dialog - aber mit vorausgefüllter Menge 1
           _showQuantityDialog(
             onlineShopData['short_barcode'],

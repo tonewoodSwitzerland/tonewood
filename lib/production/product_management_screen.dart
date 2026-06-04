@@ -1,4 +1,3 @@
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +14,7 @@ import '../analytics/roundwood/services/roundwood_service.dart';
 import '../constants.dart';
 import '../services/icon_helper.dart';
 import 'add_product_screen.dart';
+import 'product_management_help.dart';
 import 'package:intl/intl.dart';
 
 import '../home/barcode_scanner.dart';
@@ -154,7 +154,7 @@ class ProductManagementScreenState extends State<ProductManagementScreen>
         // Wenn es nur 1 oder 2 Teile gibt, nimm den originalen Barcode
         searchBarcode = barcode;
       }
-print("sB:$searchBarcode");
+      print("sB:$searchBarcode");
       final docSnapshot = await FirebaseFirestore.instance
           .collection('inventory')
           .doc(searchBarcode)
@@ -552,7 +552,7 @@ print("sB:$searchBarcode");
           title: Row(
             children: [
               getAdaptiveIcon(iconName: 'warning', defaultIcon:
-                Icons.warning,
+              Icons.warning,
                 color: Colors.orange[700],
                 size: 28,
               ),
@@ -1070,7 +1070,7 @@ print("sB:$searchBarcode");
               children: [
 
                 getAdaptiveIcon(iconName:value ?  'check_circle':'cancel', defaultIcon:
-                  value ? Icons.check_circle : Icons.cancel,
+                value ? Icons.check_circle : Icons.cancel,
                   color: value ? Colors.green[700] : Colors.red[700],
                   size: 16,
                 ),
@@ -1275,7 +1275,7 @@ print("sB:$searchBarcode");
             padding: const EdgeInsets.all(16.0),
             child: Row(
               children: [
-               getAdaptiveIcon(
+                getAdaptiveIcon(
                   iconName: iconName,
                   defaultIcon: icon,
                   size: 24,
@@ -1318,7 +1318,24 @@ print("sB:$searchBarcode");
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Über Stamm buchen', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: const Color(0xFF0F4A29))),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Über Stamm buchen', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: const Color(0xFF0F4A29))),
+              IconButton(
+                icon: getAdaptiveIcon(
+                  iconName: 'help',
+                  defaultIcon: Icons.help,
+                  color: Colors.grey[600],
+                ),
+                tooltip: 'Hilfe',
+                onPressed: () => showProductManagementHelp(
+                  context: context,
+                  topic: ProductHelpTopic.ueberStamm,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 24),
           Card(
             elevation: 4,
@@ -1365,7 +1382,24 @@ print("sB:$searchBarcode");
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Produkte verwalten', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: const Color(0xFF0F4A29))),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Produkte verwalten', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: const Color(0xFF0F4A29))),
+              IconButton(
+                icon: getAdaptiveIcon(
+                  iconName: 'help',
+                  defaultIcon: Icons.help,
+                  color: Colors.grey[600],
+                ),
+                tooltip: 'Hilfe',
+                onPressed: () => showProductManagementHelp(
+                  context: context,
+                  topic: ProductHelpTopic.produkte,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 24),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -1462,9 +1496,11 @@ print("sB:$searchBarcode");
                   defaultIcon: Icons.help,
                   color: Colors.grey[600],
                 ),
-                onPressed: () {
-                  // Show help dialog or information
-                },
+                tooltip: 'Hilfe',
+                onPressed: () => showProductManagementHelp(
+                  context: context,
+                  topic: ProductHelpTopic.produktionBuchen,
+                ),
               ),
             ],
           ),
@@ -1590,9 +1626,11 @@ print("sB:$searchBarcode");
                     defaultIcon: Icons.help,
                     color: Colors.grey[600],
                   ),
-                  onPressed: () {
-                    // Show help dialog
-                  },
+                  tooltip: 'Hilfe',
+                  onPressed: () => showProductManagementHelp(
+                    context: context,
+                    topic: ProductHelpTopic.rundholz,
+                  ),
                 ),
               ],
             ),
@@ -1698,7 +1736,7 @@ print("sB:$searchBarcode");
             ),
           ],
         ));
-    }
+  }
   void _showRoundwoodListDialog() {
     RoundwoodFilter _dialogFilter = RoundwoodFilter(); // ← außerhalb des builders!
 
@@ -2050,93 +2088,93 @@ print("sB:$searchBarcode");
 
   void _showProductSearchDialog() {
 
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (BuildContext context) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.9,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black26,
-                  blurRadius: 10,
-                  spreadRadius: 0,
-                  offset: Offset(0, -1),
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.9,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 10,
+                spreadRadius: 0,
+                offset: Offset(0, -1),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              // Drag Handle oben
+              Container(
+                margin: EdgeInsets.only(top: 12, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-              ],
-            ),
-            child: Column(
-              children: [
-                // Drag Handle oben
-                Container(
-                  margin: EdgeInsets.only(top: 12, bottom: 8),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+              ),
 
-                // Titel mit Schließen-Button
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: Colors.grey.shade200,
-                        width: 1,
-                      ),
+              // Titel mit Schließen-Button
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Colors.grey.shade200,
+                      width: 1,
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      getAdaptiveIcon(iconName: 'warehouse', defaultIcon: Icons.warehouse,),
-
-                      SizedBox(width: 12),
-                      Text(
-                        'Verkaufsliste',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: primaryAppColor,
-                        ),
-                      ),
-                      Spacer(),
-                      IconButton(
-                        icon:   getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
-                        onPressed: () => Navigator.pop(context),
-                        color: Colors.grey[600],
-                      ),
-                    ],
-                  ),
                 ),
+                child: Row(
+                  children: [
+                    getAdaptiveIcon(iconName: 'warehouse', defaultIcon: Icons.warehouse,),
 
-                // Hauptinhalt
-                Expanded(
-                  child: WarehouseScreen(
-                    mode: 'lookup',
-                    isDialog: true,
-                    onBarcodeSelected: (barcode) async {
-                      print("trest");
-                      Navigator.pop(context);
-                      _searchProduct(barcode);
-                      //await _fetchProductData(barcode);
-                    },
-                    key: UniqueKey(),
-                  ),
+                    SizedBox(width: 12),
+                    Text(
+                      'Verkaufsliste',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: primaryAppColor,
+                      ),
+                    ),
+                    Spacer(),
+                    IconButton(
+                      icon:   getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
+                      onPressed: () => Navigator.pop(context),
+                      color: Colors.grey[600],
+                    ),
+                  ],
                 ),
+              ),
+
+              // Hauptinhalt
+              Expanded(
+                child: WarehouseScreen(
+                  mode: 'lookup',
+                  isDialog: true,
+                  onBarcodeSelected: (barcode) async {
+                    print("trest");
+                    Navigator.pop(context);
+                    _searchProduct(barcode);
+                    //await _fetchProductData(barcode);
+                  },
+                  key: UniqueKey(),
+                ),
+              ),
 
 
-              ],
-            ),
-          );
-        },
-      );
+            ],
+          ),
+        );
+      },
+    );
 
   }
 
@@ -2400,6 +2438,7 @@ print("sB:$searchBarcode");
     required String subtitle,
     List<Widget>? actions,
     VoidCallback? onTap,
+    VoidCallback? onHelp,  // ← NEU: optionaler Hilfe-Button im Header
     Color? borderColor,
     Color contentColor = Colors.white,
     Widget? customContent,  // ← NEU
@@ -2453,6 +2492,19 @@ print("sB:$searchBarcode");
                         ],
                       ),
                     ),
+                    if (onHelp != null)
+                      IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        tooltip: 'Hilfe',
+                        icon: getAdaptiveIcon(
+                          iconName: 'help_outline',
+                          defaultIcon: Icons.help_outline,
+                          color: contentColor.withOpacity(0.7),
+                          size: 22,
+                        ),
+                        onPressed: onHelp,
+                      ),
                   ],
                 ),
                 // ═══ Custom Content ODER Actions ═══
@@ -2499,31 +2551,52 @@ print("sB:$searchBarcode");
               color: Colors.grey[50],
               borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             ),
-            child: TabBar(
-              controller: _verwaltungTabController,
-              labelColor: const Color(0xFF0F4A29),
-              unselectedLabelColor: Colors.grey[600],
-              indicatorColor: const Color(0xFF0F4A29),
-              indicatorWeight: 3,
-              tabs: [
-                Tab(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      getAdaptiveIcon(iconName: 'inventory_2', defaultIcon: Icons.inventory_2, size: 18),
-                      const SizedBox(width: 8),
-                      const Text('Produkte'),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TabBar(
+                    controller: _verwaltungTabController,
+                    labelColor: const Color(0xFF0F4A29),
+                    unselectedLabelColor: Colors.grey[600],
+                    indicatorColor: const Color(0xFF0F4A29),
+                    indicatorWeight: 3,
+                    tabs: [
+                      Tab(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            getAdaptiveIcon(iconName: 'inventory_2', defaultIcon: Icons.inventory_2, size: 18),
+                            const SizedBox(width: 8),
+                            const Text('Produkte'),
+                          ],
+                        ),
+                      ),
+                      Tab(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            getAdaptiveIcon(iconName: 'forest', defaultIcon: Icons.forest, size: 18),
+                            const SizedBox(width: 8),
+                            const Text('Rundholz'),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                Tab(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      getAdaptiveIcon(iconName: 'forest', defaultIcon: Icons.forest, size: 18),
-                      const SizedBox(width: 8),
-                      const Text('Rundholz'),
-                    ],
+                IconButton(
+                  tooltip: 'Hilfe',
+                  icon: getAdaptiveIcon(
+                    iconName: 'help_outline',
+                    defaultIcon: Icons.help_outline,
+                    color: Colors.grey[600],
+                    size: 22,
+                  ),
+                  onPressed: () => showProductManagementHelp(
+                    context: context,
+                    topic: _verwaltungTabController.index == 0
+                        ? ProductHelpTopic.produkte
+                        : ProductHelpTopic.rundholz,
                   ),
                 ),
               ],
@@ -2633,7 +2706,7 @@ print("sB:$searchBarcode");
                             const SizedBox(width: 8),
 
                             Expanded(child: SizedBox(width: 8,)),
-                            ],
+                          ],
                         ),
                       ],
                     ),
@@ -2841,6 +2914,10 @@ print("sB:$searchBarcode");
                 ),
                 title: 'Produktion buchen',
                 subtitle: 'Direkt oder über Stamm',
+                onHelp: () => showProductManagementHelp(
+                  context: context,
+                  topic: ProductHelpTopic.produktionBuchen,
+                ),
                 actions: [], // Keine Actions hier, wir bauen custom content
                 customContent: Column(
                   children: [
@@ -2954,7 +3031,7 @@ print("sB:$searchBarcode");
             mainAxisSize: MainAxisSize.min,
             children: [
               getAdaptiveIcon(iconName: iconName, defaultIcon:
-                icon,
+              icon,
                 color: color,
                 size: 24,
               ),

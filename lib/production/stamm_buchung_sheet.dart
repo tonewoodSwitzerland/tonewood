@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../constants.dart';
 import 'add_product_screen.dart';
+import 'buchung_edit_sheet.dart';
 import '../home/barcode_scanner.dart';
 import '../services/icon_helper.dart';
 
@@ -896,7 +897,7 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: InkWell(
-        onTap: () => _openProductEdit(shortBarcode),
+        onTap: () => _showBuchungDetail(produkt),
         borderRadius: BorderRadius.circular(10),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -953,12 +954,12 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
                           ),
                         ),
                         const Spacer(),
-                        // Edit-Hinweis
+                        // Detail-Hinweis (öffnet die Buchung)
                         getAdaptiveIcon(
-                          iconName: 'edit',
-                          defaultIcon: Icons.edit,
+                          iconName: 'chevron_right',
+                          defaultIcon: Icons.chevron_right,
                           color: Colors.grey[400],
-                          size: 14,
+                          size: 18,
                         ),
                       ],
                     ),
@@ -1036,6 +1037,353 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
       AppToast.show(message: 'Fehler: $e', height: h);
     }
   }
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Buchungs-Detail: zeigt die ausgewählte Buchung (Charge) – nicht das Produkt
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  void _showBuchungDetail(Map<String, dynamic> produkt) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+
+    if (isMobile) {
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Flexible(child: _buildBuchungDetailContent(ctx, produkt)),
+            ],
+          ),
+        ),
+      );
+    } else {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: Colors.white,
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 540, maxHeight: 680),
+            child: _buildBuchungDetailContent(ctx, produkt),
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildBuchungDetailContent(
+      BuildContext sheetContext, Map<String, dynamic> produkt) {
+    final productId = produkt['product_id'] as String? ?? '';
+    final parts = productId.split('.');
+    final shortBarcode =
+    parts.length >= 2 ? '${parts[0]}.${parts[1]}' : productId;
+
+    // Datum
+    String datum = '-';
+    final rawDate = produkt['stock_entry_date'];
+    if (rawDate != null) {
+      try {
+        final d = (rawDate as dynamic).toDate() as DateTime;
+        datum = '${d.day.toString().padLeft(2, '0')}.'
+            '${d.month.toString().padLeft(2, '0')}.${d.year}';
+      } catch (_) {}
+    }
+
+    final quantity = produkt['quantity'] ?? 0;
+    final unit = produkt['unit'] ?? 'Stk';
+    final price = (produkt['price_CHF'] as num?)?.toDouble() ?? 0.0;
+    final value = (produkt['value'] as num?)?.toDouble() ?? (quantity is num ? quantity * price : 0.0);
+    final batchNumber = produkt['batch_number'];
+    final stammNr = produkt['roundwood_internal_number'];
+    final stammYear = produkt['roundwood_year'];
+
+    final eigenschaften = <Widget>[
+      if (produkt['thermally_treated'] == true)
+        _buildPropertyChip('Thermo', 'whatshot', Icons.whatshot, Colors.orange),
+      if (produkt['haselfichte'] == true)
+        _buildPropertyChip('Haselfichte', 'grain', Icons.grain, Colors.brown),
+      if (produkt['moonwood'] == true)
+        _buildPropertyChip('Mondholz', 'nightlight', Icons.nightlight, Colors.indigo),
+      if (produkt['FSC_100'] == true)
+        _buildPropertyChip('FSC 100%', 'eco', Icons.eco, Colors.green),
+    ];
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Header
+        Container(
+          padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F4A29).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: getAdaptiveIcon(
+                  iconName: 'receipt_long',
+                  defaultIcon: Icons.receipt_long,
+                  color: const Color(0xFF0F4A29),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Buchung',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F4A29),
+                      ),
+                    ),
+                    Text(
+                      datum,
+                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Schließen',
+                icon: getAdaptiveIcon(
+                  iconName: 'close',
+                  defaultIcon: Icons.close,
+                  color: Colors.grey[600],
+                ),
+                onPressed: () => Navigator.of(sheetContext).pop(),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+
+        // Body
+        Flexible(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Produkt
+                Text(
+                  '${produkt['instrument_name'] ?? ''} ${produkt['part_name'] ?? ''}'.trim(),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${produkt['quality_name'] ?? ''} • ${produkt['wood_name'] ?? ''}',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    getAdaptiveIcon(
+                      iconName: 'tag',
+                      defaultIcon: Icons.tag,
+                      color: Colors.grey[500],
+                      size: 14,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      productId,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[500],
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // Detail-Zeilen
+                _buildDetailRow('confirmation_number', Icons.confirmation_number,
+                    'Charge-Nr.', batchNumber != null ? '$batchNumber' : '-'),
+                _buildDetailRow('inventory_2', Icons.inventory_2, 'Menge',
+                    '$quantity $unit'),
+                _buildDetailRow('sell', Icons.sell, 'Preis',
+                    'CHF ${price.toStringAsFixed(2)}'),
+                _buildDetailRow('payments', Icons.payments, 'Wert',
+                    'CHF ${value.toStringAsFixed(2)}'),
+                _buildDetailRow(
+                  'forest',
+                  Icons.forest,
+                  'Stamm',
+                  stammNr != null ? '$stammNr/$stammYear' : '–',
+                ),
+
+                // Eigenschaften
+                if (eigenschaften.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    'Eigenschaften',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[500],
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 8, runSpacing: 8, children: eigenschaften),
+                ],
+
+                const SizedBox(height: 24),
+
+                // Aktionen
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      final changed = await showBuchungEdit(
+                        context: context,
+                        booking: produkt,
+                      );
+                      if (changed == true) {
+                        if (Navigator.of(sheetContext).canPop()) {
+                          Navigator.of(sheetContext).pop();
+                        }
+                        _loadGebuchteProdukte();
+                      }
+                    },
+                    icon: getAdaptiveIcon(
+                      iconName: 'edit_note',
+                      defaultIcon: Icons.edit_note,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    label: const Text('Buchung bearbeiten / stornieren'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F4A29),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // Sekundär: zum Produkt-Stammdatensatz
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(sheetContext).pop();
+                      _openProductEdit(shortBarcode);
+                    },
+                    icon: getAdaptiveIcon(
+                      iconName: 'inventory_2',
+                      defaultIcon: Icons.inventory_2,
+                      color: const Color(0xFF0F4A29),
+                      size: 18,
+                    ),
+                    label: const Text('Produkt bearbeiten'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF0F4A29),
+                      side: const BorderSide(color: Color(0xFF0F4A29)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetailRow(
+      String iconName, IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          getAdaptiveIcon(
+            iconName: iconName,
+            defaultIcon: icon,
+            color: const Color(0xFF0F4A29).withOpacity(0.7),
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPropertyChip(
+      String label, String iconName, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          getAdaptiveIcon(
+            iconName: iconName,
+            defaultIcon: icon,
+            color: color,
+            size: 16,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBuchungsFormular() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
