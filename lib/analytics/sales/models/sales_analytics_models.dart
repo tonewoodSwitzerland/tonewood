@@ -7,6 +7,7 @@ class SalesAnalytics {
   final double averageOrderValue;
   final double averageOrderValueGross;
   final ThermoStats thermoStats;
+  final ActsStats actsStats;
   final ServiceStats serviceStats;
   final Map<String, CountryStats> countryStats;
   final Map<String, WoodTypeStats> woodTypeStats;
@@ -19,6 +20,7 @@ class SalesAnalytics {
     required this.averageOrderValue,
     this.averageOrderValueGross = 0,
     required this.thermoStats,
+    required this.actsStats,
     required this.serviceStats,
     required this.countryStats,
     required this.woodTypeStats,
@@ -32,6 +34,7 @@ class SalesAnalytics {
     averageOrderValue: 0,
     averageOrderValueGross: 0,
     thermoStats: ThermoStats.empty(),
+    actsStats: ActsStats.empty(),
     serviceStats: ServiceStats.empty(),
     countryStats: {},
     woodTypeStats: {},
@@ -229,6 +232,34 @@ class RevenueStats {
   }
 }
 
+
+
+class ActsStats {
+  final int actsItemCount;
+  final int totalItemCount;
+  final double actsRevenue;
+  final double totalRevenue;
+  final List<Map<String, dynamic>> details;
+
+  ActsStats({
+    required this.actsItemCount,
+    required this.totalItemCount,
+    required this.actsRevenue,
+    required this.totalRevenue,
+    this.details = const [],
+  });
+  factory ActsStats.empty() => ActsStats(
+    actsItemCount: 0,
+    totalItemCount: 0,
+    actsRevenue: 0,
+    totalRevenue: 0,
+    details: [],
+  );
+  double get itemSharePercent =>
+      totalItemCount > 0 ? actsItemCount / totalItemCount * 100 : 0;
+  double get revenueSharePercent =>
+      totalRevenue > 0 ? actsRevenue / totalRevenue * 100 : 0;
+}
 /// Thermo-Behandlung Statistiken
 class ThermoStats {
   final int thermoItemCount;

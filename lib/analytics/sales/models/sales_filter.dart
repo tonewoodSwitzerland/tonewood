@@ -15,7 +15,8 @@ class SalesFilter {
   final List<String>? costCenters;
   final List<String>? distributionChannels;
   final List<String>? countries;
-
+  /// NEU: Nur ACTS-Artikel (Acoustically characterized by Tonewood Switzerland)
+  final bool actsOnly;
   /// NEU: Steuert, ob die Länder-Auswertung (Filter + Aggregation)
   /// nach Lieferadresse (true) oder Rechnungsadresse (false) erfolgt.
   /// Default: false (= Rechnungsadresse, bisheriges Verhalten).
@@ -39,6 +40,7 @@ class SalesFilter {
     this.distributionChannels,
     this.countries,
     this.useShippingAddress = false, // NEU
+    this.actsOnly = false, // NEU
   });
 
   Map<String, dynamic> toMap() {
@@ -60,6 +62,7 @@ class SalesFilter {
     if (distributionChannels?.isNotEmpty ?? false) map['distributionChannels'] = distributionChannels;
     if (countries?.isNotEmpty ?? false) map['countries'] = countries;
     if (useShippingAddress) map['useShippingAddress'] = true; // NEU
+    if (actsOnly) map['actsOnly'] = true; // NEU
     return map;
   }
 
@@ -84,6 +87,7 @@ class SalesFilter {
     Object? distributionChannels = _unset,
     Object? countries = _unset,
     Object? useShippingAddress = _unset, // NEU
+    Object? actsOnly = _unset, // NEU
   }) {
     return SalesFilter(
       startDate:            identical(startDate, _unset)            ? this.startDate            : startDate as DateTime?,
@@ -103,6 +107,7 @@ class SalesFilter {
       distributionChannels: identical(distributionChannels, _unset) ? this.distributionChannels : distributionChannels as List<String>?,
       countries:            identical(countries, _unset)            ? this.countries            : countries as List<String>?,
       useShippingAddress:   identical(useShippingAddress, _unset)   ? this.useShippingAddress   : useShippingAddress as bool, // NEU
+      actsOnly:             identical(actsOnly, _unset)             ? this.actsOnly             : actsOnly as bool, // NEU
     );
   }
 }

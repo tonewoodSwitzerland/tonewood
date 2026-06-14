@@ -267,7 +267,16 @@ class _FilterFavoritesContentState extends State<_FilterFavoritesContent> {
     if (data['qualityCodes']?.isNotEmpty ?? false) {
       filterInfo.add('${(data['qualityCodes'] as List).length} Qualitäten');
     }
-
+    final features = (data['features'] as List?) ?? const [];
+    if (features.isNotEmpty) {
+      filterInfo.add('${features.length} Eigenschaft${features.length == 1 ? '' : 'en'}');
+    }
+    if (data['isActs'] == true) {
+      filterInfo.add('ACTS');
+    }
+    if (data['years']?.isNotEmpty ?? false) {
+      filterInfo.add('${(data['years'] as List).length} Jahrgang/Jahrgänge');
+    }
     return Text(
       filterInfo.isEmpty ? 'Keine Filter' : filterInfo.join(', '),
       style: TextStyle(fontSize: 12),

@@ -689,7 +689,21 @@ class SalesPdfService {
                   _formatCurrency(analytics.thermoStats.thermoRevenue)],
               ],
             ),
+            pw.SizedBox(height: 20),
 
+            // ACTS
+            pw.Text('ACTS', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 8),
+            _buildDataTable(
+              headers: ['Kennzahl', 'Wert', 'Detail'],
+              widths: {0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(2), 2: const pw.FlexColumnWidth(2)},
+              rows: [
+                ['Anteil Artikel', '${analytics.actsStats.itemSharePercent.toStringAsFixed(1)}%',
+                  '${analytics.actsStats.actsItemCount} von ${analytics.actsStats.totalItemCount}'],
+                ['Anteil Umsatz', '${analytics.actsStats.revenueSharePercent.toStringAsFixed(1)}%',
+                  _formatCurrency(analytics.actsStats.actsRevenue)],
+              ],
+            ),
             pw.Expanded(child: pw.SizedBox()),
             _buildFooter(),
           ],
@@ -771,6 +785,7 @@ class SalesPdfService {
     if (filter.selectedProducts != null && filter.selectedProducts!.isNotEmpty) {
       chips.add('${filter.selectedProducts!.length} Artikel');
     }
+    if (filter.actsOnly) chips.add('Nur ACTS'); // NEU
 
     if (chips.isEmpty) return [];
 
@@ -1236,10 +1251,12 @@ class SalesPdfService {
         (filter.woodTypes?.isNotEmpty ?? false) ||
         (filter.qualities?.isNotEmpty ?? false) ||
         (filter.parts?.isNotEmpty ?? false) ||
-        (filter.instruments?.isNotEmpty ?? false);
+        (filter.instruments?.isNotEmpty ?? false) ||
+        filter.actsOnly; // NEU
   }
 
   static bool _itemMatchesFilter(Map<String, dynamic> item, SalesFilter filter) {
+    if (filter.actsOnly && item['is_acts'] != true) return false; //
     if (filter.woodTypes != null && filter.woodTypes!.isNotEmpty) {
       final woodCode = item['wood_code']?.toString();
       if (woodCode == null || !filter.woodTypes!.contains(woodCode)) return false;

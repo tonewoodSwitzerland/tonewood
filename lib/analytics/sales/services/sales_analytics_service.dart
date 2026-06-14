@@ -170,6 +170,10 @@ class SalesAnalyticsService {
       int serviceItemCount = 0;
       double serviceRevenue = 0;
       List<Map<String, dynamic>> thermoDetails = [];
+      int actsItemCount = 0;
+      double actsRevenue = 0;
+      List<Map<String, dynamic>> actsDetails = [];
+
       List<Map<String, dynamic>> serviceDetails = [];
 
       Map<String, CountryStats> countryStats = {};
@@ -387,6 +391,20 @@ class SalesAnalyticsService {
             thermoItemCount++;
             thermoRevenue += itemRevenue;
             thermoDetails.add({
+              'orderNumber': data['orderNumber'] ?? '',
+              'productName': itemData['product_name']?.toString() ?? 'Unbekannt',
+              'quantity': quantity,
+              'revenue': itemRevenue,
+              'orderDate': orderDate,
+            });
+          }
+
+          // ACTS-Stats
+          final isActs = itemData['is_acts'] == true;
+          if (isActs) {
+            actsItemCount++;
+            actsRevenue += itemRevenue;
+            actsDetails.add({
               'orderNumber': data['orderNumber'] ?? '',
               'productName': itemData['product_name']?.toString() ?? 'Unbekannt',
               'quantity': quantity,
@@ -617,6 +635,13 @@ class SalesAnalyticsService {
           totalRevenue: totalRevenue,
           details: thermoDetails,
         ),
+        actsStats: ActsStats(
+          actsItemCount: actsItemCount,
+          totalItemCount: totalItemCount,
+          actsRevenue: actsRevenue,
+          totalRevenue: totalRevenue,
+          details: actsDetails,
+        ),
         serviceStats: ServiceStats(
           serviceItemCount: serviceItemCount,
           totalItemCount: totalItemCount,
@@ -633,6 +658,8 @@ class SalesAnalyticsService {
   }
 
   bool _itemMatchesFilter(Map<String, dynamic> item, SalesFilter filter) {
+    if (filter.actsOnly && item['is_acts'] != true) return false;
+
     final isService = item['is_service'] == true;
 
     // Welche Filter-Gruppen sind aktiv?

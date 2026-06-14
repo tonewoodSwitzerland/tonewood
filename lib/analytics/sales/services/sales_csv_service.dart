@@ -50,6 +50,7 @@ class SalesCsvService {
         'Instrument',
         'Bauteil',
         'Thermo',
+        'ACTS',
         'Gratisartikel',
         'Menge',
         'Einheit',
@@ -101,7 +102,8 @@ class SalesCsvService {
 
       for (final item in items) {
         if (sale['status'] == 'cancelled') continue;
-
+        // NEU: bei "Nur ACTS" nicht-ACTS-Artikel überspringen
+        if (filter?.actsOnly == true && item['is_acts'] != true) continue;
         final isGratis = item['is_gratisartikel'] == true;
         final quantity = (item['quantity'] as num?)?.toDouble() ?? 0;
         final pricePerUnit = (item['custom_price_per_unit'] as num?)?.toDouble()
@@ -134,6 +136,7 @@ class SalesCsvService {
           _escapeCsv(item['instrument_name'] ?? ''),
           _escapeCsv(item['part_name'] ?? ''),
           item['has_thermal_treatment'] == true ? 'Ja' : 'Nein',
+          item['is_acts'] == true ? 'Ja' : 'Nein', // NEU
           isGratis ? 'Ja' : 'Nein',
           quantity.toString(),
           item['unit'] ?? 'Stk',
@@ -390,7 +393,8 @@ class SalesCsvService {
         (filter.woodTypes?.isNotEmpty ?? false) ||
         (filter.qualities?.isNotEmpty ?? false) ||
         (filter.parts?.isNotEmpty ?? false) ||
-        (filter.instruments?.isNotEmpty ?? false);
+        (filter.instruments?.isNotEmpty ?? false) ||
+        filter.actsOnly; // NEU
   }
 
   static bool _itemMatchesFilter(Map<String, dynamic> item, SalesFilter filter) {
@@ -414,6 +418,8 @@ class SalesCsvService {
       final productId = item['product_id']?.toString();
       if (productId == null || !filter.selectedProducts!.contains(productId)) return false;
     }
+    if (filter.actsOnly && item['is_acts'] != true) return false; // NEU
+
     return true;
   }
 }

@@ -1,6 +1,9 @@
-
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:tonewood/warehouse/services/warehouse_export_service.dart';
+import 'package:tonewood/warehouse/warehouse_filter.dart';
+import 'package:tonewood/warehouse/warehouse_filter_query.dart';
+import 'package:tonewood/warehouse/warehouse_filter_repository.dart';
 
 import '../home/filter_favorites_sheet.dart';
 import 'package:flutter/material.dart';
@@ -42,6 +45,17 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   List<String> selectedWoodCodes = [];
   List<String> selectedQualityCodes = [];
 
+  // NEU: Shop-Eigenschaften (nur Online-Shop, clientseitig)
+  Set<String> selectedFeatures = {};   // Teilmenge von WarehouseFilter.featureKeys
+  bool? filterIsActs;                   // null = egal
+  List<String> selectedYears = [];      // ausgewählte Jahrgänge, z.B. "07"
+  List<String> _availableYears = [];    // aus geladenen Shop-Daten abgeleitet
+
+  // NEU: Von-Bis-Datumsfilter auf `created_at` (Lager + Shop, clientseitig)
+  DateTime? _createdFrom;               // null = keine untere Grenze
+  DateTime? _createdTo;                 // null = keine obere Grenze
+
+
   String? selectedUnit;
   final TextEditingController _searchController = TextEditingController();
 
@@ -52,7 +66,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   List<QueryDocumentSnapshot>? qualities;
   List<String> units = ['Stück', 'Kg', 'Palette', 'm³'];
 
-  StreamSubscription<DocumentSnapshot>? _filterSubscription;
+  StreamSubscription<WarehouseFilter?>? _filterSubscription;
+
   bool _isLoadingFilters = true;
   bool _hasUnsearchedChanges = false;
 
@@ -65,6 +80,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     //print('WarehouseScreen initState - isDialog: ${widget.isDialog}, mode: ${widget.mode}');
 
     _loadDropdownData();
+    _filterRepo = WarehouseFilterRepository(userId: _userId);
     _loadSavedFilters();
 
   }
@@ -82,11 +98,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   bool _isDesktopLayout = false;  // NEU
   String _activeSearchText = '';
   String get _userId => FirebaseAuth.instance.currentUser!.uid;
-  DocumentReference get _filterDoc => FirebaseFirestore.instance
-      .collection('users')
-      .doc(_userId)
-      .collection('settings')
-      .doc('filter_settings');
+
+  late final WarehouseFilterRepository _filterRepo;
 
   void _updateProductStream() {
     //print('_updateProductStream aufgerufen');
@@ -127,29 +140,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
     if (name != null && name.isNotEmpty) {
       try {
-        final favoriteData = <String, dynamic>{  // Expliziter Typ
-          'name': name,
-          'createdAt': FieldValue.serverTimestamp(),
-          'isSearch': _activeSearchText.isNotEmpty,
-        };
-
-        if (_activeSearchText.isNotEmpty) {  // Hier ändern
-          favoriteData['searchText'] = _activeSearchText;  // Hier ändern
-        } else {
-          favoriteData['instrumentCodes'] = selectedInstrumentCodes;
-          favoriteData['partCodes'] = selectedPartCodes;
-          favoriteData['woodCodes'] = selectedWoodCodes;
-          favoriteData['qualityCodes'] = selectedQualityCodes;
-          if (selectedUnit != null) {  // Nur hinzufügen wenn nicht null
-            favoriteData['unit'] = selectedUnit;
-          }
-        }
-
-        await FirebaseFirestore.instance
-            .collection('general_data')
-            .doc('filter_settings')
-            .collection('favorites')
-            .add(favoriteData);
+        await _filterRepo.saveFavorite(name: name, filter: _currentFilter);
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -173,25 +164,25 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       if (favoriteData['isSearch'] == true) {
         // Suchfilter anwenden
         _searchController.text = favoriteData['searchText'] ?? '';
-        selectedInstrumentCodes.clear();
-        selectedPartCodes.clear();
-        selectedWoodCodes.clear();
-        selectedQualityCodes.clear();
-        selectedUnit = null;
-
+        _clearManualFilters();
         // Wichtig: Suche direkt ausführen
         _performSearch();
       } else {
         // Manuelle Filter anwenden
-       _searchController.clear();
-       _hasUnsearchedChanges = false;
-    _activeSearchText = '';
+        _searchController.clear();
+        _hasUnsearchedChanges = false;
+        _activeSearchText = '';
         selectedInstrumentCodes = List<String>.from(favoriteData['instrumentCodes'] ?? []);
         selectedPartCodes = List<String>.from(favoriteData['partCodes'] ?? []);
         selectedWoodCodes = List<String>.from(favoriteData['woodCodes'] ?? []);
         selectedQualityCodes = List<String>.from(favoriteData['qualityCodes'] ?? []);
         selectedUnit = favoriteData['unit'];
-       _updateProductStream();
+        selectedFeatures = Set<String>.from(favoriteData['features'] ?? const []);
+        filterIsActs = favoriteData['isActs'] as bool?;
+        selectedYears = List<String>.from(favoriteData['years'] ?? const []);
+        _createdFrom = _dateFromMillis(favoriteData['createdFrom']);
+        _createdTo = _dateFromMillis(favoriteData['createdTo']);
+        _updateProductStream();
       }
     });
     _saveFilters();
@@ -208,96 +199,50 @@ class WarehouseScreenState extends State<WarehouseScreen> {
   }
 
   void _loadSavedFilters() {
-    _filterSubscription = _filterDoc
-        .snapshots()
-        .listen((snapshot) {
-      if (snapshot.exists && mounted) {
-        final data = snapshot.data() as Map<String, dynamic>;
+    _filterSubscription = _filterRepo.watch().listen((filter) {
+      if (!mounted) return;
 
-        // Suchtext laden
-        final savedSearchText = data['searchText'] ?? '';
-        if (_searchController.text != savedSearchText) {
-          _searchController.text = savedSearchText;
-        }
-
-        setState(() {
-          _isOnlineShopView = data['isOnlineShopView'] ?? false;
-          _shopFilter = data['shopFilter'];
-
-          // Wenn Suchtext vorhanden ist, überschreibt er die manuellen Filter
-          if (savedSearchText.isNotEmpty) {
-            selectedInstrumentCodes.clear();
-            selectedPartCodes.clear();
-            selectedWoodCodes.clear();
-            selectedQualityCodes.clear();
-            selectedUnit = null;
-
-            // NEU: Setze auch den aktiven Suchtext
-            _activeSearchText = savedSearchText;
-            _hasUnsearchedChanges = false;
-          } else {
-            // Nur manuelle Filter laden wenn kein Suchtext
-            selectedInstrumentCodes = List<String>.from(data['instrumentCodes'] ?? []);
-            selectedPartCodes = List<String>.from(data['partCodes'] ?? []);
-            selectedWoodCodes = List<String>.from(data['woodCodes'] ?? []);
-            selectedQualityCodes = List<String>.from(data['qualityCodes'] ?? []);
-            selectedUnit = data['unit'];
-
-            // NEU: Stelle sicher, dass kein aktiver Suchtext gesetzt ist
-            _activeSearchText = '';
-            _hasUnsearchedChanges = false;
-          }
-          _isLoadingFilters = false;
-        });
-
-        // DIESER TEIL FEHLT BEI IHNEN:
-        //print('Filter geladen: instruments=${selectedInstrumentCodes}, parts=${selectedPartCodes}');
-        _updateProductStream(); // WICHTIG: Auch hier aufrufen!
-
-      } else {
-        setState(() {
-          _isLoadingFilters = false;
-        });
-        //print("stellep");
+      if (filter == null) {
+        setState(() => _isLoadingFilters = false);
         _updateProductStream();
+        return;
       }
+
+      // Suchtext nur setzen, wenn abweichend (verhindert Cursor-Sprung).
+      if (_searchController.text != filter.searchText) {
+        _searchController.text = filter.searchText;
+      }
+
+      setState(() {
+        _isOnlineShopView = filter.isOnlineShopView;
+        _shopFilter = filter.shopFilter;
+
+        selectedInstrumentCodes = List<String>.from(filter.instrumentCodes);
+        selectedPartCodes = List<String>.from(filter.partCodes);
+        selectedWoodCodes = List<String>.from(filter.woodCodes);
+        selectedQualityCodes = List<String>.from(filter.qualityCodes);
+        selectedUnit = filter.unit;
+        selectedFeatures = Set<String>.from(filter.features);
+        filterIsActs = filter.isActs;
+        selectedYears = List<String>.from(filter.years);
+        _createdFrom = filter.createdFrom;
+        _createdTo = filter.createdTo;
+
+        _activeSearchText = filter.searchText;
+        _hasUnsearchedChanges = false;
+        _isLoadingFilters = false;
+      });
+
+      _updateProductStream();
     });
   }
-// Filter in Firebase speichern
   Future<void> _saveFilters() async {
     try {
-      // Wenn Suchtext vorhanden, speichere nur diesen
-      if (_activeSearchText.isNotEmpty) {
-        await _filterDoc.set({
-          'searchText': _activeSearchText,
-          'instrumentCodes': [],
-          'partCodes': [],
-          'woodCodes': [],
-          'qualityCodes': [],
-          'unit': null,
-          'isOnlineShopView': _isOnlineShopView,    // NEU
-          'shopFilter': _shopFilter,                 // NEU
-          'lastUpdated': FieldValue.serverTimestamp(),
-        });
-      } else {
-        // Sonst speichere die manuellen Filter
-        await _filterDoc.set({
-          'searchText': '',
-          'instrumentCodes': selectedInstrumentCodes,
-          'partCodes': selectedPartCodes,
-          'woodCodes': selectedWoodCodes,
-          'qualityCodes': selectedQualityCodes,
-          'unit': selectedUnit,
-          'isOnlineShopView': _isOnlineShopView,    // NEU
-          'shopFilter': _shopFilter,                 // NEU
-          'lastUpdated': FieldValue.serverTimestamp(),
-        });
-      }
+      await _filterRepo.save(_currentFilter);
     } catch (e) {
       //print('Fehler beim Speichern der Filter: $e');
     }
   }
-
   Future<double> _getAvailableQuantity(String shortBarcode) async {
     try {
 
@@ -330,7 +275,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
             (sum, doc) => sum + (((doc.data()['quantity'] as num?)?.toDouble() ?? 0.0).abs()),
       );
 
-    final result = currentStock - cartQuantity - reservedQuantity;
+      final result = currentStock - cartQuantity - reservedQuantity;
       //print('Available quantity: $result'); // Debug
       return result;
     } catch (e) {
@@ -605,7 +550,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                               ),
                               child: Row(
                                 children: [
-                                   getAdaptiveIcon(iconName: 'tag',defaultIcon:Icons.tag, color: Colors.grey[600], size: 20),
+                                  getAdaptiveIcon(iconName: 'tag',defaultIcon:Icons.tag, color: Colors.grey[600], size: 20),
                                   const SizedBox(width: 8),
                                   Text(
                                     data['barcode']?.toString() ?? 'N/A',
@@ -676,7 +621,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                               ),
                               child: Row(
                                 children: [
-                                getAdaptiveIcon(iconName: data['sold'] == true ? 'sell':'store', defaultIcon: data['sold'] == true ? Icons.sell : Icons.store, color: data['sold'] == true ? Colors.red : Colors.green,),
+                                  getAdaptiveIcon(iconName: data['sold'] == true ? 'sell':'store', defaultIcon: data['sold'] == true ? Icons.sell : Icons.store, color: data['sold'] == true ? Colors.red : Colors.green,),
 
                                   const SizedBox(width: 8),
                                   Text(
@@ -706,9 +651,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                   final originalPrice = (data['original_price_CHF'] as num?)?.toDouble();
                                   final isDiscounted = data['discounted'] == true;
                                   final TextEditingController priceController = TextEditingController(
-                                    text: currentPrice % 1 == 0
-                                        ? currentPrice.toInt().toString()
-                                        : currentPrice.toStringAsFixed(2));
+                                      text: currentPrice % 1 == 0
+                                          ? currentPrice.toInt().toString()
+                                          : currentPrice.toStringAsFixed(2));
 
                                   return Column(
                                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -795,7 +740,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                           labelText: 'Neuer Preis',
                                           suffixText: 'CHF',
                                           border: const OutlineInputBorder(),
-                                         // helperText: 'Nur ganze CHF-Beträge',
+                                          // helperText: 'Nur ganze CHF-Beträge',
                                           filled: true,
                                           fillColor: isInCart ? Colors.grey[100] : Colors.white,
                                         ),
@@ -1959,7 +1904,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               ),
               child: Row(
                 children: [
-                    getAdaptiveIcon(
+                  getAdaptiveIcon(
                     iconName: iconName,
                     defaultIcon: icon,
                     size: 20,
@@ -2152,13 +2097,13 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       child: Row(
         children: [
           getAdaptiveIcon(
-              iconName: iconName,
-              defaultIcon: icon ?? Icons.info,
-              size: 18,
-              color: Colors.grey[600],
-            ),
+            iconName: iconName,
+            defaultIcon: icon ?? Icons.info,
+            size: 18,
+            color: Colors.grey[600],
+          ),
 
-            const SizedBox(width: 8),
+          const SizedBox(width: 8),
 
           Expanded(
             flex: 2,
@@ -2216,106 +2161,65 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     }
   }
 
-  Query<Map<String, dynamic>> buildQuery() {
-    Query<Map<String, dynamic>> query;
+  /// Aktuelles Filtermodell aus dem Screen-State.
+  WarehouseFilter get _currentFilter => WarehouseFilter(
+    searchText: _activeSearchText,
+    instrumentCodes: selectedInstrumentCodes,
+    partCodes: selectedPartCodes,
+    woodCodes: selectedWoodCodes,
+    qualityCodes: selectedQualityCodes,
+    unit: selectedUnit,
+    isOnlineShopView: _isOnlineShopView,
+    shopFilter: _shopFilter,
+    createdFrom: _createdFrom,
+    createdTo: _createdTo,
+    features: selectedFeatures,
+    isActs: filterIsActs,
+    years: selectedYears,
+  );
 
-    if (_isOnlineShopView) {
-      query = FirebaseFirestore.instance
-          .collection('onlineshop');
-
-      // Online Shop spezifische Filter
-      if (_shopFilter != null) {
-        if (_shopFilter == 'sold') {
-          query = query.where('sold', isEqualTo: true);
-        } else if (_shopFilter == 'available') {
-          query = query.where('sold', isEqualTo: false);
-        } else if (_shopFilter == 'discounted') {
-          query = query.where('discounted', isEqualTo: true);
-        }
-      }
-
-      // Gemeinsame Filter für beide Ansichten
-      if (selectedInstrumentCodes.isNotEmpty) {
-        query = query.where('instrument_code', whereIn: selectedInstrumentCodes);
-      }
-      if (selectedPartCodes.isNotEmpty) {
-        query = query.where('part_code', whereIn: selectedPartCodes);
-      }
-      if (selectedWoodCodes.isNotEmpty) {
-        query = query.where('wood_code', whereIn: selectedWoodCodes);
-      }
-      if (selectedQualityCodes.isNotEmpty) {
-        query = query.where('quality_code', whereIn: selectedQualityCodes);
-      }
-
-      // Sortierung für Online Shop
-      if (_shopFilter == 'sold') {
-        query = query.orderBy('sold_at', descending: true);
-      } else {
-        query = query.orderBy('created_at', descending: true);
-      }
-    } else {
-      // Standard Lager Query
-      query = FirebaseFirestore.instance
-          .collection('inventory');
-
-      if (selectedInstrumentCodes.isNotEmpty) {
-        query = query.where('instrument_code', whereIn: selectedInstrumentCodes);
-      }
-      if (selectedPartCodes.isNotEmpty) {
-        query = query.where('part_code', whereIn: selectedPartCodes);
-      }
-      if (selectedWoodCodes.isNotEmpty) {
-        query = query.where('wood_code', whereIn: selectedWoodCodes);
-      }
-      if (selectedQualityCodes.isNotEmpty) {
-        query = query.where('quality_code', whereIn: selectedQualityCodes);
-      }
-      if (selectedUnit != null) {
-        query = query.where('unit', isEqualTo: selectedUnit);
-      }
-    }
-
-    return query;
+  /// Setzt ALLE manuellen Filter zurück (eine Quelle der Wahrheit).
+  /// Muss innerhalb von setState(...) aufgerufen werden.
+  /// Wichtig: Neue Filter NUR hier ergänzen, dann sind alle Reset-/
+  /// Such-Exklusivitäts-Stellen automatisch abgedeckt.
+  void _clearManualFilters() {
+    selectedInstrumentCodes.clear();
+    selectedPartCodes.clear();
+    selectedWoodCodes.clear();
+    selectedQualityCodes.clear();
+    selectedUnit = null;
+    selectedFeatures.clear();
+    filterIsActs = null;
+    selectedYears.clear();
+    _createdFrom = null;
+    _createdTo = null;
   }
 
-// Fügen Sie diese neue Methode hinzu, um die Suchergebnisse zu filtern:
-  List<QueryDocumentSnapshot> _filterBySearch(List<QueryDocumentSnapshot> docs) {
-    if (_activeSearchText.isEmpty) {  // Verwenden Sie _activeSearchText statt _searchController.text
-      return docs;
+  /// Liest einen gespeicherten millisecondsSinceEpoch-Wert defensiv als DateTime.
+  DateTime? _dateFromMillis(Object? raw) {
+    if (raw == null) return null;
+    if (raw is int) return DateTime.fromMillisecondsSinceEpoch(raw);
+    if (raw is num) return DateTime.fromMillisecondsSinceEpoch(raw.toInt());
+    return null;
+  }
+
+  /// Lesbare Beschriftung des aktiven Von-Bis-Datumsfilters für Chips.
+  String _dateRangeLabel() {
+    final fmt = DateFormat('dd.MM.yyyy');
+    if (_createdFrom != null && _createdTo != null) {
+      return '${fmt.format(_createdFrom!)} – ${fmt.format(_createdTo!)}';
     }
+    if (_createdFrom != null) return 'ab ${fmt.format(_createdFrom!)}';
+    if (_createdTo != null) return 'bis ${fmt.format(_createdTo!)}';
+    return '';
+  }
 
-    // Teile den Suchtext in einzelne Begriffe auf
-    final searchTerms = _activeSearchText.toLowerCase().split(' ')
-        .where((term) => term.isNotEmpty)
-        .toList();
+  Query<Map<String, dynamic>> buildQuery() {
+    return WarehouseFilterQuery.build(_currentFilter);
+  }
 
-
-    return docs.where((doc) {
-      final data = doc.data() as Map<String, dynamic>;
-
-      // Erstelle einen kombinierten String aus allen durchsuchbaren Feldern
-      final searchableContent = [
-        data['product_name'] ?? '',
-        data['product_name_en'] ?? '',
-        _isOnlineShopView ? (data['barcode'] ?? '') : (data['short_barcode'] ?? ''),
-        data['instrument_name'] ?? '',
-        data['instrument_name_en'] ?? '',
-        data['part_name'] ?? '',
-        data['part_name_en'] ?? '',
-        data['wood_name'] ?? '',
-        data['wood_name_en'] ?? '',
-        data['quality_name'] ?? '',
-        data['quality_name_en'] ?? '',
-        data['instrument_code'] ?? '',
-        data['part_code'] ?? '',
-        data['wood_code'] ?? '',
-        data['quality_code'] ?? '',
-      ].join(' ').toLowerCase();
-
-      // Prüfe ob ALLE Suchbegriffe im kombinierten Inhalt vorkommen
-      return searchTerms.every((term) => searchableContent.contains(term));
-    }).toList();
+  List<QueryDocumentSnapshot> _filterBySearch(List<QueryDocumentSnapshot> docs) {
+    return WarehouseFilterQuery.applyClientFilters(docs, _currentFilter);
   }
 
 // Aktualisieren Sie die _buildProductList() Methode:
@@ -2347,7 +2251,15 @@ class WarehouseScreenState extends State<WarehouseScreen> {
             ),
           );
         }
-
+        // NEU: verfügbare Jahrgänge aus den (server-)gefilterten Shop-Daten ableiten
+        if (_isOnlineShopView) {
+          final years = WarehouseFilterQuery.availableYears(snapshot.data!.docs);
+          if (!listEquals(years, _availableYears)) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() => _availableYears = years);
+            });
+          }
+        }
         // Filtere die Ergebnisse basierend auf dem Suchtext
         final filteredDocs = _filterBySearch(snapshot.data!.docs);
 
@@ -2694,170 +2606,170 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           }
 
           return Scaffold(
-              appBar: AppBar(
-                automaticallyImplyLeading: false,
-                title: Row(
-                  children: [
-                // Toggle Lager/Shop bleibt unverändert
-                IntrinsicWidth(
-                child: Container(
-                height: 36,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Colors.grey[300]!,
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() => _isOnlineShopView = false);
-                            _updateProductStream(); // HIER hinzufügen
-                            _saveFilters();
-                          },
-                          child: Container(
-                            alignment: Alignment.center,
-                            height: 36,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            decoration: BoxDecoration(
-                              color: !_isOnlineShopView ? primaryAppColor.withOpacity(0.1) : Colors.transparent,
-                              borderRadius: BorderRadius.horizontal(left: Radius.circular(7)),
-                            ),
-                            child: Text(
-                              'Lager',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: !_isOnlineShopView ? primaryAppColor : Colors.grey[600],
-                                fontWeight: !_isOnlineShopView ? FontWeight.w600 : FontWeight.normal,
-                              ),
-                            ),
-                          ),
+            appBar: AppBar(
+              automaticallyImplyLeading: false,
+              title: Row(
+                children: [
+                  // Toggle Lager/Shop bleibt unverändert
+                  IntrinsicWidth(
+                    child: Container(
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.grey[300]!,
+                          width: 1,
                         ),
                       ),
-                      Container(
-                        height: 24,
-                        width: 1,
-                        color: Colors.grey[300],
-                      ),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() => _isOnlineShopView = true);
-                            _updateProductStream(); // HIER hinzufügen
-                            _saveFilters();
-                          },
-                          child: Container(
-                            alignment: Alignment.center,
-                            height: 36,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            decoration: BoxDecoration(
-                              color: _isOnlineShopView ? primaryAppColor.withOpacity(0.1) : Colors.transparent,
-                              borderRadius: BorderRadius.horizontal(right: Radius.circular(7)),
-                            ),
-                            child: Text(
-                              'Shop',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: _isOnlineShopView ? primaryAppColor : Colors.grey[600],
-                                fontWeight: _isOnlineShopView ? FontWeight.w600 : FontWeight.normal,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-                    if (isDesktopLayout) ...[
-                      Expanded(
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 24),
-                          constraints: const BoxConstraints(maxWidth: 400),
-                          height: 36,
-                          child: TextFormField(
-                            controller: _searchController,
-
-                            decoration: InputDecoration(
-                              hintText: 'Suche nach Produkten...',
-                              hintStyle: TextStyle(fontSize: 14),
-                              prefixIcon:
-                              Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: getAdaptiveIcon(iconName: 'search', defaultIcon:
-                                  Icons.search,
-                                  size: 20,
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() => _isOnlineShopView = false);
+                                _updateProductStream(); // HIER hinzufügen
+                                _saveFilters();
+                              },
+                              child: Container(
+                                alignment: Alignment.center,
+                                height: 36,
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                decoration: BoxDecoration(
+                                  color: !_isOnlineShopView ? primaryAppColor.withOpacity(0.1) : Colors.transparent,
+                                  borderRadius: BorderRadius.horizontal(left: Radius.circular(7)),
+                                ),
+                                child: Text(
+                                  'Lager',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: !_isOnlineShopView ? primaryAppColor : Colors.grey[600],
+                                    fontWeight: !_isOnlineShopView ? FontWeight.w600 : FontWeight.normal,
+                                  ),
                                 ),
                               ),
-                              suffixIcon: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (_activeSearchText.isNotEmpty)
-                                    IconButton(
-                                      icon:
-                                      getAdaptiveIcon(iconName: 'clear', defaultIcon:
-                                        Icons.clear,
-                                        size: 18,
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                      ),
-                                      onPressed: () {
-                                        setState(() {
-                                         _searchController.clear();
-                                          _activeSearchText = '';
-                                         _hasUnsearchedChanges = false;
-                                        });
-                                        _saveFilters(); // Filters zurücksetzen bei Clear
-                                      },
-                                    ),
+                            ),
+                          ),
+                          Container(
+                            height: 24,
+                            width: 1,
+                            color: Colors.grey[300],
+                          ),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() => _isOnlineShopView = true);
+                                _updateProductStream(); // HIER hinzufügen
+                                _saveFilters();
+                              },
+                              child: Container(
+                                alignment: Alignment.center,
+                                height: 36,
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                decoration: BoxDecoration(
+                                  color: _isOnlineShopView ? primaryAppColor.withOpacity(0.1) : Colors.transparent,
+                                  borderRadius: BorderRadius.horizontal(right: Radius.circular(7)),
+                                ),
+                                child: Text(
+                                  'Shop',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: _isOnlineShopView ? primaryAppColor : Colors.grey[600],
+                                    fontWeight: _isOnlineShopView ? FontWeight.w600 : FontWeight.normal,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  if (isDesktopLayout) ...[
+                    Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 24),
+                        constraints: const BoxConstraints(maxWidth: 400),
+                        height: 36,
+                        child: TextFormField(
+                          controller: _searchController,
+
+                          decoration: InputDecoration(
+                            hintText: 'Suche nach Produkten...',
+                            hintStyle: TextStyle(fontSize: 14),
+                            prefixIcon:
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: getAdaptiveIcon(iconName: 'search', defaultIcon:
+                              Icons.search,
+                                size: 20,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_activeSearchText.isNotEmpty)
                                   IconButton(
-                                    icon:  getAdaptiveIcon(iconName: 'search', defaultIcon:
-                                      Icons.search,
-                                      color: _hasUnsearchedChanges ? Colors.orange : primaryAppColor,
+                                    icon:
+                                    getAdaptiveIcon(iconName: 'clear', defaultIcon:
+                                    Icons.clear,
+                                      size: 18,
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     ),
                                     onPressed: () {
-                                      FocusScope.of(context).unfocus();
-                                      // Suche ausführen
-                                      _performSearch();
+                                      setState(() {
+                                        _searchController.clear();
+                                        _activeSearchText = '';
+                                        _hasUnsearchedChanges = false;
+                                      });
+                                      _saveFilters(); // Filters zurücksetzen bei Clear
                                     },
                                   ),
-                                ],
-                              ),
-                              filled: true,
-                              fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide.none,
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 0,
-                              ),
-                              isDense: true,
+                                IconButton(
+                                  icon:  getAdaptiveIcon(iconName: 'search', defaultIcon:
+                                  Icons.search,
+                                    color: _hasUnsearchedChanges ? Colors.orange : primaryAppColor,
+                                  ),
+                                  onPressed: () {
+                                    FocusScope.of(context).unfocus();
+                                    // Suche ausführen
+                                    _performSearch();
+                                  },
+                                ),
+                              ],
                             ),
-                            style: const TextStyle(fontSize: 14),
-                            onFieldSubmitted: (value) {
-                              FocusScope.of(context).unfocus();
-                              _performSearch();
-                            },
-                            onChanged: (value) {
-                              setState(() {
-                                _hasUnsearchedChanges = value != _activeSearchText;
-                              });
-                            },
+                            filled: true,
+                            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 0,
+                            ),
+                            isDense: true,
                           ),
+                          style: const TextStyle(fontSize: 14),
+                          onFieldSubmitted: (value) {
+                            FocusScope.of(context).unfocus();
+                            _performSearch();
+                          },
+                          onChanged: (value) {
+                            setState(() {
+                              _hasUnsearchedChanges = value != _activeSearchText;
+                            });
+                          },
                         ),
                       ),
-                    ],
+                    ),
                   ],
-                ),
-          // centerTitle: true,
+                ],
+              ),
+              // centerTitle: true,
               actions: [
                 if (!isDesktopLayout) ...[
                   IconButton(
@@ -3015,7 +2927,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
             ...selectedInstrumentCodes.map((code) => Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: Chip(
-               backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
+                backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
                 label: Text('${getNameForCode(instruments!, code)} ($code)'),
                 deleteIcon:getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
                 onDeleted: () {
@@ -3091,7 +3003,73 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                 },
               ),
             ),
+// NEU: Shop-Eigenschaften
+          ...selectedFeatures.map((key) {
+            const labels = {
+              'thermo': 'Thermo',
+              'hasel': 'Haselfichte',
+              'mondholz': 'Mondholz',
+              'fsc': 'FSC',
+            };
+            return Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Chip(
+                backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
+                label: Text(labels[key] ?? key),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                onDeleted: () {
+                  setState(() => selectedFeatures.remove(key));
+                  _saveFilters();
+                  _updateProductStream();
+                },
+              ),
+            );
+          }),
+          if (filterIsActs == true)
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Chip(
+                backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
+                label: const Text('ACTS'),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                onDeleted: () {
+                  setState(() => filterIsActs = null);
+                  _saveFilters();
+                  _updateProductStream();
+                },
+              ),
+            ),
+          ...selectedYears.map((year) => Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: Chip(
+              backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
+              label: Text('Jg. $year'),
+              deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+              onDeleted: () {
+                setState(() => selectedYears.remove(year));
+                _saveFilters();
+                _updateProductStream();
+              },
+            ),
+          )),
 
+          if (_createdFrom != null || _createdTo != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Chip(
+                backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
+                label: Text('Datum: ${_dateRangeLabel()}'),
+                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
+                onDeleted: () {
+                  setState(() {
+                    _createdFrom = null;
+                    _createdTo = null;
+                  });
+                  _saveFilters();
+                  _updateProductStream();
+                },
+              ),
+            ),
 
         ],
       ),
@@ -3119,9 +3097,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
             decoration: InputDecoration(
               hintText: 'Suche nach Produkten...',
-              prefixIcon:  getAdaptiveIcon(iconName: 'search', defaultIcon:
+              prefixIcon:  Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: getAdaptiveIcon(iconName: 'search', defaultIcon:
                 Icons.search,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               suffixIcon: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -3129,21 +3110,21 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                   if (_activeSearchText.isNotEmpty)
                     IconButton(
                       icon:  getAdaptiveIcon(iconName: 'clear', defaultIcon:
-                        Icons.clear,
+                      Icons.clear,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                       onPressed: () {
                         setState(() {
-                         _searchController.clear();
-                      _activeSearchText = '';
-                         _hasUnsearchedChanges = false;
+                          _searchController.clear();
+                          _activeSearchText = '';
+                          _hasUnsearchedChanges = false;
                         });
                         _saveFilters();
                       },
                     ),
                   IconButton(
                     icon: getAdaptiveIcon(iconName: 'search', defaultIcon:
-                      Icons.search,
+                    Icons.search,
                       color: _hasUnsearchedChanges ? Colors.orange : primaryAppColor,
                     ),
                     onPressed: () {
@@ -3190,11 +3171,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       _hasUnsearchedChanges = false; // Zurücksetzen nach der Suche
 
       if (_activeSearchText.isNotEmpty) {
-        selectedInstrumentCodes.clear();
-        selectedPartCodes.clear();
-        selectedWoodCodes.clear();
-        selectedQualityCodes.clear();
-        selectedUnit = null;
+        _clearManualFilters();
       }
     });
     _saveFilters();
@@ -3340,6 +3317,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+              _buildShopPropertyFilters(setState),   // NEU
+              const SizedBox(height: 16),
+
             ],
 
             if (instruments != null) ...[
@@ -3437,6 +3417,9 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               ),
             ],
 
+            const SizedBox(height: 16),
+            _buildDateRangeFilter(setState),
+
             const SizedBox(height: 24),
             if (_hasActiveFilters()) ...[
               const Divider(height: 32),
@@ -3455,11 +3438,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                     label: const Text('Zurücksetzen'),
                     onPressed: () {
                       setState(() {
-                        selectedInstrumentCodes.clear();
-                        selectedPartCodes.clear();
-                        selectedWoodCodes.clear();
-                        selectedQualityCodes.clear();
-                        selectedUnit = null;
+                        _clearManualFilters();
                       });
                       _saveFilters();
                     },
@@ -3477,12 +3456,256 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       ),
     );
   }
+  Widget _buildShopPropertyFilters(StateSetter setStateLocal) {
+    const featureLabels = {
+      'thermo': 'Thermo',
+      'hasel': 'Haselfichte',
+      'mondholz': 'Mondholz',
+      'fsc': 'FSC',
+    };
+
+    void clearSearch() {
+      _searchController.clear();
+      _activeSearchText = '';
+      _hasUnsearchedChanges = false;
+    }
+
+    void onChanged() {
+      _saveFilters();
+      _updateProductStream();
+    }
+
+    return _buildFilterCategory(
+      iconName: 'tune',
+      icon: Icons.tune,
+      title: 'Eigenschaften',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ...WarehouseFilter.featureKeys.map((key) {
+                return FilterChip(
+                  label: Text(featureLabels[key] ?? key),
+                  selected: selectedFeatures.contains(key),
+                  onSelected: (sel) {
+                    setStateLocal(() {
+                      sel ? selectedFeatures.add(key) : selectedFeatures.remove(key);
+                      clearSearch();
+                    });
+                    onChanged();
+                  },
+                );
+              }),
+              FilterChip(
+                label: const Text('ACTS'),
+                selected: filterIsActs == true,
+                onSelected: (sel) {
+                  setStateLocal(() {
+                    filterIsActs = sel ? true : null;
+                    clearSearch();
+                  });
+                  onChanged();
+                },
+              ),
+            ],
+          ),
+          if (_availableYears.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('Jahrgang',
+                style: TextStyle(
+                    fontWeight: FontWeight.w600, color: Colors.grey[700])),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _availableYears.map((year) {
+                return FilterChip(
+                  label: Text(year),
+                  selected: selectedYears.contains(year),
+                  onSelected: (sel) {
+                    setStateLocal(() {
+                      sel ? selectedYears.add(year) : selectedYears.remove(year);
+                      clearSearch();
+                    });
+                    onChanged();
+                  },
+                );
+              }).toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+  /// Von-Bis-Datumsfilter auf `created_at` (Lager + Shop).
+  /// Von-Bis-Datumsfilter auf `created_at` (Lager + Shop). Responsiv:
+  /// schmale Screens stapeln die Felder, breite zeigen sie nebeneinander.
+  Widget _buildDateRangeFilter(StateSetter setStateLocal) {
+    final dateFormat = DateFormat('dd.MM.yyyy');
+
+    void clearSearch() {
+      _searchController.clear();
+      _activeSearchText = '';
+      _hasUnsearchedChanges = false;
+    }
+
+    void onChanged() {
+      _saveFilters();
+      _updateProductStream();
+    }
+
+    Future<void> pickDate({required bool isFrom}) async {
+      final initial = isFrom
+          ? (_createdFrom ?? _createdTo ?? DateTime.now())
+          : (_createdTo ?? _createdFrom ?? DateTime.now());
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: initial,
+        firstDate: DateTime(2000),
+        lastDate: DateTime(DateTime.now().year + 1, 12, 31),
+        helpText: isFrom ? 'Von-Datum wählen' : 'Bis-Datum wählen',
+      );
+      if (picked == null) return;
+      setStateLocal(() {
+        if (isFrom) {
+          _createdFrom = picked;
+          if (_createdTo != null && _createdFrom!.isAfter(_createdTo!)) {
+            _createdTo = picked;
+          }
+        } else {
+          _createdTo = picked;
+          if (_createdFrom != null && _createdTo!.isBefore(_createdFrom!)) {
+            _createdFrom = picked;
+          }
+        }
+        clearSearch();
+      });
+      onChanged();
+    }
+
+    Widget buildField({
+      required String label,
+      required DateTime? value,
+      required bool isFrom,
+    }) {
+      return InkWell(
+        onTap: () => pickDate(isFrom: isFrom),
+        borderRadius: BorderRadius.circular(8),
+        child: InputDecorator(
+          decoration: InputDecoration(
+            labelText: label,
+            isDense: true,
+            border: const OutlineInputBorder(),
+            contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            suffixIcon: value == null
+                ? getAdaptiveIcon(
+              iconName: 'calendar_today',
+              defaultIcon: Icons.calendar_today,
+              size: 18,
+            )
+                : IconButton(
+              padding: EdgeInsets.zero,
+              splashRadius: 18,
+              constraints:
+              const BoxConstraints(minWidth: 32, minHeight: 32),
+              icon: getAdaptiveIcon(
+                iconName: 'close',
+                defaultIcon: Icons.close,
+                size: 18,
+              ),
+              onPressed: () {
+                setStateLocal(() {
+                  if (isFrom) {
+                    _createdFrom = null;
+                  } else {
+                    _createdTo = null;
+                  }
+                });
+                onChanged();
+              },
+            ),
+            suffixIconConstraints:
+            const BoxConstraints(minWidth: 36, minHeight: 36),
+          ),
+          child: Text(
+            value == null ? '–' : dateFormat.format(value),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: value == null ? Colors.grey[500] : Colors.black87,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return _buildFilterCategory(
+      iconName: 'date_range',
+      icon: Icons.date_range,
+      title: 'Erstellungsdatum',
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Unter ~340px nebeneinander zu eng -> untereinander stapeln.
+          final stack = constraints.maxWidth < 340;
+          final fromField =
+          buildField(label: 'Von', value: _createdFrom, isFrom: true);
+          final toField =
+          buildField(label: 'Bis', value: _createdTo, isFrom: false);
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (stack) ...[
+                fromField,
+                const SizedBox(height: 12),
+                toField,
+              ] else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: fromField),
+                    const SizedBox(width: 12),
+                    Expanded(child: toField),
+                  ],
+                ),
+              if (_createdFrom != null || _createdTo != null) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    icon: getAdaptiveIcon(
+                      iconName: 'clear',
+                      defaultIcon: Icons.clear,
+                      size: 16,
+                    ),
+                    label: const Text('Datum zurücksetzen'),
+                    onPressed: () {
+                      setStateLocal(() {
+                        _createdFrom = null;
+                        _createdTo = null;
+                      });
+                      onChanged();
+                    },
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
   Widget _buildFilterCategory({
     required dynamic icon,  // Kann IconData oder ein Widget von getAdaptiveIcon sein
     required String title,
     required Widget child,
     required String iconName,      // Optional: Für getAdaptiveIcon
-  }) {
+  })
+  {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -3490,10 +3713,10 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         boxShadow: [
           BoxShadow(
             color: Colors.grey.withValues(
-                red: 0,
-                green: 0,
-                blue: 0,
-                alpha: 0.1,
+              red: 0,
+              green: 0,
+              blue: 0,
+              alpha: 0.1,
             ),
             spreadRadius: 1,
             blurRadius: 3,
@@ -3505,17 +3728,17 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         data: ThemeData(dividerColor: Colors.transparent),
         child: ExpansionTile(
           leading: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child:getAdaptiveIcon(
-              iconName: iconName,
-              defaultIcon: icon is IconData ? icon : Icons.category,
-              color: const Color(0xFF0F4A29),
-              size: 24,
-            )
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child:getAdaptiveIcon(
+                iconName: iconName,
+                defaultIcon: icon is IconData ? icon : Icons.category,
+                color: const Color(0xFF0F4A29),
+                size: 24,
+              )
 
           ),
           title: Text(
@@ -3573,6 +3796,24 @@ class WarehouseScreenState extends State<WarehouseScreen> {
               _updateProductStream();
             },
           )),
+        ...selectedFeatures.map((key) => _buildFilterChip(
+          label: const {'thermo':'Thermo','hasel':'Haselfichte','mondholz':'Mondholz','fsc':'FSC'}[key] ?? key,
+          onRemove: () => setState(() => selectedFeatures.remove(key)),
+        )),
+        if (filterIsActs == true)
+          _buildFilterChip(label: 'ACTS', onRemove: () => setState(() => filterIsActs = null)),
+        ...selectedYears.map((year) => _buildFilterChip(
+          label: 'Jg. $year',
+          onRemove: () => setState(() => selectedYears.remove(year)),
+        )),
+        if (_createdFrom != null || _createdTo != null)
+          _buildFilterChip(
+            label: 'Datum: ${_dateRangeLabel()}',
+            onRemove: () => setState(() {
+              _createdFrom = null;
+              _createdTo = null;
+            }),
+          ),
       ],
     );
   }
@@ -4038,7 +4279,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                           const SizedBox(height: 4),
                           Text(
 
-                                 'Berechnet: ${(measurements!['volume'] as double).toStringAsFixed(7)} m³ × ${density!.toStringAsFixed(0)} kg/m³',
+                            'Berechnet: ${(measurements!['volume'] as double).toStringAsFixed(7)} m³ × ${density!.toStringAsFixed(0)} kg/m³',
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.grey[600],
@@ -4422,8 +4663,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             getAdaptiveIcon(
-            iconName: iconName,
-            defaultIcon:
+              iconName: iconName,
+              defaultIcon:
               icon,
               size: 14,
               color: color,
@@ -4456,33 +4697,33 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child:
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: options.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final code = data['code'] as String;
-                  final name = data['name'] as String;
-                  return CheckboxListTile(
-                    title: Text('$name ($code)'),
-                    value: selectedValues.contains(code),
-                    onChanged: (bool? checked) {
-                      List<String> newSelection = List.from(selectedValues);
-                      if (checked ?? false) {
-                        if (!newSelection.contains(code)) {
-                          newSelection.add(code);
-                        }
-                      } else {
-                        newSelection.remove(code);
-                      }
-                      onChanged(newSelection);
-                    },
-                    controlAffinity: ListTileControlAffinity.leading,
-                    dense: true,
-                  );
-                }).toList(),
-              ),
-            ),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            children: options.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              final code = data['code'] as String;
+              final name = data['name'] as String;
+              return CheckboxListTile(
+                title: Text('$name ($code)'),
+                value: selectedValues.contains(code),
+                onChanged: (bool? checked) {
+                  List<String> newSelection = List.from(selectedValues);
+                  if (checked ?? false) {
+                    if (!newSelection.contains(code)) {
+                      newSelection.add(code);
+                    }
+                  } else {
+                    newSelection.remove(code);
+                  }
+                  onChanged(newSelection);
+                },
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+              );
+            }).toList(),
+          ),
+        ),
 
 
       ),
@@ -4645,14 +4886,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     );
   }
 
-  bool _hasActiveFilters() {
-    return _searchController.text.isNotEmpty ||
-        selectedInstrumentCodes.isNotEmpty ||
-        selectedPartCodes.isNotEmpty ||
-        selectedWoodCodes.isNotEmpty ||
-        selectedQualityCodes.isNotEmpty ||
-        selectedUnit != null;
-  }
+  bool _hasActiveFilters() => _currentFilter.hasActiveFilters;
+
   void _showFilterDialog() {
     showDialog(
       context: context,
@@ -4740,8 +4975,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                     onChanged: (newSelection) {
                                       setState(() {
                                         selectedInstrumentCodes = newSelection;
-                                       _searchController.clear();
-    _activeSearchText = '';
+                                        _searchController.clear();
+                                        _activeSearchText = '';
                                         _hasUnsearchedChanges = false;
                                       });
                                       _saveFilters();
@@ -4764,8 +4999,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                     onChanged: (newSelection) {
                                       setState(() {
                                         selectedPartCodes = newSelection;
-                                       _searchController.clear();
-    _activeSearchText = '';
+                                        _searchController.clear();
+                                        _activeSearchText = '';
                                         _hasUnsearchedChanges = false;
                                       });
                                       _saveFilters();
@@ -4788,8 +5023,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                     onChanged: (newSelection) {
                                       setState(() {
                                         selectedWoodCodes = newSelection;
-                                       _searchController.clear();
-    _activeSearchText = '';
+                                        _searchController.clear();
+                                        _activeSearchText = '';
                                         _hasUnsearchedChanges = false;
                                       });
                                       _saveFilters();
@@ -4812,8 +5047,8 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                     onChanged: (newSelection) {
                                       setState(() {
                                         selectedQualityCodes = newSelection;
-                                       _searchController.clear();
-    _activeSearchText = '';
+                                        _searchController.clear();
+                                        _activeSearchText = '';
                                         _hasUnsearchedChanges = false;
                                       });
                                       _saveFilters();
@@ -4822,6 +5057,14 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                   ),
                                 ),
                               ],
+                              if (_isOnlineShopView) ...[
+                                const SizedBox(height: 16),
+                                _buildShopPropertyFilters(setState),
+
+                              ],
+                              const SizedBox(height: 16),
+                              _buildDateRangeFilter(setState),
+                              const SizedBox(height: 16),
                               if (_hasActiveFilters()) ...[
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -4849,11 +5092,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                           label: const Text('Zurücksetzen'),
                                           onPressed: () {
                                             setState(() {
-                                              selectedInstrumentCodes.clear();
-                                              selectedPartCodes.clear();
-                                              selectedWoodCodes.clear();
-                                              selectedQualityCodes.clear();
-                                              selectedUnit = null;
+                                              _clearManualFilters();
                                             });
                                             _saveFilters();
                                             _updateProductStream();
@@ -4872,21 +5111,39 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                 runSpacing: 8,
                                 children: [
                                   ...selectedInstrumentCodes.map((code) => _buildFilterChip(
-                                    label: _getNameForCode(instruments!, code),
+                                    label: _getNameForCode(instruments, code),
                                     onRemove: () => setState(() => selectedInstrumentCodes.remove(code)),
                                   )),
                                   ...selectedPartCodes.map((code) => _buildFilterChip(
-                                    label: _getNameForCode(parts!, code),
+                                    label: _getNameForCode(parts, code),
                                     onRemove: () => setState(() => selectedPartCodes.remove(code)),
                                   )),
                                   ...selectedWoodCodes.map((code) => _buildFilterChip(
-                                    label: _getNameForCode(woodTypes!, code),
+                                    label: _getNameForCode(woodTypes, code),
                                     onRemove: () => setState(() => selectedWoodCodes.remove(code)),
                                   )),
                                   ...selectedQualityCodes.map((code) => _buildFilterChip(
-                                    label: _getNameForCode(qualities!, code),
+                                    label: _getNameForCode(qualities, code),
                                     onRemove: () => setState(() => selectedQualityCodes.remove(code)),
                                   )),
+                                  ...selectedFeatures.map((key) => _buildFilterChip(
+                                    label: const {'thermo':'Thermo','hasel':'Haselfichte','mondholz':'Mondholz','fsc':'FSC'}[key] ?? key,
+                                    onRemove: () => setState(() => selectedFeatures.remove(key)),
+                                  )),
+                                  if (filterIsActs == true)
+                                    _buildFilterChip(label: 'ACTS', onRemove: () => setState(() => filterIsActs = null)),
+                                  ...selectedYears.map((year) => _buildFilterChip(
+                                    label: 'Jg. $year',
+                                    onRemove: () => setState(() => selectedYears.remove(year)),
+                                  )),
+                                  if (_createdFrom != null || _createdTo != null)
+                                    _buildFilterChip(
+                                      label: 'Datum: ${_dateRangeLabel()}',
+                                      onRemove: () => setState(() {
+                                        _createdFrom = null;
+                                        _createdTo = null;
+                                      }),
+                                    ),
                                 ],
                               ),
 
@@ -4948,4 +5205,4 @@ class WarehouseScreenState extends State<WarehouseScreen> {
       },
     );
   }
-  }
+}

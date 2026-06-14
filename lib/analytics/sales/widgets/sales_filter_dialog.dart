@@ -173,6 +173,13 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
                               child: _buildCountryFilter(),
                               hasActiveFilters: tempFilter.countries?.isNotEmpty ?? false,
                             ),
+                            buildFilterCategory(
+                              icon: Icons.graphic_eq,
+                              iconName: 'graphic_eq',
+                              title: 'ACTS',
+                              child: _buildActsFilter(),
+                              hasActiveFilters: tempFilter.actsOnly,
+                            ),
                           ],
                         )
                     ),
@@ -186,8 +193,12 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
       ),
     );
 
-    if (isSheet) return content;
-
+    if (isSheet) {
+      return Material(
+        type: MaterialType.transparency,
+        child: content,
+      );
+    }
     return Dialog(
       backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -654,6 +665,22 @@ class SalesFilterDialogState extends State<SalesFilterDialog> {
           },
         );
       },
+    );
+  }
+  Widget _buildActsFilter() {
+    return SwitchListTile(
+      title: const Text('Nur ACTS-Artikel'),
+      subtitle: const Text('Acoustically characterized by Tonewood Switzerland'),
+      value: tempFilter.actsOnly,
+      onChanged: (value) {
+        setState(() {
+          tempFilter = tempFilter.copyWith(actsOnly: value);
+        });
+      },
+      secondary: getAdaptiveIcon(
+        iconName: 'graphic_eq',
+        defaultIcon: Icons.graphic_eq,
+      ),
     );
   }
   Widget _buildCountryFilter() {

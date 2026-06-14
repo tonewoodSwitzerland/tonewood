@@ -170,6 +170,7 @@ class WarehouseExportService {
       'Holzart',
       'Qualität',
       'Status',
+      'ACTS',
       'Preis CHF',
       'Volumen m³',
       'Eingestellt am',
@@ -207,6 +208,7 @@ class WarehouseExportService {
         '${item['wood_name']} (${item['wood_code']})',
         '${item['quality_name']} (${item['quality_code']})',
         item['sold'] == true ? 'Verkauft' : 'Im Shop',
+        item['is_acts'] == true ? 'Ja' : 'Nein',
         NumberFormat.currency(
           locale: 'en_US',
           symbol: '',
@@ -347,12 +349,13 @@ class WarehouseExportService {
               2: pw.Alignment.centerLeft,
               3: pw.Alignment.centerLeft,
               4: pw.Alignment.centerLeft,
-              5: pw.Alignment.center,
-              6: pw.Alignment.centerRight,
+              5: pw.Alignment.center,   // Status
+              6: pw.Alignment.center,   // ACTS
               7: pw.Alignment.centerRight,
-              8: pw.Alignment.centerLeft,
+              8: pw.Alignment.centerRight,
+              9: pw.Alignment.centerLeft,
               if (shopFilter == 'sold')
-                9: pw.Alignment.centerLeft,
+                10: pw.Alignment.centerLeft,
             }
                 : {
               0: pw.Alignment.centerLeft,
@@ -371,12 +374,13 @@ class WarehouseExportService {
               2: const pw.FlexColumnWidth(2),
               3: const pw.FlexColumnWidth(1.5),
               4: const pw.FlexColumnWidth(1.2),
-              5: const pw.FlexColumnWidth(1),
-              6: const pw.FlexColumnWidth(1.2),
+              5: const pw.FlexColumnWidth(1),     // Status
+              6: const pw.FlexColumnWidth(0.8),   // ACTS
               7: const pw.FlexColumnWidth(1.2),
-              8: const pw.FlexColumnWidth(1.5),
+              8: const pw.FlexColumnWidth(1.2),
+              9: const pw.FlexColumnWidth(1.5),
               if (shopFilter == 'sold')
-                9: const pw.FlexColumnWidth(1.5),
+                10: const pw.FlexColumnWidth(1.5),
             }
                 : {
               0: const pw.FlexColumnWidth(2),
@@ -396,6 +400,7 @@ class WarehouseExportService {
               'Holzart',
               'Qualität',
               'Status',
+              'ACTS',
               'Preis CHF',
               'Vol. m³',
               'Eingestellt',
@@ -426,6 +431,8 @@ class WarehouseExportService {
                 '${item['wood_name']} (${item['wood_code']})',
                 '${item['quality_name']} (${item['quality_code']})',
                 item['sold'] == true ? 'Verkauft' : 'Im Shop',
+                item['is_acts'] == true ? 'Ja' : 'Nein',
+
                 NumberFormat.currency(
                     locale: 'de_DE',
                     symbol: '',
