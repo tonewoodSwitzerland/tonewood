@@ -2116,28 +2116,28 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
                 ),
               ),
             ),
-            const SizedBox(width: 12),
-            // Stamm abschließen Button
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: isClosed ? null : () => _showCloseStammConfirmation(),
-                icon: getAdaptiveIcon(
-                  iconName: isClosed ? 'lock' : 'lock_open',
-                  defaultIcon: isClosed ? Icons.lock : Icons.lock_open,
-                  color: Colors.white,
-                ),
-                label: Text(isClosed ? 'Abgeschlossen' : 'Abschließen'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isClosed ? Colors.grey : Colors.orange[700],
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: Colors.grey[400],
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
+            // const SizedBox(width: 12),
+            // // Stamm abschließen Button
+            // Expanded(
+            //   child: ElevatedButton.icon(
+            //     onPressed: isClosed ? null : () => _showCloseStammConfirmation(),
+            //     icon: getAdaptiveIcon(
+            //       iconName: isClosed ? 'lock' : 'lock_open',
+            //       defaultIcon: isClosed ? Icons.lock : Icons.lock_open,
+            //       color: Colors.white,
+            //     ),
+            //     label: Text(isClosed ? 'Abgeschlossen' : 'Abschließen'),
+            //     style: ElevatedButton.styleFrom(
+            //       backgroundColor: isClosed ? Colors.grey : Colors.orange[700],
+            //       foregroundColor: Colors.white,
+            //       disabledBackgroundColor: Colors.grey[400],
+            //       padding: const EdgeInsets.symmetric(vertical: 14),
+            //       shape: RoundedRectangleBorder(
+            //         borderRadius: BorderRadius.circular(12),
+            //       ),
+            //     ),
+            //   ),
+            // ),
           ],
         ),
       ],
@@ -2249,38 +2249,6 @@ class _StammBuchungContentState extends State<_StammBuchungContent> {
     );
   }
 
-  void _showCloseConfirmation() {
-    if (_gebuchteProdukte.isEmpty) {
-      Navigator.pop(context);
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Stamm abschließen?'),
-        content: Text(
-          'Du hast ${_gebuchteProdukte.length} Produkte für diesen Stamm gebucht. Möchtest du die Buchung beenden?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Weiter buchen'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context); // Dialog schließen
-              Navigator.pop(context); // Sheet schließen
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0F4A29),
-            ),
-            child: const Text('Abschließen', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
 
   @override
   void dispose() {

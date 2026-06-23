@@ -570,10 +570,11 @@ class QuoteGenerator extends BasePdfGenerator {
           productText += ' (${item['notes']})';
         }
         // Badge-Platz einrechnen
+        // Badge-Platz einrechnen
         if (item['is_gratisartikel'] == true) productText += '  GRATIS';
         if (item['is_online_shop_item'] == true) productText += '  #0000';
+        if (item['is_acts'] == true) productText += '  ACTS';
         if (productText.length > maxProductLen) maxProductLen = productText.length;
-
         // Instrument
         String instrText = language == 'EN'
             ? (item['instrument_name_en'] ?? item['instrument_name'] ?? '')
@@ -854,6 +855,22 @@ class QuoteGenerator extends BasePdfGenerator {
                           ),
                           child: pw.Text(
                             '#${item['online_shop_barcode'].toString().substring(item['online_shop_barcode'].toString().length - 4)}',
+                            style: const pw.TextStyle(
+                              fontSize: 5,
+                              color: PdfColors.white,
+                            ),
+                          ),
+                        ),
+                      if (item['is_acts'] == true)
+                        pw.Container(
+                          margin: const pw.EdgeInsets.only(left: 4),
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                          decoration: pw.BoxDecoration(
+                            color: PdfColors.green700,
+                            borderRadius: pw.BorderRadius.circular(2),
+                          ),
+                          child: pw.Text(
+                            'ACTS',
                             style: const pw.TextStyle(
                               fontSize: 5,
                               color: PdfColors.white,

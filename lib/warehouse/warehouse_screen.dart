@@ -4,7 +4,7 @@ import 'package:tonewood/warehouse/services/warehouse_export_service.dart';
 import 'package:tonewood/warehouse/warehouse_filter.dart';
 import 'package:tonewood/warehouse/warehouse_filter_query.dart';
 import 'package:tonewood/warehouse/warehouse_filter_repository.dart';
-
+import 'package:tonewood/warehouse/warehouse_filter_widgets.dart';
 import '../home/filter_favorites_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -391,8 +391,6 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     }
   }
 
-// Füge diese Methode zur WarehouseScreenState Klasse hinzu
-// Diese Methode zur WarehouseScreenState Klasse hinzufügen
   Stream<double> _getReservedQuantityStream(String shortBarcode) {
     return FirebaseFirestore.instance
         .collection('stock_movements')
@@ -411,37 +409,6 @@ class WarehouseScreenState extends State<WarehouseScreen> {
         },
       );
     });
-  }
-
-
-  Future<void> _updateOnlineShopPrice(Map<String, dynamic> data, int newPrice, int oldPrice) async {
-    try {
-      final updates = {
-        'price_CHF': newPrice,
-        'original_price_CHF': oldPrice,
-        'discounted': newPrice < oldPrice,
-        'price_changed_at': FieldValue.serverTimestamp(),
-      };
-
-      await FirebaseFirestore.instance
-          .collection('onlineshop')
-          .doc(data['barcode'])
-          .update(updates);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Preis erfolgreich auf CHF $newPrice geändert'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Fehler beim Ändern des Preises: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
   }
 
   void _showOnlineShopDetails(Map<String, dynamic> data) {
@@ -2902,180 +2869,64 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     );
   }
   Widget _buildActiveFiltersChips() {
-    String getNameForCode(List<QueryDocumentSnapshot> docs, String code) {
-      if (docs == null || docs.isEmpty) {
-        return code;
-      }
-
-      try {
-        final doc = docs.firstWhere(
-              (doc) => (doc.data() as Map<String, dynamic>)['code'] == code,
-        );
-        final data = doc.data() as Map<String, dynamic>?;
-        return data?['name'] as String? ?? code;
-      } catch (e) {
-        return code;
-      }
-    }
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.all(8.0),
-      child: Row(
-        children: [
-          if (instruments != null)
-            ...selectedInstrumentCodes.map((code) => Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: Chip(
-                backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-                label: Text('${getNameForCode(instruments!, code)} ($code)'),
-                deleteIcon:getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
-                onDeleted: () {
-                  setState(() {
-                    selectedInstrumentCodes.remove(code);
-                  });
-                  _saveFilters();
-                  _updateProductStream();
-                },
-              ),
-            )),
-          if (parts != null)
-            ...selectedPartCodes.map((code) => Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: Chip(
-                backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-                label: Text('${getNameForCode(parts!, code)} ($code)'),
-                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
-                onDeleted: () {
-                  setState(() {
-                    selectedPartCodes.remove(code);
-                  });
-                  _saveFilters();
-                  _updateProductStream();
-                },
-              ),
-            )),
-          if (woodTypes != null)
-            ...selectedWoodCodes.map((code) => Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: Chip(
-                backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-                label: Text('${getNameForCode(woodTypes!, code)} ($code)'),
-                deleteIcon:getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
-                onDeleted: () {
-                  setState(() {
-                    selectedWoodCodes.remove(code);
-                  });
-                  _saveFilters();
-                  _updateProductStream();
-                },
-              ),
-            )),
-          if (qualities != null)
-            ...selectedQualityCodes.map((code) => Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: Chip(
-                backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-                label: Text('${getNameForCode(qualities!, code)} ($code)'),
-                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
-                onDeleted: () {
-                  setState(() {
-                    selectedQualityCodes.remove(code);
-                  });
-                  _saveFilters();
-                  _updateProductStream();
-                },
-              ),
-            )),
-
-          if (selectedUnit != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: Chip(
-                label: Text('Einheit: $selectedUnit'),
-                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
-                onDeleted: () {
-                  setState(() {
-                    selectedUnit = null;
-                  });
-                  _saveFilters();
-                  _updateProductStream();
-                },
-              ),
-            ),
-// NEU: Shop-Eigenschaften
-          ...selectedFeatures.map((key) {
-            const labels = {
-              'thermo': 'Thermo',
-              'hasel': 'Haselfichte',
-              'mondholz': 'Mondholz',
-              'fsc': 'FSC',
-            };
-            return Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: Chip(
-                backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-                label: Text(labels[key] ?? key),
-                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                onDeleted: () {
-                  setState(() => selectedFeatures.remove(key));
-                  _saveFilters();
-                  _updateProductStream();
-                },
-              ),
-            );
-          }),
-          if (filterIsActs == true)
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: Chip(
-                backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-                label: const Text('ACTS'),
-                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                onDeleted: () {
-                  setState(() => filterIsActs = null);
-                  _saveFilters();
-                  _updateProductStream();
-                },
-              ),
-            ),
-          ...selectedYears.map((year) => Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: Chip(
-              backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-              label: Text('Jg. $year'),
-              deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-              onDeleted: () {
-                setState(() => selectedYears.remove(year));
-                _saveFilters();
-                _updateProductStream();
-              },
-            ),
-          )),
-
-          if (_createdFrom != null || _createdTo != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: Chip(
-                backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-                label: Text('Datum: ${_dateRangeLabel()}'),
-                deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close),
-                onDeleted: () {
-                  setState(() {
-                    _createdFrom = null;
-                    _createdTo = null;
-                  });
-                  _saveFilters();
-                  _updateProductStream();
-                },
-              ),
-            ),
-
-        ],
-      ),
+    return ActiveFilterChips(
+      layout: ActiveFilterLayout.horizontalScroll,
+      filter: _currentFilter,
+      instruments: instruments,
+      parts: parts,
+      woodTypes: woodTypes,
+      qualities: qualities,
+      showCodeInLabel: true,
+      onRemoveInstrument: (c) {
+        setState(() => selectedInstrumentCodes.remove(c));
+        _saveFilters();
+        _updateProductStream();
+      },
+      onRemovePart: (c) {
+        setState(() => selectedPartCodes.remove(c));
+        _saveFilters();
+        _updateProductStream();
+      },
+      onRemoveWood: (c) {
+        setState(() => selectedWoodCodes.remove(c));
+        _saveFilters();
+        _updateProductStream();
+      },
+      onRemoveQuality: (c) {
+        setState(() => selectedQualityCodes.remove(c));
+        _saveFilters();
+        _updateProductStream();
+      },
+      onRemoveUnit: () {
+        setState(() => selectedUnit = null);
+        _saveFilters();
+        _updateProductStream();
+      },
+      onRemoveFeature: (k) {
+        setState(() => selectedFeatures.remove(k));
+        _saveFilters();
+        _updateProductStream();
+      },
+      onRemoveActs: () {
+        setState(() => filterIsActs = null);
+        _saveFilters();
+        _updateProductStream();
+      },
+      onRemoveYear: (y) {
+        setState(() => selectedYears.remove(y));
+        _saveFilters();
+        _updateProductStream();
+      },
+      onRemoveDate: () {
+        setState(() {
+          _createdFrom = null;
+          _createdTo = null;
+        });
+        _saveFilters();
+        _updateProductStream();
+      },
     );
   }
-
   Widget _buildMobileLayout() {
     return Column(
       children: [
@@ -3322,101 +3173,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
 
             ],
 
-            if (instruments != null) ...[
-              _buildFilterCategory(
-                iconName: 'music_note',
-                icon: Icons.music_note,
-                title: 'Instrument',
-                child: _buildMultiSelectDropdown(
-                  label: 'Instrument auswählen',
-                  options: instruments!,
-                  selectedValues: selectedInstrumentCodes,
-                  onChanged: (newSelection) {
-                    setState(() {
-                      selectedInstrumentCodes = newSelection;
-                      _searchController.clear();
-                      _activeSearchText = '';
-                      _hasUnsearchedChanges = false;
-                    });
-                    _saveFilters();
-                    _updateProductStream();
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            if (parts != null) ...[
-              _buildFilterCategory(
-                iconName: 'category',
-                icon: Icons.category,
-                title: 'Bauteil',
-                child: _buildMultiSelectDropdown(
-                  label: 'Bauteil auswählen',
-                  options: parts!,
-                  selectedValues: selectedPartCodes,
-                  onChanged: (newSelection) {
-                    setState(() {
-                      selectedPartCodes = newSelection;
-                      _searchController.clear();
-                      _activeSearchText = '';
-                      _hasUnsearchedChanges = false;
-                    });
-                    _saveFilters();
-                    _updateProductStream();
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            if (woodTypes != null) ...[
-              _buildFilterCategory(
-                iconName: 'forest',
-                icon: Icons.forest,
-                title: 'Holzart',
-                child: _buildMultiSelectDropdown(
-                  label: 'Holzart auswählen',
-                  options: woodTypes!,
-                  selectedValues: selectedWoodCodes,
-                  onChanged: (newSelection) {
-                    setState(() {
-                      selectedWoodCodes = newSelection;
-                      _searchController.clear();
-                      _activeSearchText = '';
-                      _hasUnsearchedChanges = false;
-                    });
-                    _saveFilters();
-                    _updateProductStream();
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            if (qualities != null) ...[
-              _buildFilterCategory(
-                iconName: 'star',
-                icon: Icons.star,
-                title: 'Qualität',
-                child: _buildMultiSelectDropdown(
-                  label: 'Qualität auswählen',
-                  options: qualities!,
-                  selectedValues: selectedQualityCodes,
-                  onChanged: (newSelection) {
-                    setState(() {
-                      selectedQualityCodes = newSelection;
-                      _searchController.clear();
-                      _activeSearchText = '';
-                      _hasUnsearchedChanges = false;
-                    });
-                    _saveFilters();
-                    _updateProductStream();
-                  },
-                ),
-              ),
-            ],
-
+            ..._buildCodeCategories(setState),
             const SizedBox(height: 16),
             _buildDateRangeFilter(setState),
 
@@ -3457,384 +3214,179 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     );
   }
   Widget _buildShopPropertyFilters(StateSetter setStateLocal) {
-    const featureLabels = {
-      'thermo': 'Thermo',
-      'hasel': 'Haselfichte',
-      'mondholz': 'Mondholz',
-      'fsc': 'FSC',
-    };
-
-    void clearSearch() {
-      _searchController.clear();
-      _activeSearchText = '';
-      _hasUnsearchedChanges = false;
-    }
-
-    void onChanged() {
+    void apply(VoidCallback mutate) {
+      setStateLocal(() {
+        mutate();
+        _searchController.clear();
+        _activeSearchText = '';
+        _hasUnsearchedChanges = false;
+      });
       _saveFilters();
       _updateProductStream();
     }
 
-    return _buildFilterCategory(
-      iconName: 'tune',
-      icon: Icons.tune,
-      title: 'Eigenschaften',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ...WarehouseFilter.featureKeys.map((key) {
-                return FilterChip(
-                  label: Text(featureLabels[key] ?? key),
-                  selected: selectedFeatures.contains(key),
-                  onSelected: (sel) {
-                    setStateLocal(() {
-                      sel ? selectedFeatures.add(key) : selectedFeatures.remove(key);
-                      clearSearch();
-                    });
-                    onChanged();
-                  },
-                );
-              }),
-              FilterChip(
-                label: const Text('ACTS'),
-                selected: filterIsActs == true,
-                onSelected: (sel) {
-                  setStateLocal(() {
-                    filterIsActs = sel ? true : null;
-                    clearSearch();
-                  });
-                  onChanged();
-                },
-              ),
-            ],
-          ),
-          if (_availableYears.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Text('Jahrgang',
-                style: TextStyle(
-                    fontWeight: FontWeight.w600, color: Colors.grey[700])),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _availableYears.map((year) {
-                return FilterChip(
-                  label: Text(year),
-                  selected: selectedYears.contains(year),
-                  onSelected: (sel) {
-                    setStateLocal(() {
-                      sel ? selectedYears.add(year) : selectedYears.remove(year);
-                      clearSearch();
-                    });
-                    onChanged();
-                  },
-                );
-              }).toList(),
-            ),
-          ],
-        ],
-      ),
+    return ShopPropertyFilterCard(
+      selectedFeatures: selectedFeatures,
+      isActs: filterIsActs,
+      selectedYears: selectedYears,
+      availableYears: _availableYears,
+      onToggleFeature: (key, sel) => apply(
+              () => sel ? selectedFeatures.add(key) : selectedFeatures.remove(key)),
+      onToggleActs: (sel) => apply(() => filterIsActs = sel ? true : null),
+      onToggleYear: (year, sel) => apply(
+              () => sel ? selectedYears.add(year) : selectedYears.remove(year)),
     );
   }
-  /// Von-Bis-Datumsfilter auf `created_at` (Lager + Shop).
-  /// Von-Bis-Datumsfilter auf `created_at` (Lager + Shop). Responsiv:
-  /// schmale Screens stapeln die Felder, breite zeigen sie nebeneinander.
   Widget _buildDateRangeFilter(StateSetter setStateLocal) {
-    final dateFormat = DateFormat('dd.MM.yyyy');
-
-    void clearSearch() {
-      _searchController.clear();
-      _activeSearchText = '';
-      _hasUnsearchedChanges = false;
-    }
-
-    void onChanged() {
-      _saveFilters();
-      _updateProductStream();
-    }
-
-    Future<void> pickDate({required bool isFrom}) async {
-      final initial = isFrom
-          ? (_createdFrom ?? _createdTo ?? DateTime.now())
-          : (_createdTo ?? _createdFrom ?? DateTime.now());
-      final picked = await showDatePicker(
-        context: context,
-        initialDate: initial,
-        firstDate: DateTime(2000),
-        lastDate: DateTime(DateTime.now().year + 1, 12, 31),
-        helpText: isFrom ? 'Von-Datum wählen' : 'Bis-Datum wählen',
-      );
-      if (picked == null) return;
-      setStateLocal(() {
-        if (isFrom) {
-          _createdFrom = picked;
-          if (_createdTo != null && _createdFrom!.isAfter(_createdTo!)) {
-            _createdTo = picked;
-          }
-        } else {
-          _createdTo = picked;
-          if (_createdFrom != null && _createdTo!.isBefore(_createdFrom!)) {
-            _createdFrom = picked;
-          }
-        }
-        clearSearch();
-      });
-      onChanged();
-    }
-
-    Widget buildField({
-      required String label,
-      required DateTime? value,
-      required bool isFrom,
-    }) {
-      return InkWell(
-        onTap: () => pickDate(isFrom: isFrom),
-        borderRadius: BorderRadius.circular(8),
-        child: InputDecorator(
-          decoration: InputDecoration(
-            labelText: label,
-            isDense: true,
-            border: const OutlineInputBorder(),
-            contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-            suffixIcon: value == null
-                ? getAdaptiveIcon(
-              iconName: 'calendar_today',
-              defaultIcon: Icons.calendar_today,
-              size: 18,
-            )
-                : IconButton(
-              padding: EdgeInsets.zero,
-              splashRadius: 18,
-              constraints:
-              const BoxConstraints(minWidth: 32, minHeight: 32),
-              icon: getAdaptiveIcon(
-                iconName: 'close',
-                defaultIcon: Icons.close,
-                size: 18,
-              ),
-              onPressed: () {
-                setStateLocal(() {
-                  if (isFrom) {
-                    _createdFrom = null;
-                  } else {
-                    _createdTo = null;
-                  }
-                });
-                onChanged();
-              },
-            ),
-            suffixIconConstraints:
-            const BoxConstraints(minWidth: 36, minHeight: 36),
-          ),
-          child: Text(
-            value == null ? '–' : dateFormat.format(value),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: value == null ? Colors.grey[500] : Colors.black87,
-            ),
-          ),
-        ),
-      );
-    }
-
+    return DateRangeFilterCard(
+      from: _createdFrom,
+      to: _createdTo,
+      onChanged: (from, to) {
+        setStateLocal(() {
+          _createdFrom = from;
+          _createdTo = to;
+          _searchController.clear();
+          _activeSearchText = '';
+          _hasUnsearchedChanges = false;
+        });
+        _saveFilters();
+        _updateProductStream();
+      },
+    );
+  }
+  /// Baut eine einzelne Code-Kategorie (Dropdown in aufklappbarer Karte).
+  /// Die onChanged-Logik (Auswahl setzen, Suche leeren, speichern, neu laden)
+  /// ist hier zentralisiert – vorher 4x in Panel und 4x im Dialog dupliziert.
+  Widget _buildCodeCategory({
+    required StateSetter setStateLocal,
+    required String iconName,
+    required IconData icon,
+    required String title,
+    required String dropdownLabel,
+    required List<QueryDocumentSnapshot> options,
+    required List<String> selectedValues,
+    required void Function(List<String> selection) assign,
+  }) {
     return _buildFilterCategory(
-      iconName: 'date_range',
-      icon: Icons.date_range,
-      title: 'Erstellungsdatum',
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // Unter ~340px nebeneinander zu eng -> untereinander stapeln.
-          final stack = constraints.maxWidth < 340;
-          final fromField =
-          buildField(label: 'Von', value: _createdFrom, isFrom: true);
-          final toField =
-          buildField(label: 'Bis', value: _createdTo, isFrom: false);
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (stack) ...[
-                fromField,
-                const SizedBox(height: 12),
-                toField,
-              ] else
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: fromField),
-                    const SizedBox(width: 12),
-                    Expanded(child: toField),
-                  ],
-                ),
-              if (_createdFrom != null || _createdTo != null) ...[
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    icon: getAdaptiveIcon(
-                      iconName: 'clear',
-                      defaultIcon: Icons.clear,
-                      size: 16,
-                    ),
-                    label: const Text('Datum zurücksetzen'),
-                    onPressed: () {
-                      setStateLocal(() {
-                        _createdFrom = null;
-                        _createdTo = null;
-                      });
-                      onChanged();
-                    },
-                  ),
-                ),
-              ],
-            ],
-          );
+      iconName: iconName,
+      icon: icon,
+      title: title,
+      child: _buildMultiSelectDropdown(
+        label: dropdownLabel,
+        options: options,
+        selectedValues: selectedValues,
+        onChanged: (newSelection) {
+          setStateLocal(() {
+            assign(newSelection);
+            _searchController.clear();
+            _activeSearchText = '';
+            _hasUnsearchedChanges = false;
+          });
+          _saveFilters();
+          _updateProductStream();
         },
       ),
     );
   }
+
+  /// Die vier Code-Kategorien als Liste (mit 16px-Abständen dazwischen),
+  /// jeweils nur, wenn die zugehörigen Dropdown-Daten geladen sind.
+  List<Widget> _buildCodeCategories(StateSetter setStateLocal) {
+    final cats = <Widget>[];
+    void add(Widget w) {
+      if (cats.isNotEmpty) cats.add(const SizedBox(height: 16));
+      cats.add(w);
+    }
+
+    if (instruments != null) {
+      add(_buildCodeCategory(
+        setStateLocal: setStateLocal,
+        iconName: 'music_note',
+        icon: Icons.music_note,
+        title: 'Instrument',
+        dropdownLabel: 'Instrument auswählen',
+        options: instruments!,
+        selectedValues: selectedInstrumentCodes,
+        assign: (s) => selectedInstrumentCodes = s,
+      ));
+    }
+    if (parts != null) {
+      add(_buildCodeCategory(
+        setStateLocal: setStateLocal,
+        iconName: 'category',
+        icon: Icons.category,
+        title: 'Bauteil',
+        dropdownLabel: 'Bauteil auswählen',
+        options: parts!,
+        selectedValues: selectedPartCodes,
+        assign: (s) => selectedPartCodes = s,
+      ));
+    }
+    if (woodTypes != null) {
+      add(_buildCodeCategory(
+        setStateLocal: setStateLocal,
+        iconName: 'forest',
+        icon: Icons.forest,
+        title: 'Holzart',
+        dropdownLabel: 'Holzart auswählen',
+        options: woodTypes!,
+        selectedValues: selectedWoodCodes,
+        assign: (s) => selectedWoodCodes = s,
+      ));
+    }
+    if (qualities != null) {
+      add(_buildCodeCategory(
+        setStateLocal: setStateLocal,
+        iconName: 'star',
+        icon: Icons.star,
+        title: 'Qualität',
+        dropdownLabel: 'Qualität auswählen',
+        options: qualities!,
+        selectedValues: selectedQualityCodes,
+        assign: (s) => selectedQualityCodes = s,
+      ));
+    }
+    return cats;
+  }
+
   Widget _buildFilterCategory({
-    required dynamic icon,  // Kann IconData oder ein Widget von getAdaptiveIcon sein
+    required dynamic icon,
     required String title,
     required Widget child,
-    required String iconName,      // Optional: Für getAdaptiveIcon
-  })
-  {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(
-              red: 0,
-              green: 0,
-              blue: 0,
-              alpha: 0.1,
-            ),
-            spreadRadius: 1,
-            blurRadius: 3,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Theme(
-        data: ThemeData(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          leading: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child:getAdaptiveIcon(
-                iconName: iconName,
-                defaultIcon: icon is IconData ? icon : Icons.category,
-                color: const Color(0xFF0F4A29),
-                size: 24,
-              )
-
-          ),
-          title: Text(
-            title,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-          childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          children: [child],
-        ),
-      ),
+    required String iconName,
+  }) {
+    return FilterCategoryCard(
+      iconName: iconName,
+      icon: icon,
+      title: title,
+      child: child,
     );
   }
 
   Widget _buildActiveFiltersSummary() {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        if (instruments != null)
-          ...selectedInstrumentCodes.map((code) => _buildFilterChip(
-            label: _getNameForCode(instruments, code),
-            onRemove: () {
-              setState(() => selectedInstrumentCodes.remove(code));
-              _saveFilters();
-              _updateProductStream();
-            },
-          )),
-        if (parts != null)
-          ...selectedPartCodes.map((code) => _buildFilterChip(
-            label: _getNameForCode(parts, code),
-            onRemove: () {
-              setState(() => selectedPartCodes.remove(code));
-              _saveFilters();
-              _updateProductStream();
-            },
-          )),
-        if (woodTypes != null)
-          ...selectedWoodCodes.map((code) => _buildFilterChip(
-            label: _getNameForCode(woodTypes, code),
-            onRemove: () {
-              setState(() => selectedWoodCodes.remove(code));
-              _saveFilters();
-              _updateProductStream();
-            },
-          )),
-        if (qualities != null)
-          ...selectedQualityCodes.map((code) => _buildFilterChip(
-            label: _getNameForCode(qualities, code),
-            onRemove: () {
-              setState(() => selectedQualityCodes.remove(code));
-              _saveFilters();
-              _updateProductStream();
-            },
-          )),
-        ...selectedFeatures.map((key) => _buildFilterChip(
-          label: const {'thermo':'Thermo','hasel':'Haselfichte','mondholz':'Mondholz','fsc':'FSC'}[key] ?? key,
-          onRemove: () => setState(() => selectedFeatures.remove(key)),
-        )),
-        if (filterIsActs == true)
-          _buildFilterChip(label: 'ACTS', onRemove: () => setState(() => filterIsActs = null)),
-        ...selectedYears.map((year) => _buildFilterChip(
-          label: 'Jg. $year',
-          onRemove: () => setState(() => selectedYears.remove(year)),
-        )),
-        if (_createdFrom != null || _createdTo != null)
-          _buildFilterChip(
-            label: 'Datum: ${_dateRangeLabel()}',
-            onRemove: () => setState(() {
-              _createdFrom = null;
-              _createdTo = null;
-            }),
-          ),
-      ],
+    return ActiveFilterChips(
+      layout: ActiveFilterLayout.wrap,
+      filter: _currentFilter,
+      instruments: instruments,
+      parts: parts,
+      woodTypes: woodTypes,
+      qualities: qualities,
+      showUnit: false,
+      onRemoveInstrument: (c) => setState(() => selectedInstrumentCodes.remove(c)),
+      onRemovePart: (c) => setState(() => selectedPartCodes.remove(c)),
+      onRemoveWood: (c) => setState(() => selectedWoodCodes.remove(c)),
+      onRemoveQuality: (c) => setState(() => selectedQualityCodes.remove(c)),
+      onRemoveUnit: () => setState(() => selectedUnit = null),
+      onRemoveFeature: (k) => setState(() => selectedFeatures.remove(k)),
+      onRemoveActs: () => setState(() => filterIsActs = null),
+      onRemoveYear: (y) => setState(() => selectedYears.remove(y)),
+      onRemoveDate: () => setState(() {
+        _createdFrom = null;
+        _createdTo = null;
+      }),
     );
   }
-
-  Widget _buildFilterChip({
-    required String label,
-    required VoidCallback onRemove,
-  }) {
-    return Chip(
-      label: Text(
-        label,
-        style: const TextStyle(fontSize: 12),
-      ),
-      backgroundColor: const Color(0xFF0F4A29).withOpacity(0.1),
-      deleteIcon: getAdaptiveIcon(iconName: 'close', defaultIcon: Icons.close,),
-      onDeleted: onRemove,
-      deleteIconColor: const Color(0xFF0F4A29),
-      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-    );
-  }
-
+ 
   String _getNameForCode(List<QueryDocumentSnapshot>? docs, String code) {
     if (docs == null || docs.isEmpty) {
       return code;
@@ -4690,46 +4242,12 @@ class WarehouseScreenState extends State<WarehouseScreen> {
     required List<String> selectedValues,
     required Function(List<String>) onChanged,
   }) {
-
-
-    return Material(
-      color: Colors.transparent,
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child:
-        Container(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            children: options.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
-              final code = data['code'] as String;
-              final name = data['name'] as String;
-              return CheckboxListTile(
-                title: Text('$name ($code)'),
-                value: selectedValues.contains(code),
-                onChanged: (bool? checked) {
-                  List<String> newSelection = List.from(selectedValues);
-                  if (checked ?? false) {
-                    if (!newSelection.contains(code)) {
-                      newSelection.add(code);
-                    }
-                  } else {
-                    newSelection.remove(code);
-                  }
-                  onChanged(newSelection);
-                },
-                controlAffinity: ListTileControlAffinity.leading,
-                dense: true,
-              );
-            }).toList(),
-          ),
-        ),
-
-
-      ),
+    return MultiSelectDropdown(
+      options: options,
+      selectedValues: selectedValues,
+      onChanged: onChanged,
     );
   }
-
   Future<void> _exportWarehouseCsv() async {
     try {
       final query = buildQuery();
@@ -4963,100 +4481,7 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              if (instruments != null) ...[
-                                _buildFilterCategory(
-                                  iconName: 'music_note', // Neuer Parameter für das PNG im Web
-                                  icon: Icons.music_note,
-                                  title: 'Instrument',
-                                  child: _buildMultiSelectDropdown(
-                                    label: 'Instrument auswählen',
-                                    options: instruments!,
-                                    selectedValues: selectedInstrumentCodes,
-                                    onChanged: (newSelection) {
-                                      setState(() {
-                                        selectedInstrumentCodes = newSelection;
-                                        _searchController.clear();
-                                        _activeSearchText = '';
-                                        _hasUnsearchedChanges = false;
-                                      });
-                                      _saveFilters();
-                                      _updateProductStream();
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                              ],
-
-                              if (parts != null) ...[
-                                _buildFilterCategory(
-                                  iconName: 'category',
-                                  icon: Icons.category,
-                                  title: 'Bauteil',
-                                  child: _buildMultiSelectDropdown(
-                                    label: 'Bauteil auswählen',
-                                    options: parts!,
-                                    selectedValues: selectedPartCodes,
-                                    onChanged: (newSelection) {
-                                      setState(() {
-                                        selectedPartCodes = newSelection;
-                                        _searchController.clear();
-                                        _activeSearchText = '';
-                                        _hasUnsearchedChanges = false;
-                                      });
-                                      _saveFilters();
-                                      _updateProductStream();
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                              ],
-
-                              if (woodTypes != null) ...[
-                                _buildFilterCategory(
-                                  iconName: 'forest',
-                                  icon: Icons.forest,
-                                  title: 'Holzart',
-                                  child: _buildMultiSelectDropdown(
-                                    label: 'Holzart auswählen',
-                                    options: woodTypes!,
-                                    selectedValues: selectedWoodCodes,
-                                    onChanged: (newSelection) {
-                                      setState(() {
-                                        selectedWoodCodes = newSelection;
-                                        _searchController.clear();
-                                        _activeSearchText = '';
-                                        _hasUnsearchedChanges = false;
-                                      });
-                                      _saveFilters();
-                                      _updateProductStream();
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                              ],
-
-                              if (qualities != null) ...[
-                                _buildFilterCategory(
-                                  iconName: 'star',
-                                  icon: Icons.star,
-                                  title: 'Qualität',
-                                  child: _buildMultiSelectDropdown(
-                                    label: 'Qualität auswählen',
-                                    options: qualities!,
-                                    selectedValues: selectedQualityCodes,
-                                    onChanged: (newSelection) {
-                                      setState(() {
-                                        selectedQualityCodes = newSelection;
-                                        _searchController.clear();
-                                        _activeSearchText = '';
-                                        _hasUnsearchedChanges = false;
-                                      });
-                                      _saveFilters();
-                                      _updateProductStream();
-                                    },
-                                  ),
-                                ),
-                              ],
+                              ..._buildCodeCategories(setState),
                               if (_isOnlineShopView) ...[
                                 const SizedBox(height: 16),
                                 _buildShopPropertyFilters(setState),
@@ -5106,47 +4531,27 @@ class WarehouseScreenState extends State<WarehouseScreen> {
                                   ],
                                 ),
                               ],
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  ...selectedInstrumentCodes.map((code) => _buildFilterChip(
-                                    label: _getNameForCode(instruments, code),
-                                    onRemove: () => setState(() => selectedInstrumentCodes.remove(code)),
-                                  )),
-                                  ...selectedPartCodes.map((code) => _buildFilterChip(
-                                    label: _getNameForCode(parts, code),
-                                    onRemove: () => setState(() => selectedPartCodes.remove(code)),
-                                  )),
-                                  ...selectedWoodCodes.map((code) => _buildFilterChip(
-                                    label: _getNameForCode(woodTypes, code),
-                                    onRemove: () => setState(() => selectedWoodCodes.remove(code)),
-                                  )),
-                                  ...selectedQualityCodes.map((code) => _buildFilterChip(
-                                    label: _getNameForCode(qualities, code),
-                                    onRemove: () => setState(() => selectedQualityCodes.remove(code)),
-                                  )),
-                                  ...selectedFeatures.map((key) => _buildFilterChip(
-                                    label: const {'thermo':'Thermo','hasel':'Haselfichte','mondholz':'Mondholz','fsc':'FSC'}[key] ?? key,
-                                    onRemove: () => setState(() => selectedFeatures.remove(key)),
-                                  )),
-                                  if (filterIsActs == true)
-                                    _buildFilterChip(label: 'ACTS', onRemove: () => setState(() => filterIsActs = null)),
-                                  ...selectedYears.map((year) => _buildFilterChip(
-                                    label: 'Jg. $year',
-                                    onRemove: () => setState(() => selectedYears.remove(year)),
-                                  )),
-                                  if (_createdFrom != null || _createdTo != null)
-                                    _buildFilterChip(
-                                      label: 'Datum: ${_dateRangeLabel()}',
-                                      onRemove: () => setState(() {
-                                        _createdFrom = null;
-                                        _createdTo = null;
-                                      }),
-                                    ),
-                                ],
+                              ActiveFilterChips(
+                                layout: ActiveFilterLayout.wrap,
+                                filter: _currentFilter,
+                                instruments: instruments,
+                                parts: parts,
+                                woodTypes: woodTypes,
+                                qualities: qualities,
+                                showUnit: false,
+                                onRemoveInstrument: (code) => setState(() => selectedInstrumentCodes.remove(code)),
+                                onRemovePart: (code) => setState(() => selectedPartCodes.remove(code)),
+                                onRemoveWood: (code) => setState(() => selectedWoodCodes.remove(code)),
+                                onRemoveQuality: (code) => setState(() => selectedQualityCodes.remove(code)),
+                                onRemoveUnit: () => setState(() => selectedUnit = null),
+                                onRemoveFeature: (key) => setState(() => selectedFeatures.remove(key)),
+                                onRemoveActs: () => setState(() => filterIsActs = null),
+                                onRemoveYear: (year) => setState(() => selectedYears.remove(year)),
+                                onRemoveDate: () => setState(() {
+                                  _createdFrom = null;
+                                  _createdTo = null;
+                                }),
                               ),
-
                             ],
                           ),
                         ),

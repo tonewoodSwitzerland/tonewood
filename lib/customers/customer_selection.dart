@@ -1,22 +1,13 @@
 import 'dart:async';
-import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../components/country_dropdown_widget.dart';
 import 'customer.dart';
 import 'customer_cache_service.dart';
-import 'customer_export_service.dart';
 import '../services/icon_helper.dart';
-
-import 'package:intl/intl.dart';
-
-import 'customer_filter_dialog.dart';
-import 'customer_filter_favorite_sheet.dart';
-import 'customer_filter_service.dart';
 import 'customer_group/customer_group_selection_widget.dart';
-import 'customer_label_print_screen.dart';
 import 'customer_management_screen.dart';
 
 
@@ -828,7 +819,7 @@ class CustomerSelectionSheet {
                                         child: TextFormField(
                                           controller: streetController,
                                           decoration: InputDecoration(
-                                            labelText: 'Straße *',
+                                            labelText: 'Straße',
                                             border: OutlineInputBorder(
                                               borderRadius: BorderRadius.circular(12),
                                             ),
@@ -851,8 +842,7 @@ class CustomerSelectionSheet {
                                               borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
                                             ),
                                           ),
-                                          validator: (value) => value?.isEmpty == true ? 'Bitte Straße eingeben' : null,
-                                        ),
+                                       ),
                                       ),
 
                                     ],
@@ -947,7 +937,7 @@ class CustomerSelectionSheet {
                                         child: TextFormField(
                                           controller: zipCodeController,
                                           decoration: InputDecoration(
-                                            labelText: 'PLZ *',
+                                            labelText: 'PLZ',
                                             border: OutlineInputBorder(
                                               borderRadius: BorderRadius.circular(12),
                                             ),
@@ -970,8 +960,6 @@ class CustomerSelectionSheet {
                                               borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
                                             ),
                                           ),
-                                          validator: (value) => value?.isEmpty == true ? 'Bitte PLZ eingeben' : null,
-
                                         ),
                                       ),
                                       const SizedBox(width: 16),
@@ -980,7 +968,7 @@ class CustomerSelectionSheet {
                                         child: TextFormField(
                                           controller: cityController,
                                           decoration: InputDecoration(
-                                            labelText: 'Ort *',
+                                            labelText: 'Ort',
                                             border: OutlineInputBorder(
                                               borderRadius: BorderRadius.circular(12),
                                             ),
@@ -995,7 +983,6 @@ class CustomerSelectionSheet {
                                               borderSide: BorderSide(color: Theme.of(context).primaryColor, width: 2),
                                             ),
                                           ),
-                                          validator: (value) => value?.isEmpty == true ? 'Bitte Ort eingeben' : null,
                                         ),
                                       ),
                                     ],

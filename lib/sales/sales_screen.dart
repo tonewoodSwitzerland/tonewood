@@ -6521,6 +6521,7 @@ class SalesScreenState extends State<SalesScreen> {
     final qualityName = productData['quality_name'] as String?;
 
     bool hasThermalTreatment = false;
+    bool isActs = false; // 🎵 NEU
 
     if (qualityName != null && qualityName.toLowerCase().contains('thermo')) {
       hasThermalTreatment = true;
@@ -6914,8 +6915,42 @@ class SalesScreenState extends State<SalesScreen> {
 
                             const SizedBox(height: 24),
 
-
-
+                            // 🎵 ACTS
+                            Text(
+                              'ACTS',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: CheckboxListTile(
+                                title: const Text('ACTS'),
+                                subtitle: const Text('Acoustically characterized by Tonewood Switzerland'),
+                                value: isActs,
+                                onChanged: (value) {
+                                  setState(() {
+                                    isActs = value ?? false;
+                                  });
+                                },
+                                secondary: getAdaptiveIcon(
+                                  iconName: 'graphic_eq',
+                                  defaultIcon: Icons.graphic_eq,
+                                  color: isActs
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Colors.grey,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
 
 // Hinweise-Abschnitt
                             Text(
@@ -7567,6 +7602,9 @@ class SalesScreenState extends State<SalesScreen> {
 
                                       // Speichern des Thermobehandlungs-Status
                                       updatedProductData['has_thermal_treatment'] = hasThermalTreatment;
+
+                                      // 🎵 Speichern des ACTS-Status
+                                      updatedProductData['is_acts'] = isActs;
 
                                       // Speichern der Temperatur, wenn Thermobehandlung aktiv
                                       if (hasThermalTreatment && temperatureController.text.isNotEmpty) {

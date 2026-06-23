@@ -1699,6 +1699,18 @@ class ProductManagementScreenState extends State<ProductManagementScreen>
                               isWideScreen: isWideScreen,
                               color: const Color(0xFF0F4A29).withOpacity(0.8),
                             ),
+                            SizedBox(width: isWideScreen ? 48 : 24),
+                            _buildOptionButton(
+                              icon: getAdaptiveIcon(
+                                iconName: 'lock',
+                                defaultIcon: Icons.lock,
+                                color: Colors.white,
+                              ),
+                              label: 'Stamm abschließen',
+                              onPressed: _showStammAbschliessenDialog,
+                              isWideScreen: isWideScreen,
+                              color: Colors.orange[700]!,
+                            ),
                           ],
                         );
                       },
