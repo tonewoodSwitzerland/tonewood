@@ -41,6 +41,9 @@ class RoundwoodListState extends State<RoundwoodList> {
   bool _roundwoodSortAscending = false;
   Map<String, String> _woodTypeNames = {};  // NEU
   Map<String, String> _qualityNames = {};   // NEU
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+  int? _fixedYear; // aktuell fixierter Jahrgang (aus general_data/settings)
   /// Client-seitiger Filter für is_closed
   /// Firestore kann nicht auf "Feld existiert nicht ODER ist false" filtern
   List<QueryDocumentSnapshot> _applyClosedFilter(List<QueryDocumentSnapshot> docs) {
@@ -64,10 +67,192 @@ class RoundwoodListState extends State<RoundwoodList> {
     }).toList();
   }
 @override
+@override
 void initState() {
   super.initState();
-  _loadNames(); // NEU
+  _loadNames();
+  _loadFixedYear(); // NEU
 }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadFixedYear() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('settings')
+          .get();
+      final fixed = doc.data()?['roundwood_fixed_year'];
+      if (mounted) setState(() => _fixedYear = fixed is int ? fixed : null);
+    } catch (_) {}
+  }
+
+  Future<void> _toggleYearFix(int year) async {
+    final settings =
+    FirebaseFirestore.instance.collection('general_data').doc('settings');
+    try {
+      if (_fixedYear == year) {
+        // lösen: nur das Flag entfernen, default_year bleibt als Eingabe-Vorgabe
+        await settings.set(
+            {'roundwood_fixed_year': FieldValue.delete()}, SetOptions(merge: true));
+        if (mounted) setState(() => _fixedYear = null);
+      } else {
+        // fixieren: Flag setzen UND default_year mitziehen (steuert neue Einträge)
+        await settings.set(
+            {'roundwood_fixed_year': year, 'default_year': year},
+            SetOptions(merge: true));
+        if (mounted) setState(() => _fixedYear = year);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler beim Fixieren: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+// Client-seitige Suche über Stammnummer, Originalnummer, Bemerkungen
+  List<QueryDocumentSnapshot> _applySearch(List<QueryDocumentSnapshot> docs) {
+    if (_searchQuery.isEmpty) return docs;
+    return docs.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      final internal = (data['internal_number'] ?? '').toString().toLowerCase();
+      final original = (data['original_number'] ?? '').toString().toLowerCase();
+      final remarks = (data['remarks'] ?? '').toString().toLowerCase();
+      return internal.contains(_searchQuery) ||
+          original.contains(_searchQuery) ||
+          remarks.contains(_searchQuery);
+    }).toList();
+  }
+
+  Widget _buildSearchField() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) =>
+                  setState(() => _searchQuery = value.trim().toLowerCase()),
+              decoration: InputDecoration(
+                hintText: 'Suche: Stammnummer, Originalnummer, Bemerkung',
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: getAdaptiveIcon(
+                      iconName: 'search', defaultIcon: Icons.search),
+                ),
+                suffixIcon: _searchQuery.isEmpty
+                    ? null
+                    : IconButton(
+                  icon: getAdaptiveIcon(
+                      iconName: 'close', defaultIcon: Icons.close),
+                  tooltip: 'Suche löschen',
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                ),
+                isDense: true,
+                border:
+                OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: getAdaptiveIcon(
+              iconName: 'info_outline',
+              defaultIcon: Icons.info_outline,
+              color: Colors.grey[600],
+            ),
+            tooltip: 'Wonach kann ich suchen?',
+            onPressed: _showSearchInfo,
+          ),
+        ],
+      ),
+    );
+  }
+  void _showSearchInfo() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            getAdaptiveIcon(
+                iconName: 'search',
+                defaultIcon: Icons.search,
+                color: const Color(0xFF0F4A29)),
+            const SizedBox(width: 8),
+            const Text('Suche'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text('Durchsucht wird:',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            SizedBox(height: 6),
+            Text('•  Stammnummer\n•  Originalnummer\n•  Bemerkung'),
+            SizedBox(height: 16),
+            Text('So funktioniert es:',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            SizedBox(height: 6),
+            Text(
+              '•  Ein Teil des Begriffs genügt – „17" findet z.B. alle Stämme, '
+                  'deren Nummer 17 enthält.\n\n'
+                  '•  Groß-/Kleinschreibung spielt keine Rolle.\n\n'
+                  '•  Die Suche wirkt zusätzlich zu den aktiven Filtern '
+                  '(Jahr, Qualität, Holzart …).\n\n'
+                  '•  Durchsucht werden die aktuell geladenen Stämme der Liste.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Verstanden'),
+          ),
+        ],
+      ),
+    );
+  }
+  Widget _buildYearPin(int year) {
+    final isFixed = _fixedYear == year;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ActionChip(
+        avatar: getAdaptiveIcon(
+          iconName: 'push_pin',
+          defaultIcon: isFixed ? Icons.push_pin : Icons.push_pin_outlined,
+          size: 16,
+          color: isFixed ? const Color(0xFF0F4A29) : Colors.grey[600],
+        ),
+        label: Text(
+          isFixed ? 'fixiert' : 'fixieren',
+          style: TextStyle(
+            fontSize: 12,
+            color: isFixed ? const Color(0xFF0F4A29) : Colors.grey[700],
+            fontWeight: isFixed ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        backgroundColor: isFixed
+            ? const Color(0xFF0F4A29).withOpacity(0.12)
+            : Colors.grey[100],
+        side: BorderSide(
+            color: isFixed ? const Color(0xFF0F4A29) : Colors.grey[300]!),
+        onPressed: () => _toggleYearFix(year),
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
 Future<void> _loadNames() async {
   final woodSnap = await FirebaseFirestore.instance.collection('wood_types').get();
   final qualSnap = await FirebaseFirestore.instance.collection('qualities').get();
@@ -94,10 +279,12 @@ Future<void> _loadNames() async {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Row(
         children: [
-          if (filter.year != null)
+          if (filter.year != null) ...[
             _buildChip('Jahr: ${filter.year}', () {
               widget.onFilterChanged(filter.copyWith(clearYear: true));
             }),
+            if (widget.showHeaderActions)  _buildYearPin(filter.year!),
+          ],
           if (filter.woodTypes?.isNotEmpty ?? false)
             ...filter.woodTypes!.map((w) => _buildChip(
               'Holz: ${_woodTypeNames[w] ?? w}',
@@ -193,6 +380,7 @@ Future<void> _loadNames() async {
     return Column(
       children: [
         SizedBox(height: h * 0.01),
+        _buildSearchField(), // NEU
         _buildActiveFilterChips(),
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
@@ -206,8 +394,7 @@ Future<void> _loadNames() async {
               // WICHTIG: Client-seitiger Filter für is_closed anwenden
               // ═══════════════════════════════════════════════════════════
               final allDocs = snapshot.data!.docs;
-              final roundwoods = _applyClosedFilter(allDocs);
-
+              final roundwoods = _applySearch(_applyClosedFilter(allDocs));
               if (roundwoods.isEmpty) {
                 return Center(
                   child: Column(

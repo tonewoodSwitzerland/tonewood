@@ -23,6 +23,7 @@ class CurrencyConverterSheet {
     Map<String, bool>? roundingEnabled;
     bool? showExchangeRateOnDocuments;
     bool? showRoundingOnDocuments;
+    String foreignCurrencyDisplay = 'none';  // NEU: none | EUR | USD
     Widget _buildRoundingRow(String from, String to, String currency) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
@@ -143,6 +144,7 @@ class CurrencyConverterSheet {
                   };
                   showExchangeRateOnDocuments = doc.data()!['show_exchange_rate_on_documents'] ?? false;
                   showRoundingOnDocuments = doc.data()!['show_rounding_on_documents'] ?? true;
+                  foreignCurrencyDisplay = doc.data()!['foreign_currency_display'] ?? 'none';  // NEU
                 });
               }
             });
@@ -275,6 +277,61 @@ class CurrencyConverterSheet {
                                   }
                                 },
                               ),
+
+                              // NEU: Rechnungsbetrag in Fremdwährung anzeigen – nur wenn CHF gewählt ist
+                              if (currentCurrency == 'CHF') ...[
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Rechnungsbetrag in Fremdwährung anzeigen',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Theme.of(context).colorScheme.onSurface,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Blendet auf Angebot und Rechnung zusätzlich den Gesamtbetrag in der gewählten Fremdwährung ein.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                RadioListTile<String>(
+                                  title: const Text('Nein'),
+                                  value: 'none',
+                                  groupValue: foreignCurrencyDisplay,
+                                  onChanged: (value) {
+                                    setState(() => foreignCurrencyDisplay = value ?? 'none');
+                                  },
+                                  controlAffinity: ListTileControlAffinity.leading,
+                                  contentPadding: EdgeInsets.zero,
+                                  dense: true,
+                                ),
+                                RadioListTile<String>(
+                                  title: const Text('EUR'),
+                                  value: 'EUR',
+                                  groupValue: foreignCurrencyDisplay,
+                                  onChanged: (value) {
+                                    setState(() => foreignCurrencyDisplay = value ?? 'none');
+                                  },
+                                  controlAffinity: ListTileControlAffinity.leading,
+                                  contentPadding: EdgeInsets.zero,
+                                  dense: true,
+                                ),
+                                RadioListTile<String>(
+                                  title: const Text('US-Dollar'),
+                                  value: 'USD',
+                                  groupValue: foreignCurrencyDisplay,
+                                  onChanged: (value) {
+                                    setState(() => foreignCurrencyDisplay = value ?? 'none');
+                                  },
+                                  controlAffinity: ListTileControlAffinity.leading,
+                                  contentPadding: EdgeInsets.zero,
+                                  dense: true,
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -319,7 +376,7 @@ class CurrencyConverterSheet {
                                   child: Row(
                                     children: [
                                       getAdaptiveIcon(iconName: 'update', defaultIcon:
-                                        Icons.update,
+                                      Icons.update,
                                         size: 16,
                                         color: Theme.of(context).colorScheme.tertiary,
                                       ),
@@ -351,7 +408,7 @@ class CurrencyConverterSheet {
                               child: Row(
                                 children: [
                                   getAdaptiveIcon(iconName: 'info', defaultIcon:
-                                    Icons.info,
+                                  Icons.info,
                                     size: 16,
                                     color: Colors.orange[700],
                                   ),
@@ -538,7 +595,7 @@ class CurrencyConverterSheet {
                                           child: Column(
                                             children: [
                                               getAdaptiveIcon(iconName:'swap_horiz', defaultIcon:
-                                                Icons.swap_horiz,
+                                              Icons.swap_horiz,
                                                 color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
                                                 size: 24,
                                               ),
@@ -666,7 +723,7 @@ class CurrencyConverterSheet {
                                           child: Column(
                                             children: [
                                               getAdaptiveIcon(iconName: 'swap_horiz', defaultIcon:
-                                                Icons.swap_horiz,
+                                              Icons.swap_horiz,
                                                 color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
                                                 size: 24,
                                               ),
@@ -1087,11 +1144,11 @@ class CurrencyConverterSheet {
                             ],
                           ),
                         ),
-                    
-                    
-                    
-                    
-                    
+
+
+
+
+
                       ],
                     ),
                   ),
@@ -1191,6 +1248,7 @@ class CurrencyConverterSheet {
                                   },  // NEU
                                   'show_exchange_rate_on_documents': showExchangeRateOnDocuments ?? false, // NEU
                                   'show_rounding_on_documents': showRoundingOnDocuments ?? true,
+                                  'foreign_currency_display': foreignCurrencyDisplay, // NEU
                                   'last_updated': FieldValue.serverTimestamp(),
                                 }, SetOptions(merge: true));
 

@@ -27,16 +27,69 @@ class _StammAuswahlSheetState extends State<StammAuswahlSheet> {
   @override
   void initState() {
     super.initState();
-    debugPrint('🟢 initState - Filter bei Start: ${_activeFilter.showClosed}');
-
     _loadRecentStaemme();
-    _loadHideClosedSetting();
+    _loadInitialFilter(); // ersetzt _loadHideClosedSetting() + _loadFixedYear()
   }
-// ═══════════════════════════════════════════════════════════════════════════
-// _loadHideClosedSetting() komplett ersetzen
-// ═══════════════════════════════════════════════════════════════════════════
+  Future<void> _loadInitialFilter() async {
+    try {
+      final firestore = FirebaseFirestore.instance;
 
-// ═══════════════════════════════════════════════════════════════════════════
+      // 1) gemerkte Auswahl-Einstellungen (geteiltes Dokument, wie hide_closed)
+      final userDoc =
+      await firestore.collection('user_settings').doc('stamm_auswahl').get();
+      final userData = userDoc.data() ?? {};
+
+      // Basis = zuletzt verwendeter Filter
+      RoundwoodFilter filter = userData['last_filter'] != null
+          ? RoundwoodFilter.fromMap(
+          Map<String, dynamic>.from(userData['last_filter']))
+          : RoundwoodFilter();
+
+      // hide_closed bleibt die Wahrheit für showClosed
+      final hideClosed = userData['hide_closed'] as bool? ?? true;
+      filter = filter.copyWith(
+        showClosed: hideClosed ? false : null,
+        clearShowClosed: !hideClosed,
+      );
+
+      // 2) fixierter Jahrgang überschreibt das Jahr (höchste Priorität)
+      final settingsDoc =
+      await firestore.collection('general_data').doc('settings').get();
+      final fixed = settingsDoc.data()?['roundwood_fixed_year'];
+      if (fixed is int) {
+        filter = filter.copyWith(year: fixed);
+      }
+
+      if (mounted) {
+        setState(() {
+          _hideClosedStaemme = hideClosed;
+          _activeFilter = filter;
+        });
+      }
+    } catch (e) {
+      debugPrint('Fehler beim Laden der Filter: $e');
+    }
+  }
+
+  Future<void> _saveActiveFilter() async {
+    try {
+      final map = _activeFilter.toMap();
+      // absolute Datumsgrenzen NICHT merken (veralten); relativer timeRange bleibt drin
+      map.remove('start_date');
+      map.remove('end_date');
+
+      await FirebaseFirestore.instance
+          .collection('user_settings')
+          .doc('stamm_auswahl')
+          .set({
+        'last_filter': map,
+        'last_updated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Fehler beim Speichern der Filter: $e');
+    }
+  }
+  // ═══════════════════════════════════════════════════════════════════════════
 // _loadHideClosedSetting() mit Debug
 // ═══════════════════════════════════════════════════════════════════════════
   Future<void> _loadHideClosedSetting() async {
@@ -161,6 +214,7 @@ class _StammAuswahlSheetState extends State<StammAuswahlSheet> {
 
     if (result != null) {
       setState(() => _activeFilter = result);
+      _saveActiveFilter();
     }
   }
   Widget _buildRecentStaemme() {
@@ -382,7 +436,10 @@ class _StammAuswahlSheetState extends State<StammAuswahlSheet> {
                     ),
                   ),
                   TextButton(
-                    onPressed: () => setState(() => _activeFilter = RoundwoodFilter()),
+                    onPressed: () {
+                      setState(() => _activeFilter = RoundwoodFilter());
+                      _saveActiveFilter(); // NEU
+                    },
                     child: const Text(
                       'Zurücksetzen',
                       style: TextStyle(fontSize: 12),
@@ -400,9 +457,10 @@ class _StammAuswahlSheetState extends State<StammAuswahlSheet> {
                 debugPrint('⚠️ Filter geändert von: ${_activeFilter.showClosed} zu: ${filter.showClosed}');
                 debugPrint('⚠️ Stack: ${StackTrace.current}');
                 setState(() => _activeFilter = filter);
+                _saveActiveFilter(); // NEU
               }, service: _service,
               isDesktopLayout: false,
-              onItemSelected: (stammId, stammData) {
+              onItemSelected: (stammId, stammData) async {
                 final isClosed = stammData['is_closed'] ?? false;
 
                 if (isClosed) {
@@ -429,14 +487,15 @@ class _StammAuswahlSheetState extends State<StammAuswahlSheet> {
                           child: const Text('Abbrechen'),
                         ),
                         ElevatedButton(
-                          onPressed: () {
-                            Navigator.pop(ctx); // Dialog schließen
-                            Navigator.pop(context); // Auswahl-Sheet schließen
-                            showStammBuchungSheet(
+                          onPressed: () async {
+                            Navigator.pop(ctx); // nur den Dialog schließen
+                            await showStammBuchungSheet(
                               context: context,
                               stammId: stammId,
                               stammData: stammData,
                             );
+                            // zurück in der Auswahl -> Liste auffrischen
+                            if (mounted) _loadRecentStaemme();
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF0F4A29),
@@ -447,12 +506,13 @@ class _StammAuswahlSheetState extends State<StammAuswahlSheet> {
                     ),
                   );
                 } else {
-                  Navigator.pop(context);
-                  showStammBuchungSheet(
+                  await showStammBuchungSheet(
                     context: context,
                     stammId: stammId,
                     stammData: stammData,
                   );
+                  // zurück in der Auswahl -> Liste auffrischen
+                  if (mounted) _loadRecentStaemme();
                 }
               },
             ),

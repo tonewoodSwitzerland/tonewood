@@ -51,6 +51,7 @@ class _OrderConfigurationSheetState extends State<OrderConfigurationSheet> {
     'payment_method': 'BAR',
     'custom_payment_method': '',
     'payment_term_days': 30,
+    'payment_term_date': null,
   };
 
   Map<String, bool> _roundingSettings = {'CHF': true, 'EUR': false, 'USD': false};
@@ -60,7 +61,7 @@ class _OrderConfigurationSheetState extends State<OrderConfigurationSheet> {
   final _customPaymentController = TextEditingController();
   DateTime? _downPaymentDate;
   DateTime? _invoiceDate = DateTime.now();
-
+  DateTime? _paymentTermDate;
   @override
   void initState() {
     super.initState();
@@ -83,6 +84,7 @@ class _OrderConfigurationSheetState extends State<OrderConfigurationSheet> {
         'payment_method': existing['payment_method'] ?? 'BAR',
         'custom_payment_method': existing['custom_payment_method'] ?? '',
         'payment_term_days': existing['payment_term_days'] ?? 30,
+        'payment_term_date': existing['payment_term_date'],
       };
 
       _downPaymentController.text = _invoiceSettings['down_payment_amount'] > 0
@@ -92,6 +94,9 @@ class _OrderConfigurationSheetState extends State<OrderConfigurationSheet> {
       _customPaymentController.text = _invoiceSettings['custom_payment_method'] ?? '';
       _downPaymentDate = _invoiceSettings['down_payment_date'];
       _invoiceDate = _invoiceSettings['invoice_date'];
+      _paymentTermDate = _invoiceSettings['payment_term_date'] is Timestamp
+          ? (_invoiceSettings['payment_term_date'] as Timestamp).toDate()
+          : _invoiceSettings['payment_term_date'] as DateTime?;
     }
   }
 
@@ -848,9 +853,34 @@ class _OrderConfigurationSheetState extends State<OrderConfigurationSheet> {
                   });
                 },
               ),
+              RadioListTile<int>(
+                title: const Text('Fixes Datum'),
+                subtitle: _paymentTermDate != null
+                    ? Text(
+                  'Fällig am ${DateFormat('dd.MM.yyyy').format(_paymentTermDate!)}',
+                  style: const TextStyle(fontSize: 12),
+                )
+                    : const Text(
+                  'Zahlbar bis zu einem frei wählbaren Datum',
+                  style: TextStyle(fontSize: 12),
+                ),
+                value: -1,
+                groupValue: _invoiceSettings['payment_term_days'],
+                onChanged: (value) => _pickPaymentTermDate(),
+                secondary: _paymentTermDate != null
+                    ? IconButton(
+                  icon: getAdaptiveIcon(
+                    iconName: 'edit_calendar',
+                    defaultIcon: Icons.edit_calendar,
+                  ),
+                  onPressed: _pickPaymentTermDate,
+                )
+                    : null,
+              ),
             ],
           ),
         ),
+
 
         // Vorschau (nur wenn Anzahlung > 0)
         if (downPayment > 0) ...[
@@ -1015,7 +1045,8 @@ class _OrderConfigurationSheetState extends State<OrderConfigurationSheet> {
         'is_full_payment': _invoiceSettings['is_full_payment'] ?? false,
         'payment_method': _invoiceSettings['payment_method'] ?? 'BAR',
         'custom_payment_method': _invoiceSettings['custom_payment_method'] ?? '',
-        'payment_term_days': _invoiceSettings['payment_term_days'] ?? 30,
+        'payment_term_days': _effectivePaymentTermDays(),
+        'payment_term_date': _paymentTermDate,
       };
 
       final rawExchangeRates = widget.metadata['exchangeRates'] as Map<String, dynamic>? ?? {};
@@ -1048,7 +1079,7 @@ class _OrderConfigurationSheetState extends State<OrderConfigurationSheet> {
         invoiceNumber: 'PREVIEW',
         shippingCosts: widget.metadata['shippingCosts'] as Map<String, dynamic>?,
         calculations: safeCalculations,
-        paymentTermDays: _invoiceSettings['payment_term_days'] ?? 30,
+        paymentTermDays: _effectivePaymentTermDays(),
         taxOption: widget.metadata['taxOption'] ?? 0,
         vatRate: (widget.metadata['vatRate'] as num?)?.toDouble() ?? 8.1,
         downPaymentSettings: previewInvoiceSettings,
@@ -1130,14 +1161,45 @@ class _OrderConfigurationSheetState extends State<OrderConfigurationSheet> {
       }
     }
   }
-
+  Future<void> _pickPaymentTermDate() async {
+    final base = _invoiceDate ?? DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _paymentTermDate ?? base.add(const Duration(days: 30)),
+      firstDate: base,
+      lastDate: DateTime(2100),
+      locale: const Locale('de', 'DE'),
+    );
+    if (picked != null) {
+      setState(() {
+        _paymentTermDate = picked;
+        _invoiceSettings['payment_term_days'] = -1;
+        _invoiceSettings['payment_term_date'] = picked;
+      });
+    }
+  }
+  /// Liefert die effektive Zahlungsfrist in Tagen.
+  /// Bei "Fixes Datum" (-1) wird die Differenz zum Rechnungsdatum berechnet,
+  /// damit der Generator unverändert mit Tagen weiterarbeiten kann.
+  int _effectivePaymentTermDays() {
+    final days = _invoiceSettings['payment_term_days'];
+    if (days == -1 && _paymentTermDate != null) {
+      final base = _invoiceDate ?? DateTime.now();
+      final diff = _paymentTermDate!
+          .difference(DateTime(base.year, base.month, base.day))
+          .inDays;
+      return diff < 0 ? 0 : diff;
+    }
+    return (days is int && days >= 0) ? days : 30;
+  }
   Future<void> _saveAndClose() async {
     _invoiceSettings['invoice_date'] = _invoiceDate;
     _invoiceSettings['down_payment_date'] = _downPaymentDate;
     _invoiceSettings['down_payment_amount'] = double.tryParse(_downPaymentController.text) ?? 0.0;
     _invoiceSettings['down_payment_reference'] = _referenceController.text;
     _invoiceSettings['custom_payment_method'] = _customPaymentController.text;
-
+    _invoiceSettings['payment_term_date'] = _paymentTermDate;
+    _invoiceSettings['payment_term_days'] = _effectivePaymentTermDays();
     final additionalTexts = await AdditionalTextsManager.loadAdditionalTexts();
 
     Navigator.pop(context, {

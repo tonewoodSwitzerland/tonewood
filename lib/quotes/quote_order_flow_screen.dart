@@ -1033,7 +1033,11 @@ class _QuoteOrderFlowScreenState extends State<QuoteOrderFlowScreen> {
       'vat_rate': vatRate,
       'vat_amount': vatAmount,
       'total': total,
+      'show_discount_percentage_on_invoice':
+      totalDiscountDoc.exists ? (totalDiscountDoc.data()?['show_discount_percentage_on_invoice'] ?? false) : false,
+
     };
+
   }
 
   Future<void> _clearTemporaryData() async {

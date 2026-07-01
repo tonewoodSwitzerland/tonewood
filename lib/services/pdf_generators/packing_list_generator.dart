@@ -108,7 +108,7 @@ class PackingListGenerator extends BasePdfGenerator {
     }
 
     final packages = List<Map<String, dynamic>>.from(packingSettings['packages'] ?? []);
-
+    final showDimensions = packingSettings['show_dimensions'] as bool? ?? false;
     // Lade alle Holzart-Daten vorher
     final Map<String, Map<String, dynamic>> woodTypeCache = {};
 
@@ -430,6 +430,7 @@ class PackingListGenerator extends BasePdfGenerator {
               columnAlignments,
               totals,
               unitDecimals,
+              showDimensions,
             ));
             content.add(pw.SizedBox(height: 20));
           }
@@ -537,6 +538,7 @@ class PackingListGenerator extends BasePdfGenerator {
       Map<String, String> columnAlignments,
       Map<String, double> totals,
       Map<String, int> unitDecimals,
+      bool showDimensions,
       ) {
     double packageNetWeight = 0.0;
     double packageNetVolume = 0.0;
@@ -552,6 +554,7 @@ class PackingListGenerator extends BasePdfGenerator {
 
     // NEU: Ausrichtungen holen (Packing List hat eigene Spalten)
     final productAlign = _getTextAlign(columnAlignments['product'] ?? 'left');
+    final dimensionsAlign = _getTextAlign(columnAlignments['dimensions'] ?? 'center');
     final qualityAlign = _getTextAlign(columnAlignments['quality'] ?? 'left');
     final qtyAlign = _getTextAlign(columnAlignments['quantity'] ?? 'right');
     final unitAlign = _getTextAlign(columnAlignments['unit'] ?? 'center');
@@ -567,6 +570,9 @@ class PackingListGenerator extends BasePdfGenerator {
         decoration: const pw.BoxDecoration(color: PdfColors.blueGrey50),
         children: [
           BasePdfGenerator.buildHeaderCell(getTranslation('product'), 8, align: productAlign),
+          if (showDimensions)
+            BasePdfGenerator.buildHeaderCell(
+                language == 'EN' ? 'Dimensions [mm]' : 'Masse [mm]', 8, align: dimensionsAlign),
           BasePdfGenerator.buildHeaderCell(getTranslation('quality'), 8, align: qualityAlign),
           BasePdfGenerator.buildHeaderCell(getTranslation('qty'), 8, align: qtyAlign),
           BasePdfGenerator.buildHeaderCell(getTranslation('unit'), 8, align: unitAlign),
@@ -736,6 +742,19 @@ class PackingListGenerator extends BasePdfGenerator {
                 textAlign: productAlign,
               ),
             ),
+            if (showDimensions)
+              BasePdfGenerator.buildContentCell(
+                pw.Text(
+                      () {
+                    if (itemLength <= 0 && itemWidth <= 0 && thickness <= 0) return '';
+                    String f(double v) =>
+                        v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
+                    return '${f(itemLength)}×${f(itemWidth)}×${f(thickness)}';
+                  }(),
+                  style: const pw.TextStyle(fontSize: 8),
+                  textAlign: dimensionsAlign,
+                ),
+              ),
             BasePdfGenerator.buildContentCell(
               pw.Text(quality, style: const pw.TextStyle(fontSize: 8), textAlign: qualityAlign),
             ),
@@ -791,6 +810,8 @@ class PackingListGenerator extends BasePdfGenerator {
             pw.Text(getTranslation('package_total_net'),
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8)),
           ),
+          if (showDimensions)
+            BasePdfGenerator.buildContentCell(pw.Text('', style: const pw.TextStyle(fontSize: 8))),
           BasePdfGenerator.buildContentCell(pw.Text('', style: const pw.TextStyle(fontSize: 8))),
           BasePdfGenerator.buildContentCell(pw.Text('', style: const pw.TextStyle(fontSize: 8))),
           BasePdfGenerator.buildContentCell(pw.Text('', style: const pw.TextStyle(fontSize: 8))),
@@ -818,6 +839,8 @@ class PackingListGenerator extends BasePdfGenerator {
             pw.Text(getTranslation('package_total_gross'),
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8)),
           ),
+          if (showDimensions)
+            BasePdfGenerator.buildContentCell(pw.Text('', style: const pw.TextStyle(fontSize: 8))),
           BasePdfGenerator.buildContentCell(pw.Text('', style: const pw.TextStyle(fontSize: 8))),
           BasePdfGenerator.buildContentCell(pw.Text('', style: const pw.TextStyle(fontSize: 8))),
           BasePdfGenerator.buildContentCell(pw.Text('', style: const pw.TextStyle(fontSize: 8))),
@@ -842,15 +865,27 @@ class PackingListGenerator extends BasePdfGenerator {
     totals['gross_volume'] = (totals['gross_volume'] ?? 0) + grossVolume;
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.blueGrey200, width: 0.5),
-      columnWidths: {
-        0: const pw.FlexColumnWidth(3.0),    // Produkt
-        1: const pw.FlexColumnWidth(2.0),    // Abmessungen
-        2: const pw.FlexColumnWidth(1.5),    // Menge
-        3: const pw.FlexColumnWidth(1.0),    // Einheit
-        4: const pw.FlexColumnWidth(1.8),    // Gewicht/Stk
-        5: const pw.FlexColumnWidth(1.8),    // Volumen/Stk
-        6: const pw.FlexColumnWidth(1.8),    // Gesamt Gewicht
-        7: const pw.FlexColumnWidth(1.8),    // Gesamt Volumen
+      columnWidths: showDimensions
+          ? {
+        0: const pw.FlexColumnWidth(2.6), // Produkt
+        1: const pw.FlexColumnWidth(1.7), // Maße
+        2: const pw.FlexColumnWidth(1.0), // Qualität
+        3: const pw.FlexColumnWidth(1.2), // Menge
+        4: const pw.FlexColumnWidth(0.9), // Einheit
+        5: const pw.FlexColumnWidth(1.5), // Gewicht/Stk
+        6: const pw.FlexColumnWidth(1.5), // Volumen/Stk
+        7: const pw.FlexColumnWidth(1.5), // Gesamt Gewicht
+        8: const pw.FlexColumnWidth(1.5), // Gesamt Volumen
+      }
+          : {
+        0: const pw.FlexColumnWidth(3.0), // Produkt
+        1: const pw.FlexColumnWidth(2.0), // Qualität
+        2: const pw.FlexColumnWidth(1.5), // Menge
+        3: const pw.FlexColumnWidth(1.0), // Einheit
+        4: const pw.FlexColumnWidth(1.8), // Gewicht/Stk
+        5: const pw.FlexColumnWidth(1.8), // Volumen/Stk
+        6: const pw.FlexColumnWidth(1.8), // Gesamt Gewicht
+        7: const pw.FlexColumnWidth(1.8), // Gesamt Volumen
       },
       children: rows,
     );

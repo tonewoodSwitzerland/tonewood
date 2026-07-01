@@ -449,22 +449,46 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
   Widget _buildSaveButton() {
     return Container(
       margin: const EdgeInsets.only(bottom: 24),
-      width: double.infinity,
-      height: 50,
-      child: ElevatedButton(
-        onPressed: _saveRoundwood,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF0F4A29),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-        child: Text(
-          widget.editMode ? 'Änderungen speichern' : 'Speichern',
-          style: const TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
-        ),
+      child: Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: () => _saveRoundwood(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F4A29),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: Text(
+                widget.editMode ? 'Änderungen speichern' : 'Speichern & Schließen',
+                style: const TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+          // "Speichern & Neu" nur im Neu-Modus
+          if (!widget.editMode) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: OutlinedButton.icon(
+                onPressed: () => _saveRoundwood(keepOpen: true),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF0F4A29),
+                  side: const BorderSide(color: Color(0xFF0F4A29)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                icon: getAdaptiveIcon(iconName: 'add', defaultIcon: Icons.add, color: const Color(0xFF0F4A29)),
+                label: const Text('Speichern & Neu',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
-
   Widget _buildCardHeader(String title, IconData icon) {
     return Row(
       children: [
@@ -877,15 +901,20 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
                     color: const Color(0xFF0F4A29),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Text(_selectedQuality!, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
+                  child: Text(_qualityLabelForCode(_selectedQuality!), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), ),
             ],
           ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _primaryQualities.map((q) => _buildQualityChip(q)).toList(),
+            children: _primaryQualities.map((label) {
+              final q = _qualityByLabel(label);
+              // Wenn die qualities-Collection den Eintrag (noch) nicht kennt,
+              // Chip ausblenden – so kann gar kein falscher Wert gespeichert werden.
+              if (q == null) return const SizedBox.shrink();
+              return _buildQualityChip(q['code'] as String, label); // speichert Code, zeigt Buchstabe
+            }).toList(),
           ),
           if (_showAllQualities && _allQualities != null) ...[
             const Divider(height: 24),
@@ -895,10 +924,19 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
               spacing: 8,
               runSpacing: 8,
               children: _allQualities!
-                  .where((doc) => !_primaryQualities.contains((doc.data() as Map)['code']))
+                  .where((doc) {
+                final d = doc.data() as Map<String, dynamic>;
+                // alles ausblenden, was schon oben als primärer Chip erscheint
+                return !_primaryQualities.contains(d['name']) &&
+                    !_primaryQualities.contains(d['short']) &&
+                    !_primaryQualities.contains(d['code']);
+              })
                   .map((doc) {
                 final data = doc.data() as Map<String, dynamic>;
-                return _buildQualityChip(data['code'] as String, name: data['name'] as String?);
+                return _buildQualityChip(
+                  data['code'] as String,
+                  (data['name'] as String?) ?? data['code'] as String,
+                );
               }).toList(),
             ),
           ],
@@ -916,7 +954,7 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
     );
   }
 
-  Widget _buildQualityChip(String code, {String? name}) {
+  Widget _buildQualityChip(String code, String label) {
     bool isSelected = _selectedQuality == code;
     return InkWell(
       onTap: () => setState(() => _selectedQuality = code),
@@ -929,7 +967,7 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
           border: Border.all(color: isSelected ? const Color(0xFF0F4A29) : Colors.grey[300]!),
         ),
         child: Text(
-          name != null ? '$code ($name)' : code,
+          label,
           style: TextStyle(
             color: isSelected ? Colors.white : Colors.black87,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
@@ -939,6 +977,24 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
     );
   }
 
+// Hilfsfunktionen: lösen Label <-> Code über die qualities-Collection auf
+  Map<String, dynamic>? _qualityByLabel(String label) {
+    final matches = _allQualities?.where((doc) {
+      final d = doc.data() as Map<String, dynamic>;
+      return d['name'] == label || d['short'] == label || d['code'] == label;
+    });
+    if (matches == null || matches.isEmpty) return null;
+    return matches.first.data() as Map<String, dynamic>;
+  }
+
+  String _qualityLabelForCode(String code) {
+    final matches = _allQualities?.where((doc) => (doc.data() as Map)['code'] == code);
+    if (matches != null && matches.isNotEmpty) {
+      final d = matches.first.data() as Map<String, dynamic>;
+      return (d['name'] as String?) ?? code;
+    }
+    return code;
+  }
   Widget _buildDateSelector() {
     return InkWell(
       onTap: () => _selectDate(context),
@@ -1118,8 +1174,31 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
       setState(() => _selectedDate = picked);
     }
   }
+  void _prepareNextEntry() {
+    setState(() {
+      // Stammnummer hochzählen
+      final current = int.tryParse(_internalNumberController.text) ?? 0;
+      _lastInternalNumber = _internalNumberController.text.padLeft(3, '0');
+      _internalNumberController.text =
+          (current + 1).toString().padLeft(3, '0');
 
-  Future<void> _saveRoundwood() async {
+      // pro Stamm unterschiedliche Felder leeren
+      _originalNumberController.clear();
+      _volumeController.clear();
+      _remarksController.clear();
+      _plaketteColorController.clear();
+      _otherPurposeController.clear();
+      _selectedQuality = null;
+      _selectedPurposes = [];
+      _hasOtherPurpose = false;
+      _isNumberTaken = false;
+
+      // beibehalten: _selectedYear, _selectedWoodType, _originController (Herkunft)
+      // -> falls du mehr behalten willst (z.B. Holzart NICHT behalten), hier anpassen
+    });
+    _validateInternalNumber(); // prüft die neue Nummer auf Dopplung
+  }
+  Future<void> _saveRoundwood({bool keepOpen = false}) async {
     if (_isNumberTaken) {
       AppToast.show(message: 'Die interne Nummer ${_internalNumberController.text} ist bereits vergeben!', height: h);
       return;
@@ -1134,6 +1213,7 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
           'wood_type': _selectedWoodType,
           'wood_name': _selectedWoodType != null ? _getWoodName(_selectedWoodType!) : null,
           'quality': _selectedQuality,
+          'quality_name': _selectedQuality != null ? _qualityLabelForCode(_selectedQuality!) : null,
           'plakette_color': _plaketteColorController.text,
           'cutting_date': _selectedDate,
           'purposes': _selectedPurposes,
@@ -1159,8 +1239,13 @@ class RoundwoodEntryScreenState extends State<RoundwoodEntryScreen> {
         }
 
         if (!mounted) return;
-        Navigator.pop(context);
-        AppToast.show(message: 'Rundholz erfolgreich gespeichert', height: h);
+        if (keepOpen && !widget.editMode) {
+          AppToast.show(message: 'Gespeichert – weiter mit nächstem Stamm', height: h);
+          _prepareNextEntry();
+        } else {
+          Navigator.pop(context);
+          AppToast.show(message: 'Rundholz erfolgreich gespeichert', height: h);
+        }
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Fehler beim Speichern: $e'), backgroundColor: Colors.red),

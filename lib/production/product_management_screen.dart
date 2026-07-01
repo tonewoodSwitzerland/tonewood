@@ -34,10 +34,28 @@ class ProductManagementScreenState extends State<ProductManagementScreen>
     with SingleTickerProviderStateMixin {  // ← Mixin hinzufügen
   late TabController _verwaltungTabController;
 
+  RoundwoodFilter _roundwoodFilter = RoundwoodFilter(); // NEU: überlebt Schließen/Öffnen
+
   @override
   void initState() {
     super.initState();
     _verwaltungTabController = TabController(length: 2, vsync: this);
+    _loadFixedYearFilter(); // NEU
+  }
+
+  Future<void> _loadFixedYearFilter() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('general_data')
+          .doc('settings')
+          .get();
+      final fixed = doc.data()?['roundwood_fixed_year'];
+      if (mounted && fixed is int) {
+        setState(() {
+          _roundwoodFilter = _roundwoodFilter.copyWith(year: fixed);
+        });
+      }
+    } catch (_) {}
   }
 
   final TextEditingController quantityController = TextEditingController();
@@ -1742,15 +1760,200 @@ class ProductManagementScreenState extends State<ProductManagementScreen>
                         ],
                       ),
                     ),
+                    // const SizedBox(height: 24),
+                    // Align(
+                    //   alignment: Alignment.centerLeft,
+                    //   child: TextButton.icon(
+                    //     onPressed: _repairRoundwoodQualityCodes,
+                    //     icon: getAdaptiveIcon(
+                    //       iconName: 'build',
+                    //       defaultIcon: Icons.build,
+                    //       color: Colors.grey[700],
+                    //     ),
+                    //     label: Text(
+                    //       'Qualitäts-Codes reparieren',
+                    //       style: TextStyle(color: Colors.grey[700]),
+                    //     ),
+                    //   ),
+                    // ),
                   ],
                 ),
               ),
             ),
           ],
         ));
+  }// ═══════════════════════════════════════════════════════════════════
+// WARTUNG: Qualitäts-Codes in roundwood reparieren
+// Manche Alt-Stämme haben im Feld `quality` den Namen (z.B. "B") statt
+// des Codes (z.B. "24") gespeichert -> beim Filtern fallen sie raus.
+// Diese Methode schreibt den korrekten Code anhand von `quality_name`
+// (bzw. dem alten Wert) aus der qualities-Collection zurück.
+// ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════
+// WARTUNG: Qualitäts-Codes in roundwood reparieren
+// Manche Alt-Stämme haben im Feld `quality` den Namen (z.B. "B") statt
+// des Codes (z.B. "24") gespeichert -> beim Filtern fallen sie raus.
+// Diese Methode schreibt den korrekten Code anhand von `quality_name`
+// (bzw. dem alten Wert) aus der qualities-Collection zurück.
+// ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════
+// WARTUNG: Qualitäts-Codes in roundwood reparieren
+// Manche Alt-Stämme haben im Feld `quality` den Namen (z.B. "B") statt
+// des Codes (z.B. "24") gespeichert -> beim Filtern fallen sie raus.
+// Diese Methode schreibt den korrekten Code anhand von `quality_name`
+// (bzw. dem alten Wert) aus der qualities-Collection zurück.
+// ═══════════════════════════════════════════════════════════════════
+  Future<void> _repairRoundwoodQualityCodes() async {
+    // kleiner Helfer: alles sicher zu getrimmtem String machen
+    String? _str(dynamic v) => v == null ? null : v.toString().trim();
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+
+      // 1) qualities laden und Lookups bauen
+      final qualSnap = await firestore.collection('qualities').get();
+      final validCodes = <String>{};          // alle gültigen Codes
+      final nameToCode = <String, String>{};  // name  -> code
+      final shortToCode = <String, String>{}; // short -> code
+
+      for (final doc in qualSnap.docs) {
+        final data = doc.data();
+        final code = _str(data['code']) ?? doc.id;
+        validCodes.add(code);
+        final name = _str(data['name']);
+        final short = _str(data['short']);
+        if (name != null && name.isNotEmpty) nameToCode[name] = code;
+        if (short != null && short.isNotEmpty) shortToCode[short] = code;
+      }
+
+      // Altschreibweisen / Aliase -> tatsächlicher Code in der qualities-Collection
+      final aliasToCode = <String, String>{
+        'undefiniert': '99', // entspricht name "-" / short "undef"
+        // bei Bedarf später weitere ergänzen
+      };
+
+      // 2) alle roundwood-Dokumente laden
+      final roundwoodSnap = await firestore.collection('roundwood').get();
+
+      // 3) Trockenlauf: ermitteln, was korrigiert werden muss
+      final fixes = <String, String>{};        // docId -> neuer Code
+      final unresolved = <String>[];           // docIds ohne erkennbare Qualität
+      final unresolvedBreakdown = <String, int>{}; // DEBUG: was steckt drin?
+
+      for (final doc in roundwoodSnap.docs) {
+        final data = doc.data();
+        final currentQuality = _str(data['quality']);
+
+        // schon ein gültiger Code? -> nichts tun
+        if (currentQuality != null && validCodes.contains(currentQuality)) {
+          continue;
+        }
+
+        // Code zuerst über quality_name suchen, sonst über den alten Wert
+        final qualityName = _str(data['quality_name']);
+        String? newCode;
+        if (qualityName != null && qualityName.isNotEmpty) {
+          newCode = nameToCode[qualityName] ?? shortToCode[qualityName] ?? aliasToCode[qualityName];
+        }
+        if (newCode == null && currentQuality != null && currentQuality.isNotEmpty) {
+          newCode = nameToCode[currentQuality] ?? shortToCode[currentQuality] ?? aliasToCode[currentQuality];
+        }
+
+        if (newCode == null) {
+          unresolved.add(doc.id);
+          final key = 'quality=${currentQuality ?? "<fehlt>"} | '
+              'quality_name=${qualityName ?? "<fehlt>"}';
+          unresolvedBreakdown[key] = (unresolvedBreakdown[key] ?? 0) + 1;
+          continue;
+        }
+        if (newCode != currentQuality) {
+          fixes[doc.id] = newCode;
+        }
+      }
+
+      // ─── DEBUG-AUSGABE (nach dem Debuggen wieder entfernen) ───
+      debugPrint('=== qualities-Collection ===');
+      debugPrint('codes:  ${validCodes.toList()}');
+      debugPrint('names:  ${nameToCode.keys.toList()}');
+      debugPrint('shorts: ${shortToCode.keys.toList()}');
+      debugPrint('=== Nicht zuordenbar (${unresolved.length}) ===');
+      (unresolvedBreakdown.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value)))
+          .forEach((e) => debugPrint('${e.value}x  ${e.key}'));
+      // ──────────────────────────────────────────────────────────
+
+      // 4) nichts zu tun?
+      if (fixes.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(unresolved.isEmpty
+              ? 'Alles ok – keine Korrekturen nötig.'
+              : 'Keine Korrekturen nötig. ${unresolved.length} Einträge ohne '
+              'erkennbare Qualität (bitte manuell prüfen).'),
+        ));
+        return;
+      }
+
+      // 5) Bestätigung mit Vorschau (bevor geschrieben wird!)
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Qualitäts-Codes reparieren'),
+          content: Text(
+            '${roundwoodSnap.docs.length} Stämme geprüft.\n\n'
+                '${fixes.length} Einträge werden korrigiert.\n'
+                '${unresolved.length} Einträge nicht zuordenbar (bleiben unverändert).\n\n'
+                'Fortfahren?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F4A29)),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Korrigieren'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+
+      // 6) in Batches schreiben (max. 500 Ops pro Batch)
+      final entries = fixes.entries.toList();
+      const chunkSize = 400;
+      var written = 0;
+      for (var i = 0; i < entries.length; i += chunkSize) {
+        final batch = firestore.batch();
+        final chunk = entries.skip(i).take(chunkSize).toList();
+        for (final e in chunk) {
+          batch.update(
+            firestore.collection('roundwood').doc(e.key),
+            {'quality': e.value},
+          );
+        }
+        await batch.commit();
+        written += chunk.length;
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Fertig: $written Einträge korrigiert'
+            '${unresolved.isNotEmpty ? ', ${unresolved.length} nicht zuordenbar' : ''}.'),
+        backgroundColor: const Color(0xFF0F4A29),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Fehler bei der Reparatur: $e'),
+        backgroundColor: Colors.red,
+      ));
+    }
   }
   void _showRoundwoodListDialog() {
-    RoundwoodFilter _dialogFilter = RoundwoodFilter(); // ← außerhalb des builders!
 
     showModalBottomSheet(
       context: context,
@@ -1823,10 +2026,10 @@ class ProductManagementScreenState extends State<ProductManagementScreen>
                   builder: (context, setModalState) {
                     return RoundwoodList(
                       showHeaderActions: true,
-                      filter: _dialogFilter,
+                      filter: _roundwoodFilter,
                       onFilterChanged: (filter) {
                         setModalState(() {
-                          _dialogFilter = filter;
+                          _roundwoodFilter = filter;
                         });
                       },
                       service: RoundwoodService(),

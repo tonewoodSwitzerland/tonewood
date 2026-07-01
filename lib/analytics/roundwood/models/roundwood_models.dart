@@ -183,7 +183,31 @@ class RoundwoodFilter {
       if (showClosed != null) 'show_closed': showClosed,
     };
   }
+  factory RoundwoodFilter.fromMap(Map<String, dynamic> map) {
+    DateTime? toDate(dynamic v) {
+      if (v is Timestamp) return v.toDate();
+      if (v is DateTime) return v;
+      return null;
+    }
+    List<String>? toStrList(dynamic v) =>
+        v == null ? null : List<String>.from(v as List);
 
+    return RoundwoodFilter(
+      woodTypes: toStrList(map['wood_types']),
+      qualities: toStrList(map['qualities']),
+      purposes: toStrList(map['purposes']),
+      origin: map['origin'] as String?,
+      volumeMin: (map['volume_min'] as num?)?.toDouble(),
+      volumeMax: (map['volume_max'] as num?)?.toDouble(),
+      isMoonwood: map['is_moonwood'] as bool?,
+      isFSC: map['is_fsc'] as bool?,
+      year: (map['year'] as num?)?.toInt(),
+      startDate: toDate(map['start_date']),
+      endDate: toDate(map['end_date']),
+      timeRange: map['time_range'] as String?,
+      showClosed: map['show_closed'] as bool?,
+    );
+  }
   RoundwoodFilter copyWith({
     List<String>? woodTypes,
     List<String>? qualities,

@@ -100,6 +100,7 @@ class InvoiceGenerator extends BasePdfGenerator {
 
     bool showExchangeRateOnDocument = false;
     bool showRoundingOnDocument = true;
+    String foreignCurrencyDisplay = 'none'; // NEU: none | EUR | USD
     try {
       final currencySettings = await FirebaseFirestore.instance
           .collection('general_data')
@@ -109,10 +110,24 @@ class InvoiceGenerator extends BasePdfGenerator {
       if (currencySettings.exists) {
         showExchangeRateOnDocument = currencySettings.data()?['show_exchange_rate_on_documents'] ?? false;
         showRoundingOnDocument = currencySettings.data()?['show_rounding_on_documents'] ?? true;
+        foreignCurrencyDisplay = currencySettings.data()?['foreign_currency_display'] ?? 'none'; // NEU
       }
     } catch (e) {
       print('Fehler beim Laden der Currency Settings: $e');
     }
+
+    // NEU: Rechnungsbetrag in Fremdwährung (nur wenn Anzeige in CHF erfolgt).
+    // Gleiche Rappenrundung wie beim gedruckten CHF-Gesamtbetrag, damit der
+    // Fremdwährungsbetrag exakt zum Rechnungsbetrag passt.
+    final bool showForeignAmount = currency == 'CHF'
+        && foreignCurrencyDisplay != 'none'
+        && exchangeRates[foreignCurrencyDisplay] != null;
+    final double finalTotalChf = showForeignAmount
+        ? _computeGrandTotalChf(items, currency, exchangeRates, shippingCosts, calculations, taxOption, vatRate, roundingSettings)
+        : 0.0;
+    final String foreignAmountFormatted = showForeignAmount
+        ? BasePdfGenerator.formatCurrency(finalTotalChf, foreignCurrencyDisplay, exchangeRates)
+        : '';
 
     final isFullPayment = invoiceSettings['is_full_payment'] ?? false;
     final paymentMethod = invoiceSettings['payment_method'] ?? 'BAR';
@@ -168,12 +183,14 @@ class InvoiceGenerator extends BasePdfGenerator {
           'quote_reference': quoteNumber != null ? 'Angebotsnummer: $quoteNumber' : '',
           'currency_note': 'Alle Preise in $currency (Umrechnungskurs: 1 CHF = ${exchangeRate.toStringAsFixed(4)} $currency)',
           'payment_note': 'Zahlbar innerhalb von $paymentTermDays Tagen bis ${DateFormat('dd. MMMM yyyy', 'de_DE').format(paymentDue)}.',
+          'foreign_amount_note': 'Rechnungsbetrag in ${foreignCurrencyDisplay == 'USD' ? 'US-Dollar' : 'Euro'}: $foreignAmountFormatted',
         },
         'EN': {
           'invoice': 'INVOICE',
           'quote_reference': quoteNumber != null ? 'Quote Number: $quoteNumber' : '',
           'currency_note': 'All prices in $currency (Exchange rate: 1 CHF = ${exchangeRate.toStringAsFixed(4)} $currency)',
           'payment_note': 'Payment due within $paymentTermDays days until ${DateFormat('MMMM dd, yyyy', 'en_US').format(paymentDue)}.',
+          'foreign_amount_note': 'Invoice amount in ${foreignCurrencyDisplay == 'USD' ? 'US dollars' : 'euros'}: $foreignAmountFormatted',
         }
       };
 
@@ -272,6 +289,19 @@ class InvoiceGenerator extends BasePdfGenerator {
             _buildTotalsSection(items, currency, exchangeRates, language, shippingCosts, calculations, taxOption, vatRate, downPaymentSettings, paymentDue, roundingSettings, showRoundingOnDocument),
 
             pw.SizedBox(height: 10),
+
+            // NEU: Rechnungsbetrag in Fremdwährung – linksbündig, schwarz,
+            // gleiche Schriftgröße wie im Zahlungskasten (fontSize 10)
+            if (showForeignAmount) ...[
+              pw.Container(
+                alignment: pw.Alignment.centerLeft,
+                child: pw.Text(
+                  getTranslation('foreign_amount_note'),
+                  style: const pw.TextStyle(fontSize: 10, color: PdfColors.black),
+                ),
+              ),
+              pw.SizedBox(height: 6),
+            ],
 
             // Zahlungshinweis
             if (!isFullPayment) ...[
@@ -990,6 +1020,105 @@ class InvoiceGenerator extends BasePdfGenerator {
     }
 
     return ' (${parts.join(', ')})';
+  }
+
+  // NEU: Berechnet den finalen Brutto-Gesamtbetrag in CHF exakt wie die
+  // Summenzeile (_buildTotalsSection). Wird für den Fremdwährungs-Andruck
+  // genutzt, damit der Betrag auch im Entwurf/in der Vorschau stimmt,
+  // wenn calculations['total'] noch nicht gesetzt ist.
+  static double _computeGrandTotalChf(
+      List<Map<String, dynamic>> items,
+      String currency,
+      Map<String, double> exchangeRates,
+      Map<String, dynamic>? shippingCosts,
+      Map<String, dynamic>? calculations,
+      int taxOption,
+      double vatRate,
+      Map<String, bool> roundingSettings,
+      ) {
+    double subtotal = 0.0;
+    double actualItemDiscounts = 0.0;
+
+    for (final item in items) {
+      final isGratisartikel = item['is_gratisartikel'] == true;
+      final quantity = (item['quantity'] as num? ?? 0).toDouble();
+      final pricePerUnit = isGratisartikel
+          ? 0.0
+          : (item['custom_price_per_unit'] as num?) != null
+          ? (item['custom_price_per_unit'] as num).toDouble()
+          : (item['price_per_unit'] as num? ?? 0).toDouble();
+      subtotal += quantity * pricePerUnit;
+      if (!isGratisartikel) {
+        actualItemDiscounts += (item['discount_amount'] as num? ?? 0).toDouble();
+      }
+    }
+
+    final itemDiscounts = actualItemDiscounts > 0
+        ? actualItemDiscounts
+        : ((calculations?['item_discounts'] as num?)?.toDouble() ?? 0.0);
+    final totalDiscountAmount = (calculations?['total_discount_amount'] as num?)?.toDouble() ?? 0.0;
+    final afterDiscounts = (subtotal - itemDiscounts) - totalDiscountAmount;
+
+    final plantCertificate = shippingCosts?['plant_certificate_enabled'] == true
+        ? ((shippingCosts?['plant_certificate_cost'] as num?)?.toDouble() ?? 0.0)
+        : 0.0;
+    final packagingCost = (shippingCosts?['packaging_cost'] as num?)?.toDouble() ?? 0.0;
+    final freightCost = (shippingCosts?['freight_cost'] as num?)?.toDouble() ?? 0.0;
+    final totalDeductions = (shippingCosts?['totalDeductions'] as num?)?.toDouble() ?? 0.0;
+    final totalSurcharges = (shippingCosts?['totalSurcharges'] as num?)?.toDouble() ?? 0.0;
+
+    final netAmount = afterDiscounts + plantCertificate + packagingCost + freightCost + totalSurcharges - totalDeductions;
+
+    double vatAmount = 0.0;
+    double totalWithTax = netAmount;
+
+    if (taxOption == 0) {
+      final netAmountRounded = double.parse(netAmount.toStringAsFixed(2));
+      vatAmount = double.parse((netAmountRounded * (vatRate / 100)).toStringAsFixed(2));
+      final rawTotal = netAmountRounded + vatAmount;
+
+      if (roundingSettings[currency] == true) {
+        double rawTotalInDisplay = rawTotal;
+        if (currency != 'CHF') {
+          rawTotalInDisplay = rawTotal * (exchangeRates[currency] ?? 1.0);
+        }
+        final roundedTotalInDisplay = SwissRounding.round(
+          rawTotalInDisplay,
+          currency: currency,
+          roundingSettings: roundingSettings,
+        );
+        final vatRoundingDifference = roundedTotalInDisplay - rawTotalInDisplay;
+        if (currency != 'CHF') {
+          vatAmount = vatAmount + vatRoundingDifference / (exchangeRates[currency] ?? 1.0);
+        } else {
+          vatAmount = vatAmount + vatRoundingDifference;
+        }
+        totalWithTax = netAmountRounded + vatAmount;
+      } else {
+        totalWithTax = rawTotal;
+      }
+    } else {
+      totalWithTax = double.parse(netAmount.toStringAsFixed(2));
+    }
+
+    if (roundingSettings[currency] == true && taxOption != 0) {
+      double displayTotal = totalWithTax;
+      if (currency != 'CHF') {
+        displayTotal = totalWithTax * (exchangeRates[currency] ?? 1.0);
+      }
+      final roundedDisplayTotal = SwissRounding.round(
+        displayTotal,
+        currency: currency,
+        roundingSettings: roundingSettings,
+      );
+      if (currency != 'CHF') {
+        totalWithTax = roundedDisplayTotal / (exchangeRates[currency] ?? 1.0);
+      } else {
+        totalWithTax = roundedDisplayTotal;
+      }
+    }
+
+    return totalWithTax;
   }
 
   static pw.Widget _buildTotalsSection(

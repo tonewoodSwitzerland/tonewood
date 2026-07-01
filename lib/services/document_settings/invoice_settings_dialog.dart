@@ -76,7 +76,7 @@ class _InvoiceSettingsDialogState extends State<InvoiceSettingsDialog> {
   String paymentMethod = 'BAR';
   String customPaymentMethod = '';
   int paymentTermDays = 30;
-
+  DateTime? paymentTermDate;
   // Controllers
   late TextEditingController downPaymentController;
   late TextEditingController referenceController;
@@ -96,6 +96,10 @@ class _InvoiceSettingsDialogState extends State<InvoiceSettingsDialog> {
     paymentMethod = s['payment_method'] ?? 'BAR';
     customPaymentMethod = s['custom_payment_method'] ?? '';
     paymentTermDays = s['payment_term_days'] ?? 30;
+    paymentTermDate = s['payment_term_date'];
+    if (paymentTermDate != null) {
+      paymentTermDays = -1; // markiert "Fixes Datum" im UI
+    }
 
     downPaymentController = TextEditingController(
       text: downPaymentAmount > 0 ? downPaymentAmount.toString() : '',
@@ -128,7 +132,35 @@ class _InvoiceSettingsDialogState extends State<InvoiceSettingsDialog> {
         return method;
     }
   }
+  /// Echte Zahlungsfrist in Tagen. Bei "Fixes Datum" (-1) wird die Differenz
+  /// zum Rechnungsdatum berechnet, sodass nie ein -1 gespeichert wird.
+  int _effectivePaymentTermDays() {
+    if (paymentTermDays == -1 && paymentTermDate != null) {
+      final base = invoiceDate ?? DateTime.now();
+      final diff = paymentTermDate!
+          .difference(DateTime(base.year, base.month, base.day))
+          .inDays;
+      return diff < 0 ? 0 : diff;
+    }
+    return paymentTermDays >= 0 ? paymentTermDays : 30;
+  }
 
+  Future<void> _pickPaymentTermDate() async {
+    final base = invoiceDate ?? DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: paymentTermDate ?? base.add(const Duration(days: 30)),
+      firstDate: base,
+      lastDate: DateTime(2100),
+      locale: const Locale('de', 'DE'),
+    );
+    if (picked != null) {
+      setState(() {
+        paymentTermDate = picked;
+        paymentTermDays = -1;
+      });
+    }
+  }
   Future<void> _save() async {
     final settings = <String, dynamic>{
       'invoice_date': invoiceDate,
@@ -139,7 +171,8 @@ class _InvoiceSettingsDialogState extends State<InvoiceSettingsDialog> {
       'is_full_payment': isFullPayment,
       'payment_method': paymentMethod,
       'custom_payment_method': customPaymentMethod,
-      'payment_term_days': paymentTermDays,
+      'payment_term_days': _effectivePaymentTermDays(),
+      'payment_term_date': paymentTermDate,
     };
 
     await widget.provider.saveInvoiceSettings(settings);
@@ -609,6 +642,30 @@ class _InvoiceSettingsDialogState extends State<InvoiceSettingsDialog> {
                 value: 30,
                 groupValue: paymentTermDays,
                 onChanged: (v) => setState(() => paymentTermDays = v!),
+              ),
+              RadioListTile<int>(
+                title: const Text('Fixes Datum'),
+                subtitle: paymentTermDate != null
+                    ? Text(
+                  'Fällig am ${DateFormat('dd.MM.yyyy').format(paymentTermDate!)}',
+                  style: const TextStyle(fontSize: 12),
+                )
+                    : const Text(
+                  'Zahlbar bis zu einem frei wählbaren Datum',
+                  style: TextStyle(fontSize: 12),
+                ),
+                value: -1,
+                groupValue: paymentTermDays,
+                onChanged: (v) => _pickPaymentTermDate(),
+                secondary: paymentTermDate != null
+                    ? IconButton(
+                  icon: getAdaptiveIcon(
+                    iconName: 'edit_calendar',
+                    defaultIcon: Icons.edit_calendar,
+                  ),
+                  onPressed: _pickPaymentTermDate,
+                )
+                    : null,
               ),
             ],
           ),

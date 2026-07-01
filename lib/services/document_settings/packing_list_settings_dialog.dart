@@ -31,7 +31,11 @@ class PackingListSettingsDialog extends StatefulWidget {
   final String initialShipmentMode;
 
   /// Ob der Versandmodus-Toggle angezeigt werden soll
+  /// Ob der Versandmodus-Toggle angezeigt werden soll
   final bool showShipmentModeToggle;
+
+  /// Ob die Maße-Spalte in der Packliste-PDF angezeigt werden soll
+  final bool initialShowDimensions;
 
   /// Callback wenn gespeichert wurde
   final void Function(List<Map<String, dynamic>> packages, String shipmentMode)? onSaved;
@@ -43,6 +47,7 @@ class PackingListSettingsDialog extends StatefulWidget {
     this.initialPackages = const [],
     this.initialShipmentMode = 'total',
     this.showShipmentModeToggle = true,
+    this.initialShowDimensions = false,
     this.onSaved,
   });
 
@@ -62,10 +67,10 @@ class PackingListSettingsDialog extends StatefulWidget {
         .map((p) => Map<String, dynamic>.from(p as Map))
         .toList();
     final shipmentMode = settings['shipment_mode'] as String? ?? initialShipmentMode;
+    final showDimensions = settings['show_dimensions'] as bool? ?? false;
 
     // Aktualisiere Maße in bestehenden Paketen mit aktuellen Item-Werten
     _updatePackageItemDimensions(packages, items);
-
     if (!context.mounted) return;
 
     await showModalBottomSheet<void>(
@@ -80,6 +85,7 @@ class PackingListSettingsDialog extends StatefulWidget {
         initialPackages: packages,
         initialShipmentMode: shipmentMode,
         showShipmentModeToggle: showShipmentModeToggle,
+        initialShowDimensions: showDimensions,
         onSaved: onSaved,
       ),
     );
@@ -137,6 +143,7 @@ class _PackingListSettingsDialogState
     extends State<PackingListSettingsDialog> {
   late List<Map<String, dynamic>> packages;
   late String shipmentMode;
+  late bool showDimensions;
   final Map<String, Map<String, TextEditingController>> packageControllers = {};
 
   @override
@@ -146,6 +153,7 @@ class _PackingListSettingsDialogState
         ? List<Map<String, dynamic>>.from(widget.initialPackages)
         : [];
     shipmentMode = widget.initialShipmentMode;
+    showDimensions = widget.initialShowDimensions;
 
     if (packages.isEmpty) {
       _createFirstPackage();
@@ -332,11 +340,11 @@ class _PackingListSettingsDialogState
   // Speichern
   // ─────────────────────────────────────────────────────────────────
 
-  Future<void> _save() async {
-    await widget.provider.savePackingListSettings({
-      'packages': packages,
-      'shipment_mode': shipmentMode,
-    });
+  Future<void> _save() async {await widget.provider.savePackingListSettings({
+    'packages': packages,
+    'shipment_mode': shipmentMode,
+    'show_dimensions': showDimensions,
+  });
 
     widget.onSaved?.call(packages, shipmentMode);
     if (mounted) Navigator.pop(context);
@@ -409,7 +417,41 @@ class _PackingListSettingsDialogState
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // ── Produkt-Übersicht ──
+                        // ── Produkt-Übersicht ──
                         _buildProductOverview(context, setModalState),
+
+                        const SizedBox(height: 16),
+
+                        // ── Maße-Spalte in PDF anzeigen ──
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outline
+                                  .withOpacity(0.5),
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: CheckboxListTile(
+                            title: const Text('Maße anzeigen'),
+                            subtitle: const Text(
+                              'Zeigt die Spalte "Maße" (Länge×Breite×Dicke) in der Packliste an',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            value: showDimensions,
+                            onChanged: (value) {
+                              setModalState(() {
+                                showDimensions = value ?? false;
+                              });
+                            },
+                            secondary: getAdaptiveIcon(
+                              iconName: 'straighten',
+                              defaultIcon: Icons.straighten,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                        ),
 
                         const SizedBox(height: 16),
 
